@@ -121,7 +121,8 @@ svg.dg .arrowhead { fill: var(--muted); }
 svg.dg .frame { fill: none; stroke: var(--border); stroke-dasharray: 4 3; }
 
 /* Simulate */
-.sim-layout { display: grid; grid-template-columns: 300px 1fr; gap: 24px; }
+.sim-layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .sim-layout { grid-template-columns: 1fr; } }
 .sim-list h2 { margin-top: 0; }
 .sim-list ul { list-style: none; margin: 0; padding: 0; }
 .sim-list button {
@@ -309,3 +310,19 @@ button.link.danger { color: var(--fail); }
 .docs-toc a:hover { color: var(--fg); background: var(--accent-soft); }
 .docs-body section.block { scroll-margin-top: 130px; }
 @media (max-width: 900px) { .docs-layout { grid-template-columns: 1fr; } .docs-toc { position: static; max-height: none; } }
+
+/* Operate: a side menu of pages */
+.ops-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 32px; align-items: start; }
+.ops-nav { position: sticky; top: 120px; display: flex; flex-direction: column; gap: 2px; }
+.ops-nav button { font: inherit; font-size: 15px; text-align: left; background: none; border: 0; border-left: 3px solid transparent;
+  padding: 8px 12px; border-radius: 0 6px 6px 0; color: var(--muted); cursor: pointer; }
+.ops-nav button:hover { color: var(--fg); background: var(--accent-soft); }
+.ops-nav button[aria-current="page"] { color: var(--fg); font-weight: 600; border-left-color: var(--brand); background: var(--accent-soft); }
+@media (max-width: 900px) { .ops-layout { grid-template-columns: 1fr; } .ops-nav { position: static; flex-direction: row; flex-wrap: wrap; } }
+
+/* Simulate, as in the 8765 console */
+#panel-simulate { max-width: none; }
+.sim-side { position: sticky; top: 120px; display: flex; flex-direction: column; gap: 12px; padding: 18px; }
+.sim-side .tfield select { width: 100%; }
+.card.intro { padding: 22px 24px; font-size: 16px; color: var(--muted); }
+main { max-width: 1400px; }

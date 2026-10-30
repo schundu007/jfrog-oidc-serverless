@@ -101,20 +101,34 @@ function showAuth() {
 
 // ----------------------------------------------------------------- tabs
 
-const TABS = ["overview", "configure", "install", "nodes", "artifactory", "verify", "troubleshoot", "simulate",
-  "demo", "security", "rollback", "runs", "docs"];
+const TABS = ["overview", "configure", "operate", "runs", "simulate", "docs"];
+// Pages inside Operate, picked from its side menu.
+const SUBS = ["install", "verify", "nodes", "artifactory", "troubleshoot", "security", "demo", "rollback"];
 export function selectTab(name) {
+  let sub = null;
+  if (SUBS.includes(name)) { sub = name; name = "operate"; }
+  if (!TABS.includes(name)) name = "overview";
   for (const t of TABS) {
     const on = t === name;
     $(`tab-${t}`).setAttribute("aria-selected", String(on));
     $(`tab-${t}`).tabIndex = on ? 0 : -1;
     $(`panel-${t}`).hidden = !on;
   }
+  if (name === "operate") {
+    try { sub ||= sessionStorage.getItem("kcp-sub") || "install"; } catch { sub ||= "install"; }
+    if (!SUBS.includes(sub)) sub = "install";
+    for (const s of SUBS) {
+      $(`panel-${s}`).hidden = s !== sub;
+      $(`sub-${s}`).setAttribute("aria-current", s === sub ? "page" : "false");
+    }
+    try { sessionStorage.setItem("kcp-sub", sub); } catch { /* ignore */ }
+  }
   try { sessionStorage.setItem("kcp-tab", name); } catch { /* ignore */ }
 }
 
 function wireTabs() {
   for (const t of TABS) $(`tab-${t}`).addEventListener("click", () => selectTab(t));
+  for (const s of SUBS) $(`sub-${s}`).addEventListener("click", () => selectTab(s));
   $("tabs").addEventListener("keydown", (e) => {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
     const i = TABS.findIndex((t) => $(`tab-${t}`).getAttribute("aria-selected") === "true");
@@ -160,7 +174,7 @@ async function start() {
   state.emit("config", state.config);
   let tab = "overview";
   try { tab = sessionStorage.getItem("kcp-tab") || tab; } catch { /* ignore */ }
-  selectTab(TABS.includes(tab) ? tab : "overview");
+  selectTab(TABS.includes(tab) || SUBS.includes(tab) ? tab : "overview");
 }
 
 export async function refreshConfigs(select) {

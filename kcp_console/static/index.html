@@ -22,18 +22,11 @@
     </div>
     </div>
     <nav class="tabs" role="tablist" aria-label="Sections" id="tabs" hidden>
-      <button role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true">Overview</button>
+      <button role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true">Clusters</button>
       <button role="tab" id="tab-configure" aria-controls="panel-configure" aria-selected="false" tabindex="-1">Configure</button>
-      <button role="tab" id="tab-install" aria-controls="panel-install" aria-selected="false" tabindex="-1">Install</button>
-      <button role="tab" id="tab-nodes" aria-controls="panel-nodes" aria-selected="false" tabindex="-1">Nodes</button>
-      <button role="tab" id="tab-artifactory" aria-controls="panel-artifactory" aria-selected="false" tabindex="-1">Artifactory</button>
-      <button role="tab" id="tab-verify" aria-controls="panel-verify" aria-selected="false" tabindex="-1">Verify</button>
-      <button role="tab" id="tab-troubleshoot" aria-controls="panel-troubleshoot" aria-selected="false" tabindex="-1">Troubleshoot</button>
-      <button role="tab" id="tab-simulate" aria-controls="panel-simulate" aria-selected="false" tabindex="-1">Simulate</button>
-      <button role="tab" id="tab-demo" aria-controls="panel-demo" aria-selected="false" tabindex="-1">Demo</button>
-      <button role="tab" id="tab-security" aria-controls="panel-security" aria-selected="false" tabindex="-1">Security</button>
-      <button role="tab" id="tab-rollback" aria-controls="panel-rollback" aria-selected="false" tabindex="-1">Rollback</button>
+      <button role="tab" id="tab-operate" aria-controls="panel-operate" aria-selected="false" tabindex="-1">Operate</button>
       <button role="tab" id="tab-runs" aria-controls="panel-runs" aria-selected="false" tabindex="-1">Runs</button>
+      <button role="tab" id="tab-simulate" aria-controls="panel-simulate" aria-selected="false" tabindex="-1">Simulate</button>
       <button role="tab" id="tab-docs" aria-controls="panel-docs" aria-selected="false" tabindex="-1">Docs</button>
     </nav>
   </header>
@@ -77,14 +70,15 @@
 
     <section id="panel-simulate" role="tabpanel" aria-labelledby="tab-simulate" hidden>
       <div class="sim-layout">
-        <nav class="sim-list" aria-label="Scenarios">
-          <h2>Scenarios</h2>
-          <p class="small muted">Each one replays a situation from the sandbox pilot through the console's own parsers and
-            rule engine. Nothing leaves this machine.</p>
-          <ul id="sim-list"></ul>
-        </nav>
+        <aside class="sim-side card">
+          <label class="tfield" for="sim-pick"><span>Scenario</span><select id="sim-pick"></select></label>
+          <p class="small" id="sim-desc"></p>
+          <p class="small" id="sim-expect"></p>
+          <button type="button" class="primary big" id="sim-run">Run scenario</button>
+          <p class="small muted">Runs the console's own parsers and rule engine on an emulated cluster, plugin and Artifactory. Nothing leaves this machine.</p>
+        </aside>
         <div class="sim-main" id="sim-main">
-          <p class="muted" id="sim-empty">Pick a scenario.</p>
+          <div class="card intro" id="sim-empty">Pick a scenario on the left and run it. Each one reproduces a real failure or success of the kubelet credential provider (node config, plugin, token cache, Artifactory) and shows the verdict, what happened, a timeline and the diagnosis the console would give.</div>
           <div id="sim-result" hidden>
             <div class="page-head">
               <h1 id="sim-title"></h1>
@@ -109,14 +103,30 @@
       </div>
     </section>
     <section id="panel-configure" role="tabpanel" aria-labelledby="tab-configure" hidden></section>
-    <section id="panel-install" role="tabpanel" aria-labelledby="tab-install" hidden></section>
-    <section id="panel-nodes" role="tabpanel" aria-labelledby="tab-nodes" hidden></section>
-    <section id="panel-artifactory" role="tabpanel" aria-labelledby="tab-artifactory" hidden></section>
-    <section id="panel-verify" role="tabpanel" aria-labelledby="tab-verify" hidden></section>
-    <section id="panel-troubleshoot" role="tabpanel" aria-labelledby="tab-troubleshoot" hidden></section>
-    <section id="panel-demo" role="tabpanel" aria-labelledby="tab-demo" hidden></section>
-    <section id="panel-security" role="tabpanel" aria-labelledby="tab-security" hidden></section>
-    <section id="panel-rollback" role="tabpanel" aria-labelledby="tab-rollback" hidden></section>
+    <section id="panel-operate" role="tabpanel" aria-labelledby="tab-operate" hidden>
+      <div class="ops-layout">
+        <nav class="ops-nav" aria-label="Operate">
+          <button type="button" id="sub-install" data-sub="install">Install</button>
+          <button type="button" id="sub-verify" data-sub="verify">Verify</button>
+          <button type="button" id="sub-nodes" data-sub="nodes">Nodes</button>
+          <button type="button" id="sub-artifactory" data-sub="artifactory">Artifactory</button>
+          <button type="button" id="sub-troubleshoot" data-sub="troubleshoot">Troubleshoot</button>
+          <button type="button" id="sub-security" data-sub="security">Security</button>
+          <button type="button" id="sub-demo" data-sub="demo">Demo</button>
+          <button type="button" id="sub-rollback" data-sub="rollback">Rollback</button>
+        </nav>
+        <div class="ops-body">
+          <section id="panel-install" hidden></section>
+          <section id="panel-verify" hidden></section>
+          <section id="panel-nodes" hidden></section>
+          <section id="panel-artifactory" hidden></section>
+          <section id="panel-troubleshoot" hidden></section>
+          <section id="panel-security" hidden></section>
+          <section id="panel-demo" hidden></section>
+          <section id="panel-rollback" hidden></section>
+        </div>
+      </div>
+    </section>
     <section id="panel-docs" role="tabpanel" aria-labelledby="tab-docs" hidden></section>
     <section id="panel-runs" role="tabpanel" aria-labelledby="tab-runs" hidden></section>
   </main>

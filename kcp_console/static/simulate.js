@@ -16,14 +16,22 @@ let current = null;
 export async function initSimulate({ api }) {
   API = api;
   const { scenarios } = await api("/api/sim/scenarios");
-  fill($("sim-list"), scenarios.map((sc) => h("li", {}, h("button", {
-    "data-name": sc.name, title: sc.story, onclick: () => run(sc.name),
-  }, h("span", {}, sc.title), h("span", { class: "exp" }, sc.expect.verdict || "")))));
+  const pick = $("sim-pick");
+  fill(pick, scenarios.map((sc) => h("option", { value: sc.name }, sc.title)));
+  const describe = () => {
+    const sc = scenarios.find((x) => x.name === pick.value);
+    if (!sc) return;
+    $("sim-desc").textContent = sc.story;
+    const v = sc.expect.verdict || "";
+    fill($("sim-expect"), "Expected result ", h("span", { class: `pill ${v.toLowerCase()}` }, v));
+  };
+  pick.addEventListener("change", describe);
+  $("sim-run").addEventListener("click", () => run(pick.value));
+  describe();
 }
 
 async function run(name) {
   current = name;
-  document.querySelectorAll("#sim-list button").forEach((b) => b.setAttribute("aria-current", String(b.dataset.name === name)));
   let r;
   try {
     r = await API("/api/sim", { method: "POST", body: { scenario: name } });
