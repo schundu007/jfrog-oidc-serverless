@@ -296,6 +296,10 @@ class RunManager:
                 raise RunError(403, "this request changes state: it needs an explicit approval")
             if run["needs_typed_cluster"] and typed_cluster != run["cluster"]:
                 raise RunError(403, "destructive request: type the cluster name exactly to approve it")
+            # Two changes on one cluster collide (the same test pod, the same helm release): one at a time.
+            if run["changes_state"] and any(o is not run and o.get("config") == run.get("config") and o.get("changes_state")
+                                            and o.get("status") in ("queued", "running") for o in self.runs.values()):
+                raise RunError(409, f"a change on {run.get('config')} is already running: approve this one when it has finished")
             run["status"] = "queued"
             run["approved"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "changes_state": run["changes_state"]}
         self._event(run, "approved", "approved" if run["changes_state"] else "read-only: started")

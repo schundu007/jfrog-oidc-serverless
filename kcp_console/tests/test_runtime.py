@@ -288,3 +288,24 @@ class ReportTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OneChangeAtATimeTest(unittest.TestCase):
+    """Two state-changing runs on one cluster collide (the same test pod, the same helm release): a second
+    approval waits until the first has finished."""
+
+    def test_second_change_on_the_same_cluster_is_refused(self):
+        from kcp_console.runner import RunManager
+
+        class Store:
+            def all(self): return []
+            def save(self, run): pass
+
+        m = RunManager(Store(), shell_factory=None)
+        base = {"config": "gke-a", "changes_state": True, "needs_typed_cluster": False, "request_sha256": "h", "cluster": "gke-a"}
+        m.runs = {"a": {**base, "id": "a", "status": "running"}, "b": {**base, "id": "b", "status": "prepared"}}
+        with self.assertRaises(RunError) as e:
+            m.approve("b", "h", approved=True)
+        self.assertEqual(e.exception.status, 409)
+        self.assertIn("already running", str(e.exception))
+        self.assertEqual(m.runs["b"]["status"], "prepared")

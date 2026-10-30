@@ -315,3 +315,5 @@ input.typed { width: 220px; }
 /* Inside the unified console: the section's name in the top bar and the switch to the other section. */
 .section-title { font-size: var(--fs-lg); font-weight: 600; color: #fff; }
 .nav-item.section-switch { margin-top: var(--s4); border-top: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0; padding-top: var(--s3); }
+.logo-hex { width: 20px; height: 20px; flex: none; fill: var(--brand); }
+.logo-hex .logo-in { fill: var(--rail); }

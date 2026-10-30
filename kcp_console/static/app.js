@@ -161,7 +161,8 @@ function wireTabs() {
     });
   });
   // Inside the unified console: the section title and the switch to the serverless section.
-  for (const id of ["section-title", "section-switch"]) $(id).hidden = !BASE;
+  for (const id of ["section-title", "section-switch", "brand-portal"]) $(id).hidden = !BASE;
+  $("brand-own").hidden = !!BASE;
 }
 
 $("auth-form").addEventListener("submit", (e) => {
