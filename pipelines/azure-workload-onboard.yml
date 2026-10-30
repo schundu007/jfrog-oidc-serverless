@@ -10,6 +10,12 @@ trigger:
     include: [terraform/workspaces/azure_*]
 pr: none
 
+parameters:
+  - name: workspace
+    displayName: Workspace to re-apply (empty = those changed by the last commit)
+    type: string
+    default: ' '
+
 variables:
   - template: vars/test.yml
 
@@ -31,7 +37,7 @@ jobs:
           scriptType: bash
           scriptLocation: scriptPath
           scriptPath: pipelines/scripts/workspace-apply.sh
-          arguments: azure
+          arguments: azure ${{ parameters.workspace }}
         env:
           SYSTEM_ACCESSTOKEN: $(System.AccessToken)
           JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)

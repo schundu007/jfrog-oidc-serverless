@@ -32,13 +32,25 @@ done
 source pipelines/scripts/oidc-login.sh
 JFROG_ACCESS_TOKEN=$(python3 -m jfrog_oidc token)
 export JFROG_ACCESS_TOKEN
+printf 'Authorization: Bearer %s\n' "$JFROG_ACCESS_TOKEN" > "$OIDC_DIR/jfrog-auth"   # curl -H @file: not in argv
 export PYTHONPATH="$BUILD_SOURCESDIRECTORY/client/src:$BUILD_SOURCESDIRECTORY/rotator:$BUILD_SOURCESDIRECTORY"
 
 for ws in "${workspaces[@]}"; do
   [ -f "$ws/main.tf.json" ] || { echo "$ws: removed, skipping"; continue; }
   echo "== $ws"
   terraform -chdir="$ws" init -input=false -no-color
-  terraform -chdir="$ws" plan -input=false -no-color -lock-timeout=5m -out=tfplan
+  # An integration for the same issuer that already exists in JFrog (another
+  # workspace or a stack made it) is adopted, not created again.
+  adopt=false
+  read -r provider url < <(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["jfrog_provider_name"], d["jfrog_url"])' \
+    "$ws/terraform.tfvars.json")
+  if ! terraform -chdir="$ws" state list 2>/dev/null | grep -q '^module.jfrog_oidc.platform_oidc_configuration'; then
+    code=$(curl -s -o /dev/null -w '%{http_code}' -H @"$OIDC_DIR/jfrog-auth" "$url/access/api/v1/oidc/$provider")
+    [ "$code" = 200 ] && adopt=true
+  fi
+  echo "integration $provider: adopt=$adopt"
+  terraform -chdir="$ws" plan -input=false -no-color -lock-timeout=5m -out=tfplan \
+    -var "adopt_jfrog_integration=$adopt"
   terraform -chdir="$ws" apply -input=false -no-color -lock-timeout=5m tfplan
   terraform -chdir="$ws" output -json > "$OIDC_DIR/outputs.json"
   python3 -m console.deliver wire "$ws" "$OIDC_DIR/outputs.json"
