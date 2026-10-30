@@ -1,0 +1,167 @@
+{
+  "import": [
+    {
+      "for_each": "${var.adopt_jfrog_integration ? toset([var.jfrog_provider_name]) : toset([])}",
+      "id": "${each.value}",
+      "to": "module.jfrog_oidc.platform_oidc_configuration.azure[0]"
+    }
+  ],
+  "locals": {
+    "pull_workloads": "${{ for k in (var.pull_path.enabled ? [var.pull_mapping_name] : []) : k => { cloud = \"azure\", subject = module.azure.rotator_principal_id, username = var.pull_path.registry_username, groups = var.pull_path.groups, expires_in = var.pull_path.ttl_seconds, description = \"Container Apps / Functions registry credential (rotated)\" } }}"
+  },
+  "module": {
+    "azure": {
+      "audience_assignees": "${var.audience_assignees}",
+      "container_app_environment_id": "${var.container_app_environment_id}",
+      "function_app_ids": "${var.function_app_ids}",
+      "jfrog_provider_name": "${var.jfrog_provider_name}",
+      "jfrog_url": "${var.jfrog_url}",
+      "key_vault_id": "${var.key_vault_id}",
+      "key_vault_uri": "${var.key_vault_uri}",
+      "location": "${var.location}",
+      "min_ttl_seconds": "${var.pull_path.min_ttl_seconds}",
+      "name_prefix": "${var.name_prefix}",
+      "pull_path_enabled": "${var.pull_path.enabled}",
+      "registry_username": "${var.pull_path.registry_username}",
+      "resource_group_name": "${var.resource_group_name}",
+      "rotation_cron": "${var.pull_path.rotation_cron}",
+      "rotator_image": "${var.pull_path.rotator_image}",
+      "rotator_registry": "${var.rotator_registry}",
+      "secret_readers": "${var.secret_readers}",
+      "source": "../../modules/azure-identity-and-pull-path"
+    },
+    "jfrog_oidc": {
+      "azure": {
+        "audience_app_id": "${module.azure.audience_app_id}",
+        "provider_name": "${var.jfrog_provider_name}",
+        "tenant_id": "${module.azure.tenant_id}"
+      },
+      "project_key": "${var.jfrog_project_key}",
+      "source": "../../modules/jfrog-oidc",
+      "workloads": "${merge(var.workloads, local.pull_workloads)}"
+    }
+  },
+  "output": {
+    "audience_uri": {
+      "value": "${module.azure.audience_uri}"
+    },
+    "first_run_command": {
+      "value": "${module.azure.first_run_command}"
+    },
+    "jfrog_provider_name": {
+      "value": "${module.jfrog_oidc.azure_provider_name}"
+    },
+    "mapping_names": {
+      "value": "${keys(merge(var.workloads, local.pull_workloads))}"
+    },
+    "registry_secret_versionless_url": {
+      "value": "${module.azure.registry_secret_versionless_url}"
+    },
+    "registry_username": {
+      "value": "${var.pull_path.enabled ? var.pull_path.registry_username : null}"
+    },
+    "rotator_job_name": {
+      "value": "${module.azure.rotator_job_name}"
+    },
+    "tenant_id": {
+      "value": "${module.azure.tenant_id}"
+    }
+  },
+  "provider": {
+    "azuread": {},
+    "azurerm": {
+      "features": {},
+      "subscription_id": "${var.azure_subscription_id}"
+    },
+    "platform": {
+      "url": "${var.jfrog_url}"
+    }
+  },
+  "terraform": {
+    "required_providers": {
+      "azuread": {
+        "source": "hashicorp/azuread",
+        "version": ">= 2.47"
+      },
+      "azurerm": {
+        "source": "hashicorp/azurerm",
+        "version": ">= 4.23"
+      },
+      "platform": {
+        "source": "jfrog/platform",
+        "version": ">= 2.2.1"
+      },
+      "random": {
+        "source": "hashicorp/random",
+        "version": ">= 3.5"
+      }
+    },
+    "required_version": ">= 1.7"
+  },
+  "variable": {
+    "adopt_jfrog_integration": {
+      "default": false,
+      "type": "bool"
+    },
+    "audience_assignees": {
+      "default": {},
+      "type": "map(string)"
+    },
+    "azure_subscription_id": {
+      "type": "string"
+    },
+    "container_app_environment_id": {
+      "default": null,
+      "type": "string"
+    },
+    "function_app_ids": {
+      "default": {},
+      "type": "map(string)"
+    },
+    "jfrog_project_key": {
+      "default": null,
+      "type": "string"
+    },
+    "jfrog_provider_name": {
+      "type": "string"
+    },
+    "jfrog_url": {
+      "type": "string"
+    },
+    "key_vault_id": {
+      "default": null,
+      "type": "string"
+    },
+    "key_vault_uri": {
+      "default": null,
+      "type": "string"
+    },
+    "location": {
+      "type": "string"
+    },
+    "name_prefix": {
+      "type": "string"
+    },
+    "pull_mapping_name": {
+      "type": "string"
+    },
+    "pull_path": {
+      "type": "object({enabled = bool, ttl_seconds = number, rotation_cron = string, min_ttl_seconds = number, alert_after_seconds = number, registry_username = string, rotator_image = string, groups = list(string)})"
+    },
+    "resource_group_name": {
+      "type": "string"
+    },
+    "rotator_registry": {
+      "default": null,
+      "type": "object({server = string, acr_id = string})"
+    },
+    "secret_readers": {
+      "default": {},
+      "type": "map(string)"
+    },
+    "workloads": {
+      "description": "Runtime mappings, one per target: <config>-runtime",
+      "type": "map(object({cloud = string, subject = string, username = optional(string), groups = list(string), expires_in = number, description = string}))"
+    }
+  }
+}
