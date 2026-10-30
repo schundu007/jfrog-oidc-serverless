@@ -57,6 +57,13 @@ for ws in "${workspaces[@]}"; do
   # Onboarding several apps starts one run each on the same workspace. The azurerm
   # backend can fail at once on a lock another run holds, so wait and plan again.
   for try in 1 2 3 4 5 6; do
+    # Runs can finish out of order: a run on an older commit would apply stale tfvars
+    # over a newer run's and drop its targets. Leave the workspace to the newer run.
+    git fetch -q --depth=1 origin "$BUILD_SOURCEBRANCH"
+    if ! git diff --quiet HEAD FETCH_HEAD -- "$ws"; then
+      echo "$ws changed after this commit: the run on the newer commit applies it"
+      continue 2
+    fi
     if terraform -chdir="$ws" plan -input=false -no-color -lock-timeout=5m -out=tfplan \
         -var "adopt_jfrog_integration=$adopt" 2>"$OIDC_DIR/plan.err" \
       && terraform -chdir="$ws" apply -input=false -no-color -lock-timeout=5m tfplan 2>"$OIDC_DIR/plan.err"; then
