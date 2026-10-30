@@ -10,3 +10,6 @@ connections = {
 }
 gcp_project_id                = "my-project"
 ado_token_audience = "api://AzureADTokenExchange"
+# AWS (optional; leave out to skip)
+# aws_account_id = "123456789012"
+# aws_region     = "us-east-1"

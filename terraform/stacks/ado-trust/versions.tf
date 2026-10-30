@@ -17,6 +17,10 @@ terraform {
       source  = "hashicorp/azuread"
       version = ">= 2.47"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 6.26"
+    }
   }
 }
 

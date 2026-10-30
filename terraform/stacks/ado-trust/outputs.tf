@@ -19,6 +19,15 @@ output "azure_setup_identity_client_id" {
   value       = azurerm_user_assigned_identity.setup.client_id
 }
 
+output "aws_role_arns" {
+  description = "AWS_SETUP_ROLE_ARN / AWS_BUILD_ROLE_ARN in pipelines/vars/<env>.yml."
+  value       = { for k, r in aws_iam_role.ado : k => r.arn }
+}
+
+output "aws_tfstate_bucket" {
+  value = one(aws_s3_bucket.tfstate[*].bucket)
+}
+
 output "azure_tfstate" {
   value = { storage_account = azurerm_storage_account.tfstate.name, container = azurerm_storage_container.tfstate.name, resource_group = data.azurerm_resource_group.ado.name }
 }

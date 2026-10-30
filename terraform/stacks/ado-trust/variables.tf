@@ -65,6 +65,27 @@ variable "gcp_image_repository" {
   default     = "platform"
 }
 
+variable "aws_account_id" {
+  description = "AWS account the pipelines deploy to; null leaves AWS out (no provider credentials needed)."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.aws_account_id == null || can(regex("^[0-9]{12}$", var.aws_account_id))
+    error_message = "aws_account_id must be 12 digits."
+  }
+}
+
+variable "aws_region" {
+  type    = string
+  default = "us-east-1"
+}
+
+variable "aws_image_repository" {
+  description = "ECR repository the AWS build pipeline pushes to."
+  type        = string
+  default     = "platform"
+}
+
 variable "ado_token_audience" {
   description = "aud of the token a job gets from System.OidcRequestUri (check with: python -m jfrog_oidc claims)."
   type        = string

@@ -43,3 +43,14 @@ if [ -n "${GCP_SERVICE_ACCOUNT:-}" ]; then
   gcloud auth login --cred-file="$GOOGLE_APPLICATION_CREDENTIALS" --quiet
   gcloud config set project "$GCP_PROJECT" --quiet
 fi
+
+# AWS: the same token assumes the connection's role (terraform/stacks/ado-trust/aws.tf).
+# The AWS CLI and the Terraform AWS provider read these two variables themselves
+# (AssumeRoleWithWebIdentity); no keys are written anywhere.
+if [ -n "${AWS_ROLE_ARN:-}" ]; then
+  : "${AWS_REGION:?}"
+  export AWS_WEB_IDENTITY_TOKEN_FILE="$OIDC_DIR/id-token"
+  export AWS_ROLE_SESSION_NAME="ado-${BUILD_BUILDID:-local}"
+  export AWS_CONFIG_FILE="$OIDC_DIR/aws-config" AWS_SHARED_CREDENTIALS_FILE="$OIDC_DIR/aws-credentials" AWS_PAGER=""
+  aws sts get-caller-identity --query Arn --output text
+fi

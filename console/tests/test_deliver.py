@@ -147,6 +147,14 @@ class PublishTests(unittest.TestCase):
         with self.assertRaises(deliver.DeliveryError):      # the wrong backend type for the cloud
             deliver._backend({"state": {"aws": {"type": "gcs", "bucket": "x"}}}, "aws", "aws_1")
 
+    def test_pipeline_login_replaces_local_profile_and_context(self):
+        c = model.default_config("aws_lambda", name="api")
+        c["target"]["aws"]["profile"] = "schundu"
+        self.assertEqual(deliver.pipeline_target(c, {"AWS_ROLE_ARN": "arn:aws:iam::1:role/ado-setup"})["target"]["aws"]["profile"], "")
+        self.assertEqual(deliver.pipeline_target(c, {})["target"]["aws"]["profile"], "schundu")
+        k = model.default_config("openshift_knative_service", name="api")
+        self.assertEqual(deliver.pipeline_target(k, {"KUBE_CONTEXT": "ci"})["target"]["openshift"]["context"], "ci")
+
     def test_no_change_means_no_pull_request(self):
         res, sh = self.publish(gcp_cfg(), commit_rc=1)
         self.assertFalse(res["changed"])

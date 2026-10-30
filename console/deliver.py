@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -170,12 +171,25 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
         git("branch", "-D", branch)
 
 
-def wire_workspace(ws_dir, sh: Shell, outputs: dict, wire_cls=wiremod.Wire, log=None) -> list:
+def pipeline_target(cfg: dict, env) -> dict:
+    """The pipeline's own login replaces the operator's local one: an AWS profile from the
+    console's machine does not exist on the agent (the role comes from AWS_ROLE_ARN), and
+    the agent's kubeconfig may name the cluster's context differently (KUBE_CONTEXT)."""
+    cfg = copy.deepcopy(cfg)
+    t = cfg.get("target") or {}
+    if "aws" in t and env.get("AWS_ROLE_ARN"):
+        t["aws"]["profile"] = ""
+    if "openshift" in t and env.get("KUBE_CONTEXT"):
+        t["openshift"]["context"] = env["KUBE_CONTEXT"]
+    return cfg
+
+
+def wire_workspace(ws_dir, sh: Shell, outputs: dict, wire_cls=wiremod.Wire, log=None, env=None) -> list:
     """Wire every config in <ws>/configs. The merged PR is the approval of these diffs."""
     log = log or (lambda _l: None)
     results = []
     for p in sorted((Path(ws_dir) / "configs").glob("*.json")):
-        cfg = json.loads(p.read_text())
+        cfg = pipeline_target(json.loads(p.read_text()), env or {})
         w = wire_cls(cfg, sh, outputs)
         plan = w.plan()
         if plan["noop"]:
@@ -203,7 +217,7 @@ def main(argv=None) -> int:
     def say(line):
         print(redact.text(line), flush=True)
     try:
-        res = wire_workspace(args.workspace, Shell(mode="live", log=say), outputs, log=say)
+        res = wire_workspace(args.workspace, Shell(mode="live", log=say), outputs, log=say, env=os.environ)
     except (DeliveryError, wiremod.WireError, wiremod.WireRefused) as exc:
         say(f"wire failed: {exc}")
         return 1
