@@ -62,6 +62,20 @@
       "runtime_enabled": true,
       "runtime_ttl": 3600,
       "subject": "3923b11c-bf56-4a4d-b0c0-de116f91b814"
+    },
+    "func-jfrog-prem-0e56": {
+      "dedicated_identity": null,
+      "function_app_id": null,
+      "identity_location": "West US 2",
+      "identity_resource_group": "rg-jfrog-types",
+      "identity_type": "system_assigned",
+      "kind": "azure_functions_premium",
+      "name": "func-jfrog-prem-0e56",
+      "principal_id": "1e388033-c986-413c-ba9a-4bba9bbc50fa",
+      "pull_enabled": false,
+      "runtime_enabled": true,
+      "runtime_ttl": 3600,
+      "subject": "1e388033-c986-413c-ba9a-4bba9bbc50fa"
     }
   }
 }
