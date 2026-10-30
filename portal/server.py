@@ -19,10 +19,11 @@ from console import redact
 from console import server as oidc
 from kcp_console import server as kcp
 
-STATIC_DIR = Path(__file__).parent / "static"
 SERVERLESS, K8S = "/serverless", "/k8s"
-STATIC = {"/": "index.html", "/portal.css": "portal.css"}
-CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8"}
+STATIC_DIR = Path(__file__).parent / "static"
+# Home is a read-only dashboard over both sections; every other page belongs to one section.
+STATIC = {"/": "index.html", "/dashboard.js": "dashboard.js", "/dashboard.css": "dashboard.css"}
+CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
 
 
 def section_of(path: str):
@@ -128,6 +129,10 @@ def _make_handler(portal: Portal):
                 if self.command != "GET" or not name:
                     return self._send(404, "text/plain; charset=utf-8", b"not found")
                 data = (STATIC_DIR / name).read_bytes()
+                # Like the consoles: the page carries the token only when the operator opened it directly.
+                if name == "index.html" and self.headers.get("Sec-Fetch-Site") in ("none", "same-origin"):
+                    data = data.replace(b'<meta charset="utf-8">', b'<meta charset="utf-8">\n  <meta name="console-token" content="'
+                                        + portal.token.encode() + b'">', 1)
                 self._send(200, CONTENT_TYPES[Path(name).suffix], data)
             except (BrokenPipeError, ConnectionResetError):
                 pass

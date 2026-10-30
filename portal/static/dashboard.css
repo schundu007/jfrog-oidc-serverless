@@ -1,0 +1,39 @@
+/* Dashboard: both sections stacked, each a KPI row then two lists. Uses the shared tokens. */
+.shell { grid-template-columns: var(--rail-w) minmax(0, 1fr); }
+.dash-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s-5); }
+.dash-sec + .dash-sec { margin-top: var(--s-7); }
+.dash-sec-head { display: flex; align-items: center; gap: var(--s-3); margin-bottom: var(--s-4); }
+.dash-sec-head svg.mark { width: 28px; height: 28px; }
+.dash-sec-head h2 { font-size: var(--t-xl); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--s-3); margin-bottom: var(--s-4); }
+.kpi { display: flex; flex-direction: column; gap: 2px; padding: var(--s-4); background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); box-shadow: var(--shadow-1); }
+.kpi b { font-size: 28px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.1; }
+.kpi span { font-size: var(--t-sm); color: var(--fg-3); }
+.kpi.ok b { color: var(--ok-fg); } .kpi.bad b { color: var(--bad-fg); } .kpi.warn b { color: var(--warn-fg); } .kpi.info b { color: var(--info-fg); }
+.dash-cols { display: flex; flex-direction: column; gap: var(--s-4); }
+@media (max-width: 1100px) { .dash-cols { grid-template-columns: minmax(0, 1fr); } }
+.dash-list { display: flex; flex-direction: column; margin: 0 calc(-1 * var(--s-3)); }
+.dash-row { display: flex; align-items: center; gap: var(--s-3); padding: 10px var(--s-3); border-radius: var(--r-md);
+  color: var(--fg); text-decoration: none; transition: background-color 120ms; }
+.dash-row + .dash-row { border-top: 1px solid var(--border); }
+.dash-row:hover { background: var(--surface-2); color: var(--fg); }
+.dash-mark { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: var(--r-md);
+  background: var(--surface-2); border: 1px solid var(--border); }
+.dash-mark svg { width: 20px; height: 20px; }
+.dash-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.dash-main b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-main small { color: var(--fg-3); font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-empty { padding: var(--s-3); margin: 0; }
+
+/* Tiles, like the JFrog Platform integrations grid: logo centered above the name and numbers. */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--s-4); }
+.tile { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: var(--s-5) var(--s-4) var(--s-4);
+  text-align: center; text-decoration: none; color: var(--fg); background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-md); box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08); transition: box-shadow 150ms, border-color 150ms, transform 150ms; }
+.tile:hover { color: var(--fg); border-color: var(--accent); box-shadow: var(--shadow-2); transform: translateY(-2px); }
+.tile-mark svg { width: 56px; height: 56px; margin-bottom: var(--s-2); }
+.tile b { font-size: var(--t-lg); font-weight: 600; }
+.tile small { color: var(--fg-3); font-size: var(--t-sm); }
+.tile .pill { margin-top: var(--s-1); }
+.tile .mark .cut { stroke: var(--surface); }

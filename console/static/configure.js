@@ -165,12 +165,9 @@ function scheduleValidate() {
   st.validateTimer = setTimeout(validate, 250);
 }
 
-// Run pipeline needs a workload; until one is picked it is off with a quiet hint, not errors.
+// Run pipeline needs a workload; until one is picked it is off.
 function gateRun() {
-  const ready = !!st.cfg?.target?.[cloud]?.name;
-  $("cfg-run-btn").disabled = !ready || st.busy;
-  if (!ready && !st.busy) status("Pick a workload to run the pipeline.", "idle");
-  else if (ready && $("cfg-status").textContent === "Pick a workload to run the pipeline.") status("", "idle");
+  $("cfg-run-btn").disabled = !st.cfg?.target?.[cloud]?.name || st.busy;
 }
 
 async function validate() {
@@ -243,13 +240,8 @@ function renderList() {
         h("button", { type: "button", class: "link danger", text: "Delete", "data-delete": c.name })));
   });
   fill($("cfg-saved"), rows);
-  $("cfg-empty").hidden = st.saved.length > 0;
-  $("cfg-saved").closest("table").hidden = st.saved.length === 0;
-  // Nothing saved for this cloud: no Configurations tab and no link back to it.
-  const none = st.saved.length === 0;
-  $("tab-configs").hidden = none;
-  $("cfg-back").closest(".cfg-crumb").hidden = none;
-  if (none && $("tab-configs").getAttribute("aria-selected") === "true") selectTab("tab-configure");
+  // Saved configurations sit above the editor on the same page; none saved, no list.
+  $("cfg-saved-box").hidden = st.saved.length === 0;
 }
 
 function renderTitle() {
@@ -370,8 +362,7 @@ function badge(status) {
 
 function modeNote(res) {
   if (res.mode !== "replay") return null;
-  return h("p", { class: "small warn-text", text: "Fixture replay: these results come from recorded fixtures, not your accounts." +
-    (res.fixture_misses?.length ? ` ${res.fixture_misses.length} call(s) had no fixture.` : "") });
+  return res.fixture_misses?.length ? h("p", { class: "small warn-text", text: `Replay: ${res.fixture_misses.length} call(s) had no fixture.` }) : null;
 }
 
 // ----------------------------------------------------------------- discover
@@ -535,7 +526,6 @@ export async function initConfigure(deps) {
     newConfig(cloudKinds()[0]);
     selectTab("tab-configure");
   });
-  $("cfg-back").addEventListener("click", () => selectTab("tab-configs"));
   $("cfg-save").addEventListener("click", save);
   $("cfg-discover-btn").addEventListener("click", runDiscover);
   $("cfg-workload").addEventListener("change", pickWorkload);
@@ -559,6 +549,5 @@ export async function initConfigure(deps) {
   scheduleValidate();
   // The path picks the tab; with none (or Configurations and nothing saved), land on the useful one.
   const named = localPath().split("/")[2] || "";
-  if (!named || (named === "configs" && !st.saved.length)) selectTab(st.saved.length ? "tab-configs" : "tab-configure", "replace");
   loadInventory();
 }

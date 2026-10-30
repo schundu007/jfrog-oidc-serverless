@@ -68,13 +68,19 @@ class PortalTests(unittest.TestCase):
 
     # -- separation ---------------------------------------------------------
 
-    def test_landing_offers_both_sections_only(self):
-        st, hd, raw = self.req("GET", "/", token=False)
+    def test_home_is_the_dashboard(self):
+        st, hd, raw = self.req("GET", "/", token=False, headers={"Sec-Fetch-Site": "none"})
         self.assertEqual(st, 200)
-        self.assertIn(b'href="/serverless/"', raw)
-        self.assertIn(b'href="/k8s/clusters"', raw)
+        self.assertIn(b'src="/dashboard.js"', raw)
+        self.assertIn(b'href="/serverless/gcp"', raw)
+        self.assertIn(b'href="/k8s/clusters/aks"', raw)
+        self.assertIn(self.token.encode(), raw)
         self.assertIn("frame-ancestors 'none'", hd["Content-Security-Policy"])
-        self.assertNotIn(self.token.encode(), raw)
+        # Opened from another site: no token in the page.
+        cross = self.req("GET", "/", token=False, headers={"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"})[2]
+        self.assertNotIn(self.token.encode(), cross)
+        for p in ("/dashboard.js", "/dashboard.css"):
+            self.assertEqual(self.req("GET", p, token=False)[0], 200, p)
 
     def test_each_page_comes_from_its_own_console(self):
         for p in ("/serverless/", "/serverless/gcp", "/serverless/azure/runs"):
