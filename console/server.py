@@ -208,9 +208,11 @@ class ConsoleServer:
         self._httpd = None
         self.port = None
 
-    def shell(self) -> Shell:
+    def shell(self, on_line=None) -> Shell:
         def log(line):
             self.log.write(redact.text(f"{time.strftime('%H:%M:%S')} {line}") + "\n")
+            if on_line:
+                on_line(redact.text(line))
         if self.mode == "replay":
             return Shell(mode="replay", fixtures=list(self.fixtures), log=log)
         return Shell(mode=self.mode, log=log)
@@ -434,6 +436,8 @@ def _make_handler(console: ConsoleServer):
             if method == "GET" and len(parts) == 2 and parts[0] == "inventory" and parts[1] in ("gcp", "azure"):
                 q = self._query()
                 return self._inventory(parts[1], (q.get("scope") or [None])[0], (q.get("refresh") or [""])[0] == "1")
+            if method == "POST" and parts == ["preflight"] and (self._query().get("stream") or [""])[0] == "1":
+                return self._preflight_stream(self._config_from_body())
             if method == "POST" and parts in (["preflight"], ["discover"]):
                 return self._cloud_step(parts[0], self._config_from_body())
             if parts and parts[0] == "runs":
@@ -521,6 +525,45 @@ def _make_handler(console: ConsoleServer):
                 return self._json(200, result)
             finally:
                 console.cloud_lock.release()
+
+        def _preflight_stream(self, cfg: dict):
+            """Preflight as server-sent events: each command line ("log") and each check ("check") as it
+            happens, then "done" with the full result (or "failed"). Runs on a worker so the stream can
+            send keep-alives; the cloud lock is held until the worker ends, even if the browser leaves."""
+            if not console.cloud_lock.acquire(timeout=1):
+                raise HttpError(409, "another Preflight or Discover is still running")
+            frames = queue.Queue()
+
+            def work():
+                try:
+                    sh = console.shell(on_line=lambda line: frames.put(("log", {"line": line})))
+                    result = preflight.run(cfg, sh, env=console.step_env(), delivery=console.delivery or False,
+                                           repo_root=console.repo_root, on_check=lambda c: frames.put(("check", c)))
+                    console.save_recording(sh, "preflight")
+                    result["mode"] = console.mode
+                    if sh.misses:
+                        result["fixture_misses"] = sh.misses
+                    frames.put(("done", result))
+                except Exception as exc:  # noqa: BLE001 - report to the UI
+                    frames.put(("failed", {"error": str(exc)}))
+                finally:
+                    console.cloud_lock.release()
+                    frames.put(None)
+
+            threading.Thread(target=work, name="preflight-stream", daemon=True).start()
+            self._headers(200, "text/event-stream; charset=utf-8", extra={"X-Accel-Buffering": "no"})
+            self.close_connection = True
+            while True:
+                try:
+                    item = frames.get(timeout=SSE_HEARTBEAT)
+                except queue.Empty:
+                    self.wfile.write(b": keep-alive\n\n")
+                    self.wfile.flush()
+                    continue
+                if item is None:
+                    return
+                self.wfile.write(sse_frame(*item).encode())
+                self.wfile.flush()
 
         def _runs(self, method: str, rest: list):
             try:

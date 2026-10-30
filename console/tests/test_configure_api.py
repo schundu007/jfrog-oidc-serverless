@@ -151,6 +151,40 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(body["status"], "fail")
         self.assertTrue(body["fixture_misses"])
 
+    def stream(self, path, body):
+        conn = http.client.HTTPConnection("127.0.0.1", self.console.port, timeout=30)
+        conn.request("POST", path, body=json.dumps(body).encode(),
+                     headers={"Host": f"127.0.0.1:{self.console.port}", "X-Console-Token": self.console.token,
+                              "Content-Type": "application/json"})
+        resp = conn.getresponse()
+        raw = resp.read().decode()
+        conn.close()
+        frames = []
+        for block in raw.split("\n\n"):
+            kind = next((ln[7:] for ln in block.split("\n") if ln.startswith("event: ")), None)
+            data = [ln[6:] for ln in block.split("\n") if ln.startswith("data: ")]
+            if kind:
+                frames.append((kind, json.loads("\n".join(data))))
+        return resp.status, resp.getheader("Content-Type"), frames
+
+    def test_preflight_streams_each_check_and_command_as_it_happens(self):
+        st, ctype, frames = self.stream("/api/preflight?stream=1", {"config": flex_cfg()})
+        self.assertEqual(st, 200)
+        self.assertTrue(ctype.startswith("text/event-stream"))
+        kinds = [k for k, _ in frames]
+        self.assertEqual(kinds[-1], "done")
+        self.assertIn("log", kinds)
+        done = frames[-1][1]
+        checks = [d for k, d in frames if k == "check"]
+        self.assertEqual(len(checks), len(done["checks"]))
+        self.assertEqual([c["id"] for c in checks], [c["id"] for c in done["checks"]])
+        # The first check arrives before the last command line: it is streamed, not batched at the end.
+        self.assertLess(kinds.index("check"), len(kinds) - 1 - kinds[::-1].index("log"))
+        self.assertEqual(done["status"], "fail")
+        self.assertTrue(done["fixture_misses"])
+        # The lock is released once the stream ends: another preflight can start.
+        self.assertEqual(self.req("POST", "/api/preflight", {"config": flex_cfg()})[0], 200)
+
 
 if __name__ == "__main__":
     unittest.main()

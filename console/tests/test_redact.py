@@ -126,5 +126,38 @@ class RunLogPathTests(unittest.TestCase):
             self.assertIn("[REDACTED]", on_disk)
 
 
+    def test_preflight_stream(self):
+        """Streamed Preflight: command lines, checks and the final result are redacted."""
+        import http.client
+        import tempfile
+        from pathlib import Path
+
+        from console import server as srv
+        from console.store import Store
+
+        def fake_run(cfg, sh, on_check=None, **kw):
+            sh.log(f"$ curl -H 'Authorization: Bearer {JWT}' → exit 0 (0.1s)")
+            on_check({"id": "jfrog_token", "title": "JFrog token", "status": "ok", "detail": JWT, "fix": ""})
+            return {"status": "ok", "counts": {}, "checks": [], "facts": {"token": REF}, "config_patch": {}}
+
+        with tempfile.TemporaryDirectory() as tmp, open(os.devnull, "w") as devnull, \
+                mock.patch("console.steps.preflight.run", fake_run):
+            console = srv.ConsoleServer(port=0, store=Store(Path(tmp)), log=devnull)
+            console.start()
+            try:
+                conn = http.client.HTTPConnection("127.0.0.1", console.port, timeout=30)
+                conn.request("POST", "/api/preflight?stream=1", body=json.dumps({"config": {"target": {"kind": "gcp_run_service"}}}),
+                             headers={"Host": f"127.0.0.1:{console.port}", "X-Console-Token": console.token,
+                                      "Content-Type": "application/json"})
+                raw = conn.getresponse().read().decode()
+                conn.close()
+            finally:
+                console.stop()
+        self.assertIn("event: check", raw)
+        self.assertIn("event: done", raw)
+        self.assertNotIn(JWT, raw)
+        self.assertNotIn(REF, raw)
+
+
 if __name__ == "__main__":
     unittest.main()

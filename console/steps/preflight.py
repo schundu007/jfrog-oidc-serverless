@@ -91,9 +91,12 @@ class Preflight:
         self.checks: list = []
         self.facts: dict = {}
         self.config_patch = {}
+        self.on_check = None  # callable(check) as each check finishes: the console streams them
 
     def add(self, *a, **kw):
         self.checks.append(_check(*a, **kw))
+        if self.on_check:
+            self.on_check(self.checks[-1])
 
     # -- entry point ----------------------------------------------------------
 
@@ -484,8 +487,10 @@ class Preflight:
             self.add("jfrog_group", f"Reader group '{group}'", "warn", f"lookup returned {res.status or res.error}", "")
 
 
-def run(cfg: dict, sh: Shell, env=None, delivery=False, repo_root=None) -> dict:
+def run(cfg: dict, sh: Shell, env=None, delivery=False, repo_root=None, on_check=None) -> dict:
     """delivery: the ADO pipeline applies with its own OIDC JFrog token, so no local one is needed.
     Pass the delivery settings (pipelines/delivery.json) to also check the pipeline's reach, and
     repo_root to check the pipeline runs this checkout's console and modules."""
-    return Preflight(cfg, sh, env, delivery, repo_root).run()
+    pf = Preflight(cfg, sh, env, delivery, repo_root)
+    pf.on_check = on_check
+    return pf.run()

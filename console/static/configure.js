@@ -7,7 +7,7 @@ const $ = (id) => document.getElementById(id);
 // replaceChildren() would turn null children into the text "null"; drop them.
 const fill = (el, ...kids) => el.replaceChildren(...kids.flat().filter((k) => k !== null && k !== undefined && k !== false));
 
-let api, h, cloud, ofCloud, onRun, selectTab;
+let api, h, streamEvents, cloud, ofCloud, onRun, selectTab;
 // showAll: list problems on empty fields too. Off for a new configuration until a button is pressed.
 const st = { inv: null, schema: null, cfg: null, dirty: false, busy: false, validateTimer: null, validation: null, showAll: false, saved: null, current: null };
 
@@ -412,26 +412,45 @@ function renderDiscovered() {
 
 // ----------------------------------------------------------------- preflight
 
+function checkItem(c) {
+  return h("li", { class: `chk chk-${c.status}` },
+    h("span", { class: `chk-icon st-dot st-dot-${c.status}`, "aria-label": c.status, text: STATUS_GLYPH[c.status] || "?" }),
+    h("div", {}, h("b", { text: c.title }), c.detail && c.status !== "ok" ? h("div", { class: "small mono", text: c.detail }) : null,
+      c.fix && c.status !== "ok" ? h("div", { class: "fix small", text: `Fix: ${c.fix}` }) : null));
+}
+
+// Preflight streams: each check and each command line shows as it happens, then the summary.
 async function runPreflight() {
   let res = null;
   await busy("Running preflight… read-only, up to a minute", async () => {
-    res = await api("/api/preflight", { method: "POST", body: { config: st.cfg } });
+    const box = $("cfg-preflight");
+    const list = h("ul", { class: "checklist" });
+    const log = h("pre", { class: "run-log pf-log" });
+    const logBox = h("details", { class: "run-log-box", open: true }, h("summary", { text: "Log" }), log);
+    box.hidden = false;
+    fill(box, h("div", { class: "panel-head" }, h("h3", { text: "Preflight" }), h("span", { class: "pill", text: "running" })),
+      list, logBox);
+    let failed = null;
+    await streamEvents("/api/preflight?stream=1", (kind, data) => {
+      if (kind === "check") list.append(checkItem(data));
+      else if (kind === "log") { log.append(`${data.line}\n`); log.scrollTop = log.scrollHeight; }
+      else if (kind === "done") res = data;
+      else if (kind === "failed") failed = data.error;
+    }, undefined, { method: "POST", body: { config: st.cfg } });
+    if (failed) throw new Error(`Preflight failed: ${failed}`);
+    if (!res) throw new Error("Preflight stopped before it finished.");
     for (const [path, value] of Object.entries(res.config_patch || {})) setPath(st.cfg, path, value);
     renderSummary();
-    const icon = STATUS_GLYPH;
-    const box = $("cfg-preflight");
-    box.hidden = false;
-    fill(box, 
+    logBox.open = false;
+    fill(box,
       h("div", { class: "panel-head" }, h("h3", { text: "Preflight" }), badge(res.status)),
       h("div", { class: "counts" },
         h("span", { class: "with-icon" }, statusIcon("ok"), `${res.counts.ok} ok`),
         h("span", { class: "with-icon" }, statusIcon("warn"), `${res.counts.warn} warn`),
         h("span", { class: "with-icon" }, statusIcon("fail"), `${res.counts.fail} fail`)),
       modeNote(res),
-      h("ul", { class: "checklist" }, res.checks.map((c) => h("li", { class: `chk chk-${c.status}` },
-        h("span", { class: `chk-icon st-dot st-dot-${c.status}`, "aria-label": c.status, text: icon[c.status] || "?" }),
-        h("div", {}, h("b", { text: c.title }), c.detail && c.status !== "ok" ? h("div", { class: "small mono", text: c.detail }) : null,
-          c.fix && c.status !== "ok" ? h("div", { class: "fix small", text: `Fix: ${c.fix}` }) : null)))));
+      h("ul", { class: "checklist" }, res.checks.map(checkItem)),
+      logBox);
     status(res.status === "fail" ? "Preflight failed: see the checks" : "Preflight passed",
       res.status === "fail" ? "error" : "ok");
   });
@@ -497,7 +516,7 @@ function pickWorkload() {
 }
 
 export async function initConfigure(deps) {
-  ({ api, h, cloud, ofCloud, onRun, selectTab } = deps);
+  ({ api, h, streamEvents, cloud, ofCloud, onRun, selectTab } = deps);
   const localPath = deps.localPath || (() => location.pathname);
   st.schema = await api("/api/schema");
   $("cfg-kind").replaceChildren(...cloudKinds().map((k) => h("option", { value: k, text: st.schema.kinds[k].label })));

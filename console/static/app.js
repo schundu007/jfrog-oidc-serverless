@@ -78,9 +78,17 @@ async function api(path, { method = "GET", body } = {}) {
 }
 
 // Server-sent events over fetch, so the token stays in a header (EventSource can't set headers).
-async function streamEvents(path, onFrame, signal) {
-  const resp = await fetch(BASE + path, { headers: { "X-Console-Token": TOKEN }, credentials: "omit", cache: "no-store", signal });
-  if (!resp.ok || !resp.body) throw new ApiError(resp.status, `event stream failed: HTTP ${resp.status}`);
+// A POST stream (Preflight) passes { method: "POST", body }.
+async function streamEvents(path, onFrame, signal, { method = "GET", body } = {}) {
+  const headers = { "X-Console-Token": TOKEN };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const resp = await fetch(BASE + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body),
+    credentials: "omit", cache: "no-store", signal });
+  if (!resp.ok || !resp.body) {
+    let msg = `event stream failed: HTTP ${resp.status}`;
+    try { msg = (await resp.json()).error || msg; } catch { /* not JSON */ }
+    throw new ApiError(resp.status, msg);
+  }
   const reader = resp.body.pipeThrough(new TextDecoderStream()).getReader();
   let buf = "";
   for (;;) {
@@ -506,7 +514,7 @@ function wire() {
   if (initial && scenarioByName(initial)) sel.value = initial;
   selectScenario(sel.value);
   const runs = initRuns({ api, h, streamEvents, selectTab: state.selectTab, ofCloud }).catch((e) => showError(`Runs tab: ${e.message}`));
-  initConfigure({ api, h, localPath, cloud: CLOUD, ofCloud, selectTab: state.selectTab, onRun: (cfg) => runs.then((r) => r && r.startRun(cfg)) })
+  initConfigure({ api, h, streamEvents, localPath, cloud: CLOUD, ofCloud, selectTab: state.selectTab, onRun: (cfg) => runs.then((r) => r && r.startRun(cfg)) })
     .catch((e) => showError(`Configure tab: ${e.message}`));
   return true;
 }
