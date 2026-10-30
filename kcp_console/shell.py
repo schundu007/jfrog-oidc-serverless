@@ -118,6 +118,12 @@ def child_env(extra_env: dict | None = None, base: dict | None = None) -> dict:
     base = os.environ if base is None else base
     env = {k: v for k, v in base.items() if k in ENV_ALLOW or k.startswith(ENV_ALLOW_PREFIXES)}
     env.update(extra_env or {})
+    # gcloud keeps gke-gcloud-auth-plugin next to its real binary, which PATH often reaches only by a symlink.
+    gcloud = shutil.which("gcloud", path=env.get("PATH") or "")
+    if gcloud:
+        sdk_bin = os.path.dirname(os.path.realpath(gcloud))
+        if sdk_bin not in {os.path.realpath(d) for d in env["PATH"].split(os.pathsep) if d}:
+            env["PATH"] = env["PATH"] + os.pathsep + sdk_bin
     return env
 
 
@@ -152,13 +158,14 @@ class Shell:
         return res
 
     def _exec(self, argv, timeout, extra_env) -> Result:
-        exe = self.which(argv[0])
+        env = child_env(extra_env)
+        exe = self.which(argv[0]) or (shutil.which(argv[0], path=env.get("PATH")) if self.which is shutil.which else None)
         started = time.monotonic()
         if not exe:
             return Result(argv, 127, "", f"{argv[0]}: command not found on PATH", 0.0)
         try:
             proc = subprocess.run([exe, *argv[1:]], capture_output=True, text=True, timeout=timeout,
-                                  env=child_env(extra_env), stdin=subprocess.DEVNULL, check=False)
+                                  env=env, stdin=subprocess.DEVNULL, check=False)
             return Result(argv, proc.returncode, proc.stdout, proc.stderr, time.monotonic() - started)
         except subprocess.TimeoutExpired:
             return Result(argv, 124, "", f"{argv[0]} timed out after {timeout:.0f}s", time.monotonic() - started)

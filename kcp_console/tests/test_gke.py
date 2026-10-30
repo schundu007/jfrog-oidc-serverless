@@ -213,3 +213,22 @@ class RunTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PluginPathTest(unittest.TestCase):
+    """gcloud installs gke-gcloud-auth-plugin next to itself, often off PATH (PATH holds a symlink to
+    gcloud): commands the console runs, and kubectl's exec plugin, must still find it."""
+
+    def test_child_env_adds_gclouds_own_bin_dir(self):
+        from kcp_console.shell import child_env
+        with tempfile.TemporaryDirectory() as d:
+            sdk, link = Path(d, "sdk", "bin"), Path(d, "link")
+            sdk.mkdir(parents=True), link.mkdir()
+            for name in ("gcloud", "gke-gcloud-auth-plugin"):
+                (sdk / name).write_text("#!/bin/sh\n")
+                (sdk / name).chmod(0o755)
+            (link / "gcloud").symlink_to(sdk / "gcloud")
+            env = child_env(base={"PATH": str(link)})
+            self.assertEqual(env["PATH"].split(":"), [str(link), str(sdk.resolve())])
+            self.assertEqual(child_env(base={"PATH": str(sdk)})["PATH"], str(sdk))   # already there: unchanged
+            self.assertEqual(child_env(base={"PATH": "/nonexistent"})["PATH"], "/nonexistent")   # no gcloud
