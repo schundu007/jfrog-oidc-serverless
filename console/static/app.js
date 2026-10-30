@@ -253,7 +253,8 @@ function selectScenario(name) {
   state.scenario = s;
   const exp = (s.expect && s.expect.verdict) || "—";
   $("scenario").title = s.description || "";
-  $("scenario-meta").replaceChildren(h("span", { class: `badge ${exp}`, text: `expect ${exp}` }));
+  $("scenario-meta").replaceChildren(h("span", { class: "field-label", text: "Expected" }),
+    h("span", { class: `pill v-${exp}`, text: exp }));
   renderOverrides(s);
   renderFaults(s);
   renderLoad(s);
@@ -436,6 +437,9 @@ function applyCloud() {
     return;
   }
   for (const el of document.querySelectorAll("[data-cloud]")) if (el.dataset.cloud !== CLOUD) el.remove();
+  for (const el of document.querySelectorAll(".crumb-cloud")) el.textContent = CLOUDS[CLOUD];
+  $("ctx-cloud").textContent = CLOUDS[CLOUD];
+  $("ctx-cloud").hidden = false;
   for (const a of document.querySelectorAll("[data-cloud-link]")) {
     if (a.dataset.cloudLink === CLOUD) a.setAttribute("aria-current", "page");
   }

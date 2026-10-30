@@ -115,15 +115,24 @@ function render() {
   const listed = rs.runs.find((r) => r.id === snap.id);
   if (listed && listed.status !== snap.status) refreshList();
   rs.selected = pickStep(snap);
+  const shown = snap.steps.filter((s) => !s.planned);
+  const done = shown.filter((s) => s.status === "succeeded").length;
   fill($("run-head"),
-    h("div", {}, h("b", { text: snap.name }), " ", h("span", { class: "tag", text: KIND_LABELS[snap.kind] || snap.kind }), " ",
-      h("span", { class: `pill run-${snap.status}`, text: snap.status.replaceAll("_", " ") })),
-    h("div", { class: "small muted", text: `run ${snap.id} · started ${snap.created}` }),
-    LIVE.has(snap.status) ? h("button", { type: "button", class: "secondary danger", onclick: cancel, text: "Cancel run" }) : null);
+    h("div", { class: "run-title" },
+      h("h2", { text: snap.name }),
+      h("span", { class: `pill run-${snap.status}`, text: snap.status.replaceAll("_", " ") }),
+      LIVE.has(snap.status) ? h("button", { type: "button", class: "secondary danger small-btn", onclick: cancel, text: "Cancel run" }) : null),
+    h("dl", { class: "essentials" },
+      h("dt", { text: "Configuration" }), h("dd", { text: snap.name }),
+      h("dt", { text: "Run ID" }), h("dd", { class: "mono", text: snap.id }),
+      h("dt", { text: "Workload type" }), h("dd", { text: KIND_LABELS[snap.kind] || snap.kind }),
+      h("dt", { text: "Started" }), h("dd", { text: (snap.created || "").replace("T", " ").replace("Z", " UTC") }),
+      h("dt", { text: "Steps" }), h("dd", {}, h("span", { class: "meter", role: "img", "aria-label": `${done} of ${shown.length} steps succeeded` },
+        shown.map((s) => h("i", { class: `meter-seg st-${s.status}` }))), ` ${done} / ${shown.length}`)));
   note(snap.status === "waiting_approval" ? "Waiting for your approval." : LIVE.has(snap.status) ? "Running…" : "", LIVE.has(snap.status) ? "busy" : "");
 
   // Steps that aren't built yet (planned) are left out rather than shown as skipped.
-  fill($("run-steps"), snap.steps.filter((s) => !s.planned).map((s, i) => h("li", {},
+  fill($("run-steps"), shown.map((s, i) => h("li", {},
     h("button", {
       type: "button", class: `step st-${s.status}${s.name === rs.selected ? " selected" : ""}`,
       "aria-current": s.name === rs.selected ? "step" : null,
@@ -137,7 +146,8 @@ function render() {
 
 function renderDetail(step) {
   const ev = step.evidence || {};
-  const parts = [h("h2", { text: step.title })];
+  const parts = [h("div", { class: "detail-head" }, h("h2", { text: step.title }),
+    h("span", { class: `pill step-${step.status}`, text: step.status.replaceAll("_", " ") }))];
   if (step.error) parts.push(h("p", { class: "error-box", text: step.error }));
   if (step.note) parts.push(h("p", { class: "muted small", text: step.note }));
   const view = { preflight: viewPreflight, discover: viewDiscover, simulate: viewSimulate, publish: viewPublish,
@@ -150,7 +160,8 @@ function renderDetail(step) {
 // ----------------------------------------------------------------- per-step views
 
 function outcome(text, ok) {
-  return h("p", { class: `outcome${ok ? "" : " is-warn"}` }, h("b", { text: ok ? "✓" : "!" }), text);
+  return h("p", { class: `outcome${ok ? "" : " is-warn"}` },
+    h("span", { class: `st-dot st-dot-${ok ? "ok" : "warn"}`, "aria-hidden": "true", text: ok ? "✓" : "!" }), text);
 }
 
 function kv(rows) {
@@ -177,7 +188,7 @@ function viewPreflight(step, ev) {
   const r = ev.result;
   if (!r) return [];
   return [h("ul", { class: "checklist" }, r.checks.map((c) => h("li", { class: `chk chk-${c.status}` },
-    h("span", { class: "chk-icon", text: { ok: "✓", warn: "!", fail: "✗", skip: "–" }[c.status] || "?" }),
+    h("span", { class: `chk-icon st-dot st-dot-${c.status}`, "aria-label": c.status, text: { ok: "✓", warn: "!", fail: "✕", skip: "–" }[c.status] || "?" }),
     h("div", {}, h("b", { text: c.title }), c.status !== "ok" && c.detail ? h("div", { class: "small mono", text: c.detail }) : null,
       c.fix && c.status !== "ok" ? h("div", { class: "fix small", text: c.fix }) : null))))];
 }
@@ -232,7 +243,7 @@ function viewPlan(step, ev) {
     p.changes.length ? h("div", { class: "table-wrap" }, h("table", {},
       h("thead", {}, h("tr", {}, h("th", { text: "Action" }), h("th", { text: "Resource" }))),
       h("tbody", {}, p.changes.map((c) => h("tr", { class: `act-${c.action}` },
-        h("td", { text: c.action }), h("td", { class: "mono", text: c.address }))))))
+        h("td", {}, h("span", { class: `act-pill act-${c.action}`, text: c.action })), h("td", { class: "mono", text: c.address }))))))
       : h("p", { class: "muted", text: "No changes: the workspace already matches." }),
   ];
 }
