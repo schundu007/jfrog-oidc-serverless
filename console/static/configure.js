@@ -136,9 +136,9 @@ function renderSummary() {
     h("span", { class: "chain-dot", "aria-hidden": "true" }),
     h("div", {}, h("b", { text: title }), detail ? h("span", { class: "chain-detail", text: detail }) : null));
   const nodes = [
-    node(found ? "done" : "todo", "Workload identity", found ? `${who}${sub && sub !== who ? ` (sub ${sub})` : ""}` : "Not discovered yet"),
+    node(found ? "done" : "todo", "Workload identity", found ? `${who}${sub && sub !== who ? ` (sub ${sub})` : ""}` : "—"),
     node(found ? "done" : "todo", "Issuer", `${issuer}, ${cloud === "gcp" ? "Google ID token" : "Entra ID v2 token"}`),
-    node(adopt ? "done" : "todo", `OIDC integration ${integration}`, adopt ? "Exists for this issuer: imported" : "Created by terraform apply"),
+    node(adopt ? "done" : "todo", `OIDC integration ${integration}`, adopt ? "existing" : "new"),
     node("todo", `Identity mapping ${mapping}`, `sub ${sub || "?"} → group ${group}`),
   ];
   if (c.runtime?.enabled) nodes.push(node("end", "JFrog access token", `TTL ${ttl}s, scope applied-permissions/groups`));
