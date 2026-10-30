@@ -1,0 +1,40 @@
+{
+  "name": "reset-safety-counts-env-items",
+  "title": "The first reset aborted on its own env: items",
+  "story": "The first RESET_NODE_JFROG_ENTRY counted every '- name:' after the JFrog entry, including its own env items, and refused to touch the stale entry.",
+  "runbook": "\u00a76 bug 'reset safety check'",
+  "config": {},
+  "steps": [
+    [
+      "baseline"
+    ],
+    [
+      "install",
+      {
+        "values": {
+          "artifactory_url": "https://example.jfrog.io"
+        }
+      }
+    ],
+    [
+      "install"
+    ],
+    [
+      "reset_node_entries",
+      {
+        "dry_run": true,
+        "fixed": false
+      }
+    ]
+  ],
+  "expect": {
+    "verdict": "FAIL",
+    "root_cause": "reset-safety-old",
+    "findings": [
+      "reset-safety-old"
+    ],
+    "chain": [
+      "safety check counted the JFrog entry's own env: items"
+    ]
+  }
+}

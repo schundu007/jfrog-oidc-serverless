@@ -1,0 +1,37 @@
+{
+  "name": "doubled-https",
+  "title": "artifactoryUrl with a scheme builds https://https://",
+  "story": "The values carry https://example.jfrog.io. The plugin prepends https:// itself, so the token URL doubles and DNS looks up a host called https.",
+  "runbook": "\u00a76 Phase 4, the doubled URL",
+  "config": {
+    "values": {
+      "artifactory_url": "https://example.jfrog.io"
+    }
+  },
+  "steps": [
+    [
+      "baseline"
+    ],
+    [
+      "install"
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "FAIL",
+    "root_cause": "doubled-https",
+    "findings": [
+      "doubled-https",
+      "anon-401",
+      "plugin-exec-failed"
+    ],
+    "chain": [
+      "DNS failed before any exchange"
+    ]
+  }
+}

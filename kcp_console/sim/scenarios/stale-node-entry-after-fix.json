@@ -1,0 +1,39 @@
+{
+  "name": "stale-node-entry-after-fix",
+  "title": "Values fixed, node entry stale",
+  "story": "The release first went out with https://; the values were then fixed to a bare host. MergeFiles replaces only an identical artifactory_url, so the old entry stays and the plugin still doubles the URL.",
+  "runbook": "\u00a76 Phase 4, bugs 'MergeFiles' and 'three layers'",
+  "config": {},
+  "steps": [
+    [
+      "baseline"
+    ],
+    [
+      "install",
+      {
+        "values": {
+          "artifactory_url": "https://example.jfrog.io"
+        }
+      }
+    ],
+    [
+      "install"
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "FAIL",
+    "root_cause": "doubled-https",
+    "findings": [
+      "doubled-https"
+    ],
+    "chain": [
+      "MergeFiles replaces only an identical artifactory_url, so the stale entry stayed"
+    ]
+  }
+}

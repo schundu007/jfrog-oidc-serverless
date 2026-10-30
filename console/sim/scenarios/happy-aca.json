@@ -1,0 +1,17 @@
+{
+  "name": "happy-aca",
+  "description": "Container App, no faults, 24 h.",
+  "target_kind": "azure_container_app",
+  "duration": "24h",
+  "clock_start": "2026-01-01T00:00:00Z",
+  "seed": 1,
+  "config_overrides": {},
+  "load": {
+    "cold_starts_per_hour": 12
+  },
+  "faults": [],
+  "expect": {
+    "verdict": "pass",
+    "max_failed_pulls": 0
+  }
+}

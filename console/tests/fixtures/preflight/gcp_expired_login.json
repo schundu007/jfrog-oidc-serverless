@@ -1,0 +1,44 @@
+[
+ {
+  "argv": [
+   "terraform",
+   "version",
+   "-json"
+  ],
+  "rc": 0,
+  "stdout": "{\"terraform_version\": \"1.9.8\", \"platform\": \"darwin_arm64\"}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "gcloud",
+   "version",
+   "--format=json"
+  ],
+  "rc": 0,
+  "stdout": "{\"Google Cloud SDK\": \"500.0.0\"}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "gcloud",
+   "auth",
+   "list",
+   "--filter=status:ACTIVE",
+   "--format=json"
+  ],
+  "rc": 0,
+  "stdout": "[{\"account\": \"operator@example.com\", \"status\": \"ACTIVE\"}]",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "gcloud",
+   "auth",
+   "print-access-token"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "ERROR: (gcloud.auth.print-access-token) There was a problem refreshing your current auth tokens: ('invalid_grant: Bad Request')"
+ }
+]

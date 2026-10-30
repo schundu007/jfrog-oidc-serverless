@@ -1,0 +1,36 @@
+{
+  "name": "mapping-sub-mismatch",
+  "title": "Identity mapping subject does not match",
+  "story": "The mapping's sub names the default namespace. The projected token's sub is system:serviceaccount:jfrog:jfrog-provider-sa, so no mapping matches.",
+  "runbook": "\u00a75 Phase 3; \u00a79 (expected, not observed)",
+  "config": {},
+  "steps": [
+    [
+      "baseline",
+      {
+        "mapping": {
+          "sub": "system:serviceaccount:default:jfrog-provider-sa"
+        }
+      }
+    ],
+    [
+      "install"
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "FAIL",
+    "root_cause": "token-endpoint-refused",
+    "findings": [
+      "token-endpoint-refused"
+    ],
+    "chain": [
+      "no identity mapping matches"
+    ]
+  }
+}

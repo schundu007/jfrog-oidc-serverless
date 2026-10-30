@@ -1,0 +1,749 @@
+[
+ {
+  "run": {
+   "id": "20261016-120100-000000",
+   "created": "2026-10-16T12:01:00Z",
+   "finished": "2026-10-16T12:01:00Z",
+   "config": "sandbox-pilot",
+   "seeded": true,
+   "kind": "pilot",
+   "name": "MIRROR_JFROG_BINARY",
+   "request": {
+    "pipeline": "argocd-utility",
+    "branch": "feature/jfrog-kcp",
+    "parameters": {
+     "TestScenario": "MIRROR_JFROG_BINARY"
+    },
+    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+   },
+   "request_sha256": "abc41a1bbf99fb64c5ddf802c1b6a024dd8b9146bf4acc19dee6a4e3f693cb35",
+   "changes_state": true,
+   "destructive": false,
+   "needs_typed_cluster": false,
+   "guards": [],
+   "warnings": [],
+   "cluster": "aks-sandbox-01",
+   "status": "succeeded",
+   "approved": {
+    "at": "2026-10-16T12:01:00Z",
+    "changes_state": true
+   },
+   "events": [
+    {
+     "t": "2026-10-16T12:01:00Z",
+     "kind": "seeded",
+     "text": "recorded during the sandbox pilot (replay fixture)"
+    }
+   ],
+   "ado_run_id": 4100,
+   "result": {
+    "ado_result": "succeeded",
+    "chars": 503
+   }
+  },
+  "log": "2026-10-16T12:00:00.0000000Z Starting: MIRROR_JFROG_BINARY\n2026-10-16T12:00:00.0000000Z TestScenario=MIRROR_JFROG_BINARY\n2026-10-16T12:00:00.0000000Z curl -L -fsS -o jfrog-credential-provider https://releases.jfrog.io/artifactory/jfrog-credential-provider/...\n2026-10-16T12:00:00.0000000Z downloaded 14359603 bytes\n2026-10-16T12:00:00.0000000Z PUT aks-sandbox-generic-local/jfrog-credential-provider/1.4.0/jfrog-credential-provider-linux \u2192 201\n2026-10-16T12:00:00.0000000Z Finishing: MIRROR_JFROG_BINARY"
+ },
+ {
+  "run": {
+   "id": "20261016-120200-000001",
+   "created": "2026-10-16T12:02:00Z",
+   "finished": "2026-10-16T12:02:00Z",
+   "config": "sandbox-pilot",
+   "seeded": true,
+   "kind": "jfrog",
+   "name": "create-provider",
+   "request": {
+    "pipeline": "jfrog",
+    "branch": "",
+    "parameters": {
+     "action": "create-provider",
+     "target": "aks-sandbox-oidc",
+     "body": {
+      "name": "aks-sandbox-oidc",
+      "issuer_url": "https://centralus.oic.prod-aks.azure.com/00000000-0000-0000-0000-0000000000b2/00000000-0000-0000-0000-0000000000c3/",
+      "provider_type": "Azure",
+      "token_issuer": "https://centralus.oic.prod-aks.azure.com/00000000-0000-0000-0000-0000000000b2/00000000-0000-0000-0000-0000000000c3/",
+      "use_default_proxy": false,
+      "description": "OIDC provider for Azure AKS Workload Identity"
+     }
+    },
+    "values_sha256": ""
+   },
+   "request_sha256": "326683675d9d065b84e165de4e83eaabf333073dda00834b256721457dc28301",
+   "changes_state": true,
+   "destructive": false,
+   "needs_typed_cluster": false,
+   "guards": [],
+   "warnings": [],
+   "cluster": "aks-sandbox-01",
+   "status": "succeeded",
+   "approved": {
+    "at": "2026-10-16T12:02:00Z",
+    "changes_state": true
+   },
+   "events": [
+    {
+     "t": "2026-10-16T12:02:00Z",
+     "kind": "seeded",
+     "text": "recorded during the sandbox pilot (replay fixture)"
+    }
+   ],
+   "result": {
+    "status": 201,
+    "body": ""
+   }
+  },
+  "log": ""
+ },
+ {
+  "run": {
+   "id": "20261016-120300-000002",
+   "created": "2026-10-16T12:03:00Z",
+   "finished": "2026-10-16T12:03:00Z",
+   "config": "sandbox-pilot",
+   "seeded": true,
+   "kind": "jfrog",
+   "name": "create-mapping",
+   "request": {
+    "pipeline": "jfrog",
+    "branch": "",
+    "parameters": {
+     "action": "create-mapping",
+     "target": "aks-sandbox-oidc",
+     "body": {
+      "name": "aks-workload-identity-mapping",
+      "description": "Azure AKS Workload Identity mapping",
+      "claims": {
+       "iss": "https://centralus.oic.prod-aks.azure.com/00000000-0000-0000-0000-0000000000b2/00000000-0000-0000-0000-0000000000c3/",
+       "sub": "system:serviceaccount:jfrog:jfrog-provider-sa"
+      },
+      "token_spec": {
+       "username": "kcp-pull-user",
+       "scope": "applied-permissions/user",
+       "audience": "*@*",
+       "expires_in": 3600
+      },
+      "priority": 1
+     }
+    },
+    "values_sha256": ""
+   },
+   "request_sha256": "884735465c276eeca7f0e4234b99cc4e1055dc09b7a704322126b17dfa41e33d",
+   "changes_state": true,
+   "destructive": false,
+   "needs_typed_cluster": false,
+   "guards": [],
+   "warnings": [],
+   "cluster": "aks-sandbox-01",
+   "status": "succeeded",
+   "approved": {
+    "at": "2026-10-16T12:03:00Z",
+    "changes_state": true
+   },
+   "events": [
+    {
+     "t": "2026-10-16T12:03:00Z",
+     "kind": "seeded",
+     "text": "recorded during the sandbox pilot (replay fixture)"
+    }
+   ],
+   "result": {
+    "status": 201,
+    "body": ""
+   }
+  },
+  "log": ""
+ },
+ {
+  "run": {
+   "id": "20261016-120400-000003",
+   "created": "2026-10-16T12:04:00Z",
+   "finished": "2026-10-16T12:04:00Z",
+   "config": "sandbox-pilot",
+   "seeded": true,
+   "kind": "jfrog",
+   "name": "promote",
+   "request": {
+    "pipeline": "jfrog",
+    "branch": "",
+    "parameters": {
+     "action": "promote",
+     "target": "containers-docker-local",
+     "body": {
+      "targetRepo": "aks-sandbox-test-docker-local",
+      "dockerRepository": "mcp/sonarqube",
+      "tag": "1.26-v1",
+      "copy": true
+     }
+    },
+    "values_sha256": ""
+   },
+   "request_sha256": "51913652f66a55d3664b9925567345550fa4e842dd246c9efa73d1737f22ec42",
+   "changes_state": true,
+   "destructive": false,
+   "needs_typed_cluster": false,
+   "guards": [],
+   "warnings": [],
+   "cluster": "aks-sandbox-01",
+   "status": "succeeded",
+   "approved": {
+    "at": "2026-10-16T12:04:00Z",
+    "changes_state": true
+   },
+   "events": [
+    {
+     "t": "2026-10-16T12:04:00Z",
+     "kind": "seeded",
+     "text": "recorded during the sandbox pilot (replay fixture)"
+    }
+   ],
+   "result": {
+    "status": 200,
+    "body": "Promotion ended successfully"
+   }
+  },
+  "log": ""
+ },
+ {
+  "run": {
+   "id": "20261016-120500-000004",
+   "created": "2026-10-16T12:05:00Z",
+   "finished": "2026-10-16T12:05:00Z",
+   "config": "sandbox-pilot",
+   "seeded": true,
+   "kind": "pilot",
+   "name": "INSTALL_JFROG_PROVIDER",
+   "request": {
+    "pipeline": "argocd-utility",
+    "branch": "feature/jfrog-kcp",
+    "parameters": {
+     "TestScenario": "INSTALL_JFROG_PROVIDER",
+     "DryRun": false
+    },
+    "values_sha256": "baa51a28a5d349597285b63ba9b8f78514c85fc27113baf0c50bb2c320ce2bb2"
+   },
+   "request_sha256": "d05657e0c19c178d6e85202bc79d84b5c702a85b3a72177297bcf797e69b2431",
+   "changes_state": true,
+   "destructive": false,
+   "needs_typed_cluster": false,
+   "guards": [],
+   "warnings": [
+    "INSTALL_JFROG_PROVIDER restarts the DaemonSet (the setup step rewrites the node file and restarts kubelet)"
+   ],
+   "cluster": "aks-sandbox-01",
+   "status": "succeeded",
+   "approved": {
+    "at": "2026-10-16T12:05:00Z",
+    "changes_state": true
+   },
+   "events": [
+    {
+     "t": "2026-10-16T12:05:00Z",
+     "kind": "seeded",
+     "text": "recorded during the sandbox pilot (replay fixture)"
+    }
+   ],
+   "ado_run_id": 4104,
+   "result": {
+    "ado_result": "succeeded",
+    "chars": 713
+   }
+  },
+  "log": "2026-10-16T12:00:06.0000000Z Starting: INSTALL_JFROG_PROVIDER\n2026-10-16T12:00:06.0000000Z TestScenario=INSTALL_JFROG_PROVIDER DryRun=false\n2026-10-16T12:00:06.0000000Z kubectl label nodes --all credentialsProviderEnabled=true --overwrite\n2026-10-16T12:00:06.0000000Z helm upgrade --install jfrog-cred-provider jfrog/jfrog-credential-provider --version 1.4.0 -f scripts/jfrog-provider/values-sandbox.yaml --set binaryDownload.auth.accessToken=***\n2026-10-16T12:00:06.0000000Z deleted existing provider pods so they pick up the new config\n2026-10-16T12:00:06.0000000Z daemonset jfrog-cred-provider-jfrog-credential-provider-daemonset: 2 of 2 available\n2026-10-16T12:00:06.0000000Z Finishing: INSTALL_JFROG_PROVIDER"
+ },
+ {
+  "run": {
+   "id": "20261016-120600-000005",
+   "created": "2026-10-16T12:06:00Z",
+   "finished": "2026-10-16T12:06:00Z",
+   "config": "sandbox-pilot",
+   "seeded": true,
+   "kind": "pilot",
+   "name": "CREATE_TEST_POD",
+   "request": {
+    "pipeline": "argocd-utility",
+    "branch": "feature/jfrog-kcp",
+    "parameters": {
+     "TestScenario": "CREATE_TEST_POD"
+    },
+    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+   },
+   "request_sha256": "373bef892b99a5b7319f313b9f8dbfa0dadcecedc002da5832ccf21850254124",
+   "changes_state": true,
+   "destructive": false,
+   "needs_typed_cluster": false,
+   "guards": [],
+   "warnings": [],
+   "cluster": "aks-sandbox-01",
+   "status": "succeeded",
+   "approved": {
+    "at": "2026-10-16T12:06:00Z",
+    "changes_state": true
+   },
+   "events": [
+    {
+     "t": "2026-10-16T12:06:00Z",
+     "kind": "seeded",
+     "text": "recorded during the sandbox pilot (replay fixture)"
+    }
+   ],
+   "ado_run_id": 4105,
+   "result": {
+    "ado_result": "succeeded",
+    "chars": 1252
+   }
+  },
+  "log": "2026-10-16T12:10:07.0000000Z Starting: CREATE_TEST_POD\n2026-10-16T12:10:07.0000000Z TestScenario=CREATE_TEST_POD\n2026-10-16T12:10:07.0000000Z Events:\n2026-10-16T12:10:07.0000000Z   Normal  Scheduled  default-scheduler  Successfully assigned jfrog/secretless-pull-test to aks-nodepool1-12345678-vmss00000g\n2026-10-16T12:10:07.0000000Z   Normal  Pulling  kubelet  Pulling image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\"\n2026-10-16T12:10:07.0000000Z   Warning  Failed  kubelet  Failed to pull image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": failed to fetch anonymous token: unexpected status from GET request to https://example-aks-sandbox-test-docker-local.jfrog.io/artifactory/api/docker/aks-sandbox-test-docker-local/v2/token?scope=repository%3Amcp%2Fsonarqube%3Apull&service=example-aks-sandbox-test-docker-local.jfrog.io : 401\n2026-10-16T12:10:07.0000000Z   Warning  Failed  kubelet  Error: ErrImagePull\n2026-10-16T12:10:07.0000000Z   Normal  BackOff  kubelet  Back-off pulling image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\"\n2026-10-16T12:10:07.0000000Z   Warning  Failed  kubelet  Error: ImagePullBackOff\n2026-10-16T12:10:07.0000000Z Finishing: CREATE_TEST_POD"
+ },
+ {
+  "run": {
+   "id": "20261016-120700-000006",
+   "created": "2026-10-16T12:07:00Z",
+   "finished": "2026-10-16T12:07:00Z",
+   "config": "sandbox-pilot",
+   "seeded": true,
+   "kind": "pilot",
+   "name": "CHECK_KUBELET_PROVIDER",
+   "request": {
+    "pipeline": "argocd-utility",
+    "branch": "feature/jfrog-kcp",
+    "parameters": {
+     "TestScenario": "CHECK_KUBELET_PROVIDER"
+    },
+    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+   },
+   "request_sha256": "16b8d02f5ff6328db14626e1b43aabece5dcf2370f63c11c3b028af323995407",
+   "changes_state": false,
+   "destructive": false,
+   "needs_typed_cluster": false,
+   "guards": [],
+   "warnings": [],
+   "cluster": "aks-sandbox-01",
+   "status": "succeeded",
+   "approved": {
+    "at": "2026-10-16T12:07:00Z",
+    "changes_state": false
+   },
+   "events": [
+    {
+     "t": "2026-10-16T12:07:00Z",
+     "kind": "seeded",
+     "text": "recorded during the sandbox pilot (replay fixture)"
+    }
+   ],
+   "ado_run_id": 4106,
+   "result": {
+    "ado_result": "succeeded",
+    "chars": 6673
+   }
+  },
+  "log": "2026-10-16T12:10:10.0000000Z Starting: CHECK_KUBELET_PROVIDER\n2026-10-16T12:10:10.0000000Z TestScenario=CHECK_KUBELET_PROVIDER\n2026-10-16T12:10:10.0000000Z ===== kubelet flags =====\n2026-10-16T12:10:10.0000000Z /usr/local/bin/kubelet --image-credential-provider-config=/var/lib/kubelet/credential-provider-config.yaml --image-credential-provider-bin-dir=/var/lib/kubelet/credential-provider\n2026-10-16T12:10:10.0000000Z ===== node config =====\n2026-10-16T12:10:10.0000000Z apiVersion: kubelet.config.k8s.io/v1\n2026-10-16T12:10:10.0000000Z kind: CredentialProviderConfig\n2026-10-16T12:10:10.0000000Z providers:\n2026-10-16T12:10:10.0000000Z   - name: acr-credential-provider\n2026-10-16T12:10:10.0000000Z     apiVersion: credentialprovider.kubelet.k8s.io/v1\n2026-10-16T12:10:10.0000000Z     matchImages:\n2026-10-16T12:10:10.0000000Z       - \"*.azurecr.io\"\n2026-10-16T12:10:10.0000000Z       - \"*.azurecr.cn\"\n2026-10-16T12:10:10.0000000Z       - \"*.azurecr.de\"\n2026-10-16T12:10:10.0000000Z       - \"*.azurecr.us\"\n2026-10-16T12:10:10.0000000Z     defaultCacheDuration: 10m\n2026-10-16T12:10:10.0000000Z     args:\n2026-10-16T12:10:10.0000000Z       - /etc/kubernetes/azure.json\n2026-10-16T12:10:10.0000000Z   - name: jfrog-credentials-provider\n2026-10-16T12:10:10.0000000Z     apiVersion: credentialprovider.kubelet.k8s.io/v1\n2026-10-16T12:10:10.0000000Z     matchImages:\n2026-10-16T12:10:10.0000000Z       - \"example-aks-sandbox-test-docker-local.jfrog.io\"\n2026-10-16T12:10:10.0000000Z     defaultCacheDuration: 5h\n2026-10-16T12:10:10.0000000Z     env:\n2026-10-16T12:10:10.0000000Z       - name: artifactory_url\n2026-10-16T12:10:10.0000000Z         value: https://example.jfrog.io\n2026-10-16T12:10:10.0000000Z       - name: azure_app_audience\n2026-10-16T12:10:10.0000000Z         value: api://AzureADTokenExchange\n2026-10-16T12:10:10.0000000Z       - name: jfrog_oidc_provider_name\n2026-10-16T12:10:10.0000000Z         value: aks-sandbox-oidc\n2026-10-16T12:10:10.0000000Z       - name: disable_provider_autoupdate\n2026-10-16T12:10:10.0000000Z         value: \"true\"\n2026-10-16T12:10:10.0000000Z     tokenAttributes:\n2026-10-16T12:10:10.0000000Z       serviceAccountTokenAudience: api://AzureADTokenExchange\n2026-10-16T12:10:10.0000000Z       cacheType: ServiceAccount\n2026-10-16T12:10:10.0000000Z       requireServiceAccount: true\n2026-10-16T12:10:10.0000000Z       requiredServiceAccountAnnotationKeys:\n2026-10-16T12:10:10.0000000Z         - JFrogExchange\n2026-10-16T12:10:10.0000000Z       optionalServiceAccountAnnotationKeys:\n2026-10-16T12:10:10.0000000Z         - azure.workload.identity/client-id\n2026-10-16T12:10:10.0000000Z \n2026-10-16T12:10:10.0000000Z ===== plugin log (last 10) =====\n2026-10-16T12:10:10.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:10:07Z\", \"msg\": \"Auto-update functionality is disabled\"}\n2026-10-16T12:10:10.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:10:07Z\", \"msg\": \"getting envs - azureAppAudience: api://AzureADTokenExchange, jfrogOidcProviderName: aks-sandbox-oidc\"}\n2026-10-16T12:10:10.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:10:07Z\", \"msg\": \"Service Account Token obtained using Pod Identity (Kubernetes Workload Identity)\"}\n2026-10-16T12:10:10.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:10:07Z\", \"msg\": \"RT oidc token url :https://https://example.jfrog.io/access/api/v1/oidc/token\"}\n2026-10-16T12:10:10.0000000Z {\"level\": \"error\", \"time\": \"2026-10-16T12:10:07Z\", \"msg\": \"ERROR createArtifactoryToken failed Cause Post \\\"https://https//example.jfrog.io/access/api/v1/oidc/token\\\": dial tcp: lookup https on 168.63.129.16:53: no such host\"}\n2026-10-16T12:10:10.0000000Z ===== kubelet journal (windowed) =====\n2026-10-16T12:10:10.0000000Z 2026-10-16T12:10:07Z aks-nodepool1-12345678-vmss00000g kubelet: Failed to provide credentials for image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": error execing credential provider plugin jfrog-credentials-provider for image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": exit status 1:\n2026-10-16T12:10:10.0000000Z ================ QUICK SUMMARY ================\n2026-10-16T12:10:10.0000000Z Node inspected: aks-nodepool1-12345678-vmss00000g\n2026-10-16T12:10:10.0000000Z Node chosen because: node of pod jfrog/secretless-pull-test\n2026-10-16T12:10:10.0000000Z Kubelet flags: --image-credential-provider-config=/var/lib/kubelet/credential-provider-config.yaml --image-credential-provider-bin-dir=/var/lib/kubelet/credential-provider\n2026-10-16T12:10:10.0000000Z Kubelet started at: 2026-10-16T12:00:06Z\n2026-10-16T12:10:10.0000000Z Config file mtime: 2026-10-16T12:00:05Z\n2026-10-16T12:10:10.0000000Z Providers in config: acr-credential-provider, jfrog-credentials-provider\n2026-10-16T12:10:10.0000000Z Bin dir: acr-credential-provider, jfrog-credentials-provider (14359603 bytes)\n2026-10-16T12:10:10.0000000Z -- jfrog provider entry --\n2026-10-16T12:10:10.0000000Z   - name: jfrog-credentials-provider\n2026-10-16T12:10:10.0000000Z     apiVersion: credentialprovider.kubelet.k8s.io/v1\n2026-10-16T12:10:10.0000000Z     matchImages:\n2026-10-16T12:10:10.0000000Z       - \"example-aks-sandbox-test-docker-local.jfrog.io\"\n2026-10-16T12:10:10.0000000Z     defaultCacheDuration: 5h\n2026-10-16T12:10:10.0000000Z     env:\n2026-10-16T12:10:10.0000000Z       - name: artifactory_url\n2026-10-16T12:10:10.0000000Z         value: https://example.jfrog.io\n2026-10-16T12:10:10.0000000Z       - name: azure_app_audience\n2026-10-16T12:10:10.0000000Z         value: api://AzureADTokenExchange\n2026-10-16T12:10:10.0000000Z       - name: jfrog_oidc_provider_name\n2026-10-16T12:10:10.0000000Z         value: aks-sandbox-oidc\n2026-10-16T12:10:10.0000000Z       - name: disable_provider_autoupdate\n2026-10-16T12:10:10.0000000Z         value: \"true\"\n2026-10-16T12:10:10.0000000Z     tokenAttributes:\n2026-10-16T12:10:10.0000000Z       serviceAccountTokenAudience: api://AzureADTokenExchange\n2026-10-16T12:10:10.0000000Z       cacheType: ServiceAccount\n2026-10-16T12:10:10.0000000Z       requireServiceAccount: true\n2026-10-16T12:10:10.0000000Z       requiredServiceAccountAnnotationKeys:\n2026-10-16T12:10:10.0000000Z         - JFrogExchange\n2026-10-16T12:10:10.0000000Z       optionalServiceAccountAnnotationKeys:\n2026-10-16T12:10:10.0000000Z         - azure.workload.identity/client-id\n2026-10-16T12:10:10.0000000Z -- latest OIDC token URLs --\n2026-10-16T12:10:10.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:10:07Z\", \"msg\": \"RT oidc token url :https://https://example.jfrog.io/access/api/v1/oidc/token\"}\n2026-10-16T12:10:10.0000000Z ===============================================\n2026-10-16T12:10:10.0000000Z Finishing: CHECK_KUBELET_PROVIDER"
+ },
+ {
+  "run": {
+   "id": "20261016-120800-000007",
+   "created": "2026-10-16T12:08:00Z",
+   "finished": "2026-10-16T12:08:00Z",
+   "config": "sandbox-pilot",
+   "seeded": true,
+   "kind": "pilot",
+   "name": "INSTALL_JFROG_PROVIDER",
+   "request": {
+    "pipeline": "argocd-utility",
+    "branch": "feature/jfrog-kcp",
+    "parameters": {
+     "TestScenario": "INSTALL_JFROG_PROVIDER",
+     "DryRun": false
+    },
+    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+   },
+   "request_sha256": "985ded2bfd97f83c57b8d86457c0f025e643e8dd1f0d9ec55487800403fff47b",
+   "changes_state": true,
+   "destructive": false,
+   "needs_typed_cluster": false,
+   "guards": [],
+   "warnings": [
+    "INSTALL_JFROG_PROVIDER restarts the DaemonSet (the setup step rewrites the node file and restarts kubelet)"
+   ],
+   "cluster": "aks-sandbox-01",
+   "status": "succeeded",
+   "approved": {
+    "at": "2026-10-16T12:08:00Z",
+    "changes_state": true
+   },
+   "events": [
+    {
+     "t": "2026-10-16T12:08:00Z",
+     "kind": "seeded",
+     "text": "recorded during the sandbox pilot (replay fixture)"
+    }
+   ],
+   "ado_run_id": 4107,
+   "result": {
+    "ado_result": "succeeded",
+    "chars": 713
+   }
+  },
+  "log": "2026-10-16T12:25:14.0000000Z Starting: INSTALL_JFROG_PROVIDER\n2026-10-16T12:25:14.0000000Z TestScenario=INSTALL_JFROG_PROVIDER DryRun=false\n2026-10-16T12:25:14.0000000Z kubectl label nodes --all credentialsProviderEnabled=true --overwrite\n2026-10-16T12:25:14.0000000Z helm upgrade --install jfrog-cred-provider jfrog/jfrog-credential-provider --version 1.4.0 -f scripts/jfrog-provider/values-sandbox.yaml --set binaryDownload.auth.accessToken=***\n2026-10-16T12:25:14.0000000Z deleted existing provider pods so they pick up the new config\n2026-10-16T12:25:14.0000000Z daemonset jfrog-cred-provider-jfrog-credential-provider-daemonset: 2 of 2 available\n2026-10-16T12:25:14.0000000Z Finishing: INSTALL_JFROG_PROVIDER"
+ },
+ {
+  "run": {
+   "id": "20261016-120900-000008",
+   "created": "2026-10-16T12:09:00Z",
+   "finished": "2026-10-16T12:09:00Z",
+   "config": "sandbox-pilot",
+   "seeded": true,
+   "kind": "pilot",
+   "name": "CREATE_TEST_POD",
+   "request": {
+    "pipeline": "argocd-utility",
+    "branch": "feature/jfrog-kcp",
+    "parameters": {
+     "TestScenario": "CREATE_TEST_POD"
+    },
+    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+   },
+   "request_sha256": "373bef892b99a5b7319f313b9f8dbfa0dadcecedc002da5832ccf21850254124",
+   "changes_state": true,
+   "destructive": false,
+   "needs_typed_cluster": false,
+   "guards": [],
+   "warnings": [],
+   "cluster": "aks-sandbox-01",
+   "status": "succeeded",
+   "approved": {
+    "at": "2026-10-16T12:09:00Z",
+    "changes_state": true
+   },
+   "events": [
+    {
+     "t": "2026-10-16T12:09:00Z",
+     "kind": "seeded",
+     "text": "recorded during the sandbox pilot (replay fixture)"
+    }
+   ],
+   "ado_run_id": 4108,
+   "result": {
+    "ado_result": "succeeded",
+    "chars": 1252
+   }
+  },
+  "log": "2026-10-16T12:25:15.0000000Z Starting: CREATE_TEST_POD\n2026-10-16T12:25:15.0000000Z TestScenario=CREATE_TEST_POD\n2026-10-16T12:25:15.0000000Z Events:\n2026-10-16T12:25:15.0000000Z   Normal  Scheduled  default-scheduler  Successfully assigned jfrog/secretless-pull-test to aks-nodepool1-12345678-vmss00000g\n2026-10-16T12:25:15.0000000Z   Normal  Pulling  kubelet  Pulling image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\"\n2026-10-16T12:25:15.0000000Z   Warning  Failed  kubelet  Failed to pull image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": failed to fetch anonymous token: unexpected status from GET request to https://example-aks-sandbox-test-docker-local.jfrog.io/artifactory/api/docker/aks-sandbox-test-docker-local/v2/token?scope=repository%3Amcp%2Fsonarqube%3Apull&service=example-aks-sandbox-test-docker-local.jfrog.io : 401\n2026-10-16T12:25:15.0000000Z   Warning  Failed  kubelet  Error: ErrImagePull\n2026-10-16T12:25:15.0000000Z   Normal  BackOff  kubelet  Back-off pulling image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\"\n2026-10-16T12:25:15.0000000Z   Warning  Failed  kubelet  Error: ImagePullBackOff\n2026-10-16T12:25:15.0000000Z Finishing: CREATE_TEST_POD"
+ },
+ {
+  "run": {
+   "id": "20261016-121000-000009",
+   "created": "2026-10-16T12:10:00Z",
+   "finished": "2026-10-16T12:10:00Z",
+   "config": "sandbox-pilot",
+   "seeded": true,
+   "kind": "pilot",
+   "name": "CHECK_JFROG_POD_CONFIG",
+   "request": {
+    "pipeline": "argocd-utility",
+    "branch": "feature/jfrog-kcp",
+    "parameters": {
+     "TestScenario": "CHECK_JFROG_POD_CONFIG"
+    },
+    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+   },
+   "request_sha256": "fbe9ffe21a86f3c08f297ea95b33285176c188cdb47ec22b9d1004397e56c102",
+   "changes_state": true,
+   "destructive": false,
+   "needs_typed_cluster": false,
+   "guards": [],
+   "warnings": [
+    "CHECK_JFROG_POD_CONFIG restarts the DaemonSet (the setup step rewrites the node file and restarts kubelet)"
+   ],
+   "cluster": "aks-sandbox-01",
+   "status": "succeeded",
+   "approved": {
+    "at": "2026-10-16T12:10:00Z",
+    "changes_state": true
+   },
+   "events": [
+    {
+     "t": "2026-10-16T12:10:00Z",
+     "kind": "seeded",
+     "text": "recorded during the sandbox pilot (replay fixture)"
+    }
+   ],
+   "ado_run_id": 4109,
+   "result": {
+    "ado_result": "succeeded",
+    "chars": 3005
+   }
+  },
+  "log": "2026-10-16T12:25:17.0000000Z Starting: CHECK_JFROG_POD_CONFIG\n2026-10-16T12:25:17.0000000Z TestScenario=CHECK_JFROG_POD_CONFIG\n2026-10-16T12:25:17.0000000Z ===== helm get values -a =====\n2026-10-16T12:25:17.0000000Z providerConfig:\n2026-10-16T12:25:17.0000000Z   - name: jfrog-credentials-provider\n2026-10-16T12:25:17.0000000Z     # Bare hostname, NOT a URL: the plugin prepends \"https://\" itself.\n2026-10-16T12:25:17.0000000Z     artifactoryUrl: \"example.jfrog.io\"\n2026-10-16T12:25:17.0000000Z     matchImages:\n2026-10-16T12:25:17.0000000Z       # The repo's dedicated subdomain (the bare-domain path method does not work here).\n2026-10-16T12:25:17.0000000Z       - \"example-aks-sandbox-test-docker-local.jfrog.io\"\n2026-10-16T12:25:17.0000000Z     defaultCacheDuration: 5h\n2026-10-16T12:25:17.0000000Z     tokenAttributes:\n2026-10-16T12:25:17.0000000Z       enabled: true\n2026-10-16T12:25:17.0000000Z     azure:\n2026-10-16T12:25:17.0000000Z       enabled: true\n2026-10-16T12:25:17.0000000Z       azure_app_audience: \"api://AzureADTokenExchange\"\n2026-10-16T12:25:17.0000000Z       jfrog_oidc_provider_name: \"aks-sandbox-oidc\"\n2026-10-16T12:25:17.0000000Z rbac:\n2026-10-16T12:25:17.0000000Z   create: true\n2026-10-16T12:25:17.0000000Z affinity:\n2026-10-16T12:25:17.0000000Z   nodeAffinity:\n2026-10-16T12:25:17.0000000Z     requiredDuringSchedulingIgnoredDuringExecution:\n2026-10-16T12:25:17.0000000Z       nodeSelectorTerms:\n2026-10-16T12:25:17.0000000Z         - matchExpressions:\n2026-10-16T12:25:17.0000000Z             - key: credentialsProviderEnabled\n2026-10-16T12:25:17.0000000Z               operator: In\n2026-10-16T12:25:17.0000000Z               values:\n2026-10-16T12:25:17.0000000Z                 - \"true\"\n2026-10-16T12:25:17.0000000Z downloadUrl: \"https://example.jfrog.io/artifactory/aks-sandbox-generic-local/jfrog-credential-provider/1.4.0/jfrog-credential-provider-linux\"\n2026-10-16T12:25:17.0000000Z \n2026-10-16T12:25:17.0000000Z ===== rendered artifactory_url =====\n2026-10-16T12:25:17.0000000Z         - name: artifactory_url\n2026-10-16T12:25:17.0000000Z           value: \"example.jfrog.io\"\n2026-10-16T12:25:17.0000000Z ===== chart =====\n2026-10-16T12:25:17.0000000Z NAME                 NAMESPACE  REVISION  STATUS    CHART                            APP VERSION\n2026-10-16T12:25:17.0000000Z jfrog-cred-provider  jfrog  2  deployed  jfrog-credential-provider-1.4.0  1.4.0\n2026-10-16T12:25:17.0000000Z ===== service account =====\n2026-10-16T12:25:17.0000000Z apiVersion: v1\n2026-10-16T12:25:17.0000000Z kind: ServiceAccount\n2026-10-16T12:25:17.0000000Z metadata:\n2026-10-16T12:25:17.0000000Z   name: jfrog-provider-sa\n2026-10-16T12:25:17.0000000Z   namespace: jfrog\n2026-10-16T12:25:17.0000000Z   annotations:\n2026-10-16T12:25:17.0000000Z     JFrogExchange: \"true\"\n2026-10-16T12:25:17.0000000Z ===== restart =====\n2026-10-16T12:25:17.0000000Z daemonset.apps/jfrog-cred-provider-jfrog-credential-provider-daemonset restarted\n2026-10-16T12:25:17.0000000Z Finishing: CHECK_JFROG_POD_CONFIG"
+ },
+ {
+  "run": {
+   "id": "20261016-121100-00000a",
+   "created": "2026-10-16T12:11:00Z",
+   "finished": "2026-10-16T12:11:00Z",
+   "config": "sandbox-pilot",
+   "seeded": true,
+   "kind": "pilot",
+   "name": "CHECK_KUBELET_PROVIDER",
+   "request": {
+    "pipeline": "argocd-utility",
+    "branch": "feature/jfrog-kcp",
+    "parameters": {
+     "TestScenario": "CHECK_KUBELET_PROVIDER"
+    },
+    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+   },
+   "request_sha256": "16b8d02f5ff6328db14626e1b43aabece5dcf2370f63c11c3b028af323995407",
+   "changes_state": false,
+   "destructive": false,
+   "needs_typed_cluster": false,
+   "guards": [],
+   "warnings": [],
+   "cluster": "aks-sandbox-01",
+   "status": "succeeded",
+   "approved": {
+    "at": "2026-10-16T12:11:00Z",
+    "changes_state": false
+   },
+   "events": [
+    {
+     "t": "2026-10-16T12:11:00Z",
+     "kind": "seeded",
+     "text": "recorded during the sandbox pilot (replay fixture)"
+    }
+   ],
+   "ado_run_id": 4110,
+   "result": {
+    "ado_result": "succeeded",
+    "chars": 8118
+   }
+  },
+  "log": "2026-10-16T12:25:20.0000000Z Starting: CHECK_KUBELET_PROVIDER\n2026-10-16T12:25:20.0000000Z TestScenario=CHECK_KUBELET_PROVIDER\n2026-10-16T12:25:20.0000000Z ===== kubelet flags =====\n2026-10-16T12:25:20.0000000Z /usr/local/bin/kubelet --image-credential-provider-config=/var/lib/kubelet/credential-provider-config.yaml --image-credential-provider-bin-dir=/var/lib/kubelet/credential-provider\n2026-10-16T12:25:20.0000000Z ===== node config =====\n2026-10-16T12:25:20.0000000Z apiVersion: kubelet.config.k8s.io/v1\n2026-10-16T12:25:20.0000000Z kind: CredentialProviderConfig\n2026-10-16T12:25:20.0000000Z providers:\n2026-10-16T12:25:20.0000000Z   - name: acr-credential-provider\n2026-10-16T12:25:20.0000000Z     apiVersion: credentialprovider.kubelet.k8s.io/v1\n2026-10-16T12:25:20.0000000Z     matchImages:\n2026-10-16T12:25:20.0000000Z       - \"*.azurecr.io\"\n2026-10-16T12:25:20.0000000Z       - \"*.azurecr.cn\"\n2026-10-16T12:25:20.0000000Z       - \"*.azurecr.de\"\n2026-10-16T12:25:20.0000000Z       - \"*.azurecr.us\"\n2026-10-16T12:25:20.0000000Z     defaultCacheDuration: 10m\n2026-10-16T12:25:20.0000000Z     args:\n2026-10-16T12:25:20.0000000Z       - /etc/kubernetes/azure.json\n2026-10-16T12:25:20.0000000Z   - name: jfrog-credentials-provider\n2026-10-16T12:25:20.0000000Z     apiVersion: credentialprovider.kubelet.k8s.io/v1\n2026-10-16T12:25:20.0000000Z     matchImages:\n2026-10-16T12:25:20.0000000Z       - \"example-aks-sandbox-test-docker-local.jfrog.io\"\n2026-10-16T12:25:20.0000000Z     defaultCacheDuration: 5h\n2026-10-16T12:25:20.0000000Z     env:\n2026-10-16T12:25:20.0000000Z       - name: artifactory_url\n2026-10-16T12:25:20.0000000Z         value: https://example.jfrog.io\n2026-10-16T12:25:20.0000000Z       - name: azure_app_audience\n2026-10-16T12:25:20.0000000Z         value: api://AzureADTokenExchange\n2026-10-16T12:25:20.0000000Z       - name: jfrog_oidc_provider_name\n2026-10-16T12:25:20.0000000Z         value: aks-sandbox-oidc\n2026-10-16T12:25:20.0000000Z       - name: disable_provider_autoupdate\n2026-10-16T12:25:20.0000000Z         value: \"true\"\n2026-10-16T12:25:20.0000000Z     tokenAttributes:\n2026-10-16T12:25:20.0000000Z       serviceAccountTokenAudience: api://AzureADTokenExchange\n2026-10-16T12:25:20.0000000Z       cacheType: ServiceAccount\n2026-10-16T12:25:20.0000000Z       requireServiceAccount: true\n2026-10-16T12:25:20.0000000Z       requiredServiceAccountAnnotationKeys:\n2026-10-16T12:25:20.0000000Z         - JFrogExchange\n2026-10-16T12:25:20.0000000Z       optionalServiceAccountAnnotationKeys:\n2026-10-16T12:25:20.0000000Z         - azure.workload.identity/client-id\n2026-10-16T12:25:20.0000000Z \n2026-10-16T12:25:20.0000000Z ===== plugin log (last 10) =====\n2026-10-16T12:25:20.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:10:07Z\", \"msg\": \"Auto-update functionality is disabled\"}\n2026-10-16T12:25:20.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:10:07Z\", \"msg\": \"getting envs - azureAppAudience: api://AzureADTokenExchange, jfrogOidcProviderName: aks-sandbox-oidc\"}\n2026-10-16T12:25:20.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:10:07Z\", \"msg\": \"Service Account Token obtained using Pod Identity (Kubernetes Workload Identity)\"}\n2026-10-16T12:25:20.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:10:07Z\", \"msg\": \"RT oidc token url :https://https://example.jfrog.io/access/api/v1/oidc/token\"}\n2026-10-16T12:25:20.0000000Z {\"level\": \"error\", \"time\": \"2026-10-16T12:10:07Z\", \"msg\": \"ERROR createArtifactoryToken failed Cause Post \\\"https://https//example.jfrog.io/access/api/v1/oidc/token\\\": dial tcp: lookup https on 168.63.129.16:53: no such host\"}\n2026-10-16T12:25:20.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"Auto-update functionality is disabled\"}\n2026-10-16T12:25:20.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"getting envs - azureAppAudience: api://AzureADTokenExchange, jfrogOidcProviderName: aks-sandbox-oidc\"}\n2026-10-16T12:25:20.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"Service Account Token obtained using Pod Identity (Kubernetes Workload Identity)\"}\n2026-10-16T12:25:20.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"RT oidc token url :https://https://example.jfrog.io/access/api/v1/oidc/token\"}\n2026-10-16T12:25:20.0000000Z {\"level\": \"error\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"ERROR createArtifactoryToken failed Cause Post \\\"https://https//example.jfrog.io/access/api/v1/oidc/token\\\": dial tcp: lookup https on 168.63.129.16:53: no such host\"}\n2026-10-16T12:25:20.0000000Z ===== kubelet journal (windowed) =====\n2026-10-16T12:25:20.0000000Z 2026-10-16T12:10:07Z aks-nodepool1-12345678-vmss00000g kubelet: Failed to provide credentials for image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": error execing credential provider plugin jfrog-credentials-provider for image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": exit status 1:\n2026-10-16T12:25:20.0000000Z 2026-10-16T12:25:15Z aks-nodepool1-12345678-vmss00000g kubelet: Failed to provide credentials for image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": error execing credential provider plugin jfrog-credentials-provider for image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": exit status 1:\n2026-10-16T12:25:20.0000000Z ================ QUICK SUMMARY ================\n2026-10-16T12:25:20.0000000Z Node inspected: aks-nodepool1-12345678-vmss00000g\n2026-10-16T12:25:20.0000000Z Node chosen because: node of pod jfrog/secretless-pull-test\n2026-10-16T12:25:20.0000000Z Kubelet flags: --image-credential-provider-config=/var/lib/kubelet/credential-provider-config.yaml --image-credential-provider-bin-dir=/var/lib/kubelet/credential-provider\n2026-10-16T12:25:20.0000000Z Kubelet started at: 2026-10-16T12:00:06Z\n2026-10-16T12:25:20.0000000Z Config file mtime: 2026-10-16T12:00:05Z\n2026-10-16T12:25:20.0000000Z Providers in config: acr-credential-provider, jfrog-credentials-provider\n2026-10-16T12:25:20.0000000Z Bin dir: acr-credential-provider, jfrog-credentials-provider (14359603 bytes)\n2026-10-16T12:25:20.0000000Z -- jfrog provider entry --\n2026-10-16T12:25:20.0000000Z   - name: jfrog-credentials-provider\n2026-10-16T12:25:20.0000000Z     apiVersion: credentialprovider.kubelet.k8s.io/v1\n2026-10-16T12:25:20.0000000Z     matchImages:\n2026-10-16T12:25:20.0000000Z       - \"example-aks-sandbox-test-docker-local.jfrog.io\"\n2026-10-16T12:25:20.0000000Z     defaultCacheDuration: 5h\n2026-10-16T12:25:20.0000000Z     env:\n2026-10-16T12:25:20.0000000Z       - name: artifactory_url\n2026-10-16T12:25:20.0000000Z         value: https://example.jfrog.io\n2026-10-16T12:25:20.0000000Z       - name: azure_app_audience\n2026-10-16T12:25:20.0000000Z         value: api://AzureADTokenExchange\n2026-10-16T12:25:20.0000000Z       - name: jfrog_oidc_provider_name\n2026-10-16T12:25:20.0000000Z         value: aks-sandbox-oidc\n2026-10-16T12:25:20.0000000Z       - name: disable_provider_autoupdate\n2026-10-16T12:25:20.0000000Z         value: \"true\"\n2026-10-16T12:25:20.0000000Z     tokenAttributes:\n2026-10-16T12:25:20.0000000Z       serviceAccountTokenAudience: api://AzureADTokenExchange\n2026-10-16T12:25:20.0000000Z       cacheType: ServiceAccount\n2026-10-16T12:25:20.0000000Z       requireServiceAccount: true\n2026-10-16T12:25:20.0000000Z       requiredServiceAccountAnnotationKeys:\n2026-10-16T12:25:20.0000000Z         - JFrogExchange\n2026-10-16T12:25:20.0000000Z       optionalServiceAccountAnnotationKeys:\n2026-10-16T12:25:20.0000000Z         - azure.workload.identity/client-id\n2026-10-16T12:25:20.0000000Z -- latest OIDC token URLs --\n2026-10-16T12:25:20.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:10:07Z\", \"msg\": \"RT oidc token url :https://https://example.jfrog.io/access/api/v1/oidc/token\"}\n2026-10-16T12:25:20.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"RT oidc token url :https://https://example.jfrog.io/access/api/v1/oidc/token\"}\n2026-10-16T12:25:20.0000000Z ===============================================\n2026-10-16T12:25:20.0000000Z Finishing: CHECK_KUBELET_PROVIDER"
+ },
+ {
+  "run": {
+   "id": "20261016-121200-00000b",
+   "created": "2026-10-16T12:12:00Z",
+   "finished": "2026-10-16T12:12:00Z",
+   "config": "sandbox-pilot",
+   "seeded": true,
+   "kind": "pilot",
+   "name": "RESET_NODE_JFROG_ENTRY",
+   "request": {
+    "pipeline": "argocd-utility",
+    "branch": "feature/jfrog-kcp",
+    "parameters": {
+     "TestScenario": "RESET_NODE_JFROG_ENTRY",
+     "DryRun": true
+    },
+    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+   },
+   "request_sha256": "ab0b6268a86dbf03444353193325d7acc7d0e33cd06f8290f5ab946a60feb1ee",
+   "changes_state": false,
+   "destructive": false,
+   "needs_typed_cluster": false,
+   "guards": [],
+   "warnings": [
+    "RESET_NODE_JFROG_ENTRY restarts the DaemonSet (the setup step rewrites the node file and restarts kubelet)"
+   ],
+   "cluster": "aks-sandbox-01",
+   "status": "succeeded",
+   "approved": {
+    "at": "2026-10-16T12:12:00Z",
+    "changes_state": false
+   },
+   "events": [
+    {
+     "t": "2026-10-16T12:12:00Z",
+     "kind": "seeded",
+     "text": "recorded during the sandbox pilot (replay fixture)"
+    }
+   ],
+   "ado_run_id": 4111,
+   "result": {
+    "ado_result": "succeeded",
+    "chars": 713
+   }
+  },
+  "log": "2026-10-16T12:30:20.0000000Z Starting: RESET_NODE_JFROG_ENTRY\n2026-10-16T12:30:20.0000000Z TestScenario=RESET_NODE_JFROG_ENTRY DryRun=true\n2026-10-16T12:30:20.0000000Z RESET_NODE_JFROG_ENTRY DryRun=true\n2026-10-16T12:30:20.0000000Z [aks-nodepool1-12345678-vmss00000e] would back up to /var/lib/kubelet/credential-provider-config.yaml.bak-before-jfrog-reset and remove the JFrog entry (artifactory_url=https://example.jfrog.io)\n2026-10-16T12:30:20.0000000Z [aks-nodepool1-12345678-vmss00000g] would back up to /var/lib/kubelet/credential-provider-config.yaml.bak-before-jfrog-reset and remove the JFrog entry (artifactory_url=https://example.jfrog.io)\n2026-10-16T12:30:20.0000000Z Finishing: RESET_NODE_JFROG_ENTRY"
+ },
+ {
+  "run": {
+   "id": "20261016-121300-00000c",
+   "created": "2026-10-16T12:13:00Z",
+   "finished": "2026-10-16T12:13:00Z",
+   "config": "sandbox-pilot",
+   "seeded": true,
+   "kind": "pilot",
+   "name": "RESET_NODE_JFROG_ENTRY",
+   "request": {
+    "pipeline": "argocd-utility",
+    "branch": "feature/jfrog-kcp",
+    "parameters": {
+     "TestScenario": "RESET_NODE_JFROG_ENTRY",
+     "DryRun": false
+    },
+    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+   },
+   "request_sha256": "15bf440d28c8b30c7e8c2e6d2804f0872929402d31d7bcb12cce902a12bc2261",
+   "changes_state": true,
+   "destructive": true,
+   "needs_typed_cluster": true,
+   "guards": [],
+   "warnings": [
+    "RESET_NODE_JFROG_ENTRY restarts the DaemonSet (the setup step rewrites the node file and restarts kubelet)"
+   ],
+   "cluster": "aks-sandbox-01",
+   "status": "succeeded",
+   "approved": {
+    "at": "2026-10-16T12:13:00Z",
+    "changes_state": true
+   },
+   "events": [
+    {
+     "t": "2026-10-16T12:13:00Z",
+     "kind": "seeded",
+     "text": "recorded during the sandbox pilot (replay fixture)"
+    }
+   ],
+   "ado_run_id": 4112,
+   "result": {
+    "ado_result": "succeeded",
+    "chars": 2101
+   }
+  },
+  "log": "2026-10-16T12:30:24.0000000Z Starting: RESET_NODE_JFROG_ENTRY\n2026-10-16T12:30:24.0000000Z TestScenario=RESET_NODE_JFROG_ENTRY DryRun=false\n2026-10-16T12:30:24.0000000Z RESET_NODE_JFROG_ENTRY DryRun=false\n2026-10-16T12:30:24.0000000Z [aks-nodepool1-12345678-vmss00000e] backed up to /var/lib/kubelet/credential-provider-config.yaml.bak-before-jfrog-reset; removed the JFrog entry\n2026-10-16T12:30:24.0000000Z apiVersion: kubelet.config.k8s.io/v1\n2026-10-16T12:30:24.0000000Z kind: CredentialProviderConfig\n2026-10-16T12:30:24.0000000Z providers:\n2026-10-16T12:30:24.0000000Z   - name: acr-credential-provider\n2026-10-16T12:30:24.0000000Z     apiVersion: credentialprovider.kubelet.k8s.io/v1\n2026-10-16T12:30:24.0000000Z     matchImages:\n2026-10-16T12:30:24.0000000Z       - \"*.azurecr.io\"\n2026-10-16T12:30:24.0000000Z       - \"*.azurecr.cn\"\n2026-10-16T12:30:24.0000000Z       - \"*.azurecr.de\"\n2026-10-16T12:30:24.0000000Z       - \"*.azurecr.us\"\n2026-10-16T12:30:24.0000000Z     defaultCacheDuration: 10m\n2026-10-16T12:30:24.0000000Z     args:\n2026-10-16T12:30:24.0000000Z       - /etc/kubernetes/azure.json\n2026-10-16T12:30:24.0000000Z \n2026-10-16T12:30:24.0000000Z [aks-nodepool1-12345678-vmss00000g] backed up to /var/lib/kubelet/credential-provider-config.yaml.bak-before-jfrog-reset; removed the JFrog entry\n2026-10-16T12:30:24.0000000Z apiVersion: kubelet.config.k8s.io/v1\n2026-10-16T12:30:24.0000000Z kind: CredentialProviderConfig\n2026-10-16T12:30:24.0000000Z providers:\n2026-10-16T12:30:24.0000000Z   - name: acr-credential-provider\n2026-10-16T12:30:24.0000000Z     apiVersion: credentialprovider.kubelet.k8s.io/v1\n2026-10-16T12:30:24.0000000Z     matchImages:\n2026-10-16T12:30:24.0000000Z       - \"*.azurecr.io\"\n2026-10-16T12:30:24.0000000Z       - \"*.azurecr.cn\"\n2026-10-16T12:30:24.0000000Z       - \"*.azurecr.de\"\n2026-10-16T12:30:24.0000000Z       - \"*.azurecr.us\"\n2026-10-16T12:30:24.0000000Z     defaultCacheDuration: 10m\n2026-10-16T12:30:24.0000000Z     args:\n2026-10-16T12:30:24.0000000Z       - /etc/kubernetes/azure.json\n2026-10-16T12:30:24.0000000Z Finishing: RESET_NODE_JFROG_ENTRY"
+ },
+ {
+  "run": {
+   "id": "20261016-121400-00000d",
+   "created": "2026-10-16T12:14:00Z",
+   "finished": "2026-10-16T12:14:00Z",
+   "config": "sandbox-pilot",
+   "seeded": true,
+   "kind": "pilot",
+   "name": "CREATE_TEST_POD",
+   "request": {
+    "pipeline": "argocd-utility",
+    "branch": "feature/jfrog-kcp",
+    "parameters": {
+     "TestScenario": "CREATE_TEST_POD"
+    },
+    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+   },
+   "request_sha256": "373bef892b99a5b7319f313b9f8dbfa0dadcecedc002da5832ccf21850254124",
+   "changes_state": true,
+   "destructive": false,
+   "needs_typed_cluster": false,
+   "guards": [],
+   "warnings": [],
+   "cluster": "aks-sandbox-01",
+   "status": "succeeded",
+   "approved": {
+    "at": "2026-10-16T12:14:00Z",
+    "changes_state": true
+   },
+   "events": [
+    {
+     "t": "2026-10-16T12:14:00Z",
+     "kind": "seeded",
+     "text": "recorded during the sandbox pilot (replay fixture)"
+    }
+   ],
+   "ado_run_id": 4113,
+   "result": {
+    "ado_result": "succeeded",
+    "chars": 935
+   }
+  },
+  "log": "2026-10-16T12:31:35.0000000Z Starting: CREATE_TEST_POD\n2026-10-16T12:31:35.0000000Z TestScenario=CREATE_TEST_POD\n2026-10-16T12:31:35.0000000Z Events:\n2026-10-16T12:31:35.0000000Z   Normal  Scheduled  default-scheduler  Successfully assigned jfrog/secretless-pull-test to aks-nodepool1-12345678-vmss00000g\n2026-10-16T12:31:35.0000000Z   Normal  Pulling  kubelet  Pulling image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\"\n2026-10-16T12:31:35.0000000Z   Normal  Pulled  kubelet  Successfully pulled image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\" in 10.487s (10.487s including waiting). Image size: 142944877 bytes.\n2026-10-16T12:31:35.0000000Z   Normal  Created  kubelet  Created container: test\n2026-10-16T12:31:35.0000000Z   Normal  Started  kubelet  Started container test\n2026-10-16T12:31:35.0000000Z   Pod phase: Running\n2026-10-16T12:31:35.0000000Z Finishing: CREATE_TEST_POD"
+ },
+ {
+  "run": {
+   "id": "20261016-121500-00000e",
+   "created": "2026-10-16T12:15:00Z",
+   "finished": "2026-10-16T12:15:00Z",
+   "config": "sandbox-pilot",
+   "seeded": true,
+   "kind": "pilot",
+   "name": "CHECK_KUBELET_PROVIDER",
+   "request": {
+    "pipeline": "argocd-utility",
+    "branch": "feature/jfrog-kcp",
+    "parameters": {
+     "TestScenario": "CHECK_KUBELET_PROVIDER"
+    },
+    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+   },
+   "request_sha256": "16b8d02f5ff6328db14626e1b43aabece5dcf2370f63c11c3b028af323995407",
+   "changes_state": false,
+   "destructive": false,
+   "needs_typed_cluster": false,
+   "guards": [],
+   "warnings": [],
+   "cluster": "aks-sandbox-01",
+   "status": "succeeded",
+   "approved": {
+    "at": "2026-10-16T12:15:00Z",
+    "changes_state": false
+   },
+   "events": [
+    {
+     "t": "2026-10-16T12:15:00Z",
+     "kind": "seeded",
+     "text": "recorded during the sandbox pilot (replay fixture)"
+    }
+   ],
+   "ado_run_id": 4114,
+   "result": {
+    "ado_result": "succeeded",
+    "chars": 8252
+   }
+  },
+  "log": "2026-10-16T12:31:38.0000000Z Starting: CHECK_KUBELET_PROVIDER\n2026-10-16T12:31:38.0000000Z TestScenario=CHECK_KUBELET_PROVIDER\n2026-10-16T12:31:38.0000000Z ===== kubelet flags =====\n2026-10-16T12:31:38.0000000Z /usr/local/bin/kubelet --image-credential-provider-config=/var/lib/kubelet/credential-provider-config.yaml --image-credential-provider-bin-dir=/var/lib/kubelet/credential-provider\n2026-10-16T12:31:38.0000000Z ===== node config =====\n2026-10-16T12:31:38.0000000Z apiVersion: kubelet.config.k8s.io/v1\n2026-10-16T12:31:38.0000000Z kind: CredentialProviderConfig\n2026-10-16T12:31:38.0000000Z providers:\n2026-10-16T12:31:38.0000000Z   - name: acr-credential-provider\n2026-10-16T12:31:38.0000000Z     apiVersion: credentialprovider.kubelet.k8s.io/v1\n2026-10-16T12:31:38.0000000Z     matchImages:\n2026-10-16T12:31:38.0000000Z       - \"*.azurecr.io\"\n2026-10-16T12:31:38.0000000Z       - \"*.azurecr.cn\"\n2026-10-16T12:31:38.0000000Z       - \"*.azurecr.de\"\n2026-10-16T12:31:38.0000000Z       - \"*.azurecr.us\"\n2026-10-16T12:31:38.0000000Z     defaultCacheDuration: 10m\n2026-10-16T12:31:38.0000000Z     args:\n2026-10-16T12:31:38.0000000Z       - /etc/kubernetes/azure.json\n2026-10-16T12:31:38.0000000Z   - name: jfrog-credentials-provider\n2026-10-16T12:31:38.0000000Z     apiVersion: credentialprovider.kubelet.k8s.io/v1\n2026-10-16T12:31:38.0000000Z     matchImages:\n2026-10-16T12:31:38.0000000Z       - \"example-aks-sandbox-test-docker-local.jfrog.io\"\n2026-10-16T12:31:38.0000000Z     defaultCacheDuration: 5h\n2026-10-16T12:31:38.0000000Z     env:\n2026-10-16T12:31:38.0000000Z       - name: artifactory_url\n2026-10-16T12:31:38.0000000Z         value: example.jfrog.io\n2026-10-16T12:31:38.0000000Z       - name: azure_app_audience\n2026-10-16T12:31:38.0000000Z         value: api://AzureADTokenExchange\n2026-10-16T12:31:38.0000000Z       - name: jfrog_oidc_provider_name\n2026-10-16T12:31:38.0000000Z         value: aks-sandbox-oidc\n2026-10-16T12:31:38.0000000Z       - name: disable_provider_autoupdate\n2026-10-16T12:31:38.0000000Z         value: \"true\"\n2026-10-16T12:31:38.0000000Z     tokenAttributes:\n2026-10-16T12:31:38.0000000Z       serviceAccountTokenAudience: api://AzureADTokenExchange\n2026-10-16T12:31:38.0000000Z       cacheType: ServiceAccount\n2026-10-16T12:31:38.0000000Z       requireServiceAccount: true\n2026-10-16T12:31:38.0000000Z       requiredServiceAccountAnnotationKeys:\n2026-10-16T12:31:38.0000000Z         - JFrogExchange\n2026-10-16T12:31:38.0000000Z       optionalServiceAccountAnnotationKeys:\n2026-10-16T12:31:38.0000000Z         - azure.workload.identity/client-id\n2026-10-16T12:31:38.0000000Z \n2026-10-16T12:31:38.0000000Z ===== plugin log (last 10) =====\n2026-10-16T12:31:38.0000000Z {\"level\": \"error\", \"time\": \"2026-10-16T12:10:07Z\", \"msg\": \"ERROR createArtifactoryToken failed Cause Post \\\"https://https//example.jfrog.io/access/api/v1/oidc/token\\\": dial tcp: lookup https on 168.63.129.16:53: no such host\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"Auto-update functionality is disabled\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"getting envs - azureAppAudience: api://AzureADTokenExchange, jfrogOidcProviderName: aks-sandbox-oidc\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"Service Account Token obtained using Pod Identity (Kubernetes Workload Identity)\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"RT oidc token url :https://https://example.jfrog.io/access/api/v1/oidc/token\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"error\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"ERROR createArtifactoryToken failed Cause Post \\\"https://https//example.jfrog.io/access/api/v1/oidc/token\\\": dial tcp: lookup https on 168.63.129.16:53: no such host\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:31:25Z\", \"msg\": \"Auto-update functionality is disabled\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:31:25Z\", \"msg\": \"getting envs - azureAppAudience: api://AzureADTokenExchange, jfrogOidcProviderName: aks-sandbox-oidc\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:31:25Z\", \"msg\": \"Service Account Token obtained using Pod Identity (Kubernetes Workload Identity)\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:31:25Z\", \"msg\": \"RT oidc token url :https://example.jfrog.io/access/api/v1/oidc/token\"}\n2026-10-16T12:31:38.0000000Z ===== kubelet journal (windowed) =====\n2026-10-16T12:31:38.0000000Z 2026-10-16T12:10:07Z aks-nodepool1-12345678-vmss00000g kubelet: Failed to provide credentials for image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": error execing credential provider plugin jfrog-credentials-provider for image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": exit status 1:\n2026-10-16T12:31:38.0000000Z 2026-10-16T12:25:15Z aks-nodepool1-12345678-vmss00000g kubelet: Failed to provide credentials for image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": error execing credential provider plugin jfrog-credentials-provider for image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": exit status 1:\n2026-10-16T12:31:38.0000000Z ================ QUICK SUMMARY ================\n2026-10-16T12:31:38.0000000Z Node inspected: aks-nodepool1-12345678-vmss00000g\n2026-10-16T12:31:38.0000000Z Node chosen because: node of pod jfrog/secretless-pull-test\n2026-10-16T12:31:38.0000000Z Kubelet flags: --image-credential-provider-config=/var/lib/kubelet/credential-provider-config.yaml --image-credential-provider-bin-dir=/var/lib/kubelet/credential-provider\n2026-10-16T12:31:38.0000000Z Kubelet started at: 2026-10-16T12:30:24Z\n2026-10-16T12:31:38.0000000Z Config file mtime: 2026-10-16T12:30:23Z\n2026-10-16T12:31:38.0000000Z Providers in config: acr-credential-provider, jfrog-credentials-provider\n2026-10-16T12:31:38.0000000Z Bin dir: acr-credential-provider, jfrog-credentials-provider (14359603 bytes)\n2026-10-16T12:31:38.0000000Z -- jfrog provider entry --\n2026-10-16T12:31:38.0000000Z   - name: jfrog-credentials-provider\n2026-10-16T12:31:38.0000000Z     apiVersion: credentialprovider.kubelet.k8s.io/v1\n2026-10-16T12:31:38.0000000Z     matchImages:\n2026-10-16T12:31:38.0000000Z       - \"example-aks-sandbox-test-docker-local.jfrog.io\"\n2026-10-16T12:31:38.0000000Z     defaultCacheDuration: 5h\n2026-10-16T12:31:38.0000000Z     env:\n2026-10-16T12:31:38.0000000Z       - name: artifactory_url\n2026-10-16T12:31:38.0000000Z         value: example.jfrog.io\n2026-10-16T12:31:38.0000000Z       - name: azure_app_audience\n2026-10-16T12:31:38.0000000Z         value: api://AzureADTokenExchange\n2026-10-16T12:31:38.0000000Z       - name: jfrog_oidc_provider_name\n2026-10-16T12:31:38.0000000Z         value: aks-sandbox-oidc\n2026-10-16T12:31:38.0000000Z       - name: disable_provider_autoupdate\n2026-10-16T12:31:38.0000000Z         value: \"true\"\n2026-10-16T12:31:38.0000000Z     tokenAttributes:\n2026-10-16T12:31:38.0000000Z       serviceAccountTokenAudience: api://AzureADTokenExchange\n2026-10-16T12:31:38.0000000Z       cacheType: ServiceAccount\n2026-10-16T12:31:38.0000000Z       requireServiceAccount: true\n2026-10-16T12:31:38.0000000Z       requiredServiceAccountAnnotationKeys:\n2026-10-16T12:31:38.0000000Z         - JFrogExchange\n2026-10-16T12:31:38.0000000Z       optionalServiceAccountAnnotationKeys:\n2026-10-16T12:31:38.0000000Z         - azure.workload.identity/client-id\n2026-10-16T12:31:38.0000000Z -- latest OIDC token URLs --\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:10:07Z\", \"msg\": \"RT oidc token url :https://https://example.jfrog.io/access/api/v1/oidc/token\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"RT oidc token url :https://https://example.jfrog.io/access/api/v1/oidc/token\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:31:25Z\", \"msg\": \"RT oidc token url :https://example.jfrog.io/access/api/v1/oidc/token\"}\n2026-10-16T12:31:38.0000000Z ===============================================\n2026-10-16T12:31:38.0000000Z Finishing: CHECK_KUBELET_PROVIDER"
+ },
+ {
+  "run": {
+   "id": "20261016-121600-00000f",
+   "created": "2026-10-16T12:16:00Z",
+   "finished": "2026-10-16T12:16:00Z",
+   "config": "sandbox-pilot",
+   "seeded": true,
+   "kind": "pilot",
+   "name": "CREATE_TEST_POD",
+   "request": {
+    "pipeline": "argocd-utility",
+    "branch": "feature/jfrog-kcp",
+    "parameters": {
+     "TestScenario": "CREATE_TEST_POD"
+    },
+    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+   },
+   "request_sha256": "373bef892b99a5b7319f313b9f8dbfa0dadcecedc002da5832ccf21850254124",
+   "changes_state": true,
+   "destructive": false,
+   "needs_typed_cluster": false,
+   "guards": [],
+   "warnings": [],
+   "cluster": "aks-sandbox-01",
+   "status": "succeeded",
+   "approved": {
+    "at": "2026-10-16T12:16:00Z",
+    "changes_state": true
+   },
+   "events": [
+    {
+     "t": "2026-10-16T12:16:00Z",
+     "kind": "seeded",
+     "text": "recorded during the sandbox pilot (replay fixture)"
+    }
+   ],
+   "ado_run_id": 4115,
+   "result": {
+    "ado_result": "succeeded",
+    "chars": 741
+   }
+  },
+  "log": "2026-10-16T13:31:39.0000000Z Starting: CREATE_TEST_POD\n2026-10-16T13:31:39.0000000Z TestScenario=CREATE_TEST_POD\n2026-10-16T13:31:39.0000000Z Events:\n2026-10-16T13:31:39.0000000Z   Normal  Scheduled  default-scheduler  Successfully assigned jfrog/secretless-pull-test to aks-nodepool1-12345678-vmss00000g\n2026-10-16T13:31:39.0000000Z   Normal  Pulled  kubelet  Container image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\" already present on machine\n2026-10-16T13:31:39.0000000Z   Normal  Created  kubelet  Created container: test\n2026-10-16T13:31:39.0000000Z   Normal  Started  kubelet  Started container test\n2026-10-16T13:31:39.0000000Z   Pod phase: Running\n2026-10-16T13:31:39.0000000Z Finishing: CREATE_TEST_POD"
+ }
+]

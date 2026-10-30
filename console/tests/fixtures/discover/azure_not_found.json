@@ -1,0 +1,38 @@
+[
+ {
+  "argv": [
+   "az",
+   "containerapp",
+   "show",
+   "-g",
+   "rg-apps",
+   "-n",
+   "ghost",
+   "--subscription",
+   "11111111-2222-3333-4444-555555555555",
+   "-o",
+   "json"
+  ],
+  "rc": 3,
+  "stdout": "{}",
+  "stderr": "(ResourceNotFound) The Resource 'Microsoft.App/containerApps/x' under resource group 'rg-apps' was not found."
+ },
+ {
+  "argv": [
+   "az",
+   "functionapp",
+   "show",
+   "-g",
+   "rg-apps",
+   "-n",
+   "ghost",
+   "--subscription",
+   "11111111-2222-3333-4444-555555555555",
+   "-o",
+   "json"
+  ],
+  "rc": 3,
+  "stdout": "{}",
+  "stderr": "(ResourceNotFound) The Resource 'Microsoft.Web/sites/ghost' under resource group 'rg-apps' was not found."
+ }
+]

@@ -1,0 +1,28 @@
+jfrog_url          = "https://acme.jfrog.io"
+# Images are pulled from acme-docker-virtual.jfrog.io (the repo's own host).
+jfrog_docker_repo  = "docker-virtual"
+jfrog_reader_group = "serverless-readers"
+
+gcp_project_id    = "platform-prod-123"
+gcp_region        = "us-central1"
+gcp_rotator_image = "us-central1-docker.pkg.dev/platform-prod-123/platform/jfrog-oidc-rotator:0.1.0"
+gcp_function_source = {
+  bucket = "platform-prod-123-fn-src"
+  object = "orders/orders-1.0.0.zip"
+}
+
+azure_subscription_id              = "00000000-0000-0000-0000-000000000000"
+azure_location                     = "westus2"
+azure_resource_group_name          = "rg-serverless-prod"
+azure_container_app_environment_id = "/subscriptions/.../resourceGroups/rg-serverless-prod/providers/Microsoft.App/managedEnvironments/cae-prod"
+azure_key_vault_id                 = "/subscriptions/.../resourceGroups/rg-platform/providers/Microsoft.KeyVault/vaults/kv-platform-prod"
+azure_key_vault_uri                = "https://kv-platform-prod.vault.azure.net/"
+azure_rotator_image                = "platformacr.azurecr.io/jfrog-oidc-rotator:0.1.0"
+azure_rotator_acr = {
+  server = "platformacr.azurecr.io"
+  acr_id = "/subscriptions/.../resourceGroups/rg-platform/providers/Microsoft.ContainerRegistry/registries/platformacr"
+}
+azure_premium_plan_id                     = "/subscriptions/.../resourceGroups/rg-serverless-prod/providers/Microsoft.Web/serverFarms/asp-ep1"
+azure_functions_storage_account_name      = "stfuncprod"
+azure_functions_storage_account_id        = "/subscriptions/.../resourceGroups/rg-serverless-prod/providers/Microsoft.Storage/storageAccounts/stfuncprod"
+azure_flex_deployment_container_endpoint  = "https://stfuncprod.blob.core.windows.net/deployments"

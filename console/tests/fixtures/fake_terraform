@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""Fake terraform for tests (spec §9 M4). Never touches a provider.
+
+Behaviour is driven by files in the -chdir workspace:
+  .fake_plan.json     resource_changes that `plan` writes into plan.bin
+                      (default: create every mapping in terraform.tfvars.json)
+  .fake_outputs.json  what `output -json` prints (default: derived from the tfvars)
+  .fake_fail_<cmd>    make <cmd> (init/validate/plan/apply) exit 1
+Every call is appended to .fake_calls as one JSON argv per line, with a flag
+saying whether JFROG_ACCESS_TOKEN was in the environment (never its value).
+"""
+
+import json
+import os
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+ws = Path(".")
+if args and args[0].startswith("-chdir="):
+    ws = Path(args.pop(0).split("=", 1)[1])
+cmd = args[0] if args else ""
+with open(ws / ".fake_calls", "a") as f:
+    f.write(json.dumps({"argv": args, "jfrog_token_env": "JFROG_ACCESS_TOKEN" in os.environ}) + "\n")
+
+
+
+def tfvars():
+    p = ws / "terraform.tfvars.json"
+    return json.loads(p.read_text()) if p.exists() else {}
+
+
+def default_plan():
+    v = tfvars()
+    names = list(v.get("workloads", {})) + ([v["pull_mapping_name"]] if v.get("pull_path", {}).get("enabled") else [])
+    changes = [{"address": f'module.jfrog_oidc.platform_oidc_identity_mapping.workload["{n}"]',
+                "type": "platform_oidc_identity_mapping", "change": {"actions": ["create"]}} for n in names]
+    if (ws / ".fake_applied").exists():
+        return [dict(c, change={"actions": ["no-op"]}) for c in changes]
+    return changes
+
+
+def default_outputs():
+    v = tfvars()
+    pull = v.get("pull_path", {}).get("enabled")
+    out = {"jfrog_provider_name": v.get("jfrog_provider_name"), "mapping_names": list(v.get("workloads", {}))}
+    if "gcp_project_id" in v:
+        p, r = v["gcp_project_id"], v["gcp_region"]
+        out["jfrog_audience"] = v.get("jfrog_audience")
+        out["repository_urls"] = {k: (f"https://{r}-python.pkg.dev/{p}/{k}/simple/" if rr["format"] == "PYTHON"
+                                      else f"{r}-docker.pkg.dev/{p}/{k}") for k, rr in v.get("remote_repositories", {}).items()} if pull else None
+    else:
+        out["audience_uri"] = "api://dddddddd-0000-0000-0000-000000000001"
+        out["tenant_id"] = "eeeeeeee-0000-0000-0000-000000000001"
+        out["registry_username"] = v["pull_path"]["registry_username"] if pull else None
+        out["registry_secret_versionless_url"] = (v["key_vault_uri"].rstrip("/") + "/secrets/jfrog-registry-token") if pull else None
+    return {k: {"value": val, "sensitive": False} for k, val in out.items()}
+
+
+if (ws / f".fake_fail_{cmd}").exists():
+    print(f"Error: fake {cmd} failure", file=sys.stderr)
+    sys.exit(1)
+
+if cmd == "version":
+    print(json.dumps({"terraform_version": "1.9.8"}))
+elif cmd == "init":
+    print("Terraform has been successfully initialized!")
+elif cmd == "validate":
+    print(json.dumps({"valid": True, "error_count": 0, "warning_count": 0, "diagnostics": []}))
+elif cmd == "plan":
+    out = next(a.split("=", 1)[1] for a in args if a.startswith("-out="))
+    fp = ws / ".fake_plan.json"
+    changes = json.loads(fp.read_text()) if fp.exists() else default_plan()
+    (ws / out).write_text(json.dumps({"format_version": "1.2", "resource_changes": changes}))
+    has_changes = any(c["change"]["actions"] != ["no-op"] for c in changes)
+    print("Plan: fake")
+    sys.exit(2 if has_changes and "-detailed-exitcode" in args else 0)
+elif cmd == "show":
+    print((ws / args[-1]).read_text())
+elif cmd == "apply":
+    plan = ws / args[-1]
+    if not plan.exists():
+        print("Error: plan file not found", file=sys.stderr)
+        sys.exit(1)
+    with open(ws / ".fake_applied", "a") as f:
+        f.write(plan.read_text() + "\n")
+    print("Apply complete! Resources: fake")
+elif cmd == "output":
+    p = ws / ".fake_outputs.json"
+    print(p.read_text() if p.exists() else json.dumps(default_outputs()))
+else:
+    print(f"fake terraform: unsupported {args}", file=sys.stderr)
+    sys.exit(1)

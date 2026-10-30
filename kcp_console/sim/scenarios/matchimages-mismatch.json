@@ -1,0 +1,38 @@
+{
+  "name": "matchimages-mismatch",
+  "title": "matchImages does not cover the image host",
+  "story": "matchImages lists the bare domain; the image is on the repo's dedicated subdomain. kubelet never invokes the plugin and containerd asks anonymously.",
+  "runbook": "\u00a79 troubleshooting",
+  "config": {
+    "values": {
+      "match_images": [
+        "example.jfrog.io"
+      ]
+    }
+  },
+  "steps": [
+    [
+      "baseline"
+    ],
+    [
+      "install"
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "FAIL",
+    "root_cause": "matchimages-mismatch",
+    "findings": [
+      "matchimages-mismatch",
+      "anon-401"
+    ],
+    "chain": [
+      "did not invoke the plugin"
+    ]
+  }
+}

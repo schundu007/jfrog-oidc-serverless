@@ -1,0 +1,20 @@
+[
+ {
+  "argv": [
+   "az",
+   "containerapp",
+   "show",
+   "-g",
+   "rg-apps",
+   "-n",
+   "multi",
+   "--subscription",
+   "11111111-2222-3333-4444-555555555555",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": \"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.App/containerApps/multi\", \"name\": \"multi\", \"location\": \"eastus\", \"kind\": null, \"identity\": {\"type\": \"UserAssigned\", \"userAssignedIdentities\": {\"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-orders\": {\"principalId\": \"p1\", \"clientId\": \"c1\"}, \"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-other\": {\"principalId\": \"p2\", \"clientId\": \"c2\"}}}, \"properties\": {\"managedEnvironmentId\": \"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.App/managedEnvironments/cae-dev\", \"configuration\": {\"registries\": []}, \"template\": {\"containers\": [{\"image\": \"acme.jfrog.io/docker-virtual/multi:1.0\"}]}}}",
+  "stderr": ""
+ }
+]

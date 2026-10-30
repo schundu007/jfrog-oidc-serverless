@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m unittest:*)",
+      "Bash(python3 -m unittest:*)",
+      "Bash(PYTHONPATH=* python -m unittest:*)",
+      "Bash(PYTHONPATH=* python3 -m unittest:*)",
+      "Bash(PYTHONPATH=* python -m console.sim:*)",
+      "Bash(PYTHONPATH=* python3 -m console.sim:*)",
+      "Bash(terraform fmt:*)",
+      "Bash(terraform -chdir=* init -backend=false:*)",
+      "Bash(terraform -chdir=* validate:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ],
+    "ask": [
+      "Bash(terraform -chdir=* plan:*)",
+      "Bash(terraform -chdir=* apply:*)",
+      "Bash(terraform apply:*)",
+      "Bash(terraform destroy:*)",
+      "Bash(gcloud run:*)",
+      "Bash(gcloud functions:*)",
+      "Bash(gcloud artifacts:*)",
+      "Bash(gcloud secrets:*)",
+      "Bash(az containerapp:*)",
+      "Bash(az functionapp:*)",
+      "Bash(az keyvault:*)",
+      "Bash(az role:*)",
+      "Bash(jf:*)"
+    ],
+    "deny": [
+      "Bash(gcloud secrets versions access:*)",
+      "Bash(az keyvault secret show:*)",
+      "Bash(python -m jfrog_oidc token:*)",
+      "Bash(python3 -m jfrog_oidc token:*)"
+    ]
+  }
+}

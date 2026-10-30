@@ -1,0 +1,50 @@
+{
+  "name": "checked-wrong-node",
+  "title": "CHECK_KUBELET_PROVIDER looked at node 0",
+  "story": "The first version inspected the first node. The pod ran on another node with a stale entry; node 0 (a replacement) looked clean.",
+  "runbook": "\u00a76 bug 'checked the wrong node'",
+  "config": {},
+  "steps": [
+    [
+      "baseline"
+    ],
+    [
+      "install",
+      {
+        "values": {
+          "artifactory_url": "https://example.jfrog.io"
+        }
+      }
+    ],
+    [
+      "install"
+    ],
+    [
+      "replace_node",
+      {
+        "old": "aks-nodepool1-12345678-vmss00000e",
+        "new": "aks-nodepool1-12345678-vmss00000a"
+      }
+    ],
+    [
+      "create_pod",
+      {
+        "node": "aks-nodepool1-12345678-vmss00000g"
+      }
+    ],
+    [
+      "check_kubelet_provider",
+      {
+        "select": "node0"
+      }
+    ]
+  ],
+  "expect": {
+    "verdict": "FAIL",
+    "root_cause": "wrong-node-checked",
+    "findings": [
+      "wrong-node-checked",
+      "anon-401"
+    ]
+  }
+}

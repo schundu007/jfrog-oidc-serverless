@@ -1,0 +1,38 @@
+{
+  "name": "zero-byte-binary",
+  "title": "A 0-byte plugin binary",
+  "story": "curl without -L saved the empty body of a 302 and reported success. Without the size guard the empty file was mirrored and installed; kubelet cannot exec it.",
+  "runbook": "\u00a76 Phase 4 bug 'binary mirror'",
+  "config": {},
+  "steps": [
+    [
+      "baseline",
+      {
+        "mirror": {
+          "follow_redirects": false,
+          "size_guard": false
+        }
+      }
+    ],
+    [
+      "install"
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "FAIL",
+    "root_cause": "zero-byte-binary",
+    "findings": [
+      "zero-byte-binary",
+      "plugin-exec-failed"
+    ],
+    "chain": [
+      "curl without -L saved the empty body"
+    ]
+  }
+}

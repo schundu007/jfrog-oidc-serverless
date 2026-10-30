@@ -1,0 +1,35 @@
+{
+  "name": "orphaned-daemonset-reverts-config",
+  "title": "An orphaned DaemonSet reverts the node file",
+  "story": "A 78-day-old jfrog-provider/jfrog-credential-provider DaemonSet still writes its own entry a second after every correct write.",
+  "runbook": "\u00a76 Phase 4, the reverting config",
+  "config": {},
+  "steps": [
+    [
+      "add_orphan"
+    ],
+    [
+      "baseline"
+    ],
+    [
+      "install"
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "FAIL",
+    "root_cause": "config-reverts",
+    "findings": [
+      "config-reverts",
+      "matchimages-mismatch"
+    ],
+    "chain": [
+      "reverted aks-nodepool1-12345678-vmss00000e's config within a second of the correct write"
+    ]
+  }
+}

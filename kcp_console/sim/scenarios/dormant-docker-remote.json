@@ -1,0 +1,22 @@
+{
+  "name": "dormant-docker-remote",
+  "title": "A dormant remote repo",
+  "story": "JFrog Cloud paused an idle remote; requests get a 302 to reactivate-server. Only an admin can wake it.",
+  "runbook": "\u00a75 Phase 3b",
+  "config": {},
+  "steps": [
+    [
+      "pull_remote"
+    ]
+  ],
+  "expect": {
+    "verdict": "FAIL",
+    "root_cause": "dormant-remote",
+    "findings": [
+      "dormant-remote"
+    ],
+    "chain": [
+      "is dormant"
+    ]
+  }
+}

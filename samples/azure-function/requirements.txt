@@ -1,0 +1,2 @@
+azure-functions
+jfrog-oidc==0.1.0

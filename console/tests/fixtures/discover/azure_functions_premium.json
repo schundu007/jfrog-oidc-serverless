@@ -1,0 +1,35 @@
+[
+ {
+  "argv": [
+   "az",
+   "functionapp",
+   "show",
+   "-g",
+   "rg-apps",
+   "-n",
+   "fn-prem",
+   "--subscription",
+   "11111111-2222-3333-4444-555555555555",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": \"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.Web/sites/fn-prem\", \"name\": \"fn-prem\", \"location\": \"eastus\", \"kind\": \"functionapp,linux,container\", \"serverFarmId\": \"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.Web/serverfarms/plan-ep1\", \"keyVaultReferenceIdentity\": \"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-orders\", \"identity\": {\"type\": \"UserAssigned\", \"userAssignedIdentities\": {\"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-orders\": {\"principalId\": \"aaaaaaaa-0000-0000-0000-000000000003\", \"clientId\": \"cccccccc-0000-0000-0000-000000000003\"}}}, \"siteConfig\": {\"linuxFxVersion\": \"DOCKER|acme.jfrog.io/docker-virtual/fn:1.0\"}}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "az",
+   "functionapp",
+   "plan",
+   "show",
+   "--ids",
+   "/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.Web/serverfarms/plan-ep1",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": \"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.Web/serverfarms/plan-ep1\", \"sku\": {\"name\": \"EP1\", \"tier\": \"ElasticPremium\"}}",
+  "stderr": ""
+ }
+]

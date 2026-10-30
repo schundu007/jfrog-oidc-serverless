@@ -1,0 +1,21 @@
+{
+  "name": "sa-recreated",
+  "description": "At 05:00 the runtime service account is deleted and recreated with the same email (new uniqueId). The runtime fails once its cached token is gone.",
+  "target_kind": "gcp_run_service",
+  "duration": "24h",
+  "clock_start": "2026-01-01T00:00:00Z",
+  "seed": 1,
+  "config_overrides": {},
+  "load": {},
+  "faults": [
+    {
+      "type": "sa_recreated",
+      "start": "05:00"
+    }
+  ],
+  "expect": {
+    "verdict": "fail",
+    "first_failure_after": "05:00",
+    "root_cause_contains": "no longer match"
+  }
+}

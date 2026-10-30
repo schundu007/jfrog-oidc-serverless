@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JFrog OIDC Console</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">◆</span>
+      <span>JFrog OIDC Console</span>
+      <span class="pill bad" id="session-state" hidden></span>
+    </div>
+    <nav class="cloud-switch" id="cloud-switch" aria-label="Cloud" hidden>
+      <a href="?cloud=gcp" data-cloud-link="gcp">Google Cloud</a>
+      <a href="?cloud=azure" data-cloud-link="azure">Azure</a>
+    </nav>
+    <nav class="tabs" role="tablist" aria-label="Sections" id="tabs" hidden>
+      <button role="tab" id="tab-configs" aria-controls="panel-configs" aria-selected="true" hidden>Configurations</button>
+      <button role="tab" id="tab-configure" aria-controls="panel-configure" aria-selected="false" tabindex="-1">Configure</button>
+      <button role="tab" id="tab-runs" aria-controls="panel-runs" aria-selected="false" tabindex="-1">Runs</button>
+      <button role="tab" id="tab-simulate" aria-controls="panel-simulate" aria-selected="false" tabindex="-1">Simulate</button>
+    </nav>
+  </header>
+
+  <div id="auth-banner" class="banner error" role="alert" hidden>
+    <p>Not signed in. Paste the console URL (it ends in #t=…). If the console was started in the background,
+      get it with <code>python3 -m console --print-url</code>.</p>
+    <form id="auth-form" class="auth-form" autocomplete="off">
+      <input id="auth-input" type="password" spellcheck="false" autocomplete="off" aria-label="Console link"
+        placeholder="http://127.0.0.1:8765/#t=…">
+      <button type="submit" class="primary">Sign in</button>
+    </form>
+  </div>
+
+  <main>
+    <section id="panel-pick" class="pick" hidden>
+      <h1>Choose the workload's cloud</h1>
+      <div class="pick-grid">
+        <a class="pick-card" href="?cloud=gcp"><b>Google Cloud</b><span>Cloud Run services, jobs and functions. Google ID tokens.</span></a>
+        <a class="pick-card" href="?cloud=azure"><b>Azure</b><span>Container Apps and Function Apps. Entra ID tokens.</span></a>
+      </div>
+    </section>
+
+    <section id="panel-configs" role="tabpanel" aria-labelledby="tab-configs" hidden>
+      <div class="cfg-head">
+        <div>
+          <h1>Configurations</h1>
+          <p class="small muted">Each configuration is one workload: its OIDC identity, JFrog mapping and pull path. Saved in .console/configs (no secrets).</p>
+        </div>
+        <button type="button" id="cfg-new" class="primary">New configuration</button>
+      </div>
+      <table class="cfg-table">
+        <thead><tr><th scope="col">Name</th><th scope="col">Workload type</th><th scope="col">Workload</th>
+          <th scope="col">Identity</th><th scope="col">Updated</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody id="cfg-saved"></tbody>
+      </table>
+      <p id="cfg-empty" class="muted" hidden>No saved configurations yet. Start with <b>New configuration</b>.</p>
+    </section>
+
+    <section id="panel-configure" role="tabpanel" aria-labelledby="tab-configure" hidden>
+      <div class="cfg-head">
+        <div>
+          <p class="small muted cfg-crumb"><button type="button" id="cfg-back" class="link">Configurations</button> /</p>
+          <h1 id="cfg-title">New configuration</h1>
+        </div>
+        <span id="cfg-dirty" class="small muted" aria-live="polite"></span>
+      </div>
+
+      <div class="cfg-layout">
+      <form id="cfg-form" class="cfg-form" novalidate autocomplete="off" aria-label="Configuration">
+        <ol class="rail">
+        <li class="rail-step" id="step-app">
+          <h2><span class="step-n" aria-hidden="true">1</span> Target workload</h2>
+          <div class="grid2">
+            <label class="field"><span>Workload type</span><select id="cfg-kind" data-path="target.kind"></select></label>
+            <label class="field"><span>Configuration name</span><input data-path="name" type="text" spellcheck="false" autocomplete="off"></label>
+          </div>
+          <div class="grid3" data-cloud="gcp">
+            <label class="field"><span>Project ID</span><input data-path="target.gcp.project" type="text" spellcheck="false"></label>
+            <label class="field"><span>Region</span><input data-path="target.gcp.region" type="text" spellcheck="false"></label>
+            <label class="field"><span>Service / job / function name</span><input data-path="target.gcp.name" type="text" spellcheck="false"></label>
+          </div>
+          <div class="grid3" data-cloud="azure">
+            <label class="field"><span>Subscription ID</span><input data-path="target.azure.subscription" type="text" spellcheck="false"></label>
+            <label class="field"><span>Resource group</span><input data-path="target.azure.resource_group" type="text" spellcheck="false"></label>
+            <label class="field"><span>Container App / Function App name</span><input data-path="target.azure.name" type="text" spellcheck="false"></label>
+          </div>
+          <div class="find-row">
+            <button type="button" id="cfg-discover-btn" class="secondary">Discover identity</button>
+            <span class="small muted">Read-only: resolves the workload's runtime identity and the OIDC subject (sub) JFrog will map.</span>
+          </div>
+          <div id="cfg-discovered"></div>
+          <div id="cfg-discover" hidden aria-live="polite"></div>
+        </li>
+
+        <li class="rail-step" id="step-jfrog">
+          <h2><span class="step-n" aria-hidden="true">2</span> JFrog platform</h2>
+          <div class="grid2">
+            <label class="field"><span>Platform URL (origin only)</span><input data-path="jfrog.url" type="url" spellcheck="false" placeholder="https://yourcompany.jfrog.io"></label>
+            <label class="field"><span>Reader group (permission target scope)</span><input data-path="jfrog.reader_group" type="text" spellcheck="false"></label>
+          </div>
+        </li>
+
+        <li class="rail-step" id="step-needs">
+          <h2><span class="step-n" aria-hidden="true">3</span> Token paths</h2>
+          <label class="choice">
+            <input data-path="pull_path.enabled" type="checkbox">
+            <span><b>Image pull path</b> <span class="small muted">(skip when images are in Artifact Registry or ACR)</span>
+              <span class="small muted" data-cloud="gcp">A rotator job exchanges its OIDC token hourly and writes the JFrog access token to Secret Manager as the Artifact Registry remote's upstream credential.</span>
+              <span class="small muted" data-cloud="azure">A rotator job exchanges its OIDC token hourly and writes the JFrog access token to Key Vault; the app's registry password is a Key Vault reference.</span></span>
+          </label>
+          <div class="grid2 indent" id="cfg-pull-fields">
+            <label class="field"><span>JFrog Docker repository key</span><input data-path="jfrog.docker_repo" type="text" spellcheck="false" placeholder="docker-virtual"></label>
+            <label class="field"><span>Rotator image (AR/ACR, pinned by digest)</span><input data-path="pull_path.rotator_image" type="text" spellcheck="false" placeholder="registry/path/rotator@sha256:…"></label>
+            <label class="field" data-cloud="azure"><span>Key Vault resource ID</span><input data-path="target.azure.key_vault_id" type="text" spellcheck="false" placeholder="/subscriptions/…/vaults/kv-name"></label>
+          </div>
+          <label class="choice">
+            <input data-path="runtime.enabled" type="checkbox">
+            <span><b>Runtime token exchange</b>
+              <span class="small muted">The workload exchanges its cloud-signed ID token at /access/api/v1/oidc/token for a short-lived JFrog access token, in process. No stored credentials.</span></span>
+          </label>
+        </li>
+        </ol>
+
+        <details class="advanced" id="cfg-advanced">
+          <summary>Advanced settings <span class="small muted">TTLs, rotation, names</span></summary>
+          <div class="grid3">
+            <label class="field" data-cloud="gcp"><span>OIDC integration name</span><input data-path="jfrog.integration_names.gcp" type="text" spellcheck="false"></label>
+            <label class="field" data-cloud="azure"><span>OIDC integration name</span><input data-path="jfrog.integration_names.azure" type="text" spellcheck="false"></label>
+            <label class="field"><span>Docker host override (optional)</span><input data-path="jfrog.docker_host" type="text" spellcheck="false" placeholder="acme-docker-virtual.jfrog.io"></label>
+            <label class="field"><span>JFrog project key (optional)</span><input data-path="jfrog.project_key" data-type="nullable" type="text" spellcheck="false"></label>
+            <label class="field" data-cloud="azure"><span>User-assigned identity resource ID</span><input data-path="target.azure.identity_resource_id" data-type="nullable" type="text" spellcheck="false" placeholder="filled by Discover identity"></label>
+            <label class="field" data-cloud="azure"><span>Container Apps environment ID (rotator)</span><input data-path="target.azure.environment_id" type="text" spellcheck="false" placeholder="filled by Discover identity"></label>
+            <label class="field" data-cloud="azure"><span>Rotator ACR resource ID (optional)</span><input data-path="pull_path.rotator_acr_id" data-type="nullable" type="text" spellcheck="false" placeholder="/subscriptions/…/registries/acr"></label>
+          </div>
+          <div class="grid3">
+            <label class="field"><span>Runtime token TTL (s, max 3600)</span><input data-path="runtime.ttl_seconds" data-type="number" type="number" min="300" max="3600" step="60"></label>
+            <label class="field"><span>Runtime mapping username</span><input data-path="runtime.username" type="text" spellcheck="false"></label>
+            <label class="field"><span>Pull token TTL (s)</span><input data-path="pull_path.ttl_seconds" data-type="number" type="number" min="300" max="86400" step="60"></label>
+            <label class="field"><span>Rotation schedule (cron, UTC)</span><input data-path="pull_path.rotation_cron" type="text" spellcheck="false"></label>
+            <label class="field"><span>Stale-rotation alert after (s)</span><input data-path="pull_path.alert_after_seconds" data-type="number" type="number" min="0" step="300"></label>
+            <label class="field"><span>MIN_TTL_SECONDS (rotator)</span><input data-path="pull_path.min_ttl_seconds" data-type="number" type="number" min="0" step="60"></label>
+            <label class="field"><span>Registry username</span><input data-path="pull_path.registry_username" type="text" spellcheck="false"></label>
+            <label class="field"><span>Resource name prefix</span><input data-path="pull_path.name_prefix" type="text" spellcheck="false"></label>
+            <label class="field"><span>Verify: artifact path</span><input data-path="verify.artifact_path" type="text" spellcheck="false"></label>
+            <label class="field"><span>Verify: probe image</span><input data-path="verify.probe_image_pull" type="text" spellcheck="false"></label>
+          </div>
+          <label class="check" data-kinds="azure_functions_premium"><input data-path="pull_path.function_app_refresh" type="checkbox"> Rotator refreshes the Key Vault reference via ARM</label>
+          <p id="cfg-ttl-math" class="small muted"></p>
+        </details>
+
+      </form>
+
+      <aside class="cfg-side" aria-label="Summary">
+        <section class="summary">
+          <h2>OIDC trust chain</h2>
+          <ol id="chain" class="chain" aria-live="polite"></ol>
+          <h3>Planned changes</h3>
+          <ul id="cfg-plan-list" class="plan-list"></ul>
+          <div class="cfg-actions" id="cfg-actions">
+            <button type="button" id="cfg-run-btn" class="primary big">Run pipeline</button>
+            <div class="row-tight">
+              <button type="button" id="cfg-preflight-btn" class="secondary">Preflight</button>
+              <button type="button" id="cfg-save" class="secondary">Save</button>
+            </div>
+            <p id="cfg-status" class="small muted" role="status" aria-live="polite">terraform apply and the env update each wait for your approval.</p>
+          </div>
+        </section>
+        <section id="cfg-problems" class="side-box problems" hidden aria-live="polite"></section>
+        <section id="cfg-preflight" class="side-box" hidden aria-live="polite"></section>
+      </aside>
+      </div>
+    </section>
+
+    <section id="panel-simulate" role="tabpanel" aria-labelledby="tab-simulate" hidden>
+      <div class="sim-layout">
+        <form id="sim-form" class="controls card" novalidate aria-label="Simulation settings">
+          <label class="field">
+            <span>Scenario</span>
+            <select id="scenario" required></select>
+          </label>
+          <p id="scenario-desc" class="muted small"></p>
+          <p id="scenario-meta" class="small"></p>
+
+          <fieldset>
+            <legend>Overrides</legend>
+            <div id="overrides" class="grid2"></div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Faults</legend>
+            <div id="faults" class="faults"></div>
+            <div class="row">
+              <select id="add-fault-type" aria-label="Fault type to add"></select>
+              <button type="button" id="add-fault" class="secondary">Add fault</button>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Load</legend>
+            <div id="load"></div>
+          </fieldset>
+
+          <div class="grid2">
+            <label class="field"><span>Duration</span>
+              <select id="duration"><option>6h</option><option>12h</option><option selected>24h</option><option>48h</option></select>
+            </label>
+            <label class="field"><span>Seed</span><input id="seed" type="number" min="0" step="1" value="1"></label>
+          </div>
+
+          <div class="row">
+            <button id="run" type="submit" class="primary">Run simulation</button>
+            <button id="reset" type="button" class="secondary">Reset</button>
+          </div>
+          <div id="progress" class="progress" hidden aria-live="polite">
+            <div class="track"><div class="bar" id="progress-bar"></div></div>
+            <span id="progress-text" class="small muted"></span>
+          </div>
+          <p id="form-error" class="error small" role="alert" hidden></p>
+        </form>
+
+        <div class="results">
+          <section id="verdict" class="card verdict" aria-live="polite">
+            <p class="muted">Pick a scenario and run it. The simulator runs the real <code>jfrog_oidc</code> client and
+              <code>rotator/rotate.py</code> against emulated JFrog, GCP and Azure on a virtual clock.</p>
+          </section>
+          <section class="card">
+            <div class="card-head">
+              <h2>Timeline</h2>
+              <div id="legend" class="legend" aria-label="Legend"></div>
+            </div>
+            <div id="timeline" class="timeline"></div>
+          </section>
+          <section class="card">
+            <div class="card-head">
+              <h2>Events</h2>
+              <div class="row">
+                <select id="ev-type" aria-label="Filter by event kind"><option value="">All kinds</option></select>
+                <input id="ev-search" type="search" placeholder="Filter text" aria-label="Filter events by text">
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table id="events">
+                <thead><tr><th scope="col">Time</th><th scope="col">Kind</th><th scope="col">Detail</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <p id="ev-count" class="small muted"></p>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-runs" role="tabpanel" aria-labelledby="tab-runs" hidden>
+      <div class="card runs-bar">
+        <label class="field"><span>Run</span><select id="runs-list"></select></label>
+        <button type="button" id="runs-refresh" class="secondary">Refresh</button>
+        <span id="runs-status" class="small" role="status" aria-live="polite"></span>
+      </div>
+      <div class="runs-layout">
+        <aside class="card">
+          <div id="run-head" class="run-head"><p class="muted">Start a run with <b>Run pipeline</b> on the Configure tab. Apply and wire wait for your approval here.</p></div>
+          <ol id="run-steps" class="steps"></ol>
+        </aside>
+        <section class="card">
+          <div id="run-detail"></div>
+          <details class="run-log-box">
+            <summary>Show details (run log)</summary>
+            <pre id="run-log" class="run-log" tabindex="0" aria-label="Run log"></pre>
+          </details>
+        </section>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

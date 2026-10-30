@@ -1,0 +1,17 @@
+{
+  "name": "azure-v1-tokens",
+  "description": "The audience app issues v1 tokens: the first exchange fails on issuer mismatch.",
+  "target_kind": "azure_container_app",
+  "duration": "24h",
+  "clock_start": "2026-01-01T00:00:00Z",
+  "seed": 1,
+  "config_overrides": {
+    "sim.access_token_version": 1
+  },
+  "load": {},
+  "faults": [],
+  "expect": {
+    "verdict": "fail",
+    "root_cause_contains": "requestedAccessTokenVersion"
+  }
+}

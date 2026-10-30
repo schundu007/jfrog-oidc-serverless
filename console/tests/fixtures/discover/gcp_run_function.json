@@ -1,0 +1,34 @@
+[
+ {
+  "argv": [
+   "gcloud",
+   "functions",
+   "describe",
+   "webhook",
+   "--region",
+   "us-central1",
+   "--project",
+   "demo-nonprod-1234",
+   "--gen2",
+   "--format=json"
+  ],
+  "rc": 0,
+  "stdout": "{\"name\": \"projects/demo-nonprod-1234/locations/us-central1/functions/webhook\", \"environment\": \"GEN_2\", \"buildConfig\": {\"serviceAccount\": \"projects/demo-nonprod-1234/serviceAccounts/builder@demo-nonprod-1234.iam.gserviceaccount.com\"}, \"serviceConfig\": {\"serviceAccountEmail\": \"webhook-fn@demo-nonprod-1234.iam.gserviceaccount.com\", \"uri\": \"https://webhook-abc123-uc.a.run.app\", \"service\": \"projects/demo-nonprod-1234/locations/us-central1/services/webhook\"}}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "gcloud",
+   "iam",
+   "service-accounts",
+   "describe",
+   "webhook-fn@demo-nonprod-1234.iam.gserviceaccount.com",
+   "--project",
+   "demo-nonprod-1234",
+   "--format=json"
+  ],
+  "rc": 0,
+  "stdout": "{\"email\": \"webhook-fn@demo-nonprod-1234.iam.gserviceaccount.com\", \"uniqueId\": \"104857600000000000003\", \"disabled\": false, \"name\": \"projects/demo-nonprod-1234/serviceAccounts/webhook-fn@demo-nonprod-1234.iam.gserviceaccount.com\"}",
+  "stderr": ""
+ }
+]

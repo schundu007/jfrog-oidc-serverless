@@ -1,0 +1,36 @@
+{
+  "name": "mapping-user-no-repo-permission",
+  "title": "Token issued, pull 403",
+  "story": "The mapping resolves to a user without read on the test repo. The exchange succeeds; the registry refuses the pull.",
+  "runbook": "\u00a79 (expected, not observed)",
+  "config": {},
+  "steps": [
+    [
+      "baseline",
+      {
+        "mapping": {
+          "user": "readonly-elsewhere"
+        }
+      }
+    ],
+    [
+      "install"
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "FAIL",
+    "root_cause": "pull-403",
+    "findings": [
+      "pull-403"
+    ],
+    "chain": [
+      "no read permission"
+    ]
+  }
+}

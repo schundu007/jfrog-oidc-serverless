@@ -1,0 +1,6 @@
+jfrog_url             = "https://acme.jfrog.io"
+jfrog_reader_group    = "serverless-readers"
+azure_subscription_id = "00000000-0000-0000-0000-000000000000"
+azure_location        = "westus2"
+# second apply, after building samples/cloud-run-job into the ACR:
+# deploy_demo = true

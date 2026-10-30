@@ -1,0 +1,44 @@
+{
+  "name": "cache-expiry-5h",
+  "title": "defaultCacheDuration 5h: a new exchange after expiry",
+  "story": "Five hours and a minute after the first pull the cached credential has expired; the next pull makes a fresh exchange.",
+  "runbook": "\u00a711 cache-duration trade-off",
+  "config": {},
+  "steps": [
+    [
+      "baseline"
+    ],
+    [
+      "install"
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ],
+    [
+      "remove_image"
+    ],
+    [
+      "advance",
+      {
+        "seconds": 18060
+      }
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "PASS",
+    "root_cause": null,
+    "absent": [
+      "cached-token-silent"
+    ],
+    "audit": "PASS"
+  }
+}

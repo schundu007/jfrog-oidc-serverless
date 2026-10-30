@@ -1,0 +1,148 @@
+[
+  {
+    "argv": [
+      "terraform",
+      "version",
+      "-json"
+    ],
+    "rc": 0,
+    "stdout": "{\"terraform_version\": \"1.9.8\", \"platform\": \"darwin_arm64\"}",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "az",
+      "version",
+      "-o",
+      "json"
+    ],
+    "rc": 0,
+    "stdout": "{\"azure-cli\": \"2.67.0\"}",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "az",
+      "account",
+      "show",
+      "--subscription",
+      "11111111-2222-3333-4444-555555555555",
+      "-o",
+      "json"
+    ],
+    "rc": 0,
+    "stdout": "{\"id\": \"11111111-2222-3333-4444-555555555555\", \"name\": \"demo-dev\", \"tenantId\": \"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\", \"user\": {\"name\": \"operator@example.com\", \"type\": \"user\"}}",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "az",
+      "account",
+      "show",
+      "-o",
+      "json"
+    ],
+    "rc": 0,
+    "stdout": "{\"id\": \"00000000-0000-0000-0000-00000000aaaa\", \"name\": \"other-default\", \"tenantId\": \"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\", \"user\": {\"name\": \"operator@example.com\", \"type\": \"user\"}}",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "az",
+      "group",
+      "show",
+      "-n",
+      "rg-apps",
+      "--subscription",
+      "11111111-2222-3333-4444-555555555555",
+      "-o",
+      "json"
+    ],
+    "rc": 0,
+    "stdout": "{\"id\": \"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps\", \"location\": \"eastus\"}",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "az",
+      "provider",
+      "list",
+      "--subscription",
+      "11111111-2222-3333-4444-555555555555",
+      "--query",
+      "[].{namespace:namespace,state:registrationState}",
+      "-o",
+      "json"
+    ],
+    "rc": 0,
+    "stdout": "[{\"namespace\": \"Microsoft.App\", \"state\": \"Registered\"}, {\"namespace\": \"Microsoft.Web\", \"state\": \"Registered\"}, {\"namespace\": \"Microsoft.KeyVault\", \"state\": \"Registered\"}, {\"namespace\": \"Microsoft.ManagedIdentity\", \"state\": \"Registered\"}, {\"namespace\": \"Microsoft.Insights\", \"state\": \"Registered\"}, {\"namespace\": \"Microsoft.Storage\", \"state\": \"Registered\"}]",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "az",
+      "ad",
+      "signed-in-user",
+      "show",
+      "--query",
+      "id",
+      "-o",
+      "tsv"
+    ],
+    "rc": 0,
+    "stdout": "99999999-8888-7777-6666-555555555555\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "az",
+      "role",
+      "assignment",
+      "list",
+      "--assignee",
+      "99999999-8888-7777-6666-555555555555",
+      "--scope",
+      "/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps",
+      "--include-inherited",
+      "--include-groups",
+      "--subscription",
+      "11111111-2222-3333-4444-555555555555",
+      "-o",
+      "json"
+    ],
+    "rc": 0,
+    "stdout": "[{\"roleDefinitionName\": \"Contributor\"}]",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "az",
+      "role",
+      "assignment",
+      "list",
+      "--assignee",
+      "99999999-8888-7777-6666-555555555555",
+      "--scope",
+      "/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.KeyVault/vaults/kv-demo",
+      "--include-inherited",
+      "--include-groups",
+      "--subscription",
+      "11111111-2222-3333-4444-555555555555",
+      "-o",
+      "json"
+    ],
+    "rc": 0,
+    "stdout": "[{\"roleDefinitionName\": \"Contributor\"}]",
+    "stderr": ""
+  },
+  {
+    "http": "GET https://acme.jfrog.io/access/api/v1/system/ping",
+    "status": 200,
+    "body": "OK"
+  },
+  {
+    "http": "GET https://acme.jfrog.io/access/api/v1/oidc",
+    "status": 403,
+    "body": "{\"errors\": [{\"status\": 403, \"message\": \"Forbidden\"}]}"
+  }
+]

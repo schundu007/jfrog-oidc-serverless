@@ -1,0 +1,34 @@
+[
+ {
+  "argv": [
+   "gcloud",
+   "run",
+   "services",
+   "describe",
+   "orders",
+   "--region",
+   "us-central1",
+   "--project",
+   "demo-nonprod-1234",
+   "--format=json"
+  ],
+  "rc": 0,
+  "stdout": "{\"apiVersion\": \"serving.knative.dev/v1\", \"kind\": \"Service\", \"metadata\": {\"name\": \"orders\", \"labels\": {\"cloud.googleapis.com/location\": \"us-central1\"}}, \"spec\": {\"template\": {\"spec\": {\"containers\": [{\"image\": \"us-central1-docker.pkg.dev/demo-nonprod-1234/apps/orders:1.0\"}], \"serviceAccountName\": \"orders-runtime@demo-nonprod-1234.iam.gserviceaccount.com\"}}}, \"status\": {\"url\": \"https://orders-abc123-uc.a.run.app\"}}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "gcloud",
+   "iam",
+   "service-accounts",
+   "describe",
+   "orders-runtime@demo-nonprod-1234.iam.gserviceaccount.com",
+   "--project",
+   "demo-nonprod-1234",
+   "--format=json"
+  ],
+  "rc": 0,
+  "stdout": "{\"email\": \"orders-runtime@demo-nonprod-1234.iam.gserviceaccount.com\", \"uniqueId\": \"104857600000000000001\", \"disabled\": false, \"name\": \"projects/demo-nonprod-1234/serviceAccounts/orders-runtime@demo-nonprod-1234.iam.gserviceaccount.com\"}",
+  "stderr": ""
+ }
+]

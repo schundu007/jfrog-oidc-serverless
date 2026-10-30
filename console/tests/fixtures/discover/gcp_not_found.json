@@ -1,0 +1,19 @@
+[
+ {
+  "argv": [
+   "gcloud",
+   "run",
+   "services",
+   "describe",
+   "ghost",
+   "--region",
+   "us-central1",
+   "--project",
+   "demo-nonprod-1234",
+   "--format=json"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "ERROR: (gcloud.run.services.describe) Cannot find service [x]: NOT_FOUND"
+ }
+]

@@ -1,0 +1,6 @@
+--index-url https://us-central1-python.pkg.dev/platform-prod-123/jfrog-pypi/simple/
+# ^ Artifact Registry remote repo in front of Artifactory (module.gcp output
+#   repository_urls["jfrog-pypi"]). The build authenticates to AR itself; AR
+#   authenticates to JFrog with the rotated token. No JFrog credential here.
+functions-framework==3.*
+jfrog-oidc==0.1.0

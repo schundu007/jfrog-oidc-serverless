@@ -1,0 +1,25 @@
+{
+  "name": "rotator-misses-3-runs",
+  "description": "Rotator runs fail 03:00\u201306:00 (ACA). The new token lands at 06:23, exactly when the old one expires, so replica starts during the ACA lag fail. The 3 h alert fires about an hour before the first failure.",
+  "target_kind": "azure_container_app",
+  "duration": "24h",
+  "clock_start": "2026-01-01T00:00:00Z",
+  "seed": 1,
+  "config_overrides": {},
+  "load": {
+    "cold_starts_per_hour": 12
+  },
+  "faults": [
+    {
+      "type": "rotator_down",
+      "start": "03:00",
+      "end": "06:00"
+    }
+  ],
+  "expect": {
+    "verdict": "fail",
+    "alert_fired_before": "06:23",
+    "first_failure_after": "06:23",
+    "root_cause_contains": "missed"
+  }
+}

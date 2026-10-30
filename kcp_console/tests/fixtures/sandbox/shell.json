@@ -1,0 +1,1973 @@
+[
+ {
+  "argv": [
+   "az",
+   "aks",
+   "show",
+   "--resource-group",
+   "rg-aks-sandbox",
+   "--name",
+   "aks-sandbox-01",
+   "--subscription",
+   "00000000-0000-0000-0000-0000000000a1",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"name\": \"aks-sandbox-01\", \"kubernetesVersion\": \"1.31.7\", \"oidcIssuerProfile\": {\"enabled\": true, \"issuerUrl\": \"https://centralus.oic.prod-aks.azure.com/00000000-0000-0000-0000-0000000000b2/00000000-0000-0000-0000-0000000000c3/\"}, \"securityProfile\": {\"workloadIdentity\": {\"enabled\": true}}}"
+ },
+ {
+  "argv": [
+   "kubectl",
+   "get",
+   "daemonsets",
+   "-A",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"items\": [{\"metadata\": {\"name\": \"jfrog-cred-provider-jfrog-credential-provider-daemonset\", \"namespace\": \"jfrog\", \"creationTimestamp\": \"2026-10-16T12:05:00Z\"}, \"spec\": {\"template\": {\"spec\": {\"volumes\": [{\"name\": \"host\", \"hostPath\": {\"path\": \"/var/lib/kubelet\"}}], \"initContainers\": [{\"image\": \"releases-docker.jfrog.io/jfrog/jfrog-credential-provider:1.4.0\"}], \"containers\": [{\"image\": \"mcr.microsoft.com/azurelinux/base/core:3.0\"}]}}}}, {\"metadata\": {\"name\": \"azure-ip-masq-agent\", \"namespace\": \"kube-system\", \"creationTimestamp\": \"2026-07-29T10:00:00Z\"}, \"spec\": {\"template\": {\"spec\": {\"volumes\": [{\"name\": \"cfg\", \"configMap\": {\"name\": \"x\"}}], \"containers\": [{\"image\": \"mcr.microsoft.com/oss/ip-masq-agent:v2\"}]}}}}]}"
+ },
+ {
+  "argv": [
+   "kubectl",
+   "get",
+   "serviceaccount",
+   "jfrog-provider-sa",
+   "-n",
+   "jfrog",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"metadata\": {\"name\": \"jfrog-provider-sa\", \"namespace\": \"jfrog\", \"creationTimestamp\": \"2026-07-29T10:00:00Z\", \"annotations\": {\"JFrogExchange\": \"true\"}}}"
+ },
+ {
+  "argv": [
+   "kubectl",
+   "get",
+   "nodes",
+   "-o",
+   "json"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "Error from server (Forbidden): nodes is forbidden: User \"operator@example.com\" cannot list resource \"nodes\" in API group \"\" at the cluster scope: User does not have access to the resource in Azure. Update role assignment to allow access."
+ },
+ {
+  "argv": [
+   "kubectl",
+   "get",
+   "pods",
+   "-n",
+   "jfrog",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"items\": [{\"metadata\": {\"name\": \"secretless-pull-test\"}, \"spec\": {\"serviceAccountName\": \"jfrog-provider-sa\", \"nodeName\": \"aks-nodepool1-12345678-vmss00000g\"}}, {\"metadata\": {\"name\": \"pilot-test-pod\"}, \"spec\": {\"serviceAccountName\": \"default\"}}]}"
+ },
+ {
+  "argv": [
+   "helm",
+   "list",
+   "-n",
+   "jfrog",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "[{\"name\": \"jfrog-cred-provider\", \"namespace\": \"jfrog\", \"revision\": \"15\", \"status\": \"deployed\", \"chart\": \"jfrog-credential-provider-1.4.0\", \"app_version\": \"1.4.0\"}]"
+ },
+ {
+  "argv": [
+   "helm",
+   "get",
+   "values",
+   "jfrog-cred-provider",
+   "-n",
+   "jfrog",
+   "-a",
+   "-o",
+   "yaml"
+  ],
+  "rc": 0,
+  "stdout": "providerConfig:\n  - name: jfrog-credentials-provider\n    # Bare hostname, NOT a URL: the plugin prepends \"https://\" itself.\n    artifactoryUrl: \"example.jfrog.io\"\n    matchImages:\n      # The repo's dedicated subdomain (the bare-domain path method does not work here).\n      - \"example-aks-sandbox-test-docker-local.jfrog.io\"\n    defaultCacheDuration: 5h\n    tokenAttributes:\n      enabled: true\n    azure:\n      enabled: true\n      azure_app_audience: \"api://AzureADTokenExchange\"\n      jfrog_oidc_provider_name: \"aks-sandbox-oidc\"\nrbac:\n  create: true\naffinity:\n  nodeAffinity:\n    requiredDuringSchedulingIgnoredDuringExecution:\n      nodeSelectorTerms:\n        - matchExpressions:\n            - key: credentialsProviderEnabled\n              operator: In\n              values:\n                - \"true\"\ndownloadUrl: \"https://example.jfrog.io/artifactory/aks-sandbox-generic-local/jfrog-credential-provider/1.4.0/jfrog-credential-provider-linux\"\n"
+ },
+ {
+  "argv": [
+   "helm",
+   "get",
+   "manifest",
+   "jfrog-cred-provider",
+   "-n",
+   "jfrog"
+  ],
+  "rc": 0,
+  "stdout": "---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: jfrog-cred-provider-config\n  labels:\n    helm.sh/chart: jfrog-credential-provider-1.4.0\ndata:\n  provider-config.yaml: |\n    - name: jfrog-credentials-provider\n      matchImages:\n        - \"example-aks-sandbox-test-docker-local.jfrog.io\"\n      defaultCacheDuration: 5h\n      env:\n        - name: artifactory_url\n          value: \"example.jfrog.io\"\n        - name: jfrog_oidc_provider_name\n          value: \"aks-sandbox-oidc\"\n---\n# Source: jfrog-credential-provider/templates/configmap.yaml\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: jfrog-cred-provider-jfrog-credential-provider-config\n  labels:\n    helm.sh/chart: jfrog-credential-provider-1.4.0\ndata:\n  provider-config.yaml: |\n    - name: jfrog-credentials-provider\n      matchImages:\n        - \"example-aks-sandbox-test-docker-local.jfrog.io\"\n      defaultCacheDuration: 5h\n      env:\n        - name: artifactory_url\n          value: \"example.jfrog.io\"\n        - name: jfrog_oidc_provider_name\n          value: \"aks-sandbox-oidc\"\n---\n# Source: jfrog-credential-provider/templates/role.yaml\napiVersion: rbac.authorization.k8s.io/v1\nkind: Role\nmetadata:\n  name: jfrog-cred-provider-jfrog-credential-provider\nrules:\n  - apiGroups: [\"\"]\n    resources: [\"configmaps\"]\n    verbs: [\"get\", \"list\", \"watch\"]\n  - apiGroups: [\"\"]\n    resources: [\"serviceaccounts\"]\n    verbs: [\"get\"]\n"
+ },
+ {
+  "http": "GET https://example.jfrog.io/access/api/v1/oidc",
+  "status": 200,
+  "body": "[{\"name\": \"aks-sandbox-oidc\", \"issuer_url\": \"https://centralus.oic.prod-aks.azure.com/00000000-0000-0000-0000-0000000000b2/00000000-0000-0000-0000-0000000000c3/\", \"provider_type\": \"Azure\", \"token_issuer\": \"https://centralus.oic.prod-aks.azure.com/00000000-0000-0000-0000-0000000000b2/00000000-0000-0000-0000-0000000000c3/\"}, {\"name\": \"aks-other-cluster-oidc\", \"provider_type\": \"Azure\", \"issuer_url\": \"https://eastus2.oic.prod-aks.azure.com/00000000-0000-4000-8000-0000000000aa/11111111-0000-4000-8000-0000000000bb/\", \"token_issuer\": \"https://eastus2.oic.prod-aks.azure.com/00000000-0000-4000-8000-0000000000aa/11111111-0000-4000-8000-0000000000bb/\"}]"
+ },
+ {
+  "http": "GET https://example.jfrog.io/access/api/v1/oidc/aks-sandbox-oidc/identity_mappings",
+  "status": 200,
+  "body": "[{\"name\": \"aks-workload-identity-mapping\", \"description\": \"Azure AKS Workload Identity mapping\", \"claims\": {\"iss\": \"https://centralus.oic.prod-aks.azure.com/00000000-0000-0000-0000-0000000000b2/00000000-0000-0000-0000-0000000000c3/\", \"sub\": \"system:serviceaccount:jfrog:jfrog-provider-sa\"}, \"token_spec\": {\"username\": \"kcp-pull-user\", \"scope\": \"applied-permissions/user\", \"audience\": \"*@*\", \"expires_in\": 3600}, \"priority\": 1}]"
+ },
+ {
+  "http": "GET https://example-aks-sandbox-test-docker-local.jfrog.io/v2/",
+  "status": 401,
+  "body": "",
+  "headers": {
+   "www-authenticate": "Bearer realm=\"https://example-aks-sandbox-test-docker-local.jfrog.io/artifactory/api/docker/aks-sandbox-test-docker-local/v2/token\",service=\"example-aks-sandbox-test-docker-local.jfrog.io\""
+  }
+ },
+ {
+  "http": "GET https://example.jfrog.io/v2/",
+  "status": 401,
+  "body": "",
+  "headers": {
+   "www-authenticate": "Bearer realm=\"https://example.jfrog.io/artifactory/api/docker/null/v2/token\",service=\"example.jfrog.io\""
+  }
+ },
+ {
+  "http": "POST https://example.jfrog.io/artifactory/api/search/aql",
+  "status": 200,
+  "body": "{\"results\": [{\"repo\": \"containers-docker-local\", \"path\": \"mcp/sonarqube/1.26-v1\", \"name\": \"manifest.json\"}, {\"repo\": \"containers-docker-local\", \"path\": \"mcp/sonarqube/1.27-v1\", \"name\": \"manifest.json\"}, {\"repo\": \"aks-sandbox-test-docker-local\", \"path\": \"mcp/sonarqube/1.26-v1\", \"name\": \"manifest.json\"}]}"
+ },
+ {
+  "http": "GET https://example.jfrog.io/artifactory/api/storage/aks-sandbox-test-docker-local/mcp/sonarqube/1.26-v1",
+  "status": 200,
+  "body": "{\"repo\": \"aks-sandbox-test-docker-local\", \"path\": \"/mcp/sonarqube/1.26-v1\", \"children\": [{\"uri\": \"/manifest.json\", \"folder\": false}]}"
+ },
+ {
+  "http": "GET https://example.jfrog.io/artifactory/api/storage/aks-sandbox-generic-local/jfrog-credential-provider/1.4.0/jfrog-credential-provider-linux-amd64",
+  "status": 200,
+  "body": "{\"size\": \"14359603\", \"checksums\": {\"sha256\": \"5c1f0c6a3be2c1d0b0a7c1f3e9d4b2a6c8e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4\"}}"
+ },
+ {
+  "http": "GET https://example.jfrog.io/access/api/v2/groups",
+  "status": 403,
+  "body": "{\"errors\":[{\"code\":\"FORBIDDEN\",\"message\":\"Forbidden\"}]}"
+ },
+ {
+  "http": "GET https://example.jfrog.io/artifactory/api/docker/example-docker-remote/v2/library/alpine/manifests/latest",
+  "status": 302,
+  "body": "",
+  "headers": {
+   "location": "https://landing.jfrog.com/reactivate-server/example-docker-remote"
+  }
+ },
+ {
+  "http": "GET https://example.jfrog.io/artifactory/api/system/logs/data?id=artifactory-request.log",
+  "status": 404,
+  "body": "{\"errors\":[{\"status\":404,\"message\":\"Not Found\"}]}"
+ },
+ {
+  "http": "POST https://example.jfrog.io/access/api/v1/oidc",
+  "status": 409,
+  "body": "{\"errors\":[{\"message\":\"Provider aks-sandbox-oidc already exists\"}]}"
+ },
+ {
+  "http": "POST https://example.jfrog.io/access/api/v1/oidc/aks-sandbox-oidc/identity_mappings",
+  "status": 409,
+  "body": "{\"errors\":[{\"message\":\"Identity mapping aks-workload-identity-mapping already exists\"}]}"
+ },
+ {
+  "http": "POST https://example.jfrog.io/artifactory/api/docker/containers-docker-local/v2/promote",
+  "status": 200,
+  "body": "Promotion ended successfully"
+ },
+ {
+  "http": "POST https://example.jfrog.io/artifactory/api/docker/docker-virtual/v2/promote",
+  "status": 400,
+  "body": "Unsupported V2 repository request for 'docker-virtual'"
+ },
+ {
+  "argv": [
+   "az",
+   "account",
+   "get-access-token",
+   "--resource",
+   "499b84ac-1321-427f-aa17-267ca6975798",
+   "--query",
+   "accessToken",
+   "-o",
+   "tsv"
+  ],
+  "rc": 0,
+  "stdout": "replay-mode-ado-bearer\n"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=MIRROR_JFROG_BINARY",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5001, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5001\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5001",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5001, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5001/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5001/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T12:00:00.0000000Z Starting: MIRROR_JFROG_BINARY\n2026-10-16T12:00:00.0000000Z TestScenario=MIRROR_JFROG_BINARY\n2026-10-16T12:00:00.0000000Z curl -L -fsS -o jfrog-credential-provider https://releases.jfrog.io/artifactory/jfrog-credential-provider/...\n2026-10-16T12:00:00.0000000Z downloaded 14359603 bytes\n2026-10-16T12:00:00.0000000Z PUT aks-sandbox-generic-local/jfrog-credential-provider/1.4.0/jfrog-credential-provider-linux \u2192 201\n2026-10-16T12:00:00.0000000Z Finishing: MIRROR_JFROG_BINARY"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=INSTALL_JFROG_PROVIDER",
+   "DryRun=true",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5002, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5002\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5002",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5002, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5002/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5002/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z helm upgrade --install jfrog-cred-provider jfrog/jfrog-credential-provider --version 1.4.0 -f scripts/jfrog-provider/values-sandbox.yaml --set binaryDownload.auth.accessToken=*** --dry-run=server\n2026-10-16T15:00:00.0000000Z DryRun: the release validated server-side; nothing was changed"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=INSTALL_JFROG_PROVIDER",
+   "DryRun=false",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5003, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5003\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5003",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5003, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5003/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5003/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T12:25:14.0000000Z Starting: INSTALL_JFROG_PROVIDER\n2026-10-16T12:25:14.0000000Z TestScenario=INSTALL_JFROG_PROVIDER DryRun=false\n2026-10-16T12:25:14.0000000Z kubectl label nodes --all credentialsProviderEnabled=true --overwrite\n2026-10-16T12:25:14.0000000Z helm upgrade --install jfrog-cred-provider jfrog/jfrog-credential-provider --version 1.4.0 -f scripts/jfrog-provider/values-sandbox.yaml --set binaryDownload.auth.accessToken=***\n2026-10-16T12:25:14.0000000Z deleted existing provider pods so they pick up the new config\n2026-10-16T12:25:14.0000000Z daemonset jfrog-cred-provider-jfrog-credential-provider-daemonset: 2 of 2 available\n2026-10-16T12:25:14.0000000Z Finishing: INSTALL_JFROG_PROVIDER"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=CREATE_TEST_POD",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5004, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5004\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5004",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5004, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5004/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5004/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T13:31:39.0000000Z Starting: CREATE_TEST_POD\n2026-10-16T13:31:39.0000000Z TestScenario=CREATE_TEST_POD\n2026-10-16T13:31:39.0000000Z Events:\n2026-10-16T13:31:39.0000000Z   Normal  Scheduled  default-scheduler  Successfully assigned jfrog/secretless-pull-test to aks-nodepool1-12345678-vmss00000g\n2026-10-16T13:31:39.0000000Z   Normal  Pulled  kubelet  Container image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\" already present on machine\n2026-10-16T13:31:39.0000000Z   Normal  Created  kubelet  Created container: test\n2026-10-16T13:31:39.0000000Z   Normal  Started  kubelet  Started container test\n2026-10-16T13:31:39.0000000Z   Pod phase: Running\n2026-10-16T13:31:39.0000000Z Finishing: CREATE_TEST_POD"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=CHECK_KUBELET_PROVIDER",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5005, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5005\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5005",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5005, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5005/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5005/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T12:31:38.0000000Z Starting: CHECK_KUBELET_PROVIDER\n2026-10-16T12:31:38.0000000Z TestScenario=CHECK_KUBELET_PROVIDER\n2026-10-16T12:31:38.0000000Z ===== kubelet flags =====\n2026-10-16T12:31:38.0000000Z /usr/local/bin/kubelet --image-credential-provider-config=/var/lib/kubelet/credential-provider-config.yaml --image-credential-provider-bin-dir=/var/lib/kubelet/credential-provider\n2026-10-16T12:31:38.0000000Z ===== node config =====\n2026-10-16T12:31:38.0000000Z apiVersion: kubelet.config.k8s.io/v1\n2026-10-16T12:31:38.0000000Z kind: CredentialProviderConfig\n2026-10-16T12:31:38.0000000Z providers:\n2026-10-16T12:31:38.0000000Z   - name: acr-credential-provider\n2026-10-16T12:31:38.0000000Z     apiVersion: credentialprovider.kubelet.k8s.io/v1\n2026-10-16T12:31:38.0000000Z     matchImages:\n2026-10-16T12:31:38.0000000Z       - \"*.azurecr.io\"\n2026-10-16T12:31:38.0000000Z       - \"*.azurecr.cn\"\n2026-10-16T12:31:38.0000000Z       - \"*.azurecr.de\"\n2026-10-16T12:31:38.0000000Z       - \"*.azurecr.us\"\n2026-10-16T12:31:38.0000000Z     defaultCacheDuration: 10m\n2026-10-16T12:31:38.0000000Z     args:\n2026-10-16T12:31:38.0000000Z       - /etc/kubernetes/azure.json\n2026-10-16T12:31:38.0000000Z   - name: jfrog-credentials-provider\n2026-10-16T12:31:38.0000000Z     apiVersion: credentialprovider.kubelet.k8s.io/v1\n2026-10-16T12:31:38.0000000Z     matchImages:\n2026-10-16T12:31:38.0000000Z       - \"example-aks-sandbox-test-docker-local.jfrog.io\"\n2026-10-16T12:31:38.0000000Z     defaultCacheDuration: 5h\n2026-10-16T12:31:38.0000000Z     env:\n2026-10-16T12:31:38.0000000Z       - name: artifactory_url\n2026-10-16T12:31:38.0000000Z         value: example.jfrog.io\n2026-10-16T12:31:38.0000000Z       - name: azure_app_audience\n2026-10-16T12:31:38.0000000Z         value: api://AzureADTokenExchange\n2026-10-16T12:31:38.0000000Z       - name: jfrog_oidc_provider_name\n2026-10-16T12:31:38.0000000Z         value: aks-sandbox-oidc\n2026-10-16T12:31:38.0000000Z       - name: disable_provider_autoupdate\n2026-10-16T12:31:38.0000000Z         value: \"true\"\n2026-10-16T12:31:38.0000000Z     tokenAttributes:\n2026-10-16T12:31:38.0000000Z       serviceAccountTokenAudience: api://AzureADTokenExchange\n2026-10-16T12:31:38.0000000Z       cacheType: ServiceAccount\n2026-10-16T12:31:38.0000000Z       requireServiceAccount: true\n2026-10-16T12:31:38.0000000Z       requiredServiceAccountAnnotationKeys:\n2026-10-16T12:31:38.0000000Z         - JFrogExchange\n2026-10-16T12:31:38.0000000Z       optionalServiceAccountAnnotationKeys:\n2026-10-16T12:31:38.0000000Z         - azure.workload.identity/client-id\n2026-10-16T12:31:38.0000000Z \n2026-10-16T12:31:38.0000000Z ===== plugin log (last 10) =====\n2026-10-16T12:31:38.0000000Z {\"level\": \"error\", \"time\": \"2026-10-16T12:10:07Z\", \"msg\": \"ERROR createArtifactoryToken failed Cause Post \\\"https://https//example.jfrog.io/access/api/v1/oidc/token\\\": dial tcp: lookup https on 168.63.129.16:53: no such host\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"Auto-update functionality is disabled\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"getting envs - azureAppAudience: api://AzureADTokenExchange, jfrogOidcProviderName: aks-sandbox-oidc\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"Service Account Token obtained using Pod Identity (Kubernetes Workload Identity)\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"RT oidc token url :https://https://example.jfrog.io/access/api/v1/oidc/token\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"error\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"ERROR createArtifactoryToken failed Cause Post \\\"https://https//example.jfrog.io/access/api/v1/oidc/token\\\": dial tcp: lookup https on 168.63.129.16:53: no such host\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:31:25Z\", \"msg\": \"Auto-update functionality is disabled\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:31:25Z\", \"msg\": \"getting envs - azureAppAudience: api://AzureADTokenExchange, jfrogOidcProviderName: aks-sandbox-oidc\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:31:25Z\", \"msg\": \"Service Account Token obtained using Pod Identity (Kubernetes Workload Identity)\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:31:25Z\", \"msg\": \"RT oidc token url :https://example.jfrog.io/access/api/v1/oidc/token\"}\n2026-10-16T12:31:38.0000000Z ===== kubelet journal (windowed) =====\n2026-10-16T12:31:38.0000000Z 2026-10-16T12:10:07Z aks-nodepool1-12345678-vmss00000g kubelet: Failed to provide credentials for image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": error execing credential provider plugin jfrog-credentials-provider for image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": exit status 1:\n2026-10-16T12:31:38.0000000Z 2026-10-16T12:25:15Z aks-nodepool1-12345678-vmss00000g kubelet: Failed to provide credentials for image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": error execing credential provider plugin jfrog-credentials-provider for image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": exit status 1:\n2026-10-16T12:31:38.0000000Z ================ QUICK SUMMARY ================\n2026-10-16T12:31:38.0000000Z Node inspected: aks-nodepool1-12345678-vmss00000g\n2026-10-16T12:31:38.0000000Z Node chosen because: node of pod jfrog/secretless-pull-test\n2026-10-16T12:31:38.0000000Z Kubelet flags: --image-credential-provider-config=/var/lib/kubelet/credential-provider-config.yaml --image-credential-provider-bin-dir=/var/lib/kubelet/credential-provider\n2026-10-16T12:31:38.0000000Z Kubelet started at: 2026-10-16T12:30:24Z\n2026-10-16T12:31:38.0000000Z Config file mtime: 2026-10-16T12:30:23Z\n2026-10-16T12:31:38.0000000Z Providers in config: acr-credential-provider, jfrog-credentials-provider\n2026-10-16T12:31:38.0000000Z Bin dir: acr-credential-provider, jfrog-credentials-provider (14359603 bytes)\n2026-10-16T12:31:38.0000000Z -- jfrog provider entry --\n2026-10-16T12:31:38.0000000Z   - name: jfrog-credentials-provider\n2026-10-16T12:31:38.0000000Z     apiVersion: credentialprovider.kubelet.k8s.io/v1\n2026-10-16T12:31:38.0000000Z     matchImages:\n2026-10-16T12:31:38.0000000Z       - \"example-aks-sandbox-test-docker-local.jfrog.io\"\n2026-10-16T12:31:38.0000000Z     defaultCacheDuration: 5h\n2026-10-16T12:31:38.0000000Z     env:\n2026-10-16T12:31:38.0000000Z       - name: artifactory_url\n2026-10-16T12:31:38.0000000Z         value: example.jfrog.io\n2026-10-16T12:31:38.0000000Z       - name: azure_app_audience\n2026-10-16T12:31:38.0000000Z         value: api://AzureADTokenExchange\n2026-10-16T12:31:38.0000000Z       - name: jfrog_oidc_provider_name\n2026-10-16T12:31:38.0000000Z         value: aks-sandbox-oidc\n2026-10-16T12:31:38.0000000Z       - name: disable_provider_autoupdate\n2026-10-16T12:31:38.0000000Z         value: \"true\"\n2026-10-16T12:31:38.0000000Z     tokenAttributes:\n2026-10-16T12:31:38.0000000Z       serviceAccountTokenAudience: api://AzureADTokenExchange\n2026-10-16T12:31:38.0000000Z       cacheType: ServiceAccount\n2026-10-16T12:31:38.0000000Z       requireServiceAccount: true\n2026-10-16T12:31:38.0000000Z       requiredServiceAccountAnnotationKeys:\n2026-10-16T12:31:38.0000000Z         - JFrogExchange\n2026-10-16T12:31:38.0000000Z       optionalServiceAccountAnnotationKeys:\n2026-10-16T12:31:38.0000000Z         - azure.workload.identity/client-id\n2026-10-16T12:31:38.0000000Z -- latest OIDC token URLs --\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:10:07Z\", \"msg\": \"RT oidc token url :https://https://example.jfrog.io/access/api/v1/oidc/token\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:25:15Z\", \"msg\": \"RT oidc token url :https://https://example.jfrog.io/access/api/v1/oidc/token\"}\n2026-10-16T12:31:38.0000000Z {\"level\": \"info\", \"time\": \"2026-10-16T12:31:25Z\", \"msg\": \"RT oidc token url :https://example.jfrog.io/access/api/v1/oidc/token\"}\n2026-10-16T12:31:38.0000000Z ===============================================\n2026-10-16T12:31:38.0000000Z Finishing: CHECK_KUBELET_PROVIDER"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=CHECK_JFROG_POD_CONFIG",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5006, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5006\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5006",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5006, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5006/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5006/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T12:25:17.0000000Z Starting: CHECK_JFROG_POD_CONFIG\n2026-10-16T12:25:17.0000000Z TestScenario=CHECK_JFROG_POD_CONFIG\n2026-10-16T12:25:17.0000000Z ===== helm get values -a =====\n2026-10-16T12:25:17.0000000Z providerConfig:\n2026-10-16T12:25:17.0000000Z   - name: jfrog-credentials-provider\n2026-10-16T12:25:17.0000000Z     # Bare hostname, NOT a URL: the plugin prepends \"https://\" itself.\n2026-10-16T12:25:17.0000000Z     artifactoryUrl: \"example.jfrog.io\"\n2026-10-16T12:25:17.0000000Z     matchImages:\n2026-10-16T12:25:17.0000000Z       # The repo's dedicated subdomain (the bare-domain path method does not work here).\n2026-10-16T12:25:17.0000000Z       - \"example-aks-sandbox-test-docker-local.jfrog.io\"\n2026-10-16T12:25:17.0000000Z     defaultCacheDuration: 5h\n2026-10-16T12:25:17.0000000Z     tokenAttributes:\n2026-10-16T12:25:17.0000000Z       enabled: true\n2026-10-16T12:25:17.0000000Z     azure:\n2026-10-16T12:25:17.0000000Z       enabled: true\n2026-10-16T12:25:17.0000000Z       azure_app_audience: \"api://AzureADTokenExchange\"\n2026-10-16T12:25:17.0000000Z       jfrog_oidc_provider_name: \"aks-sandbox-oidc\"\n2026-10-16T12:25:17.0000000Z rbac:\n2026-10-16T12:25:17.0000000Z   create: true\n2026-10-16T12:25:17.0000000Z affinity:\n2026-10-16T12:25:17.0000000Z   nodeAffinity:\n2026-10-16T12:25:17.0000000Z     requiredDuringSchedulingIgnoredDuringExecution:\n2026-10-16T12:25:17.0000000Z       nodeSelectorTerms:\n2026-10-16T12:25:17.0000000Z         - matchExpressions:\n2026-10-16T12:25:17.0000000Z             - key: credentialsProviderEnabled\n2026-10-16T12:25:17.0000000Z               operator: In\n2026-10-16T12:25:17.0000000Z               values:\n2026-10-16T12:25:17.0000000Z                 - \"true\"\n2026-10-16T12:25:17.0000000Z downloadUrl: \"https://example.jfrog.io/artifactory/aks-sandbox-generic-local/jfrog-credential-provider/1.4.0/jfrog-credential-provider-linux\"\n2026-10-16T12:25:17.0000000Z \n2026-10-16T12:25:17.0000000Z ===== rendered artifactory_url =====\n2026-10-16T12:25:17.0000000Z         - name: artifactory_url\n2026-10-16T12:25:17.0000000Z           value: \"example.jfrog.io\"\n2026-10-16T12:25:17.0000000Z ===== chart =====\n2026-10-16T12:25:17.0000000Z NAME                 NAMESPACE  REVISION  STATUS    CHART                            APP VERSION\n2026-10-16T12:25:17.0000000Z jfrog-cred-provider  jfrog  2  deployed  jfrog-credential-provider-1.4.0  1.4.0\n2026-10-16T12:25:17.0000000Z ===== service account =====\n2026-10-16T12:25:17.0000000Z apiVersion: v1\n2026-10-16T12:25:17.0000000Z kind: ServiceAccount\n2026-10-16T12:25:17.0000000Z metadata:\n2026-10-16T12:25:17.0000000Z   name: jfrog-provider-sa\n2026-10-16T12:25:17.0000000Z   namespace: jfrog\n2026-10-16T12:25:17.0000000Z   annotations:\n2026-10-16T12:25:17.0000000Z     JFrogExchange: \"true\"\n2026-10-16T12:25:17.0000000Z ===== restart =====\n2026-10-16T12:25:17.0000000Z daemonset.apps/jfrog-cred-provider-jfrog-credential-provider-daemonset restarted\n2026-10-16T12:25:17.0000000Z Finishing: CHECK_JFROG_POD_CONFIG"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=RESET_NODE_JFROG_ENTRY",
+   "DryRun=true",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5007, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5007\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5007",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5007, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5007/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5007/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z RESET_NODE_JFROG_ENTRY DryRun=true\n2026-10-16T15:00:00.0000000Z [aks-nodepool1-12345678-vmss00000e] Nothing to fix on this node\n2026-10-16T15:00:00.0000000Z [aks-nodepool1-12345678-vmss00000g] Nothing to fix on this node"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=RESET_NODE_JFROG_ENTRY",
+   "DryRun=false",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5008, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5008\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5008",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5008, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5008/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5008/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T12:30:24.0000000Z Starting: RESET_NODE_JFROG_ENTRY\n2026-10-16T12:30:24.0000000Z TestScenario=RESET_NODE_JFROG_ENTRY DryRun=false\n2026-10-16T12:30:24.0000000Z RESET_NODE_JFROG_ENTRY DryRun=false\n2026-10-16T12:30:24.0000000Z [aks-nodepool1-12345678-vmss00000e] backed up to /var/lib/kubelet/credential-provider-config.yaml.bak-before-jfrog-reset; removed the JFrog entry\n2026-10-16T12:30:24.0000000Z apiVersion: kubelet.config.k8s.io/v1\n2026-10-16T12:30:24.0000000Z kind: CredentialProviderConfig\n2026-10-16T12:30:24.0000000Z providers:\n2026-10-16T12:30:24.0000000Z   - name: acr-credential-provider\n2026-10-16T12:30:24.0000000Z     apiVersion: credentialprovider.kubelet.k8s.io/v1\n2026-10-16T12:30:24.0000000Z     matchImages:\n2026-10-16T12:30:24.0000000Z       - \"*.azurecr.io\"\n2026-10-16T12:30:24.0000000Z       - \"*.azurecr.cn\"\n2026-10-16T12:30:24.0000000Z       - \"*.azurecr.de\"\n2026-10-16T12:30:24.0000000Z       - \"*.azurecr.us\"\n2026-10-16T12:30:24.0000000Z     defaultCacheDuration: 10m\n2026-10-16T12:30:24.0000000Z     args:\n2026-10-16T12:30:24.0000000Z       - /etc/kubernetes/azure.json\n2026-10-16T12:30:24.0000000Z \n2026-10-16T12:30:24.0000000Z [aks-nodepool1-12345678-vmss00000g] backed up to /var/lib/kubelet/credential-provider-config.yaml.bak-before-jfrog-reset; removed the JFrog entry\n2026-10-16T12:30:24.0000000Z apiVersion: kubelet.config.k8s.io/v1\n2026-10-16T12:30:24.0000000Z kind: CredentialProviderConfig\n2026-10-16T12:30:24.0000000Z providers:\n2026-10-16T12:30:24.0000000Z   - name: acr-credential-provider\n2026-10-16T12:30:24.0000000Z     apiVersion: credentialprovider.kubelet.k8s.io/v1\n2026-10-16T12:30:24.0000000Z     matchImages:\n2026-10-16T12:30:24.0000000Z       - \"*.azurecr.io\"\n2026-10-16T12:30:24.0000000Z       - \"*.azurecr.cn\"\n2026-10-16T12:30:24.0000000Z       - \"*.azurecr.de\"\n2026-10-16T12:30:24.0000000Z       - \"*.azurecr.us\"\n2026-10-16T12:30:24.0000000Z     defaultCacheDuration: 10m\n2026-10-16T12:30:24.0000000Z     args:\n2026-10-16T12:30:24.0000000Z       - /etc/kubernetes/azure.json\n2026-10-16T12:30:24.0000000Z Finishing: RESET_NODE_JFROG_ENTRY"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=CLEANUP_STALE_JFROG_DAEMONSET",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5009, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5009\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5009",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5009, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5009/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5009/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z No JFrog DaemonSet outside jfrog: nothing to delete"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=FIND_CREDENTIAL_PROVIDER_WRITERS",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5010, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5010\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5010",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5010, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5010/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5010/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z ===== DaemonSets mounting /var/lib/kubelet =====\n2026-10-16T15:00:00.0000000Z jfrog/jfrog-cred-provider-jfrog-credential-provider-daemonset  hostPath /var/lib/kubelet\n2026-10-16T15:00:00.0000000Z ===== JFrog DaemonSets in other namespaces =====\n2026-10-16T15:00:00.0000000Z (none: jfrog-provider/jfrog-credential-provider was deleted 2026-10-16)"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=CHECK_AKS_NODEPOOL_CONFIG",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5011, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5011\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5011",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5011, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5011/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5011/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z nodepool appnodepool: no custom kubelet config, no linuxOSConfig credential-provider changes"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=CHECK_NODE_VMSS_EXTENSIONS",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5012, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5012\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5012",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5012, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5012/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5012/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z VMSS extensions: vmssCSE, AKSLinuxBilling (no credential-provider writers)"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=MIRROR_TEST_IMAGE",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5013, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5013\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5013",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5013, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5013/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5013/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z GET https://example-docker-remote.jfrog.io/v2/library/alpine/manifests/latest \u2192 302 https://landing.jfrog.com/reactivate-server/example-docker-remote"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=CREATE_CONTROL_POD",
+   "TEST_POD_SA=default",
+   "TEST_POD_NAME=control-pull-test",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5014, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5014\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5014",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5014, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5014/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5014/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z Events:\n2026-10-16T15:00:00.0000000Z   Normal  Scheduled  default-scheduler  Successfully assigned jfrog/control-pull-test to aks-nodepool1-12345678-vmss00000g\n2026-10-16T15:00:00.0000000Z   Normal  Pulling  kubelet  Pulling image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\"\n2026-10-16T15:00:00.0000000Z   Warning  Failed  kubelet  Failed to pull image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\": failed to fetch anonymous token: unexpected status from GET request to https://example-aks-sandbox-test-docker-local.jfrog.io/artifactory/api/docker/aks-sandbox-test-docker-local/v2/token?scope=repository%3Amcp%2Fsonarqube%3Apull&service=example-aks-sandbox-test-docker-local.jfrog.io : 401\n2026-10-16T15:00:00.0000000Z   Warning  Failed  kubelet  Error: ErrImagePull\n2026-10-16T15:00:00.0000000Z   Normal  BackOff  kubelet  Back-off pulling image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\"\n2026-10-16T15:00:00.0000000Z   Warning  Failed  kubelet  Error: ImagePullBackOff"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=DELETE_TEST_POD",
+   "DryRun=true",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5015, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5015\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5015",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5015, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5015/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5015/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z DryRun: would delete pod jfrog/secretless-pull-test"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=DELETE_TEST_POD",
+   "DryRun=false",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5016, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5016\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5016",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5016, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5016/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5016/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z deleted pod jfrog/secretless-pull-test"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=UNINSTALL_JFROG_PROVIDER",
+   "DryRun=true",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5017, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5017\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5017",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5017, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5017/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5017/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z DryRun: would run helm uninstall jfrog-cred-provider -n jfrog (node entries stay until RESET_NODE_JFROG_ENTRY; untested)"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=UNINSTALL_JFROG_PROVIDER",
+   "DryRun=false",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5018, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5018\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5018",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5018, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5018/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5018/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z ran helm uninstall jfrog-cred-provider -n jfrog (node entries stay until RESET_NODE_JFROG_ENTRY; untested)"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=REMOVE_NODE_LABEL",
+   "DryRun=true",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5019, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5019\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5019",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5019, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5019/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5019/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z DryRun: would run kubectl label nodes --all credentialsProviderEnabled-"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "argocd-utility",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "TestScenario=REMOVE_NODE_LABEL",
+   "DryRun=false",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5020, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5020\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5020",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5020, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5020/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5020/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z ran kubectl label nodes --all credentialsProviderEnabled-"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "jfrog-kcp-cluster",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "Action=Preflight",
+   "DryRun=true",
+   "ClusterName=aks-sandbox-01",
+   "SubscriptionId=00000000-0000-0000-0000-0000000000a1",
+   "Environment=SBX",
+   "MatchImages=example-aks-sandbox-test-docker-local.jfrog.io",
+   "BinaryMirrorRepo=aks-sandbox-generic-local",
+   "ArtifactoryHost=example.jfrog.io",
+   "OidcProviderName=aks-sandbox-oidc",
+   "DefaultCacheDuration=30m",
+   "MaxUnavailable=10%",
+   "VerifySampleNodes=3",
+   "TestImage=example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1",
+   "ResetStaleNodeEntries=false",
+   "ChartVersion=1.4.0",
+   "BinaryVersion=1.4.0",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5021, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5021\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5021",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5021, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5021/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5021/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z OIDC issuer: enabled. Workload Identity: enabled. Foreign JFrog provider DaemonSets: none. Existing release: jfrog-cred-provider (rev 15). Sampled nodes: azure provider entry present."
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "jfrog-kcp-cluster",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "Action=Preflight",
+   "DryRun=false",
+   "ClusterName=aks-sandbox-01",
+   "SubscriptionId=00000000-0000-0000-0000-0000000000a1",
+   "Environment=SBX",
+   "MatchImages=example-aks-sandbox-test-docker-local.jfrog.io",
+   "BinaryMirrorRepo=aks-sandbox-generic-local",
+   "ArtifactoryHost=example.jfrog.io",
+   "OidcProviderName=aks-sandbox-oidc",
+   "DefaultCacheDuration=30m",
+   "MaxUnavailable=10%",
+   "VerifySampleNodes=3",
+   "TestImage=example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1",
+   "ResetStaleNodeEntries=false",
+   "ChartVersion=1.4.0",
+   "BinaryVersion=1.4.0",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5022, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5022\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5022",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5022, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5022/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5022/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z OIDC issuer: enabled. Workload Identity: enabled. Foreign JFrog provider DaemonSets: none. Existing release: jfrog-cred-provider (rev 15). Sampled nodes: azure provider entry present."
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "jfrog-kcp-cluster",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "Action=Install",
+   "DryRun=true",
+   "ClusterName=aks-sandbox-01",
+   "SubscriptionId=00000000-0000-0000-0000-0000000000a1",
+   "Environment=SBX",
+   "MatchImages=example-aks-sandbox-test-docker-local.jfrog.io",
+   "BinaryMirrorRepo=aks-sandbox-generic-local",
+   "ArtifactoryHost=example.jfrog.io",
+   "OidcProviderName=aks-sandbox-oidc",
+   "DefaultCacheDuration=30m",
+   "MaxUnavailable=10%",
+   "VerifySampleNodes=3",
+   "TestImage=example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1",
+   "ResetStaleNodeEntries=false",
+   "ChartVersion=1.4.0",
+   "BinaryVersion=1.4.0",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5023, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5023\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5023",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5023, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5023/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5023/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z Install (DryRun: nothing changed) finished"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "jfrog-kcp-cluster",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "Action=Install",
+   "DryRun=false",
+   "ClusterName=aks-sandbox-01",
+   "SubscriptionId=00000000-0000-0000-0000-0000000000a1",
+   "Environment=SBX",
+   "MatchImages=example-aks-sandbox-test-docker-local.jfrog.io",
+   "BinaryMirrorRepo=aks-sandbox-generic-local",
+   "ArtifactoryHost=example.jfrog.io",
+   "OidcProviderName=aks-sandbox-oidc",
+   "DefaultCacheDuration=30m",
+   "MaxUnavailable=10%",
+   "VerifySampleNodes=3",
+   "TestImage=example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1",
+   "ResetStaleNodeEntries=false",
+   "ChartVersion=1.4.0",
+   "BinaryVersion=1.4.0",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5024, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5024\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5024",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5024, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5024/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5024/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z Install finished"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "jfrog-kcp-cluster",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "Action=Verify",
+   "DryRun=true",
+   "ClusterName=aks-sandbox-01",
+   "SubscriptionId=00000000-0000-0000-0000-0000000000a1",
+   "Environment=SBX",
+   "MatchImages=example-aks-sandbox-test-docker-local.jfrog.io",
+   "BinaryMirrorRepo=aks-sandbox-generic-local",
+   "ArtifactoryHost=example.jfrog.io",
+   "OidcProviderName=aks-sandbox-oidc",
+   "DefaultCacheDuration=30m",
+   "MaxUnavailable=10%",
+   "VerifySampleNodes=3",
+   "TestImage=example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1",
+   "ResetStaleNodeEntries=false",
+   "ChartVersion=1.4.0",
+   "BinaryVersion=1.4.0",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5025, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5025\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5025",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5025, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5025/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5025/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T13:31:39.0000000Z Starting: CREATE_TEST_POD\n2026-10-16T13:31:39.0000000Z TestScenario=CREATE_TEST_POD\n2026-10-16T13:31:39.0000000Z Events:\n2026-10-16T13:31:39.0000000Z   Normal  Scheduled  default-scheduler  Successfully assigned jfrog/secretless-pull-test to aks-nodepool1-12345678-vmss00000g\n2026-10-16T13:31:39.0000000Z   Normal  Pulled  kubelet  Container image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\" already present on machine\n2026-10-16T13:31:39.0000000Z   Normal  Created  kubelet  Created container: test\n2026-10-16T13:31:39.0000000Z   Normal  Started  kubelet  Started container test\n2026-10-16T13:31:39.0000000Z   Pod phase: Running\n2026-10-16T13:31:39.0000000Z Finishing: CREATE_TEST_POD"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "jfrog-kcp-cluster",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "Action=Verify",
+   "DryRun=false",
+   "ClusterName=aks-sandbox-01",
+   "SubscriptionId=00000000-0000-0000-0000-0000000000a1",
+   "Environment=SBX",
+   "MatchImages=example-aks-sandbox-test-docker-local.jfrog.io",
+   "BinaryMirrorRepo=aks-sandbox-generic-local",
+   "ArtifactoryHost=example.jfrog.io",
+   "OidcProviderName=aks-sandbox-oidc",
+   "DefaultCacheDuration=30m",
+   "MaxUnavailable=10%",
+   "VerifySampleNodes=3",
+   "TestImage=example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1",
+   "ResetStaleNodeEntries=false",
+   "ChartVersion=1.4.0",
+   "BinaryVersion=1.4.0",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5026, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5026\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5026",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5026, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5026/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5026/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T13:31:39.0000000Z Starting: CREATE_TEST_POD\n2026-10-16T13:31:39.0000000Z TestScenario=CREATE_TEST_POD\n2026-10-16T13:31:39.0000000Z Events:\n2026-10-16T13:31:39.0000000Z   Normal  Scheduled  default-scheduler  Successfully assigned jfrog/secretless-pull-test to aks-nodepool1-12345678-vmss00000g\n2026-10-16T13:31:39.0000000Z   Normal  Pulled  kubelet  Container image \"example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1\" already present on machine\n2026-10-16T13:31:39.0000000Z   Normal  Created  kubelet  Created container: test\n2026-10-16T13:31:39.0000000Z   Normal  Started  kubelet  Started container test\n2026-10-16T13:31:39.0000000Z   Pod phase: Running\n2026-10-16T13:31:39.0000000Z Finishing: CREATE_TEST_POD"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "jfrog-kcp-cluster",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "Action=ResetNodeEntry",
+   "DryRun=true",
+   "ClusterName=aks-sandbox-01",
+   "SubscriptionId=00000000-0000-0000-0000-0000000000a1",
+   "Environment=SBX",
+   "MatchImages=example-aks-sandbox-test-docker-local.jfrog.io",
+   "BinaryMirrorRepo=aks-sandbox-generic-local",
+   "ArtifactoryHost=example.jfrog.io",
+   "OidcProviderName=aks-sandbox-oidc",
+   "DefaultCacheDuration=30m",
+   "MaxUnavailable=10%",
+   "VerifySampleNodes=3",
+   "TestImage=example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1",
+   "ResetStaleNodeEntries=false",
+   "ChartVersion=1.4.0",
+   "BinaryVersion=1.4.0",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5027, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5027\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5027",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5027, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5027/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5027/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z ResetNodeEntry (DryRun: nothing changed) finished"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "jfrog-kcp-cluster",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "Action=ResetNodeEntry",
+   "DryRun=false",
+   "ClusterName=aks-sandbox-01",
+   "SubscriptionId=00000000-0000-0000-0000-0000000000a1",
+   "Environment=SBX",
+   "MatchImages=example-aks-sandbox-test-docker-local.jfrog.io",
+   "BinaryMirrorRepo=aks-sandbox-generic-local",
+   "ArtifactoryHost=example.jfrog.io",
+   "OidcProviderName=aks-sandbox-oidc",
+   "DefaultCacheDuration=30m",
+   "MaxUnavailable=10%",
+   "VerifySampleNodes=3",
+   "TestImage=example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1",
+   "ResetStaleNodeEntries=false",
+   "ChartVersion=1.4.0",
+   "BinaryVersion=1.4.0",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5028, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5028\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5028",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5028, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5028/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5028/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z ResetNodeEntry finished"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "jfrog-kcp-cluster",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "Action=Uninstall",
+   "DryRun=true",
+   "ClusterName=aks-sandbox-01",
+   "SubscriptionId=00000000-0000-0000-0000-0000000000a1",
+   "Environment=SBX",
+   "MatchImages=example-aks-sandbox-test-docker-local.jfrog.io",
+   "BinaryMirrorRepo=aks-sandbox-generic-local",
+   "ArtifactoryHost=example.jfrog.io",
+   "OidcProviderName=aks-sandbox-oidc",
+   "DefaultCacheDuration=30m",
+   "MaxUnavailable=10%",
+   "VerifySampleNodes=3",
+   "TestImage=example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1",
+   "ResetStaleNodeEntries=false",
+   "ChartVersion=1.4.0",
+   "BinaryVersion=1.4.0",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5029, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5029\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5029",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5029, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5029/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5029/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z Uninstall (DryRun: nothing changed) finished"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "jfrog-kcp-cluster",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "Action=Uninstall",
+   "DryRun=false",
+   "ClusterName=aks-sandbox-01",
+   "SubscriptionId=00000000-0000-0000-0000-0000000000a1",
+   "Environment=SBX",
+   "MatchImages=example-aks-sandbox-test-docker-local.jfrog.io",
+   "BinaryMirrorRepo=aks-sandbox-generic-local",
+   "ArtifactoryHost=example.jfrog.io",
+   "OidcProviderName=aks-sandbox-oidc",
+   "DefaultCacheDuration=30m",
+   "MaxUnavailable=10%",
+   "VerifySampleNodes=3",
+   "TestImage=example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1",
+   "ResetStaleNodeEntries=false",
+   "ChartVersion=1.4.0",
+   "BinaryVersion=1.4.0",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5030, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5030\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5030",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5030, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5030/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5030/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z Uninstall finished"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "jfrog-kcp-mappings",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "ClusterName=aks-sandbox-01",
+   "DryRun=true",
+   "Prune=false",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5031, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5031\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5031",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5031, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5031/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5031/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z mappings/aks-sandbox-01.json: 1 mapping, 0 to create, 0 to update, 0 to prune (Prune=false) [DryRun]"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "run",
+   "--name",
+   "jfrog-kcp-mappings",
+   "--branch",
+   "feature/jfrog-kcp",
+   "--parameters",
+   "ClusterName=aks-sandbox-01",
+   "DryRun=false",
+   "Prune=false",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5032, \"status\": \"notStarted\", \"_links\": {\"web\": {\"href\": \"https://dev.azure.com/example-org/ArgoCD/_build/results?buildId=5032\"}}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "runs",
+   "show",
+   "--id",
+   "5032",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": 5032, \"status\": \"completed\", \"result\": \"succeeded\", \"finishTime\": \"2026-10-16T15:00:00Z\"}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5032/logs?api-version=7.1",
+  "status": 200,
+  "body": "{\"count\": 1, \"value\": [{\"id\": 1}]}"
+ },
+ {
+  "http": "GET https://dev.azure.com/example-org/ArgoCD/_apis/build/builds/5032/logs/1?api-version=7.1",
+  "status": 200,
+  "body": "2026-10-16T15:00:00.0000000Z mappings/aks-sandbox-01.json: 1 mapping, 0 to create, 0 to update, 0 to prune (Prune=false)"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "variable",
+   "list",
+   "--pipeline-name",
+   "jfrog-kcp-cluster",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"JfrogDownloadToken\": {\"isSecret\": true, \"value\": null, \"allowOverride\": true}}"
+ },
+ {
+  "argv": [
+   "az",
+   "pipelines",
+   "variable",
+   "list",
+   "--pipeline-name",
+   "jfrog-kcp-mappings",
+   "--org",
+   "https://dev.azure.com/example-org",
+   "--project",
+   "ArgoCD",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"JfrogDownloadToken\": {\"isSecret\": true, \"value\": null, \"allowOverride\": true}}"
+ }
+]

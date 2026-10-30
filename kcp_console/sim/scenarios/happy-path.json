@@ -1,0 +1,34 @@
+{
+  "name": "happy-path",
+  "title": "Secretless pull works end to end",
+  "story": "Provider, mapping, binary and tag in place; install; the test pod pulls via a fresh exchange and the pull is attributed to the mapped user.",
+  "runbook": "\u00a75 Phase 4-5",
+  "config": {},
+  "steps": [
+    [
+      "baseline"
+    ],
+    [
+      "install"
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "PASS",
+    "root_cause": null,
+    "audit": "PASS",
+    "chain": [
+      "exchange succeeded as kcp-pull-user"
+    ],
+    "absent": [
+      "anon-401",
+      "doubled-https",
+      "cached-token-silent"
+    ]
+  }
+}

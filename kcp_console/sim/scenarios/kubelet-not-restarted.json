@@ -1,0 +1,52 @@
+{
+  "name": "kubelet-not-restarted",
+  "title": "Fixed on disk, not loaded",
+  "story": "The node file was corrected but kubelet was not restarted. It still runs the config it read at its own start, which had the doubled URL.",
+  "runbook": "\u00a79 'Node config fixed but behaviour unchanged'",
+  "config": {},
+  "steps": [
+    [
+      "baseline"
+    ],
+    [
+      "install",
+      {
+        "values": {
+          "artifactory_url": "https://example.jfrog.io"
+        }
+      }
+    ],
+    [
+      "set",
+      {
+        "setup_restarts_kubelet": false
+      }
+    ],
+    [
+      "install"
+    ],
+    [
+      "reset_node_entries",
+      {
+        "dry_run": false
+      }
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "FAIL",
+    "root_cause": "kubelet-old-config",
+    "findings": [
+      "kubelet-old-config",
+      "doubled-https"
+    ],
+    "chain": [
+      "kubelet was not restarted"
+    ]
+  }
+}

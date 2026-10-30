@@ -1,0 +1,33 @@
+# console runtime state (configs are safe; runs/workspaces may hold plan details)
+.console/runs/
+.console/workspaces/
+.console/session-token
+# python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+# terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+plan.bin
+crash.log
+terraform.tfvars
+!*.tfvars.example
+# local
+.env
+.DS_Store
+.playwright-mcp/
+
+# KCP console runtime state (configs are safe; runs may hold pipeline logs, redacted)
+.kcp-console/runs/
+.kcp-console/session-token
+.kcp-console/status/
+.kcp-console/replay/
+
+# Local console state, including saved configs and your own runbook: never commit (the repo is public)
+.console/
+.kcp-console/

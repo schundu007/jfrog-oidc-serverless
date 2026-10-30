@@ -1,0 +1,25 @@
+{
+  "name": "rotator-down-5h",
+  "description": "Rotator runs fail 03:00\u201308:00 (Cloud Run). Uncached pulls fail from 06:23; the alert fired about 05:23.",
+  "target_kind": "gcp_run_service",
+  "duration": "24h",
+  "clock_start": "2026-01-01T00:00:00Z",
+  "seed": 1,
+  "config_overrides": {},
+  "load": {
+    "cold_starts_per_hour": 12,
+    "uncached_pull_ratio": 0.5
+  },
+  "faults": [
+    {
+      "type": "rotator_down",
+      "start": "03:00",
+      "end": "08:00"
+    }
+  ],
+  "expect": {
+    "verdict": "fail",
+    "alert_fired_before": "06:23",
+    "first_failure_after": "06:23"
+  }
+}

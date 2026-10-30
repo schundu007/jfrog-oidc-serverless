@@ -1,0 +1,40 @@
+{
+  "name": "fresh-node",
+  "title": "A new node gets a correct entry from scratch",
+  "story": "After the fix, a node joins. The DaemonSet writes the entry for the first time, kubelet loads it, and a pod on that node pulls via a fresh exchange.",
+  "runbook": "\u00a711 next steps 'fresh node'",
+  "config": {},
+  "steps": [
+    [
+      "baseline"
+    ],
+    [
+      "install"
+    ],
+    [
+      "add_node",
+      {
+        "name": "aks-nodepool1-12345678-vmss00000h"
+      }
+    ],
+    [
+      "create_pod",
+      {
+        "node": "aks-nodepool1-12345678-vmss00000h"
+      }
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "PASS",
+    "root_cause": null,
+    "chain": [
+      "writes its entry for the first time"
+    ],
+    "absent": [
+      "wrong-node-checked"
+    ]
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "name": "sandbox-pilot",
+  "mode": "pilot",
+  "platform": "aks",
+  "option": "B",
+  "cluster": {
+    "name": "aks-sandbox-01",
+    "resource_group": "rg-aks-sandbox",
+    "subscription_id": "00000000-0000-0000-0000-0000000000a1",
+    "subscription_name": "sandbox-subscription",
+    "oidc_issuer": "https://centralus.oic.prod-aks.azure.com/00000000-0000-0000-0000-0000000000b2/00000000-0000-0000-0000-0000000000c3/",
+    "environment": "SBX",
+    "nodes": [
+      "aks-nodepool1-12345678-vmss00000e",
+      "aks-nodepool1-12345678-vmss00000g"
+    ]
+  },
+  "k8s": {
+    "namespace": "jfrog",
+    "service_account": "jfrog-provider-sa",
+    "release": "jfrog-cred-provider",
+    "daemonset": "jfrog-cred-provider-jfrog-credential-provider-daemonset",
+    "test_pod": "secretless-pull-test",
+    "stale_pods": [
+      "pilot-test-pod"
+    ],
+    "node_label": "credentialsProviderEnabled"
+  },
+  "jfrog": {
+    "host": "example.jfrog.io",
+    "oidc_provider": "aks-sandbox-oidc",
+    "mapping_name": "aks-workload-identity-mapping",
+    "mapped_user": "kcp-pull-user",
+    "scope": "applied-permissions/user",
+    "audience": "*@*",
+    "expires_in": 3600,
+    "protected_providers": [
+      "aks-other-cluster-oidc"
+    ],
+    "test_repo": "aks-sandbox-test-docker-local",
+    "test_repo_host": "example-aks-sandbox-test-docker-local.jfrog.io",
+    "test_image": "example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1",
+    "binary_repo": "aks-sandbox-generic-local",
+    "promote_source_repo": "containers-docker-local"
+  },
+  "values": {
+    "artifactory_url": "example.jfrog.io",
+    "match_images": [
+      "example-aks-sandbox-test-docker-local.jfrog.io"
+    ],
+    "default_cache_duration": "5h",
+    "provider_name": "aks-sandbox-oidc",
+    "azure_app_audience": "api://AzureADTokenExchange",
+    "token_attributes_enabled": true,
+    "download_url": "https://example.jfrog.io/artifactory/aks-sandbox-generic-local/jfrog-credential-provider/1.4.0/jfrog-credential-provider-linux",
+    "chart_repo": "https://charts.jfrog.io",
+    "chart_name": "jfrog/jfrog-credential-provider",
+    "chart_version": "1.4.0",
+    "binary_version": "1.4.0",
+    "rbac_create": true,
+    "node_affinity_label": "credentialsProviderEnabled"
+  },
+  "template": {
+    "ClusterName": "aks-sandbox-01",
+    "SubscriptionId": "00000000-0000-0000-0000-0000000000a1",
+    "Environment": "SBX",
+    "MatchImages": "example-aks-sandbox-test-docker-local.jfrog.io",
+    "BinaryMirrorRepo": "aks-sandbox-generic-local",
+    "ArtifactoryHost": "example.jfrog.io",
+    "OidcProviderName": "aks-sandbox-oidc",
+    "DefaultCacheDuration": "30m",
+    "MaxUnavailable": "10%",
+    "Nodepools": "",
+    "VerifySampleNodes": "3",
+    "TestImage": "example-aks-sandbox-test-docker-local.jfrog.io/mcp/sonarqube:1.26-v1",
+    "ResetStaleNodeEntries": "false",
+    "ChartVersion": "1.4.0",
+    "BinaryVersion": "1.4.0"
+  },
+  "ado": {
+    "organization": "example-org",
+    "project": "ArgoCD",
+    "repo": "ArgoCD.Helm.Template",
+    "branch": "feature/jfrog-kcp",
+    "pilot_pipeline": "argocd-utility",
+    "cluster_pipeline": "jfrog-kcp-cluster",
+    "mappings_pipeline": "jfrog-kcp-mappings",
+    "service_connection": "NPE AKS service connection (the one argocd-utility already uses)",
+    "key_vault": "kv-ci-secrets",
+    "key_vault_secret": "artifactory-download-token",
+    "values_path": "scripts/jfrog-provider/values-sandbox.yaml"
+  },
+  "overrides": {
+    "DiagnosticImage": "mcr.microsoft.com/azurelinux/base/core:3.0",
+    "ChartRepo": "https://charts.jfrog.io"
+  },
+  "demo_mode": false
+}

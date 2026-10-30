@@ -1,0 +1,38 @@
+{
+  "name": "helm-wait-timeout",
+  "title": "helm --wait times out on an unchanged pod",
+  "story": "A broken release, then a fixed one with --wait and no pod deletion. A ConfigMap change does not restart the provider pod, so --wait polls the same broken pod until it times out.",
+  "runbook": "\u00a76 Phase 4 bug 'helm --wait'",
+  "config": {},
+  "steps": [
+    [
+      "baseline"
+    ],
+    [
+      "install",
+      {
+        "values": {
+          "download_url": "https://example.jfrog.io/artifactory/aks-sandbox-generic-local/jfrog-credential-provider/1.4.0/jfrog-credential-provider-linux-amd64"
+        }
+      }
+    ],
+    [
+      "install",
+      {
+        "wait": true,
+        "delete_pods": false
+      }
+    ]
+  ],
+  "expect": {
+    "verdict": "FAIL",
+    "root_cause": "helm-wait",
+    "findings": [
+      "helm-wait",
+      "downloadurl-arch"
+    ],
+    "chain": [
+      "a ConfigMap change does not restart it"
+    ]
+  }
+}

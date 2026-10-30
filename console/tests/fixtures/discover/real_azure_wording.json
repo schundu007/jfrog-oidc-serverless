@@ -1,0 +1,38 @@
+[
+  {
+    "argv": [
+      "az",
+      "functionapp",
+      "show",
+      "-g",
+      "rg-apps",
+      "-n",
+      "ghost",
+      "--subscription",
+      "11111111-2222-3333-4444-555555555555",
+      "-o",
+      "json"
+    ],
+    "rc": 3,
+    "stdout": "",
+    "stderr": "ERROR: Not Found({\"error\":{\"code\":\"ResourceNotFound\",\"message\":\"The Resource 'Microsoft.Web/sites/ghost' under resource group 'rg-apps' was not found. For more details please go to https://aka.ms/ARMResourceNotFoundFix\"}})\n"
+  },
+  {
+    "argv": [
+      "az",
+      "containerapp",
+      "show",
+      "-g",
+      "rg-apps",
+      "-n",
+      "ghost",
+      "--subscription",
+      "11111111-2222-3333-4444-555555555555",
+      "-o",
+      "json"
+    ],
+    "rc": 1,
+    "stdout": "",
+    "stderr": "ERROR: Subscription 11111111-2222-3333-4444-555555555555 is not registered for the Microsoft.App resource provider. Please run \"az provider register -n Microsoft.App --wait\" to register your subscription.\n"
+  }
+]

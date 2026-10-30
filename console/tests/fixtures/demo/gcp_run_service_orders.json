@@ -1,0 +1,205 @@
+[
+  {
+    "argv": [
+      "terraform",
+      "version",
+      "-json"
+    ],
+    "rc": 0,
+    "stdout": "{\"terraform_version\": \"1.9.8\", \"platform\": \"darwin_arm64\"}",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "gcloud",
+      "version",
+      "--format=json"
+    ],
+    "rc": 0,
+    "stdout": "{\"Google Cloud SDK\": \"500.0.0\"}",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "gcloud",
+      "auth",
+      "list",
+      "--filter=status:ACTIVE",
+      "--format=json"
+    ],
+    "rc": 0,
+    "stdout": "[{\"account\": \"operator@example.com\", \"status\": \"ACTIVE\"}]",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "gcloud",
+      "auth",
+      "print-access-token"
+    ],
+    "rc": 0,
+    "stdout": "[REDACTED: sensitive output not recorded]",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "gcloud",
+      "auth",
+      "application-default",
+      "print-access-token"
+    ],
+    "rc": 0,
+    "stdout": "[REDACTED: sensitive output not recorded]",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "gcloud",
+      "projects",
+      "describe",
+      "demo-nonprod-1234",
+      "--format=json"
+    ],
+    "rc": 0,
+    "stdout": "{\"projectId\": \"demo-nonprod-1234\", \"name\": \"Demo nonprod\", \"projectNumber\": \"123456789012\", \"lifecycleState\": \"ACTIVE\"}",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "gcloud",
+      "services",
+      "list",
+      "--enabled",
+      "--project",
+      "demo-nonprod-1234",
+      "--format=json"
+    ],
+    "rc": 0,
+    "stdout": "[{\"config\": {\"name\": \"run.googleapis.com\"}, \"state\": \"ENABLED\"}, {\"config\": {\"name\": \"cloudfunctions.googleapis.com\"}, \"state\": \"ENABLED\"}, {\"config\": {\"name\": \"artifactregistry.googleapis.com\"}, \"state\": \"ENABLED\"}, {\"config\": {\"name\": \"iam.googleapis.com\"}, \"state\": \"ENABLED\"}, {\"config\": {\"name\": \"cloudresourcemanager.googleapis.com\"}, \"state\": \"ENABLED\"}, {\"config\": {\"name\": \"secretmanager.googleapis.com\"}, \"state\": \"ENABLED\"}]",
+    "stderr": ""
+  },
+  {
+    "http": "GET https://acme.jfrog.io/access/api/v1/system/ping",
+    "status": 200,
+    "body": "OK"
+  },
+  {
+    "http": "GET https://acme.jfrog.io/access/api/v1/oidc",
+    "status": 200,
+    "body": "[{\"name\": \"github-actions\", \"issuer_url\": \"https://token.actions.githubusercontent.com\"}]"
+  },
+  {
+    "http": "GET https://acme.jfrog.io/access/api/v2/groups/serverless-readers",
+    "status": 200,
+    "body": "{\"name\": \"serverless-readers\"}"
+  },
+  {
+    "http": "POST https://cloudresourcemanager.googleapis.com/v1/projects/demo-nonprod-1234:testIamPermissions",
+    "status": 200,
+    "body": "{\"permissions\": [\"serviceusage.services.enable\", \"iam.serviceAccounts.create\", \"iam.serviceAccounts.get\", \"iam.serviceAccounts.actAs\", \"iam.roles.create\", \"secretmanager.secrets.create\", \"secretmanager.secrets.setIamPolicy\", \"secretmanager.versions.add\", \"artifactregistry.repositories.create\", \"artifactregistry.repositories.update\", \"artifactregistry.repositories.setIamPolicy\", \"run.jobs.create\", \"run.jobs.setIamPolicy\", \"cloudscheduler.jobs.create\", \"logging.logMetrics.create\", \"monitoring.alertPolicies.create\", \"run.services.get\", \"run.services.update\"]}"
+  },
+  {
+    "argv": [
+      "gcloud",
+      "iam",
+      "service-accounts",
+      "describe",
+      "orders-runtime@demo-nonprod-1234.iam.gserviceaccount.com",
+      "--project",
+      "demo-nonprod-1234",
+      "--format=json"
+    ],
+    "rc": 0,
+    "stdout": "{\"email\": \"orders-runtime@demo-nonprod-1234.iam.gserviceaccount.com\", \"uniqueId\": \"104857600000000000001\", \"disabled\": false, \"name\": \"projects/demo-nonprod-1234/serviceAccounts/orders-runtime@demo-nonprod-1234.iam.gserviceaccount.com\"}",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "gcloud",
+      "run",
+      "services",
+      "describe",
+      "orders",
+      "--region",
+      "us-central1",
+      "--project",
+      "demo-nonprod-1234",
+      "--format=json"
+    ],
+    "rc": 0,
+    "stdout": "{\"apiVersion\": \"serving.knative.dev/v1\", \"kind\": \"Service\", \"metadata\": {\"name\": \"orders\", \"labels\": {\"cloud.googleapis.com/location\": \"us-central1\"}}, \"spec\": {\"template\": {\"spec\": {\"containers\": [{\"image\": \"us-central1-docker.pkg.dev/demo-nonprod-1234/apps/orders:1.0\"}], \"serviceAccountName\": \"orders-runtime@demo-nonprod-1234.iam.gserviceaccount.com\"}}}, \"status\": {\"url\": \"https://orders-abc123-uc.a.run.app\"}}",
+    "stderr": "",
+    "consume": true
+  },
+  {
+    "argv": [
+      "gcloud",
+      "run",
+      "services",
+      "describe",
+      "orders",
+      "--region",
+      "us-central1",
+      "--project",
+      "demo-nonprod-1234",
+      "--format=json"
+    ],
+    "rc": 0,
+    "stdout": "{\"apiVersion\": \"serving.knative.dev/v1\", \"kind\": \"Service\", \"metadata\": {\"name\": \"orders\", \"labels\": {\"cloud.googleapis.com/location\": \"us-central1\"}}, \"spec\": {\"template\": {\"spec\": {\"containers\": [{\"image\": \"us-central1-docker.pkg.dev/demo-nonprod-1234/apps/orders:1.0\"}], \"serviceAccountName\": \"orders-runtime@demo-nonprod-1234.iam.gserviceaccount.com\"}}}, \"status\": {\"url\": \"https://orders-abc123-uc.a.run.app\"}}",
+    "stderr": "",
+    "consume": true
+  },
+  {
+    "argv": [
+      "gcloud",
+      "run",
+      "services",
+      "describe",
+      "orders",
+      "--region",
+      "us-central1",
+      "--project",
+      "demo-nonprod-1234",
+      "--format=json"
+    ],
+    "rc": 0,
+    "stdout": "{\"apiVersion\": \"serving.knative.dev/v1\", \"kind\": \"Service\", \"metadata\": {\"name\": \"orders\", \"labels\": {\"cloud.googleapis.com/location\": \"us-central1\"}}, \"spec\": {\"template\": {\"spec\": {\"containers\": [{\"image\": \"us-central1-docker.pkg.dev/demo-nonprod-1234/apps/orders:1.0\"}], \"serviceAccountName\": \"orders-runtime@demo-nonprod-1234.iam.gserviceaccount.com\"}}}, \"status\": {\"url\": \"https://orders-abc123-uc.a.run.app\"}}",
+    "stderr": "",
+    "consume": true
+  },
+  {
+    "argv": [
+      "gcloud",
+      "run",
+      "services",
+      "update",
+      "orders",
+      "--region",
+      "us-central1",
+      "--project",
+      "demo-nonprod-1234",
+      "--update-env-vars=^@^JFROG_OIDC_AUDIENCE=jfrog-gcp@JFROG_OIDC_PROVIDER=gcp-cloudrun@JFROG_OIDC_SOURCE=gcp@JFROG_URL=https://acme.jfrog.io",
+      "--quiet"
+    ],
+    "rc": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "gcloud",
+      "run",
+      "services",
+      "describe",
+      "orders",
+      "--region",
+      "us-central1",
+      "--project",
+      "demo-nonprod-1234",
+      "--format=json"
+    ],
+    "rc": 0,
+    "stdout": "{\"apiVersion\": \"serving.knative.dev/v1\", \"kind\": \"Service\", \"metadata\": {\"name\": \"orders\", \"labels\": {\"cloud.googleapis.com/location\": \"us-central1\"}}, \"spec\": {\"template\": {\"spec\": {\"containers\": [{\"image\": \"us-central1-docker.pkg.dev/demo-nonprod-1234/apps/orders:1.0\", \"env\": [{\"name\": \"JFROG_OIDC_AUDIENCE\", \"value\": \"jfrog-gcp\"}, {\"name\": \"JFROG_OIDC_PROVIDER\", \"value\": \"gcp-cloudrun\"}, {\"name\": \"JFROG_OIDC_SOURCE\", \"value\": \"gcp\"}, {\"name\": \"JFROG_URL\", \"value\": \"https://acme.jfrog.io\"}]}], \"serviceAccountName\": \"orders-runtime@demo-nonprod-1234.iam.gserviceaccount.com\"}}}, \"status\": {\"url\": \"https://orders-abc123-uc.a.run.app\"}}",
+    "stderr": ""
+  }
+]

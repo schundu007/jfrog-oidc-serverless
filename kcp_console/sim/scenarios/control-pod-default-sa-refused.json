@@ -1,0 +1,42 @@
+{
+  "name": "control-pod-default-sa-refused",
+  "title": "Control pod with the default service account is refused",
+  "story": "Same node, same image, a service account without the JFrogExchange annotation. No projected token, no credential: access is tied to the identity, not the node.",
+  "runbook": "\u00a77 control pod",
+  "config": {},
+  "steps": [
+    [
+      "baseline"
+    ],
+    [
+      "install"
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ],
+    [
+      "remove_image"
+    ],
+    [
+      "create_pod",
+      {
+        "name": "control-pull-test",
+        "sa": "default",
+        "kind": "control"
+      }
+    ]
+  ],
+  "expect": {
+    "verdict": "PASS",
+    "control_refused": true,
+    "findings": [
+      "control-refused"
+    ],
+    "chain": [
+      "service account default has no JFrogExchange annotation"
+    ]
+  }
+}

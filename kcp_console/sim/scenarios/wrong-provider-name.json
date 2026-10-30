@@ -1,0 +1,40 @@
+{
+  "name": "wrong-provider-name",
+  "title": "The release uses another cluster's OIDC provider",
+  "story": "The live release points jfrog_oidc_provider_name at aks-other-cluster-oidc, which trusts a different issuer. Artifactory refuses the exchange.",
+  "runbook": "\u00a73 protected providers; \u00a79",
+  "config": {},
+  "steps": [
+    [
+      "baseline"
+    ],
+    [
+      "foreign_provider"
+    ],
+    [
+      "install",
+      {
+        "values": {
+          "provider_name": "aks-other-cluster-oidc"
+        }
+      }
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "FAIL",
+    "root_cause": "wrong-provider-name",
+    "findings": [
+      "wrong-provider-name",
+      "token-endpoint-refused"
+    ],
+    "chain": [
+      "Artifactory refused the exchange"
+    ]
+  }
+}

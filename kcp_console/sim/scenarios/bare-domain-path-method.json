@@ -1,0 +1,49 @@
+{
+  "name": "bare-domain-path-method",
+  "title": "The bare-domain path method does not work here",
+  "story": "The image is addressed as example.jfrog.io/<repo>/<path>. The registry answers Unsupported v2 repository request; the realm probe names no repo.",
+  "runbook": "\u00a75 Phase 3b, dedicated subdomain",
+  "config": {
+    "values": {
+      "match_images": [
+        "example.jfrog.io"
+      ]
+    },
+    "jfrog": {
+      "test_image": "example.jfrog.io/aks-sandbox-test-docker-local/mcp/sonarqube:1.26-v1"
+    }
+  },
+  "steps": [
+    [
+      "baseline"
+    ],
+    [
+      "install"
+    ],
+    [
+      "probe_realm",
+      {
+        "host": "example.jfrog.io"
+      }
+    ],
+    [
+      "probe_realm",
+      {
+        "host": "example-aks-sandbox-test-docker-local.jfrog.io"
+      }
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "FAIL",
+    "root_cause": "unsupported-v2",
+    "findings": [
+      "unsupported-v2"
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "premium-no-refresh-permission",
+  "description": "Premium Functions; the rotator's ARM refresh gets 403 and the pull TTL is 4 h. The KV reference cache keeps serving an expired token; rotator runs are marked failed.",
+  "target_kind": "azure_functions_premium",
+  "duration": "24h",
+  "clock_start": "2026-01-01T00:00:00Z",
+  "seed": 1,
+  "config_overrides": {},
+  "load": {},
+  "faults": [
+    {
+      "type": "arm_refresh_forbidden",
+      "start": "00:00"
+    }
+  ],
+  "expect": {
+    "verdict": "fail",
+    "root_cause_contains": "refresh",
+    "min_failed_rotations": 20
+  }
+}

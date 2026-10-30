@@ -1,0 +1,29 @@
+{
+  "name": "jfrog-outage-90m",
+  "description": "JFrog Access and the registry return 503 from 02:00 to 03:30. Uncached pulls fail inside the window; the runtime keeps serving its cached token until it expires.",
+  "target_kind": "gcp_run_service",
+  "duration": "24h",
+  "clock_start": "2026-01-01T00:00:00Z",
+  "seed": 1,
+  "config_overrides": {},
+  "load": {
+    "cold_starts_per_hour": 12,
+    "uncached_pull_ratio": 0.5
+  },
+  "faults": [
+    {
+      "type": "jfrog_outage",
+      "start": "02:00",
+      "end": "03:30",
+      "params": {
+        "services": [
+          "access",
+          "registry"
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "verdict": "degraded"
+  }
+}

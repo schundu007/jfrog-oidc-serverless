@@ -1,0 +1,53 @@
+[
+  {
+    "argv": [
+      "gcloud",
+      "run",
+      "services",
+      "describe",
+      "ghost",
+      "--region",
+      "us-central1",
+      "--project",
+      "demo-nonprod-1234",
+      "--format=json"
+    ],
+    "rc": 1,
+    "stdout": "",
+    "stderr": "ERROR: (gcloud.run.services.describe) Cannot find service [ghost]\n"
+  },
+  {
+    "argv": [
+      "gcloud",
+      "run",
+      "jobs",
+      "describe",
+      "ghost",
+      "--region",
+      "us-central1",
+      "--project",
+      "demo-nonprod-1234",
+      "--format=json"
+    ],
+    "rc": 1,
+    "stdout": "",
+    "stderr": "ERROR: (gcloud.run.jobs.describe) Cannot find job [ghost]\n"
+  },
+  {
+    "argv": [
+      "gcloud",
+      "functions",
+      "describe",
+      "ghost",
+      "--region",
+      "us-central1",
+      "--project",
+      "demo-nonprod-1234",
+      "--gen2",
+      "--format=json"
+    ],
+    "rc": 1,
+    "stdout": "",
+    "stderr": "API [cloudfunctions.googleapis.com] not enabled on project [demo-nonprod-1234]. \nWould you like to enable and retry (this will take a few minutes)? (y/N)?  \nERROR: (gcloud.functions.describe) PERMISSION_DENIED: Cloud Functions API has not been used in project demo-nonprod-1234 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/cloudfunctions.googleapis.com/overview?project=demo-nonprod-1234 then retry.\n"
+  }
+]

@@ -1,0 +1,20 @@
+[
+ {
+  "argv": [
+   "az",
+   "containerapp",
+   "show",
+   "-g",
+   "rg-apps",
+   "-n",
+   "orders",
+   "--subscription",
+   "11111111-2222-3333-4444-555555555555",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": \"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.App/containerApps/orders\", \"name\": \"orders\", \"location\": \"eastus\", \"kind\": null, \"identity\": {\"type\": \"UserAssigned\", \"userAssignedIdentities\": {\"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-orders\": {\"principalId\": \"aaaaaaaa-0000-0000-0000-000000000001\", \"clientId\": \"cccccccc-0000-0000-0000-000000000001\"}}}, \"properties\": {\"managedEnvironmentId\": \"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.App/managedEnvironments/cae-dev\", \"configuration\": {\"registries\": [{\"server\": \"acme.jfrog.io\", \"identity\": \"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-orders\"}]}, \"template\": {\"containers\": [{\"image\": \"acme.jfrog.io/docker-virtual/orders:1.0\"}]}}}",
+  "stderr": ""
+ }
+]

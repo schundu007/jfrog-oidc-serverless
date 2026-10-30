@@ -1,0 +1,52 @@
+{
+  "name": "reset-safety-indentation",
+  "title": "The fixed reset removes the stale entry",
+  "story": "The fixed check reads indentation and only counts provider-level entries. Dry run first, then the real reset; the DaemonSet rewrites a correct entry and the pull works.",
+  "runbook": "\u00a76 bug 'reset safety check'; \u00a75 dry run first",
+  "config": {},
+  "steps": [
+    [
+      "baseline"
+    ],
+    [
+      "install",
+      {
+        "values": {
+          "artifactory_url": "https://example.jfrog.io"
+        }
+      }
+    ],
+    [
+      "install"
+    ],
+    [
+      "reset_node_entries",
+      {
+        "dry_run": true
+      }
+    ],
+    [
+      "reset_node_entries",
+      {
+        "dry_run": false
+      }
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "PASS",
+    "root_cause": null,
+    "absent": [
+      "reset-safety-old",
+      "doubled-https"
+    ],
+    "chain": [
+      "reset removed aks-nodepool1-12345678-vmss00000e's stale JFrog entry"
+    ]
+  }
+}

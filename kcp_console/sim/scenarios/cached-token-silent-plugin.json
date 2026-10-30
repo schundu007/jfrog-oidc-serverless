@@ -1,0 +1,46 @@
+{
+  "name": "cached-token-silent-plugin",
+  "title": "Pull works, plugin silent",
+  "story": "The image was removed, but kubelet still holds the credential from ten minutes ago. The pull succeeds with no new token URL line: the pull works, a fresh exchange is unproven.",
+  "runbook": "\u00a79 caches",
+  "config": {},
+  "steps": [
+    [
+      "baseline"
+    ],
+    [
+      "install"
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ],
+    [
+      "remove_image"
+    ],
+    [
+      "advance",
+      {
+        "seconds": 600
+      }
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "PASS",
+    "root_cause": "cached-token-silent",
+    "findings": [
+      "cached-token-silent"
+    ],
+    "chain": [
+      "kubelet reused a cached credential"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+[
+ {
+  "argv": [
+   "gcloud",
+   "functions",
+   "describe",
+   "legacy",
+   "--region",
+   "us-central1",
+   "--project",
+   "demo-nonprod-1234",
+   "--gen2",
+   "--format=json"
+  ],
+  "rc": 0,
+  "stdout": "{\"name\": \"projects/demo-nonprod-1234/locations/us-central1/functions/legacy\", \"environment\": \"GEN_1\", \"buildConfig\": {\"serviceAccount\": \"projects/demo-nonprod-1234/serviceAccounts/builder@demo-nonprod-1234.iam.gserviceaccount.com\"}, \"serviceConfig\": {\"serviceAccountEmail\": \"webhook-fn@demo-nonprod-1234.iam.gserviceaccount.com\", \"uri\": \"https://legacy-abc123-uc.a.run.app\", \"service\": \"projects/demo-nonprod-1234/locations/us-central1/services/legacy\"}}",
+  "stderr": ""
+ }
+]

@@ -1,0 +1,18 @@
+{
+  "name": "wrong-audience",
+  "description": "Typo in the runtime's JFROG_OIDC_AUDIENCE: every runtime request gets 401; the pull path is unaffected.",
+  "target_kind": "gcp_run_service",
+  "duration": "24h",
+  "clock_start": "2026-01-01T00:00:00Z",
+  "seed": 1,
+  "config_overrides": {
+    "sim.runtime_audience": "jfrog-gpc"
+  },
+  "load": {},
+  "faults": [],
+  "expect": {
+    "verdict": "fail",
+    "max_failed_pulls": 0,
+    "root_cause_contains": "JFROG_OIDC_AUDIENCE"
+  }
+}

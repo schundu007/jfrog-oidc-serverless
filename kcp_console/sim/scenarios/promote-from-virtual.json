@@ -1,0 +1,54 @@
+{
+  "name": "promote-from-virtual",
+  "title": "Promote needs a local source",
+  "story": "Promoting from docker-virtual fails with Unsupported V2 repository request. AQL finds the local repo holding the tag; promoting from it works.",
+  "runbook": "\u00a75 Phase 3b",
+  "config": {},
+  "steps": [
+    [
+      "baseline",
+      {
+        "promote": false
+      }
+    ],
+    [
+      "promote",
+      {
+        "source": "docker-virtual",
+        "target": "aks-sandbox-test-docker-local",
+        "docker_repository": "mcp/sonarqube",
+        "tag": "1.26-v1"
+      }
+    ],
+    [
+      "aql"
+    ],
+    [
+      "promote",
+      {
+        "source": "containers-docker-local",
+        "target": "aks-sandbox-test-docker-local",
+        "docker_repository": "mcp/sonarqube",
+        "tag": "1.26-v1"
+      }
+    ],
+    [
+      "install"
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "PASS",
+    "findings": [
+      "promote-virtual"
+    ],
+    "chain": [
+      "Promote needs a local source repository"
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "downloadurl-arch-doubled",
+  "title": "downloadUrl already ends in -amd64",
+  "story": "The chart appends the arch suffix itself; the init container asks for ...-amd64-amd64 and gets 401. No node gets a JFrog entry.",
+  "runbook": "\u00a76 Phase 4 bug 'downloadUrl'",
+  "config": {
+    "values": {
+      "download_url": "https://example.jfrog.io/artifactory/aks-sandbox-generic-local/jfrog-credential-provider/1.4.0/jfrog-credential-provider-linux-amd64"
+    }
+  },
+  "steps": [
+    [
+      "baseline"
+    ],
+    [
+      "install"
+    ],
+    [
+      "create_pod"
+    ],
+    [
+      "check_kubelet_provider"
+    ]
+  ],
+  "expect": {
+    "verdict": "FAIL",
+    "root_cause": "downloadurl-arch",
+    "findings": [
+      "downloadurl-arch",
+      "anon-401"
+    ]
+  }
+}

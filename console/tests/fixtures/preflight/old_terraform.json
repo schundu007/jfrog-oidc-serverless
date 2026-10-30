@@ -1,0 +1,12 @@
+[
+ {
+  "argv": [
+   "terraform",
+   "version",
+   "-json"
+  ],
+  "rc": 0,
+  "stdout": "{\"terraform_version\": \"1.5.7\"}",
+  "stderr": ""
+ }
+]

@@ -1,0 +1,19 @@
+{
+  "name": "ttl-too-short",
+  "description": "Pull TTL 3600 s with hourly rotation (ACA). Rotations succeed, but each token expires at the next rotation and ACA takes 5\u201330 min to pick up the new one.",
+  "target_kind": "azure_container_app",
+  "duration": "24h",
+  "clock_start": "2026-01-01T00:00:00Z",
+  "seed": 1,
+  "config_overrides": {
+    "pull_path.ttl_seconds": 3600
+  },
+  "load": {
+    "cold_starts_per_hour": 12
+  },
+  "faults": [],
+  "expect": {
+    "verdict": "fail",
+    "root_cause_contains": "pull TTL"
+  }
+}

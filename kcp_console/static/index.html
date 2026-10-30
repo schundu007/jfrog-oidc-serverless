@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KCP Console</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-row">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">◆</span>
+      <span>KCP Console</span>
+      <span class="pill" id="mode-pill" hidden></span>
+    </div>
+    <div class="config-pick" id="config-pick" hidden>
+      <label for="config-select" class="small muted">Config</label>
+      <select id="config-select"></select>
+      <button type="button" class="secondary small-btn" id="report-link" hidden>Report</button>
+    </div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Sections" id="tabs" hidden>
+      <button role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true">Overview</button>
+      <button role="tab" id="tab-configure" aria-controls="panel-configure" aria-selected="false" tabindex="-1">Configure</button>
+      <button role="tab" id="tab-install" aria-controls="panel-install" aria-selected="false" tabindex="-1">Install</button>
+      <button role="tab" id="tab-nodes" aria-controls="panel-nodes" aria-selected="false" tabindex="-1">Nodes</button>
+      <button role="tab" id="tab-artifactory" aria-controls="panel-artifactory" aria-selected="false" tabindex="-1">Artifactory</button>
+      <button role="tab" id="tab-verify" aria-controls="panel-verify" aria-selected="false" tabindex="-1">Verify</button>
+      <button role="tab" id="tab-troubleshoot" aria-controls="panel-troubleshoot" aria-selected="false" tabindex="-1">Troubleshoot</button>
+      <button role="tab" id="tab-simulate" aria-controls="panel-simulate" aria-selected="false" tabindex="-1">Simulate</button>
+      <button role="tab" id="tab-demo" aria-controls="panel-demo" aria-selected="false" tabindex="-1">Demo</button>
+      <button role="tab" id="tab-security" aria-controls="panel-security" aria-selected="false" tabindex="-1">Security</button>
+      <button role="tab" id="tab-rollback" aria-controls="panel-rollback" aria-selected="false" tabindex="-1">Rollback</button>
+      <button role="tab" id="tab-runs" aria-controls="panel-runs" aria-selected="false" tabindex="-1">Runs</button>
+      <button role="tab" id="tab-docs" aria-controls="panel-docs" aria-selected="false" tabindex="-1">Docs</button>
+    </nav>
+  </header>
+
+  <div id="auth-banner" class="banner error" role="alert" hidden>
+    <p>Not signed in. Paste the console URL (it ends in #t=…). If the console was started in the background,
+      get it with <code>python3 -m kcp_console --print-url</code>.</p>
+    <form id="auth-form" class="auth-form" autocomplete="off">
+      <input id="auth-input" type="password" spellcheck="false" autocomplete="off" aria-label="Console link"
+        placeholder="http://127.0.0.1:8766/#t=…">
+      <button type="submit" class="primary">Sign in</button>
+    </form>
+  </div>
+
+  <main>
+    <section id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" hidden>
+      <div class="cfg-head">
+        <div>
+          <h1>Clusters</h1>
+          <p class="small muted">Each configuration is one AKS cluster: its OIDC issuer, the JFrog provider and mapping, and the credential provider on its nodes. Saved in .kcp-console/configs (no secrets).</p>
+        </div>
+        <button type="button" id="ov-new" class="primary">New cluster</button>
+      </div>
+      <table class="cfg-table">
+        <thead><tr><th scope="col">Name</th><th scope="col">Cluster</th><th scope="col">Pipeline</th><th scope="col">Preflight</th><th scope="col">Last pull</th><th scope="col">Updated</th><th scope="col"><span class="sr-only">Open</span></th></tr></thead>
+        <tbody id="ov-clusters"></tbody>
+      </table>
+      <div id="ov-current"></div>
+      <h2>How it works</h2>
+      <div class="diagram-row">
+        <figure class="card"><figcaption>Before and after</figcaption><div id="dg-before-after"></div></figure>
+        <figure class="card"><figcaption>Option B: the token exchange</figcaption><div id="dg-flow"></div>
+          <p class="small muted" id="dg-flow-note"></p></figure>
+      </div>
+      <div class="diagram-row">
+        <figure class="card"><figcaption id="dg-node-cap">On each node</figcaption><div id="dg-node"></div>
+          <p class="small muted" id="dg-node-note"></p></figure>
+        <figure class="card"><figcaption>The pipeline scenarios</figcaption><div id="dg-pipeline"></div></figure>
+      </div>
+    </section>
+
+    <section id="panel-simulate" role="tabpanel" aria-labelledby="tab-simulate" hidden>
+      <div class="sim-layout">
+        <nav class="sim-list" aria-label="Scenarios">
+          <h2>Scenarios</h2>
+          <p class="small muted">Each one replays a situation from the sandbox pilot through the console's own parsers and
+            rule engine. Nothing leaves this machine.</p>
+          <ul id="sim-list"></ul>
+        </nav>
+        <div class="sim-main" id="sim-main">
+          <p class="muted" id="sim-empty">Pick a scenario.</p>
+          <div id="sim-result" hidden>
+            <div class="page-head">
+              <h1 id="sim-title"></h1>
+              <span class="pill" id="sim-verdict"></span>
+            </div>
+            <p id="sim-story"></p>
+            <p class="small muted" id="sim-runbook"></p>
+            <div class="callout" id="sim-root"></div>
+            <p class="small error" id="sim-mismatch" hidden></p>
+            <h2>What happened</h2>
+            <ol class="chain" id="sim-chain"></ol>
+            <h2>Timeline</h2>
+            <div class="card timeline" id="sim-timeline"></div>
+            <h2>Diagnosis</h2>
+            <div id="sim-findings"></div>
+            <h2>Three layers, per node</h2>
+            <div id="sim-layers"></div>
+            <h2>Evidence</h2>
+            <div id="sim-evidence"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="panel-configure" role="tabpanel" aria-labelledby="tab-configure" hidden></section>
+    <section id="panel-install" role="tabpanel" aria-labelledby="tab-install" hidden></section>
+    <section id="panel-nodes" role="tabpanel" aria-labelledby="tab-nodes" hidden></section>
+    <section id="panel-artifactory" role="tabpanel" aria-labelledby="tab-artifactory" hidden></section>
+    <section id="panel-verify" role="tabpanel" aria-labelledby="tab-verify" hidden></section>
+    <section id="panel-troubleshoot" role="tabpanel" aria-labelledby="tab-troubleshoot" hidden></section>
+    <section id="panel-demo" role="tabpanel" aria-labelledby="tab-demo" hidden></section>
+    <section id="panel-security" role="tabpanel" aria-labelledby="tab-security" hidden></section>
+    <section id="panel-rollback" role="tabpanel" aria-labelledby="tab-rollback" hidden></section>
+    <section id="panel-docs" role="tabpanel" aria-labelledby="tab-docs" hidden></section>
+    <section id="panel-runs" role="tabpanel" aria-labelledby="tab-runs" hidden></section>
+  </main>
+</body>
+</html>
