@@ -40,23 +40,23 @@
   "target": {
     "azure": {
       "environment_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourceGroups/rg-artifact-reader/providers/Microsoft.App/managedEnvironments/cae-artifact-reader",
-      "identity_type": "system_assigned",
+      "identity_type": "user_assigned",
       "key_vault_id": "",
       "name": "fnaca-jfrog-demo",
       "resource_group": "rg-jfrog-types",
       "subscription": "0e56d318-75b3-43ef-a41b-6a1a3c95b458"
     },
     "discovered": {
-      "at": "2026-10-30T10:14:04Z",
+      "at": "2026-10-30T16:02:46Z",
+      "dedicated_identity": "id-fnaca-jfrog-demo-jfrog",
       "environment_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourceGroups/rg-artifact-reader/providers/Microsoft.App/managedEnvironments/cae-artifact-reader",
-      "identity_type": "system_assigned",
+      "identity_type": "user_assigned",
       "identity_types": "SystemAssigned",
       "image": "crartifactreader0e56d31875b343ef.azurecr.io/func-reader:1",
       "kind": "azure_functions_aca",
       "location": "West US 2",
-      "mapping_subject": "3923b11c-bf56-4a4d-b0c0-de116f91b814",
+      "mapping_subject": null,
       "name": "fnaca-jfrog-demo",
-      "principal_id": "3923b11c-bf56-4a4d-b0c0-de116f91b814",
       "registries": [
         {
           "identity": "system",
@@ -68,6 +68,7 @@
       "resource_group": "rg-jfrog-types",
       "resource_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourceGroups/rg-jfrog-types/providers/Microsoft.App/containerapps/fnaca-jfrog-demo",
       "subscription": "0e56d318-75b3-43ef-a41b-6a1a3c95b458",
+      "system_principal_id": "3923b11c-bf56-4a4d-b0c0-de116f91b814",
       "user_assigned_identities": []
     },
     "gcp": {
