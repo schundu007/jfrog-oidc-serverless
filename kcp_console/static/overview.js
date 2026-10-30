@@ -120,19 +120,19 @@ function fleetView() {
   const counts = {};
   for (const r of mine) counts[r.state] = (counts[r.state] || 0) + 1;
   const n = mine.length;
+  const open = built && fleet && (adding || !n);   // no clusters yet: the list to add from is the page
   const where = k === "gke" ? "project or location" : "subscription, resource group or region";
   return h("div", { class: "fleet" },
     h("header", { class: "cl-head" },
       h("div", { class: "cl-title" }, h("h1", {}, label), n ? muted(`${n} cluster${n === 1 ? "" : "s"}`) : null),
       h("div", { class: "cl-actions" },
         built ? h("button", { class: "ghost", disabled: fleetLoading, onclick: () => { fleet = null; render(); } }, "Refresh") : null,
-        built ? h("button", { class: adding ? "secondary" : "primary", onclick: () => { adding = !adding; render(); } }, adding ? "Close" : "Add a cluster") : null)),
+        built && n ? h("button", { class: adding ? "secondary" : "primary", onclick: () => { adding = !adding; render(); } }, adding ? "Close" : "Add a cluster") : null)),
     d.error ? h("div", { class: "callout fail" }, brief(d.error)) : null,
     !built ? h("div", { class: "empty" }, h("p", {}, `${label} is not supported yet`)) : null,
-    built && adding ? addPanel(state.configs || [], k) : null,
+    open ? addPanel(state.configs || [], k) : null,
     !built ? null
       : !fleet ? h("p", { class: "muted" }, "Loading…")
-      : !n && !adding ? h("div", { class: "empty" }, h("p", {}, `No ${label} clusters yet`), h("button", { class: "primary", onclick: () => { adding = true; render(); } }, "Add a cluster"))
       : n ? [
         h("div", { class: "stats" }, STATS.map(([s, text]) => h("button", {
           class: `stat${F.state === s ? " on" : ""}${s ? ` s-${s}` : ""}`, "aria-pressed": F.state === s ? "true" : "false",
