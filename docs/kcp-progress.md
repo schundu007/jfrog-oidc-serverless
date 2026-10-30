@@ -260,5 +260,13 @@ Found and fixed on the way:
   credentials step names it when it is missing.
 - Add a cluster lists existing AKS clusters in every subscription and GKE clusters in every
   project; steps adopt existing identity, providers and releases.
-- Tests: `test_gke.py` (fake gcloud). Not yet run against a live GKE cluster: none exists in the
-  test projects.
+- Tests: `test_gke.py` (fake gcloud).
+- Live (2026-10-30): `kcp-test-gke` (Standard, zonal us-central1-a, one e2-standard-2 node, Workload
+  Identity on) in csb-test-257615. Set up created the Google service account and both bindings, the
+  JFrog provider on the GKE issuer and the mapping, installed chart 1.4.0, and the test pod pulled with
+  no pull secret; JFrog logged the download as kcp-pull-user (a fresh pull, not a cached image).
+- `gke-gcloud-auth-plugin` sits next to gcloud's real binary, often off PATH: `shell.child_env` adds
+  that directory, so kubectl's exec plugin is found.
+- Two approved changes on one cluster collided (the same test pod): `RunManager.approve` now refuses a
+  second state-changing run while one for the same configuration is queued or running.
+- Mounted in the unified console (portal/) at /k8s: `KcpServer(base=...)`, `make_handler`, BASE in the page.
