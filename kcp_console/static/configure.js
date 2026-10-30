@@ -9,7 +9,10 @@ let cfg = null;
 let blank = null;
 
 const F = {
-  "cluster.name": ["AKS cluster", "aks-prod-eastus-01"],
+  "cluster.name": ["Cluster", "aks-prod-eastus-01"],
+  "cluster.project_id": ["Project ID", "my-gcp-project"],
+  "cluster.location": ["Location", "us-central1"],
+  "cluster.google_service_account": ["Google service account", "blank: jfrog-kcp@<project>.iam.gserviceaccount.com"],
   "cluster.subscription_id": ["Subscription ID", "00000000-0000-0000-0000-000000000000"],
   "cluster.resource_group": ["Resource group", "rg-aks-prod"],
   "jfrog.host": ["JFrog host", "yourcompany.jfrog.io"],
@@ -24,8 +27,12 @@ const F = {
   "values.chart_version": ["Chart version", "1.4.0"],
   "values.default_cache_duration": ["Token cache", "30m"],
 };
+const CLUSTER = {
+  aks: ["cluster.name", "cluster.subscription_id", "cluster.resource_group"],
+  gke: ["cluster.name", "cluster.project_id", "cluster.location", "cluster.google_service_account"],
+};
 const GROUPS = [
-  ["Cluster", ["cluster.name", "cluster.subscription_id", "cluster.resource_group"]],
+  ["Cluster", null],
   ["JFrog", ["jfrog.host", "jfrog.test_repo", "jfrog.test_image", "jfrog.mapped_user", "jfrog.oidc_provider", "jfrog.mapping_name"]],
   ["Credential provider", ["k8s.namespace", "k8s.service_account", "k8s.release", "values.chart_version", "values.default_cache_duration"]],
 ];
@@ -94,7 +101,7 @@ function render() {
     h("p", { class: "small", id: "cfg-msg" }),
     h("div", { class: "cfg-form" },
       h("div", { class: "tgrid" }, field("name", "Name", "aks-prod-eastus-01")),
-      ...GROUPS.map(([title, paths]) => h("section", { class: "block" }, h("h2", {}, title),
+      ...GROUPS.map(([title, paths]) => [title, paths || CLUSTER[cfg.platform || "aks"] || CLUSTER.aks]).map(([title, paths]) => h("section", { class: "block" }, h("h2", {}, title),
         h("div", { class: "tgrid" }, paths.map((p) => field(p, ...F[p]))))),
       h("details", { class: "advanced" }, h("summary", {}, "Advanced"),
         h("div", { class: "tgrid" }, ADVANCED.map((p) => field(p))))));

@@ -11,10 +11,10 @@ from __future__ import annotations
 import copy
 import re
 
-from . import knowledge, logic
+from . import knowledge, logic, platforms
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
-PLATFORMS = {"aks": True, "eks": False, "gke": False, "openshift": False}   # seam: only AKS is built
+PLATFORMS = {"aks": True, "eks": False, "gke": True, "openshift": False}   # seam: AKS and GKE are built
 ENVIRONMENTS = ("SBX", "NPE", "PRD")
 CACHE_WARN_SECONDS = 1800
 
@@ -31,6 +31,7 @@ def default_config(name: str = "sandbox-pilot") -> dict:
         "cluster": {"name": "aks-sandbox-01", "resource_group": "rg-aks-sandbox",
                     "subscription_id": "00000000-0000-0000-0000-0000000000a1", "subscription_name": "sandbox-subscription",
                     "oidc_issuer": SANDBOX_ISSUER, "environment": "SBX",
+                    "project_id": "", "location": "", "google_service_account": "",
                     "nodes": ["aks-nodepool1-12345678-vmss00000e", "aks-nodepool1-12345678-vmss00000g"]},
         "k8s": {"namespace": "jfrog", "service_account": "jfrog-provider-sa", "release": "jfrog-cred-provider",
                 "daemonset": "jfrog-cred-provider-jfrog-credential-provider-daemonset",
@@ -49,6 +50,7 @@ def default_config(name: str = "sandbox-pilot") -> dict:
                    "match_images": ["example-aks-sandbox-test-docker-local.jfrog.io"],
                    "default_cache_duration": "30m", "provider_name": "aks-sandbox-oidc",
                    "azure_app_audience": "api://AzureADTokenExchange", "token_attributes_enabled": True,
+                   "gcp_oidc_audience": "artifactory",
                    "download_url": ("https://example.jfrog.io/artifactory/aks-sandbox-generic-local/"
                                     "jfrog-credential-provider/1.4.0/jfrog-credential-provider-linux"),
                    "chart_repo": logic.APPROVED_CHART_REPO, "chart_name": logic.APPROVED_CHART_NAME,
@@ -69,7 +71,8 @@ def default_config(name: str = "sandbox-pilot") -> dict:
 # What a new configuration starts with: every cluster-, tenant- and JFrog-specific field empty
 # (the form shows placeholders); chart, audience and Kubernetes names keep the chart's defaults.
 BLANK_FIELDS = {
-    "cluster": {"name": "", "resource_group": "", "subscription_id": "", "subscription_name": "", "oidc_issuer": "", "nodes": []},
+    "cluster": {"name": "", "resource_group": "", "subscription_id": "", "subscription_name": "", "oidc_issuer": "", "nodes": [],
+                "project_id": "", "location": "", "google_service_account": ""},
     "k8s": {"stale_pods": []},
     "jfrog": {"host": "", "oidc_provider": "", "mapping_name": "", "mapped_user": "", "protected_providers": [],
               "test_repo": "", "test_repo_host": "", "test_image": "", "binary_repo": "", "promote_source_repo": ""},
@@ -115,15 +118,18 @@ def merged(cfg: dict) -> dict:
             else:
                 b[k] = copy.deepcopy(v)
         return b
-    return deep(base, cfg)
+    out = deep(base, cfg)
+    if platforms.kind(out) == "gke":
+        out["cluster"]["oidc_issuer"] = platforms.issuer(out)   # fixed by the cluster's coordinates
+    return out
 
 
 def provider_name(cfg: dict) -> str:
-    """Blank OidcProviderName defaults to aks-<ClusterName>-oidc."""
+    """Blank OidcProviderName defaults to <platform>-<ClusterName>-oidc."""
     if cfg.get("mode") == "template":
         name = (cfg.get("template") or {}).get("OidcProviderName") or ""
         return name or f"aks-{(cfg.get('template') or {}).get('ClusterName') or cfg['cluster']['name']}-oidc"
-    return cfg["values"].get("provider_name") or f"aks-{cfg['cluster']['name']}-oidc"
+    return cfg["values"].get("provider_name") or f"{cfg.get('platform') or 'aks'}-{cfg['cluster']['name']}-oidc"
 
 
 def subject(cfg: dict) -> str:
@@ -137,19 +143,31 @@ def render_values(cfg: dict) -> str:
     left out, so the chart's own default (releases.jfrog.io) applies."""
     v = cfg["values"]
     mi = "\n".join(f'      - "{m}"' for m in v["match_images"])
+    if (cfg.get("platform") or "aks") == "gke":
+        # GCP.md Option B: kubelet requests the pod's token for jfrog_oidc_audience and the chart requires
+        # the pod's service account to carry iam.gke.io/gcp-service-account and JFrogExchange.
+        cloud = f'''    tokenAttributes:
+      enabled: {str(bool(v['token_attributes_enabled'])).lower()}
+    gcp:
+      enabled: true
+      google_service_account_email: "{_gsa(cfg)}"
+      jfrog_oidc_audience: "{v['gcp_oidc_audience']}"
+      jfrog_oidc_provider_name: "{v['provider_name']}"'''
+    else:
+        cloud = f'''    tokenAttributes:
+      enabled: {str(bool(v['token_attributes_enabled'])).lower()}
+      serviceAccountTokenAudience: "{v['azure_app_audience']}"
+    azure:
+      enabled: true
+      azure_app_audience: "{v['azure_app_audience']}"
+      jfrog_oidc_provider_name: "{v['provider_name']}"'''
     return f'''providerConfig:
   - name: jfrog-credentials-provider
     artifactoryUrl: "{v['artifactory_url']}"
     matchImages:
 {mi}
     defaultCacheDuration: {v['default_cache_duration']}
-    tokenAttributes:
-      enabled: {str(bool(v['token_attributes_enabled'])).lower()}
-      serviceAccountTokenAudience: "{v['azure_app_audience']}"
-    azure:
-      enabled: true
-      azure_app_audience: "{v['azure_app_audience']}"
-      jfrog_oidc_provider_name: "{v['provider_name']}"
+{cloud}
 rbac:
   create: {str(bool(v['rbac_create'])).lower()}
 affinity:
@@ -168,16 +186,29 @@ def values_sha256(cfg: dict) -> str:
     return logic.sha256_hex(render_values(cfg))
 
 
+def _gsa(cfg: dict) -> str:
+    c = cfg["cluster"]
+    return c.get("google_service_account") or f"jfrog-kcp@{c.get('project_id')}.iam.gserviceaccount.com"
+
+
 def provider_request(cfg: dict) -> dict:
     iss = cfg["cluster"]["oidc_issuer"]
+    if (cfg.get("platform") or "aks") == "gke":
+        return {"name": provider_name(cfg), "issuer_url": iss, "provider_type": "Generic OpenID Connect", "token_issuer": iss,
+                "audience": cfg["values"]["gcp_oidc_audience"], "use_default_proxy": False,
+                "description": "OIDC provider for GKE Workload Identity"}
     return {"name": provider_name(cfg), "issuer_url": iss, "provider_type": "Azure", "token_issuer": iss,
             "use_default_proxy": False, "description": "OIDC provider for Azure AKS Workload Identity"}
 
 
 def mapping_request(cfg: dict) -> dict:
     j = cfg["jfrog"]
-    return {"name": j["mapping_name"], "description": "Azure AKS Workload Identity mapping",
-            "claims": {"iss": cfg["cluster"]["oidc_issuer"], "sub": subject(cfg)},
+    gke = (cfg.get("platform") or "aks") == "gke"
+    claims = {"iss": cfg["cluster"]["oidc_issuer"], "sub": subject(cfg)}
+    if gke:
+        claims["aud"] = cfg["values"]["gcp_oidc_audience"]
+    return {"name": j["mapping_name"], "description": f"{'GKE' if gke else 'Azure AKS'} Workload Identity mapping",
+            "claims": claims,
             "token_spec": {"username": j["mapped_user"], "scope": j["scope"], "audience": j.get("audience", "*@*"),
                            "expires_in": j["expires_in"]},
             "priority": 1}
@@ -205,7 +236,7 @@ def validate(cfg: dict, providers: list = None) -> list:
     if not NAME_RE.match(cfg.get("name") or ""):
         out.append(_issue("error", "name", "lowercase letters, digits and dashes (max 63)"))
     if not PLATFORMS.get(cfg.get("platform")):
-        out.append(_issue("error", "platform", f"{cfg.get('platform')} is not built yet (only AKS)"))
+        out.append(_issue("error", "platform", f"{cfg.get('platform')} is not built yet (AKS and GKE are)"))
     if cfg.get("option") != "B":
         out.append(_issue("error", "option", "only Option B is built; Option A is modelled for the A-vs-B decision"))
 

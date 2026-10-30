@@ -33,7 +33,7 @@ import json
 import time
 from pathlib import Path
 
-from . import model, redact
+from . import model, platforms, redact
 from .jfrog import Jfrog
 
 CHART_REPO = "https://charts.jfrog.io"
@@ -42,6 +42,14 @@ STEPS = ("cluster", "oidc", "kubeconfig", "sa", "provider", "mapping", "label", 
 VERIFY_STEPS = ("cluster", "kubeconfig", "sa-check", "trust", "map", "daemonset", "anon", "pull", "who")
 PROOF_STEPS = ("cluster", "sa-check", "trust", "map", "anon", "pull", "who")
 TEARDOWN_STEPS = ("kubeconfig", "uninstall", "unlabel", "delete-mapping", "delete-provider", "gone")
+# GKE adds the Google service account that the pod's service account acts as (GCP.md Step 2B).
+GKE_STEPS = STEPS[:3] + ("gsa",) + STEPS[3:]
+
+
+def step_ids(cfg: dict, which: str) -> tuple:
+    if which == "setup":
+        return GKE_STEPS if platforms.kind(cfg) == "gke" else STEPS
+    return {"verify": VERIFY_STEPS, "teardown": TEARDOWN_STEPS}[which]
 
 
 class StepError(RuntimeError):
@@ -64,17 +72,15 @@ def paths(root: Path, name: str) -> dict:
             "sa": d / f"{name}-sa.json", "pod": d / f"{name}-pull-pod.json"}
 
 
-def _az(cfg):
-    c = cfg["cluster"]
-    return ["--resource-group", c["resource_group"], "--name", c["name"]] + (["--subscription", c["subscription_id"]] if c["subscription_id"] else [])
-
-
 def sa_manifest(cfg) -> dict:
     k = cfg["k8s"]
+    ann = {"JFrogExchange": "true"}
+    if platforms.kind(cfg) == "gke":
+        ann["iam.gke.io/gcp-service-account"] = platforms.gsa_email(cfg)
     return {"apiVersion": "v1", "kind": "List", "items": [
         {"apiVersion": "v1", "kind": "Namespace", "metadata": {"name": k["namespace"]}},
         {"apiVersion": "v1", "kind": "ServiceAccount",
-         "metadata": {"name": k["service_account"], "namespace": k["namespace"], "annotations": {"JFrogExchange": "true"}}}]}
+         "metadata": {"name": k["service_account"], "namespace": k["namespace"], "annotations": ann}}]}
 
 
 def pod_manifest(cfg) -> dict:
@@ -90,6 +96,8 @@ def pod_manifest(cfg) -> dict:
 def _resolved(cfg: dict) -> dict:
     cfg = model.merged(cfg)
     cfg["values"]["provider_name"] = model.provider_name(cfg)
+    if platforms.kind(cfg) == "gke":
+        cfg["cluster"]["oidc_issuer"] = platforms.issuer(cfg)
     return cfg
 
 
@@ -105,9 +113,12 @@ def plan(cfg: dict, root: Path, which: str = "setup", dry_run: bool = True) -> l
     nodes = cfg["cluster"]["nodes"] or ["--all"]
     host = j["host"]
     S = {
-        "cluster": ("Read the cluster", "read", ["az", "aks", "show", *_az(cfg), "-o", "json"]),
-        "oidc": ("Enable the OIDC issuer (only if off)", "change", ["az", "aks", "update", *_az(cfg), "--enable-oidc-issuer"]),
-        "kubeconfig": ("Get cluster credentials", "local", ["az", "aks", "get-credentials", *_az(cfg), "--file", str(p["kubeconfig"]), "--overwrite-existing"]),
+        "cluster": ("Read the cluster", "read", platforms.show(cfg)),
+        "oidc": (platforms.enable_title(cfg), "change", platforms.enable(cfg)),
+        "kubeconfig": ("Get cluster credentials", "local", platforms.credentials(cfg, p["kubeconfig"])),
+        "gsa": (f"Google service account {platforms.gsa_email(cfg) if platforms.kind(cfg) == 'gke' else ''}", "change",
+                "gcloud iam service-accounts describe/create; add-iam-policy-binding "
+                + ", ".join(platforms.GKE_ROLES) + (f" for {platforms.wi_member(cfg)}" if platforms.kind(cfg) == "gke" else "")),
         "sa": ("Namespace and service account", "change", ["kubectl", *kc, "apply", "-f", str(p["sa"]), *srv]),
         "provider": (f"JFrog OIDC provider {v['provider_name']}", "change", f"POST https://{host}/access/api/v1/oidc  {json.dumps(model.provider_request(cfg))}"),
         "mapping": (f"Identity mapping {j['mapping_name']}", "change",
@@ -132,11 +143,11 @@ def plan(cfg: dict, root: Path, which: str = "setup", dry_run: bool = True) -> l
         "delete-provider": (f"Delete OIDC provider {v['provider_name']}", "change", f"DELETE https://{host}/access/api/v1/oidc/{v['provider_name']}"),
         "gone": ("Nothing left on the cluster or JFrog", "read", f"helm status; kubectl get daemonset, nodes; GET https://{host}/access/api/v1/oidc"),
     }
-    ids = {"setup": STEPS, "verify": VERIFY_STEPS, "teardown": TEARDOWN_STEPS}[which]
+    ids = step_ids(cfg, which)
     out = []
     for i in ids:
         title, kind, cmd = S[i]
-        skipped_in_dry = dry_run and i in ("oidc", "provider", "mapping", "delete-mapping", "delete-provider")
+        skipped_in_dry = dry_run and i in ("oidc", "gsa", "provider", "mapping", "delete-mapping", "delete-provider")
         out.append({"id": i, "title": title, "kind": kind, "command": cmd if isinstance(cmd, str) else " ".join(cmd),
                     "dry_run_note": "shown, not sent: this call has no dry run" if skipped_in_dry else ""})
     return out
@@ -146,7 +157,7 @@ def problems(cfg: dict, which: str = "setup") -> list:
     """Missing inputs that would make a step fail, in plain words."""
     cfg = model.merged(cfg)
     c, j, v = cfg["cluster"], cfg["jfrog"], cfg["values"]
-    need = [("cluster.name", c["name"]), ("cluster.resource_group", c["resource_group"])]
+    need = platforms.required(cfg)
     if which != "verify":
         need += [("jfrog.host", j["host"]), ("jfrog.mapping_name", j["mapping_name"]), ("jfrog.mapped_user", j["mapped_user"]),
                  ("values.match_images", v["match_images"])]
@@ -197,28 +208,30 @@ class Runner:
     # -- steps -----------------------------------------------------------------
 
     def s_cluster(self):
-        r = self._run(["az", "aks", "show", *_az(self.cfg), "-o", "json"], timeout=120)
-        d = r.json({}) or {}
-        prof = d.get("oidcIssuerProfile") or {}
-        self.facts.update(issuer=prof.get("issuerUrl") or "", oidc=bool(prof.get("enabled")),
-                          wi=bool(((d.get("securityProfile") or {}).get("workloadIdentity") or {}).get("enabled")),
-                          aad=bool(d.get("aadProfile")), version=d.get("kubernetesVersion", ""))
+        r = self._run(platforms.show(self.cfg), timeout=120)
+        self.facts.update(platforms.parse(self.cfg, r.json({}) or {}))
         if self.facts["issuer"]:
             self.cfg["cluster"]["oidc_issuer"] = self.facts["issuer"]
+        if self.facts.get("autopilot"):
+            raise StepError("GKE Autopilot does not allow the provider's DaemonSet on its nodes: use a Standard cluster")
+        if platforms.kind(self.cfg) == "gke":
+            return "ok", f"Kubernetes {self.facts['version']}; Workload Identity {'on' if self.facts['wi'] else 'off'}"
         return "ok", (f"Kubernetes {self.facts['version']}; OIDC issuer {'on' if self.facts['oidc'] else 'off'}; "
                       f"Workload Identity {'on' if self.facts['wi'] else 'off'}")
 
     def s_oidc(self):
-        if self.facts.get("oidc"):
+        if platforms.enabled(self.cfg, self.facts):
             return "ok", "already enabled"
         if self.dry:
             return "skipped", "dry run: would enable it"
-        self._run(["az", "aks", "update", *_az(self.cfg), "--enable-oidc-issuer"], timeout=1800)
+        self._run(platforms.enable(self.cfg), timeout=1800)
         self.s_cluster()
         return "done", "enabled"
 
     def s_kubeconfig(self):
-        self._run(["az", "aks", "get-credentials", *_az(self.cfg), "--file", str(self.p["kubeconfig"]), "--overwrite-existing"], timeout=120)
+        if platforms.kind(self.cfg) == "gke" and self.sh.run(["gke-gcloud-auth-plugin", "--version"], timeout=30).rc != 0:
+            raise StepError("kubectl needs gke-gcloud-auth-plugin for GKE: gcloud components install gke-gcloud-auth-plugin")
+        self._run(platforms.credentials(self.cfg, self.p["kubeconfig"]), timeout=120)
         self.p["kubeconfig"].chmod(0o600)
         if self.facts.get("aad"):
             r = self.sh.run(["kubelogin", "convert-kubeconfig", "-l", "azurecli", "--kubeconfig", str(self.p["kubeconfig"])],
@@ -226,6 +239,31 @@ class Runner:
             if not r.ok:
                 raise StepError("this cluster uses Entra ID auth: install kubelogin (brew install Azure/kubelogin/kubelogin)")
         return "ok", "ready"
+
+    def s_gsa(self):
+        """Adopt the Google service account and its two bindings where they exist; create only what is missing."""
+        c = self.cfg["cluster"]
+        email, member, proj = platforms.gsa_email(self.cfg), platforms.wi_member(self.cfg), c["project_id"]
+        exists = self.sh.run(["gcloud", "iam", "service-accounts", "describe", email, "--project", proj, "--format=json"], timeout=60).rc == 0
+        have = set()
+        if exists:
+            pol = self._run(["gcloud", "iam", "service-accounts", "get-iam-policy", email, "--project", proj, "--format=json"], timeout=60).json({}) or {}
+            have = {b.get("role") for b in pol.get("bindings") or [] if member in (b.get("members") or [])}
+        missing = [r for r in platforms.GKE_ROLES if r not in have]
+        if exists and not missing:
+            return "ok", "exists with both bindings"
+        if self.dry:
+            todo = ([] if exists else ["would create it"]) + ([f"would bind {', '.join(r.split('/')[-1] for r in missing)}"] if missing else [])
+            return "skipped", "dry run: " + "; ".join(todo)
+        if not exists:
+            if not email.endswith(f"@{proj}.iam.gserviceaccount.com"):
+                raise StepError(f"{email} does not exist and is not in project {proj}: create it there or leave the field blank")
+            self._run(["gcloud", "iam", "service-accounts", "create", email.split("@")[0], "--project", proj,
+                       "--display-name", "JFrog kubelet credential provider"], timeout=120)
+        for role in missing:
+            self._run(["gcloud", "iam", "service-accounts", "add-iam-policy-binding", email, "--project", proj,
+                       "--role", role, "--member", member, "--format=none"], timeout=120)
+        return "done", ("created; " if not exists else "") + f"{len(missing)} binding(s) added"
 
     def _dry_flag(self):
         """--dry-run=server, or =client while the namespace does not exist yet: the API server cannot place an
@@ -378,6 +416,10 @@ class Runner:
         ann = ((r.json({}) or {}).get("metadata") or {}).get("annotations") or {}
         if ann.get("JFrogExchange") != "true":
             raise StepError(f"{k['service_account']} lacks the annotation JFrogExchange=\"true\": the provider will not exchange its token")
+        if platforms.kind(self.cfg) == "gke":
+            if ann.get("iam.gke.io/gcp-service-account") != platforms.gsa_email(self.cfg):
+                raise StepError(f"{k['service_account']} lacks iam.gke.io/gcp-service-account={platforms.gsa_email(self.cfg)}: run Set up")
+            return "ok", "JFrogExchange: true; Google service account set"
         return "ok", "JFrogExchange: true"
 
     def s_trust(self):

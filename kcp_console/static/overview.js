@@ -6,7 +6,6 @@
 import { api, h, fill, state, selectTab, refreshConfigs } from "./app.js";
 import { $, workflow, brief } from "./ui.js";
 
-let aks = null;             // GET /api/aks
 const live = {};            // config name -> {loading, facts, preflight, error}
 const acts = {};            // config name -> the newest action: {which, dry, real, error}
 const boxes = {};           // real run id -> its approval box (kept, so a re-render keeps what was typed)
@@ -130,7 +129,7 @@ function fleetView() {
         h("button", { class: "ghost", disabled: fleetLoading, onclick: () => { fleet = null; render(); } }, "Refresh"),
         h("button", { class: adding ? "secondary" : "primary", onclick: () => { adding = !adding; render(); } }, adding ? "Close" : "Add a cluster"))),
     d.error ? h("div", { class: "callout fail" }, brief(d.error)) : null,
-    adding ? panel("Add a cluster", muted("from az aks list"), aksTable(state.configs || [])) : null,
+    adding ? addPanel(state.configs || []) : null,
     !fleet ? h("p", { class: "muted" }, "Loading…")
       : !n && !adding ? h("div", { class: "empty" }, h("p", {}, "No clusters yet"), h("button", { class: "primary", onclick: () => { adding = true; render(); } }, "Add a cluster"))
       : n ? [
@@ -208,9 +207,9 @@ function clusterView(c) {
   const flag = (name, ok, bad) => (ok === undefined ? null : ok ? `${name} ✓` : h("span", { class: "bad" }, `${name} ${bad} ✕`));
   const cl = f.cluster;
   const facts = f.cluster || rel ? h("dl", { class: "cl-facts" },
-    h("dt", {}, "Cluster"), h("dd", {}, dots(["AKS", cl?.kubernetes_version && `Kubernetes ${cl.kubernetes_version}`,
+    h("dt", {}, "Cluster"), h("dd", {}, dots([CLOUD[c.platform || "aks"], cl?.kubernetes_version && `Kubernetes ${cl.kubernetes_version}`,
       f.nodes && `${f.nodes.length} node${f.nodes.length === 1 ? "" : "s"}`,
-      flag("OIDC issuer", cl?.oidc_enabled, "off"), flag("Workload Identity", cl?.workload_identity, "off")])),
+      (c.platform || "aks") === "aks" ? flag("OIDC issuer", cl?.oidc_enabled, "off") : null, flag("Workload Identity", cl?.workload_identity, "off")])),
     h("dt", {}, "Credential provider"), h("dd", {}, dots([rel ? rel.chart.replace(/^.*-(?=\d)/, "v") : h("span", { class: "bad" }, "not installed ✕"),
       sa && flag("service account allowed", sa.exists && sa.annotation === "true", sa.exists ? "no" : "missing"),
       f.providers && flag("JFrog provider", f.providers.some((p) => p.name === c.provider), "missing")]))) : null;
@@ -487,36 +486,66 @@ function causeEl(name, run) {
 
 // ----------------------------------------------------------------------- add a cluster
 
-function aksTable(configs) {
-  const added = new Set(configs.map((c) => (c.cluster || "").toLowerCase()));
-  if (!aks) { loadAks(); return muted("Reading the clusters your az login can see…"); }
-  if (aks.loading) return muted("Reading the clusters your az login can see…");
-  if (aks.error) return h("p", { class: "error small" }, brief(aks.error));
-  const rows = aks.clusters.filter((k) => !added.has(k.name.toLowerCase()));
-  if (!rows.length) return muted("Every AKS cluster your az login can see is already added.");
-  return h("div", {}, h("table", { class: "cfg-table" },
-    h("thead", {}, h("tr", {}, ["Cluster", "Resource group", "Location", "Kubernetes", "OIDC · WI", ""].map((t) => h("th", { scope: "col" }, t)))),
-    h("tbody", {}, rows.map((k) => h("tr", {},
-      h("td", {}, h("b", {}, k.name), k.power && k.power !== "Running" ? muted(` ${k.power}`) : null),
-      h("td", {}, k.resource_group), h("td", {}, k.location), h("td", {}, k.version),
-      h("td", {}, `${k.oidc_issuer ? "on" : "off"} · ${k.workload_identity ? "on" : "off"}`),
-      h("td", { class: "row-actions" }, h("button", { class: "primary small-btn", onclick: () => add(k) }, "Add")))))));
+// Existing clusters the operator's logins can see, per cloud: every subscription (az) or project (gcloud).
+const SOURCES = { aks: { api: "/api/aks", short: "AKS" }, gke: { api: "/api/gke", short: "GKE" } };
+const found = {};           // cloud -> {clusters, loading, error}
+let addCloud = "aks";
+
+function addPanel(configs) {
+  const tabs = h("div", { class: "seg", role: "tablist" }, Object.keys(SOURCES).map((k) =>
+    h("button", { role: "tab", "aria-selected": String(addCloud === k), class: addCloud === k ? "on" : "",
+      onclick: () => { addCloud = k; render(); } }, CLOUD[k])));
+  return panel("Add a cluster", tabs, foundTable(configs, addCloud));
 }
 
-async function loadAks() {
-  aks = { clusters: [], loading: true };
-  try { aks = await api("/api/aks"); } catch (err) { aks = { clusters: [], error: err.message }; }
+function foundTable(configs, cloud) {
+  const src = SOURCES[cloud], f = found[cloud];
+  const added = new Set(configs.map((c) => (c.cluster || "").toLowerCase()));
+  if (!f) { loadFound(cloud); return muted(`Finding ${src.short} clusters…`); }
+  if (f.loading) return muted(`Finding ${src.short} clusters…`);
+  if (f.error) return h("p", { class: "error small" }, brief(f.error));
+  const rows = f.clusters.filter((k) => !added.has(k.name.toLowerCase()));
+  if (!rows.length) return muted(f.clusters.length ? `All ${src.short} clusters are added.` : `No ${src.short} clusters found.`);
+  const on = (b) => (b ? "on" : h("span", { class: "bad" }, "off"));
+  const cols = cloud === "gke"
+    ? ["Cluster", "Project", "Location", "Kubernetes", "Workload Identity", ""]
+    : ["Cluster", "Subscription", "Resource group", "Location", "Kubernetes", "OIDC · WI", ""];
+  return h("table", { class: "cfg-table" },
+    h("thead", {}, h("tr", {}, cols.map((t) => h("th", { scope: "col" }, t)))),
+    h("tbody", {}, rows.map((k) => h("tr", {},
+      h("td", {}, h("b", {}, k.name), k.power && k.power !== "Running" ? muted(` ${k.power}`) : null,
+        k.status && k.status !== "RUNNING" ? muted(` ${k.status.toLowerCase()}`) : null),
+      ...(cloud === "gke"
+        ? [h("td", {}, k.project_name && k.project_name !== k.project_id ? [k.project_name, h("div", { class: "sub" }, k.project_id)] : k.project_id),
+           h("td", {}, k.location), h("td", {}, k.version), h("td", {}, k.autopilot ? muted("Autopilot") : on(k.workload_identity))]
+        : [h("td", {}, k.subscription_name || k.subscription_id), h("td", {}, k.resource_group), h("td", {}, k.location), h("td", {}, k.version),
+           h("td", {}, on(k.oidc_issuer), " · ", on(k.workload_identity))]),
+      h("td", { class: "row-actions" }, k.autopilot
+        ? muted("not supported")
+        : h("button", { class: "primary small-btn", onclick: () => add(k, cloud) }, "Add"))))));
+}
+
+async function loadFound(cloud) {
+  found[cloud] = { clusters: [], loading: true };
+  try { found[cloud] = await api(SOURCES[cloud].api); } catch (err) { found[cloud] = { clusters: [], error: err.message }; }
   render();
 }
 
-// A new configuration: the cluster from az, the JFrog side copied from the newest saved cluster
-// (same JFrog instance, user and test image), the provider and mapping named after the cluster.
-async function add(k) {
+// A new configuration for an existing cluster: its coordinates from the cloud, the JFrog side copied from
+// the newest saved cluster (same JFrog instance, user and test image), the provider and mapping named after
+// it. Set up then adopts what the cluster and JFrog already have and creates only what is missing.
+async function add(k, cloud) {
   const cfg = await api("/api/defaults");
   const name = k.name.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 63);
   cfg.name = name;
-  Object.assign(cfg.cluster, { name: k.name, resource_group: k.resource_group, subscription_id: k.subscription_id,
-    subscription_name: k.subscription_name || "", oidc_issuer: k.oidc_issuer });
+  cfg.platform = cloud;
+  if (cloud === "gke") {
+    Object.assign(cfg.cluster, { name: k.name, project_id: k.project_id, location: k.location, subscription_name: k.project_name || k.project_id,
+      resource_group: "", subscription_id: "", google_service_account: "", oidc_issuer: "" });   // the server derives GKE's issuer
+  } else {
+    Object.assign(cfg.cluster, { name: k.name, resource_group: k.resource_group, subscription_id: k.subscription_id,
+      subscription_name: k.subscription_name || "", oidc_issuer: k.oidc_issuer });
+  }
   const newest = [...(state.configs || [])].sort((a, b) => (b.updated || "").localeCompare(a.updated || ""))[0];
   if (newest) {
     const src = await api(`/api/configs/${encodeURIComponent(newest.name)}`);
@@ -527,7 +556,7 @@ async function add(k) {
   cfg.jfrog.oidc_provider = cfg.values.provider_name = `${name}-oidc`.slice(0, 63);
   cfg.jfrog.mapping_name = `${name}-mapping`.slice(0, 63);
   await api(`/api/configs/${encodeURIComponent(name)}`, { method: "PUT", body: { config: cfg } });
-  aks = null;
+  delete found[cloud];
   adding = false;
   fleet = null;
   openCluster(name);

@@ -246,3 +246,19 @@ Found and fixed on the way:
   names that case.
 - The Docker subdomain host `<server>-<repo>.jfrog.io` only redirected on the trial instance; the
   path form `<server>/<repo>/<image>` served the pull (`match_images: [<server>]`).
+
+## GKE and existing estates (2026-10-30)
+
+- GKE, GCP.md Option B: `platforms.py` holds the per-cloud commands (read, enable identity,
+  credentials, issuer). Set up on GKE adds the `gsa` step: it describes the Google service
+  account and its IAM policy and creates only the missing pieces (the account,
+  `roles/iam.workloadIdentityUser`, `roles/iam.serviceAccountOpenIdTokenCreator` for
+  `<project>.svc.id.goog[<ns>/<sa>]`). Values use the chart's `gcp:` block (audience
+  `artifactory`); the pod's service account carries `iam.gke.io/gcp-service-account`. The JFrog
+  provider is `Generic OpenID Connect` on the cluster's issuer, and the mapping matches `aud`.
+- Autopilot clusters are refused at the cluster read. kubectl needs `gke-gcloud-auth-plugin`; the
+  credentials step names it when it is missing.
+- Add a cluster lists existing AKS clusters in every subscription and GKE clusters in every
+  project; steps adopt existing identity, providers and releases.
+- Tests: `test_gke.py` (fake gcloud). Not yet run against a live GKE cluster: none exists in the
+  test projects.

@@ -27,7 +27,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import diagnose as diag, direct, fleet, knowledge, logic, model, redact, report
+from . import diagnose as diag, direct, fleet, knowledge, logic, model, platforms, redact, report
 from .checks import artifactory as art_checks, hygiene, preflight as pf, verify as vchecks
 from .jfrog import Jfrog
 from .runner import RunError, RunManager, bundle as run_bundle, pod_from_log
@@ -117,6 +117,13 @@ class KcpServer:
                 statuses[c["name"]] = {}
         rows = fleet.rows(configs, statuses, self.runs.list())
         return {"clusters": rows, "counts": fleet.counts(rows), "platforms": fleet.platforms()}
+
+    def gke_clusters(self) -> dict:
+        """The GKE clusters in every project the operator's gcloud login can see (read-only)."""
+        out = platforms.gke_list(self.shell(), {(c.get("cluster") or "").lower() for c in self.store.list()})
+        if out.get("error"):
+            out["error"] = redact.text(out["error"])
+        return out
 
     def aks_clusters(self) -> dict:
         """The AKS clusters the operator's az login can see (read-only), marked when a config already uses one."""
@@ -474,6 +481,8 @@ def _make_handler(console: KcpServer):
                 return self._json(200, console.fleet())
             if method == "GET" and parts == ["aks"]:
                 return self._json(200, console.aks_clusters())
+            if method == "GET" and parts == ["gke"]:
+                return self._json(200, console.gke_clusters())
             if method == "POST" and parts in (["discover"], ["preflight"]):
                 name = self._name(self._body().get("config"))
                 return self._json(200, console.discover(name, parts[0] == "preflight"))

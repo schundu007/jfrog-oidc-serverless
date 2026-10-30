@@ -27,8 +27,16 @@ these places, and `docs/kcp-progress.md` §Traceability says which:
 - **Modelled, not built:** Option A (nodepool managed identity plus an Azure AD
   app registration). The Configure tab shows what A would need, because the
   security review needs a documented A-vs-B decision.
-- **Seam for later:** EKS, GKE, OpenShift (`model.PLATFORMS`; only `aks` is
-  enabled). The upstream README lists them as supported.
+- **GKE:** GCP.md Option B (Workload Identity). JFrog trusts the cluster's issuer
+  (`container.googleapis.com/v1/projects/P/locations/L/clusters/C`); Set up adds a
+  Google service account step that adopts an existing account and bindings and
+  creates only what is missing. Autopilot is refused (no DaemonSet on its nodes).
+  Per-cloud commands live in `kcp_console/platforms.py`.
+- **Existing estates:** Add a cluster lists the clusters that already exist in every
+  subscription (`az aks list`) or project (`gcloud projects list` +
+  `gcloud container clusters list`) the operator can see. Every step adopts what
+  exists.
+- **Seam for later:** EKS, OpenShift (`model.PLATFORMS`). The upstream README lists them as supported.
 - **Modes:** *pilot* drives `argocd-utility` with its `TestScenario` names;
   *template* drives `jfrog-kcp-cluster.yml` (`Action`) and
   `jfrog-kcp-mappings.yml`.

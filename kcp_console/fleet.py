@@ -64,7 +64,7 @@ def row(c: dict, st: dict, runs: list) -> dict:
     return {
         "name": c["name"], "cluster": c.get("cluster", ""), "cloud": c.get("platform") or "aks",
         "subscription": c.get("subscription", ""), "resource_group": c.get("resource_group", ""),
-        "location": ((d or {}).get("cluster") or {}).get("location", ""),
+        "location": ((d or {}).get("cluster") or {}).get("location", "") or c.get("location", ""),
         "kubernetes": ((d or {}).get("cluster") or {}).get("kubernetes_version", ""),
         "state": state, "oidc": oidc or "unchecked", "verified_at": verified_at, "problem": (bad or {}).get("title", ""),
         "chart": chart.rsplit("-", 1)[-1] if chart else "", "nodes": len((d or {}).get("nodes") or []),

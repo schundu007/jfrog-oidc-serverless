@@ -10,6 +10,9 @@
     "subscription_name": "sandbox-subscription",
     "oidc_issuer": "https://centralus.oic.prod-aks.azure.com/00000000-0000-0000-0000-0000000000b2/00000000-0000-0000-0000-0000000000c3/",
     "environment": "SBX",
+    "project_id": "",
+    "location": "",
+    "google_service_account": "",
     "nodes": [
       "aks-nodepool1-12345678-vmss00000e",
       "aks-nodepool1-12345678-vmss00000g"
@@ -52,6 +55,7 @@
     "provider_name": "aks-sandbox-oidc",
     "azure_app_audience": "api://AzureADTokenExchange",
     "token_attributes_enabled": true,
+    "gcp_oidc_audience": "artifactory",
     "download_url": "https://example.jfrog.io/artifactory/aks-sandbox-generic-local/jfrog-credential-provider/1.4.0/jfrog-credential-provider-linux",
     "chart_repo": "https://charts.jfrog.io",
     "chart_name": "jfrog/jfrog-credential-provider",

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .. import logic, model
+from .. import logic, model, platforms
 from ..jfrog import Jfrog
 from ..k8s import Kube
 from ..parse import helm
@@ -24,23 +24,21 @@ def discover(cfg: dict, shell, env=None, kubeconfig=None) -> dict:
     cfg = model.merged(cfg)
     c, k = cfg["cluster"], cfg["k8s"]
     out = {"cluster": {}, "reads": []}
-    aks = shell.run(["az", "aks", "show", "--resource-group", c["resource_group"], "--name", c["name"],
-                     "--subscription", c["subscription_id"], "-o", "json"], timeout=90)
+    show = platforms.show(cfg)
+    aks = shell.run(show, timeout=90)
     if aks.ok:
-        d = aks.json({}) or {}
-        oidc = d.get("oidcIssuerProfile") or {}
-        out["cluster"] = {"oidc_enabled": bool(oidc.get("enabled")), "issuer": oidc.get("issuerUrl"),
-                          "workload_identity": bool(((d.get("securityProfile") or {}).get("workloadIdentity") or {}).get("enabled")),
-                          "kubernetes_version": d.get("kubernetesVersion"), "location": d.get("location", "")}
+        f = platforms.parse(cfg, aks.json({}) or {})
+        out["cluster"] = {"oidc_enabled": f["oidc"], "issuer": f["issuer"], "workload_identity": f["wi"],
+                          "kubernetes_version": f["version"], "location": f["location"], "platform": platforms.kind(cfg)}
     else:
         out["cluster"] = {"error": aks.error_text()}
-    out["reads"].append({"what": "az aks show", "ok": aks.ok})
+    out["reads"].append({"what": " ".join(show[:3]), "ok": aks.ok})
 
     if kubeconfig is not None and aks.ok:
         Path(kubeconfig).parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        got = shell.run(["az", "aks", "get-credentials", "--resource-group", c["resource_group"], "--name", c["name"],
-                         "--subscription", c["subscription_id"], "--file", str(kubeconfig), "--overwrite-existing"], timeout=120)
-        out["reads"].append({"what": "az aks get-credentials", "ok": got.ok})
+        cred = platforms.credentials(cfg, kubeconfig)
+        got = shell.run(cred, timeout=120, extra_env={"KUBECONFIG": str(kubeconfig)})
+        out["reads"].append({"what": " ".join(cred[:4] if cred[0] == "gcloud" else cred[:3]), "ok": got.ok})
         if Path(kubeconfig).exists():
             Path(kubeconfig).chmod(0o600)
     kube = Kube(shell, kubeconfig=kubeconfig)
@@ -84,8 +82,16 @@ def _c(cid, title, status, detail, fix=None, fallback=None):
 def preflight(cfg: dict, facts: dict) -> dict:
     cfg = model.merged(cfg)
     cl, checks = facts.get("cluster") or {}, []
+    gke = platforms.kind(cfg) == "gke"
+    if gke:
+        cfg["cluster"]["oidc_issuer"] = platforms.issuer(cfg)
     if cl.get("error"):
         checks.append(_c("aks", "Read the cluster", "fail", cl["error"]))
+    elif gke:
+        # A GKE cluster always has its issuer; Workload Identity is what Option B needs switched on.
+        checks.append(_c("workload-identity", "Workload Identity enabled", "pass" if cl.get("workload_identity") else "fail",
+                         f"workloadIdentityConfig.workloadPool {'set' if cl.get('workload_identity') else 'not set'}",
+                         None if cl.get("workload_identity") else "Set up turns it on (gcloud container clusters update --workload-pool)"))
     else:
         checks.append(_c("oidc-issuer", "OIDC issuer enabled", "pass" if cl.get("oidc_enabled") else "fail",
                          f"oidcIssuerProfile.enabled = {str(cl.get('oidc_enabled')).lower()}",
