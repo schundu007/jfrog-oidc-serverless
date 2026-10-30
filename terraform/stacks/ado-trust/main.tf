@@ -69,6 +69,19 @@ resource "azurerm_federated_identity_credential" "ado" {
   audience                  = [local.audience]
 }
 
+# AzureCLI@2 logs in before any script runs, so the identity must see the
+# subscription; Reader on its own resource group is the least that does.
+data "azurerm_resource_group" "ado" {
+  name = var.azure_identity.resource_group
+}
+
+resource "azurerm_role_assignment" "ado_login" {
+  scope                = data.azurerm_resource_group.ado.id
+  role_definition_name = "Reader"
+  principal_id         = data.azurerm_user_assigned_identity.ado.principal_id
+  principal_type       = "ServicePrincipal"
+}
+
 # --- GCP: Workload Identity Federation ------------------------------------------------
 
 data "google_project" "this" {
