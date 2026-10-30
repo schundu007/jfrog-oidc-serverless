@@ -1,4 +1,5 @@
-# Build -> push -> deploy -> run for a Cloud Run job workload.
+# Build -> push -> deploy -> run for a Cloud Run job workload. Services and
+# functions have their own pipelines (gcp-service-build-deploy, gcp-function-deploy).
 # The base image comes through JFrog and the image goes to Artifact Registry;
 # both logins come from the service connection's OIDC token (no stored secrets).
 # Trust: terraform/stacks/ado-trust. Infrastructure: pipelines/gcp-stack-setup.yml.
@@ -19,6 +20,8 @@ parameters:
 
 variables:
   - template: vars/${{ parameters.environment }}.yml
+  - name: KIND
+    value: job
   - name: APP
     value: artifact-reader
   - name: WORKLOAD

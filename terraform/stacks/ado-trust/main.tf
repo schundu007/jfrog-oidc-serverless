@@ -209,8 +209,9 @@ resource "google_service_account_iam_member" "ado_wif" {
   member             = "principal://iam.googleapis.com/${local.pool}/subject/${element(split("/sc/", each.value.subject), 1)}"
 }
 
-# build: push images, roll out the job image and run it. actAs on each workload's
-# service account is granted by that workload's stack (deployer_service_account).
+# build: push images, roll out jobs and services, deploy functions from source.
+# Service and function deploys act as the app's runtime account, which the console
+# may have created (jfrog-<name>), so actAs is project-wide in this test project.
 resource "google_artifact_registry_repository_iam_member" "build_push" {
   project    = var.gcp_project_id
   location   = var.gcp_region
@@ -220,7 +221,8 @@ resource "google_artifact_registry_repository_iam_member" "build_push" {
 }
 
 resource "google_project_iam_member" "build" {
-  for_each = toset(["roles/run.developer", "roles/logging.viewer"])
+  for_each = toset(["roles/run.developer", "roles/logging.viewer", "roles/cloudfunctions.developer",
+  "roles/iam.serviceAccountUser"])
 
   project = var.gcp_project_id
   role    = each.value
