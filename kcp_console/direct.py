@@ -201,10 +201,22 @@ class Runner:
                 raise StepError("this cluster uses Entra ID auth: install kubelogin (brew install Azure/kubelogin/kubelogin)")
         return "ok", f"kubeconfig at {self.p['kubeconfig'].name}"
 
+    def _dry_flag(self):
+        """--dry-run=server, or =client while the namespace does not exist yet: the API server cannot place an
+        object in a namespace that the same dry run only pretends to create."""
+        if "ns" not in self.facts:
+            ns = self.cfg["k8s"]["namespace"]
+            self.facts["ns"] = self.sh.run(["kubectl", "get", "namespace", ns, "-o", "json"], timeout=60, extra_env=self.kenv).rc == 0
+        return "--dry-run=server" if self.facts["ns"] else "--dry-run=client"
+
     def s_sa(self):
         self.p["sa"].write_text(json.dumps(sa_manifest(self.cfg), indent=2))
-        r = self._run(["kubectl", "apply", "-f", str(self.p["sa"]), *(["--dry-run=server"] if self.dry else [])])
-        return ("ok" if self.dry else "done"), " ".join(r.stdout.split())[:300]
+        flag = self._dry_flag() if self.dry else None
+        r = self._run(["kubectl", "apply", "-f", str(self.p["sa"]), *([flag] if flag else [])])
+        out = " ".join(r.stdout.split())[:300]
+        if flag == "--dry-run=client":
+            out = f"namespace {self.cfg['k8s']['namespace']} is created on the real run; checked client-side: {out}"
+        return ("ok" if self.dry else "done"), out
 
     def _provider_state(self):
         r = self.jf.providers()
@@ -222,6 +234,10 @@ class Runner:
             if self.dry:
                 return "skipped", "dry run: created once the OIDC issuer is on (the oidc step enables it)"
             raise StepError("no OIDC issuer yet (the cluster step reads it)")
+        if not self.jf.token_present:
+            if self.dry:
+                return "skipped", f"dry run: no JFrog token, so the provider was not read; would create {name} for {issuer}"
+            raise StepError("no JFrog token: start the console with JFROG_ACCESS_TOKEN")
         have = self._provider_state().get(name)
         if have:
             if (have.get("issuer_url") or "").rstrip("/") != issuer.rstrip("/"):
@@ -237,6 +253,10 @@ class Runner:
     def s_mapping(self):
         cfg = self.cfg
         prov, name = cfg["values"]["provider_name"], cfg["jfrog"]["mapping_name"]
+        if not self.jf.token_present:
+            if self.dry:
+                return "skipped", f"dry run: no JFrog token; would map {model.subject(cfg)} → {cfg['jfrog']['mapped_user']}"
+            raise StepError("no JFrog token: start the console with JFROG_ACCESS_TOKEN")
         r = self.jf.mappings(prov)
         if r["ok"] and any(m.get("name") == name for m in (r["json"] or [])):
             return "ok", "exists"
@@ -280,8 +300,9 @@ class Runner:
         k = self.cfg["k8s"]
         self.p["pod"].write_text(json.dumps(pod_manifest(self.cfg), indent=2))
         if self.dry:
-            self._run(["kubectl", "apply", "-f", str(self.p["pod"]), "--dry-run=server"])
-            return "skipped", "dry run: pod validated by the API server"
+            flag = self._dry_flag()
+            self._run(["kubectl", "apply", "-f", str(self.p["pod"]), flag])
+            return "skipped", f"dry run: pod validated {'by the API server' if flag.endswith('server') else 'client-side'}"
         self._run(["kubectl", "delete", "pod", k["test_pod"], "-n", k["namespace"], "--ignore-not-found", "--wait=true"], timeout=120)
         self._run(["kubectl", "apply", "-f", str(self.p["pod"])])
         waited, phase, reason = 0, "", ""

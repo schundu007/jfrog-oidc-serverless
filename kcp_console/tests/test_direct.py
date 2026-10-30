@@ -18,8 +18,9 @@ ISSUER = model.SANDBOX_ISSUER
 class FakeShell:
     """Answers az/kubectl/helm and the Access API like a cluster with the provider not yet set up."""
 
-    def __init__(self, oidc=True, providers=None, mappings=None, pod_phase="Running", pod_reason=""):
+    def __init__(self, oidc=True, providers=None, mappings=None, pod_phase="Running", pod_reason="", ns_exists=True):
         self.calls, self.http_calls = [], []
+        self.ns_exists = ns_exists
         self.oidc, self.providers, self.mappings = oidc, providers or [], mappings or []
         self.pod_phase, self.pod_reason = pod_phase, pod_reason
         self.env_seen = []
@@ -35,6 +36,10 @@ class FakeShell:
             self.oidc = True
         elif argv[:3] == ["az", "aks", "get-credentials"]:
             Path(argv[argv.index("--file") + 1]).write_text("apiVersion: v1\nkind: Config\n")
+        elif argv[:3] == ["kubectl", "get", "namespace"]:
+            if not self.ns_exists:
+                return Result(list(argv), 1, "", f'Error from server (NotFound): namespaces "{argv[3]}" not found', 0.0)
+            out = json.dumps({"metadata": {"name": argv[3]}})
         elif argv[:2] == ["kubectl", "label"]:
             out = "node/a labeled\nnode/b labeled\n"
         elif argv[:3] == ["kubectl", "get", "daemonset"]:
@@ -127,6 +132,35 @@ class RunnerTest(unittest.TestCase):
                 self.assertIn("--dry-run=server", c, c)
         values = (self.root / "kube" / "sandbox-pilot-values.yaml").read_text()
         self.assertIn('serviceAccountTokenAudience: "api://AzureADTokenExchange"', values)
+
+    def test_dry_run_on_a_fresh_cluster_validates_namespaced_objects_client_side(self):
+        # A server-side dry run cannot place the service account or the test pod in a namespace it only
+        # pretends to create, so on a cluster without the namespace those two are checked client-side.
+        sh = FakeShell(ns_exists=False)
+        res = self.runner(sh, dry=True).execute(direct.plan(cfg(), self.root, "setup", dry_run=True))
+        self.assertFalse([r for r in res if r["status"] == "failed"], res)
+        applies = [c for c in sh.calls if c[:2] == ["kubectl", "apply"]]
+        self.assertEqual(len(applies), 2)
+        for c in applies:
+            self.assertIn("--dry-run=client", c)
+        self.assertIn("namespace jfrog is created", next(r for r in res if r["id"] == "sa")["detail"])
+
+    def test_dry_run_without_a_jfrog_token_still_checks_the_cluster(self):
+        sh = FakeShell()
+        rn = direct.Runner(cfg(), sh, self.root, {}, lambda line: None, dry_run=True, sleep=lambda s: None)
+        res = rn.execute(direct.plan(cfg(), self.root, "setup", dry_run=True))
+        self.assertFalse([r for r in res if r["status"] == "failed"], res)
+        self.assertEqual(sh.http_calls, [])
+        for i in ("provider", "mapping"):
+            self.assertIn("no JFrog token", next(r for r in res if r["id"] == i)["detail"])
+        self.assertIn("helm", [c[0] for c in sh.calls])
+
+    def test_real_setup_without_a_jfrog_token_stops_at_jfrog(self):
+        sh = FakeShell()
+        rn = direct.Runner(cfg(), sh, self.root, {}, lambda line: None, dry_run=False, sleep=lambda s: None)
+        res = rn.execute(direct.plan(cfg(), self.root, "setup", dry_run=False))
+        self.assertEqual(res[-1]["id"], "provider")
+        self.assertEqual(res[-1]["status"], "failed")
 
     def test_real_setup_creates_what_is_missing(self):
         sh = FakeShell(oidc=False)
