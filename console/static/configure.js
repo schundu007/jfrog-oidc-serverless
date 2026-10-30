@@ -123,44 +123,11 @@ function labelFor(path) {
 
 // ----------------------------------------------------------------- summary panel
 
-// The OIDC trust chain this configuration builds, and the changes the pipeline will plan.
 function renderSummary() {
   const c = st.cfg;
   if (!c) return;
   const d = c.target?.discovered;
   const found = !!d && (!d.kind || d.kind === c.target.kind);
-  const who = d?.service_account || d?.principal_id || null;
-  const integration = c.jfrog?.integration_names?.[cloud] || "";
-  const adopt = !!c.jfrog?.adopt_integration;
-  const ttl = c.runtime?.ttl_seconds || 3600;
-  const group = c.jfrog?.reader_group || "?";
-  const mapping = `${c.name || "config"}-runtime`;
-  const issuer = cloud === "gcp" ? "https://accounts.google.com" : "https://login.microsoftonline.com/<tenant>/v2.0";
-
-  const node = (state, title, detail) => h("li", { class: `chain-node is-${state}` },
-    h("span", { class: "chain-dot", "aria-hidden": "true" }),
-    h("div", {}, h("b", { text: title }), detail ? h("span", { class: "chain-detail", text: detail }) : null));
-  const nodes = [
-    node(found ? "done" : "todo", "Workload identity", found ? who : ""),
-    node(found ? "done" : "todo", "Issuer", issuer),
-    node(adopt ? "done" : "todo", "Integration", adopt ? `${integration} (existing)` : integration),
-    node("todo", "Mapping", `${mapping} → ${group}`),
-  ];
-  if (c.runtime?.enabled) nodes.push(node("end", "JFrog token", `${ttl}s`));
-  if (c.pull_path?.enabled) nodes.push(node("end", "Pull token", `${c.pull_path.ttl_seconds}s`));
-  fill($("chain"), nodes);
-
-  const code = (t) => h("code", { text: t });
-  const items = [
-    h("li", {}, code("platform_oidc_configuration"), ` ${integration}`),
-    h("li", {}, code("platform_oidc_identity_mapping"), ` ${mapping}`),
-  ];
-  if (c.runtime?.enabled) items.push(h("li", {}, code("JFROG_URL"), " ", code("JFROG_OIDC_PROVIDER"), " ",
-    code("JFROG_OIDC_AUDIENCE"), " ", code("JFROG_OIDC_SOURCE")));
-  if (c.pull_path?.enabled) items.push(h("li", {}, ...(cloud === "gcp"
-    ? [code("rotator job"), " ", code("scheduler"), " ", code("secret"), " ", code("AR remote")]
-    : [code("rotator job"), " ", code("Key Vault secret"), " ", code("registry password ref")])));
-  fill($("cfg-plan-list"), items);
   const urlOk = /^https:\/\/[a-z0-9.-]+\/?$/i.test(c.jfrog?.url || "");
   $("step-app").classList.toggle("is-done", found);
   $("step-jfrog").classList.toggle("is-done", urlOk && !!c.jfrog?.reader_group);
