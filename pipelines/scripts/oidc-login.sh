@@ -21,6 +21,7 @@ export JFROG_OIDC_TOKEN_FILE="$OIDC_DIR/id-token"
 export JFROG_OIDC_AUDIENCE=api://AzureADTokenExchange
 export DOCKER_CONFIG="$OIDC_DIR/docker"
 
+python3 -m jfrog_oidc claims
 python3 -m jfrog_oidc check
 
 if [ -n "${GCP_SERVICE_ACCOUNT:-}" ]; then

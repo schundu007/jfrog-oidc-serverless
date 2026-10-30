@@ -47,7 +47,7 @@ resource "platform_oidc_identity_mapping" "setup" {
   token_spec = {
     scope      = "applied-permissions/admin"
     username   = "ado-setup"
-    audience   = "*@*"
+    audience   = "jfrt@* jfac@*"
     expires_in = 3600
   }
 }
