@@ -1,0 +1,23 @@
+# Argo CD hub for the KCP fleet (chart argo/argo-cd 10.11.x, Argo CD 3.5).
+# No stored credentials: no admin password, no Dex, and the repo-server reads the Azure DevOps
+# repo with Azure Workload Identity. The client and tenant IDs are set at install time
+# (--set repoServer.serviceAccount.annotations...), never committed.
+configs:
+  cm:
+    admin.enabled: "false"
+    exec.enabled: "false"
+  params:
+    server.insecure: true
+dex:
+  enabled: false
+notifications:
+  enabled: false
+server:
+  service:
+    type: ClusterIP
+repoServer:
+  podLabels:
+    azure.workload.identity/use: "true"
+  serviceAccount:
+    create: true
+    name: argocd-repo-server
