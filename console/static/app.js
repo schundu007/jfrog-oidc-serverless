@@ -188,7 +188,7 @@ const KIND_LABELS = {
 };
 const scenarioLabel = (s) => {
   const words = s.name.replaceAll("-", " ");
-  return `${words[0].toUpperCase()}${words.slice(1)} (${KIND_LABELS[s.target_kind] || s.target_kind})`;
+  return `${words[0].toUpperCase()}${words.slice(1)}`;
 };
 
 const state = { catalogue: null, scenario: null, running: false, events: [], result: null };
