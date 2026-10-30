@@ -200,22 +200,26 @@ function clusterView(c) {
   const [vcls, vtext] = verdict(s);
   const problems = (s.preflight?.checks || []).filter((x) => x.status === "fail" || x.status === "warn");
   const sa = f.service_account;
-  const tiles = [
-    ["Kubernetes", f.cluster?.kubernetes_version || "—"],
-    ["OIDC · Workload Identity", f.cluster ? `${f.cluster.oidc_enabled ? "On" : "Off"} · ${f.cluster.workload_identity ? "On" : "Off"}` : "—"],
-    ["Credential provider", rel ? `${rel.chart.replace(/^.*-(?=\d)/, "v")} · rev ${rel.revision}` : "Not installed"],
-    ["Nodes", f.nodes ? String(f.nodes.length) : "—"],
-    ["Service account", sa ? (sa.exists ? (sa.annotation === "true" ? "Allowed" : "Not allowed") : "Missing") : "—"],
-    ["JFrog provider", f.providers ? (f.providers.some((p) => p.name === c.provider) ? "Present" : "Missing") : "—"],
-  ];
+  // Facts as two muted lines under the title; only what fails turns red.
+  const flag = (name, ok, bad) => (ok === undefined ? null : ok ? `${name} ✓` : h("span", { class: "bad" }, `${name} ${bad} ✕`));
+  const cl = f.cluster;
+  const facts = f.cluster || rel ? h("dl", { class: "cl-facts" },
+    h("dt", {}, "Cluster"), h("dd", {}, dots(["AKS", cl?.kubernetes_version && `Kubernetes ${cl.kubernetes_version}`,
+      f.nodes && `${f.nodes.length} node${f.nodes.length === 1 ? "" : "s"}`,
+      flag("OIDC issuer", cl?.oidc_enabled, "off"), flag("Workload Identity", cl?.workload_identity, "off")])),
+    h("dt", {}, "Credential provider"), h("dd", {}, dots([rel ? rel.chart.replace(/^.*-(?=\d)/, "v") : h("span", { class: "bad" }, "not installed ✕"),
+      sa && flag("service account allowed", sa.exists && sa.annotation === "true", sa.exists ? "no" : "missing"),
+      f.providers && flag("JFrog provider", f.providers.some((p) => p.name === c.provider), "missing")]))) : null;
   return h("div", { class: "cluster" },
     h("nav", { class: "crumbs", "aria-label": "Breadcrumb" },
       h("a", { href: "/clusters", onclick: (e) => { e.preventDefault(); openFleet(); } }, "Clusters"), h("span", {}, "/"), h("span", {}, c.name)),
     h("header", { class: "cl-head" },
-      h("div", { class: "cl-title" },
-        h("h1", {}, c.name),
-        h("span", { class: `badge ${vcls}` }, vtext),
-        c.cluster && c.cluster !== c.name ? muted(c.cluster) : null),
+      h("div", {},
+        h("div", { class: "cl-title" },
+          h("h1", {}, c.name),
+          h("span", { class: `badge ${vcls}` }, vtext),
+          c.cluster && c.cluster !== c.name ? muted(c.cluster) : null),
+        facts),
       h("div", { class: "cl-actions" },
         h("button", { class: "ghost", disabled: s.loading || busy, onclick: () => readStatus(c.name) }, s.loading ? "Reading…" : "Refresh"),
         h("button", { class: "ghost", disabled: busy, onclick: () => selectTab("configure") }, "Edit"),
@@ -225,9 +229,11 @@ function clusterView(c) {
     s.error ? h("div", { class: "callout fail" }, brief(s.error)) : null,
     problems.length ? panel("Problems", null, checklist(problems)) : null,
     actionEl(c.name),
-    h("div", { class: "tiles" }, tiles.map(([k, v]) => h("div", { class: "tile" }, h("span", {}, k), h("b", {}, v)))),
     proofBlock(s.proof));
 }
+
+// Items joined by a middle dot, skipping empty ones.
+const dots = (items) => items.filter(Boolean).flatMap((x, i) => (i ? [" · ", x] : [x]));
 
 const panel = (title, aside, ...body) => h("section", { class: "panel" },
   h("div", { class: "panel-head" }, h("h2", {}, title), aside), ...body);
