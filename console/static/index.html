@@ -109,7 +109,7 @@
           <h2><span class="step-n" aria-hidden="true">3</span> Token paths</h2>
           <label class="choice">
             <input data-path="pull_path.enabled" type="checkbox">
-            <span><b>Image pull path</b> <span class="small muted">(skip when images are in Artifact Registry or ACR)</span>
+            <span><b>Image pull path</b> <span class="small muted" data-cloud="gcp">(off when images are in Artifact Registry)</span><span class="small muted" data-cloud="azure">(off when images are in ACR)</span>
               <span class="small muted" data-cloud="gcp">A rotator job exchanges its OIDC token hourly and writes the JFrog access token to Secret Manager as the Artifact Registry remote's upstream credential.</span>
               <span class="small muted" data-cloud="azure">A rotator job exchanges its OIDC token hourly and writes the JFrog access token to Key Vault; the app's registry password is a Key Vault reference.</span></span>
           </label>
