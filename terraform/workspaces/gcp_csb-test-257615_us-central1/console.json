@@ -17,6 +17,7 @@
   },
   "targets": {
     "artifact-reader": {
+      "dedicated_identity": null,
       "kind": "gcp_run_job",
       "name": "artifact-reader",
       "pull_enabled": false,
@@ -25,6 +26,17 @@
       "runtime_enabled": true,
       "runtime_ttl": 3600,
       "subject": "116995768674951979623"
+    },
+    "jfrog-svc-demo": {
+      "dedicated_identity": "jfrog-jfrog-svc-demo",
+      "kind": "gcp_run_service",
+      "name": "jfrog-svc-demo",
+      "pull_enabled": false,
+      "reader_members": [],
+      "repositories": {},
+      "runtime_enabled": true,
+      "runtime_ttl": 3600,
+      "subject": ""
     }
   }
 }

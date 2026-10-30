@@ -33,7 +33,7 @@
   "runtime": {
     "enabled": true,
     "ttl_seconds": 3600,
-    "username": "svc-gcp-run-service"
+    "username": "svc-gcp-run-job"
   },
   "state_backend": {
     "bucket": "csb-test-257615-tfstate",
@@ -50,7 +50,7 @@
       "subscription": ""
     },
     "discovered": {
-      "at": "2026-10-30T08:48:42Z",
+      "at": "2026-10-30T09:44:03Z",
       "image": "us-central1-docker.pkg.dev/csb-test-257615/platform/artifact-reader:b6909a4746e3",
       "kind": "gcp_run_job",
       "mapping_subject": "116995768674951979623",
