@@ -47,12 +47,11 @@
       <div class="sim-layout">
         <aside class="sim-side card">
           <label class="tfield" for="sim-pick"><span>Scenario</span><select id="sim-pick"></select></label>
-          <p class="small" id="sim-desc"></p>
           <p class="small" id="sim-expect"></p>
           <button type="button" class="primary big" id="sim-run">Run scenario</button>
         </aside>
         <div class="sim-main" id="sim-main">
-          <div class="card intro" id="sim-empty">Pick a scenario on the left and run it. Each one reproduces a real failure or success of the kubelet credential provider (node config, plugin, token cache, Artifactory) and shows the verdict, what happened, a timeline and the diagnosis the console would give.</div>
+          <div class="card intro" id="sim-empty" hidden></div>
           <div id="sim-result" hidden>
             <div class="page-head">
               <h1 id="sim-title"></h1>

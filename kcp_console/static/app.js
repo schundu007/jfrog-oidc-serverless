@@ -103,7 +103,17 @@ function showAuth() {
 const TABS = ["overview", "configure", "operate", "runs", "simulate"];
 // Pages inside Operate, picked from its side menu.
 const SUBS = ["install", "verify", "nodes", "artifactory", "troubleshoot", "security", "demo", "rollback"];
-export function selectTab(name) {
+// Each tab has its own URL (/clusters, /configure, /operate/<page>, /runs, /simulate); the server
+// serves index.html for all of them, so a reload or a shared link opens the same page.
+const PATHS = { overview: "/clusters", configure: "/configure", operate: "/operate", runs: "/runs", simulate: "/simulate" };
+
+function fromPath(path) {
+  const [top, sub] = path.replace(/\/+$/, "").split("/").slice(1);
+  if (top === "operate") return SUBS.includes(sub) ? sub : "operate";
+  return Object.keys(PATHS).find((t) => PATHS[t] === `/${top}`) || "overview";
+}
+
+export function selectTab(name, { history: how = "push" } = {}) {
   let sub = null;
   if (SUBS.includes(name)) { sub = name; name = "operate"; }
   if (!TABS.includes(name)) name = "overview";
@@ -122,7 +132,8 @@ export function selectTab(name) {
     }
     try { sessionStorage.setItem("kcp-sub", sub); } catch { /* ignore */ }
   }
-  try { sessionStorage.setItem("kcp-tab", name); } catch { /* ignore */ }
+  const path = name === "operate" ? `/operate/${sub}` : PATHS[name];
+  if (how !== "none" && location.pathname !== path) history[how === "replace" ? "replaceState" : "pushState"]({}, "", path);
 }
 
 function wireTabs() {
@@ -171,9 +182,8 @@ async function start() {
     try { init(); } catch (e) { console.error(e); }
   }
   state.emit("config", state.config);
-  let tab = "overview";
-  try { tab = sessionStorage.getItem("kcp-tab") || tab; } catch { /* ignore */ }
-  selectTab(TABS.includes(tab) || SUBS.includes(tab) ? tab : "overview");
+  selectTab(fromPath(location.pathname), { history: "replace" });
+  window.addEventListener("popstate", () => selectTab(fromPath(location.pathname), { history: "none" }));
 }
 
 export async function refreshConfigs(select) {

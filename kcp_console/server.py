@@ -37,6 +37,9 @@ from .parse import summary
 from .store import RUN_ID_RE, RunStore, StatusStore, Store, StoreError
 
 STATIC_DIR = Path(__file__).parent / "static"
+# Page URLs: each tab (and each Operate page) has its own path; all serve index.html.
+OPERATE_PAGES = ("install", "verify", "nodes", "artifactory", "troubleshoot", "security", "demo", "rollback")
+PAGE_ROUTES = {"/", "/clusters", "/configure", "/operate", "/runs", "/simulate"} | {f"/operate/{p}" for p in OPERATE_PAGES}
 MAX_BODY = 1024 * 1024
 MAX_DRAIN = 8 * 1024 * 1024
 MAX_SIMS_KEPT = 20
@@ -383,7 +386,7 @@ def _make_handler(console: KcpServer):
             if path == "/favicon.ico":
                 self._headers(204, "text/plain", 0)
                 return
-            name = "index.html" if path == "/" else path[len("/static/"):] if path.startswith("/static/") else None
+            name = "index.html" if path.rstrip("/") in PAGE_ROUTES or path == "/" else path[len("/static/"):] if path.startswith("/static/") else None
             if name not in console.static_files:
                 raise HttpError(404, "not found")
             data = (STATIC_DIR / name).read_bytes()

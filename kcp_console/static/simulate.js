@@ -21,9 +21,9 @@ export async function initSimulate({ api }) {
   const describe = () => {
     const sc = scenarios.find((x) => x.name === pick.value);
     if (!sc) return;
-    $("sim-desc").textContent = sc.story;
+    pick.title = sc.story;
     const v = sc.expect.verdict || "";
-    fill($("sim-expect"), "Expected result ", h("span", { class: `pill ${v.toLowerCase()}` }, v));
+    fill($("sim-expect"), "Expected ", h("span", { class: `pill ${v.toLowerCase()}` }, v));
   };
   pick.addEventListener("change", describe);
   $("sim-run").addEventListener("click", () => run(pick.value));
