@@ -145,8 +145,11 @@ function renderSummary() {
 // The side panel shows only what the form doesn't: the identity Discover found.
 function renderEssentials(c, d, found) {
   const identity = d?.service_account || d?.principal_id || d?.client_id || "";
+  // A dedicated identity the run creates has no ID yet: show its name.
+  const planned = !identity && d?.dedicated_identity ? `${d.dedicated_identity} (new)` : "";
   fill($("cfg-essentials"), h("dt", { text: "Identity" }), h("dd", {},
-    identity ? h("span", { class: "with-icon" }, statusIcon(found ? "ok" : "warn"), h("span", { class: "mono", text: identity }))
+    identity || planned ? h("span", { class: "with-icon" }, statusIcon(found ? "ok" : "warn"),
+      h("span", { class: "mono", text: identity || planned }))
       : h("span", { class: "with-icon muted" }, statusIcon("skip"), "not discovered")));
 }
 

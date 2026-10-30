@@ -137,11 +137,15 @@ class WarningAndErrorTests(unittest.TestCase):
         self.assertEqual(res["facts"]["dedicated_identity"], "jfrog-nightly")
         self.assertEqual(res["facts"]["mapping_subject"], "104857600000000000002")
 
-    def test_system_assigned_only(self):
-        res, _ = run(azure_cfg("azure_container_app", "sys"), "azure_container_app_system_only")
-        self.assertEqual(res["facts"]["identity_type"], "system_assigned")
-        self.assertEqual(res["config_patch"]["target.azure.identity_type"], "system_assigned")
-        self.assertIn("system_assigned_identity", {w["code"] for w in res["warnings"]})
+    def test_system_assigned_only_gets_a_dedicated_one(self):
+        # A system identity dies with the app and probes cannot borrow it: plan a dedicated one.
+        cfg = azure_cfg("azure_container_app", "sys")
+        cfg["name"] = "sys"
+        res, _ = run(cfg, "azure_container_app_system_only")
+        self.assertEqual((res["status"], res["warnings"]), ("ok", []))
+        self.assertEqual(res["facts"]["dedicated_identity"], "id-sys-jfrog")
+        self.assertIsNone(res["facts"]["mapping_subject"])
+        self.assertEqual(res["config_patch"]["target.azure.identity_type"], "user_assigned")
 
     def test_ambiguous_identity(self):
         res, _ = run(azure_cfg("azure_container_app", "multi"), "azure_container_app_ambiguous")
@@ -160,8 +164,7 @@ class WarningAndErrorTests(unittest.TestCase):
         cfg = azure_cfg("azure_container_app", "noid")
         cfg["name"] = "noid"
         res, _ = run(cfg, "azure_container_app_no_identity")
-        self.assertEqual(res["errors"], [])
-        self.assertEqual(res["status"], "warn")
+        self.assertEqual((res["status"], res["warnings"]), ("ok", []))
         self.assertEqual(res["facts"]["dedicated_identity"], "id-noid-jfrog")
         self.assertIsNone(res["facts"]["mapping_subject"])
         self.assertEqual(res["config_patch"]["target.azure.identity_type"], "user_assigned")

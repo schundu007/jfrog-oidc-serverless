@@ -379,22 +379,14 @@ class Discover:
             self.patch["target.azure.identity_type"] = "user_assigned"
             self.patch["target.azure.identity_resource_id"] = chosen
             return
-        if "systemassigned" in itype.replace(" ", "").lower():
-            self.facts.update(identity_type="system_assigned", principal_id=ident.get("principalId"),
-                              mapping_subject=ident.get("principalId"))
-            self.patch["target.azure.identity_type"] = "system_assigned"
-            self.warn("system_assigned_identity",
-                      "only a system-assigned identity: live probes cannot borrow it, so verification will use the "
-                      "/healthz/jfrog self-test endpoint",
-                      "Prefer a user-assigned identity: it survives app re-creation, so the JFrog mapping stays valid.")
-            return
-        # An existing app with no identity: the workspace creates id-<name>-jfrog and Wire assigns it
-        # (additive: nothing the app already uses changes).
+        # No user-assigned identity: the workspace creates id-<name>-jfrog and Wire assigns it next to
+        # whatever the app has (additive). A system identity is not reused: it dies with the app, which
+        # would orphan the JFrog mapping, and live probes cannot borrow it.
         dedicated = model.dedicated_identity_name(self.cfg)
+        if "systemassigned" in itype.replace(" ", "").lower():
+            self.facts["system_principal_id"] = ident.get("principalId")
         self.facts.update(identity_type="user_assigned", dedicated_identity=dedicated, mapping_subject=None)
         self.patch["target.azure.identity_type"] = "user_assigned"
-        self.warn("dedicated_identity", f"the app has no managed identity; Wire assigns a new {dedicated}")
-
 
 def run(cfg: dict, sh: Shell) -> dict:
     return Discover(cfg, sh).run()
