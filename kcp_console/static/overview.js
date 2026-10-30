@@ -3,7 +3,7 @@
 // evidence and a fresh status read. The action is rebuilt from the server's run records, so a page
 // refresh or another page in between finds it where it was. The approval is the only click inside it.
 
-import { api, h, fill, state, selectTab, refreshConfigs, route, go, url, clusterPath, markOf, CLOUDS as CLOUD } from "./app.js";
+import { api, h, fill, help, state, selectTab, refreshConfigs, route, go, url, clusterPath, markOf, CLOUDS as CLOUD } from "./app.js";
 import { $, workflow, brief } from "./ui.js";
 
 const live = {};            // config name -> {loading, facts, preflight, error}
@@ -14,6 +14,37 @@ const driving = {};         // config name -> true while this page creates or ap
 let timer = null;
 
 const TITLES = { setup: "Set up", verify: "Verify", teardown: "Tear down" };
+const PANEL_HELP = {
+  Essentials: "What the cluster and JFrog report right now, read live with read-only calls.",
+  Problems: "Checks that fail now. Each one blocks pulls through JFrog or will soon.",
+  OIDC: "The last proof: a test pod pulled an image through JFrog with no pull secret, and JFrog logged the mapped user.",
+  "Set up": "Dry run first, then your approval, then the real change: Helm install, JFrog OIDC provider and mapping.",
+  Verify: "Read-only: re-reads the cluster and JFrog and pulls the test image again.",
+  "Tear down": "Removes what Set up created on this cluster and in JFrog. Dry run and approval first.",
+};
+const STAT_HELP = {
+  "": "Every cluster on this platform.",
+  working: "A pull through JFrog was proven with no pull secret.",
+  attention: "A check fails: the provider, the JFrog side or the values file.",
+  not_proven: "Installed, but no pull through JFrog has been proven yet.",
+  approval: "A dry run passed and waits for your approval.",
+  not_installed: "The credential provider isn't installed yet.",
+};
+const ESS_HELP = {
+  Subscription: "Azure subscription that holds the cluster.",
+  Project: "Google Cloud project that holds the cluster.",
+  "Resource group": "Resource group of the AKS cluster.",
+  Location: "The cluster's region or zone.",
+  Platform: "Where the cluster runs.",
+  "Kubernetes version": "Control plane version.",
+  Nodes: "Nodes the cluster reports now.",
+  "OIDC issuer": "The cluster publishes the signing keys of its service account tokens, so JFrog can verify them.",
+  "Workload Identity": "Pods can use cloud identities: the provider needs it to get its identity token.",
+  "Credential provider": "Version of the JFrog kubelet credential provider installed by Helm.",
+  "JFrog provider": "The OIDC integration in JFrog that trusts this cluster's tokens.",
+  "Service account": "The provider's Kubernetes service account, allowed to request tokens for the kubelet.",
+  "Mapped user": "JFrog user pulls run as, and how long each JFrog token lives.",
+};
 
 export function initOverview() {
   state.on("config", (name) => { render(); if (!detailName()) return; if (name && !live[name]) readStatus(name); else if (name) refreshAction(name); });
@@ -137,6 +168,7 @@ function fleetView() {
         h("div", { class: "stats" }, STATS.map(([s, text]) => h("button", {
           class: `stat${F.state === s ? " on" : ""}${s ? ` s-${s}` : ""}`, "aria-pressed": F.state === s ? "true" : "false",
           onclick: () => { setFilter({ state: F.state === s ? "" : s }); render(); },
+          "data-tip": STAT_HELP[s], "aria-description": STAT_HELP[s],
         }, h("b", {}, String(s ? counts[s] || 0 : n)), h("span", {}, text)))),
         h("div", { class: "fleet-bar" },
           h("input", { type: "search", class: "search", placeholder: `Search by name, ${where}`, value: F.q, "aria-label": "Search clusters",
@@ -223,8 +255,8 @@ function clusterView(c) {
     ["Mapped user", map ? `${map.token_spec?.username || "—"}${ttl ? ` · ${Math.round(ttl / 60)} min tokens` : ""}` : muted("—")],
   ].filter(Boolean);
   const facts = f.cluster || rel ? h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, h("h2", {}, "Essentials")),
-    h("dl", { class: "essentials" }, essentials.map(([k, v]) => h("div", {}, h("dt", {}, k), h("dd", {}, v))))) : null;
+    h("div", { class: "panel-head" }, h("h2", {}, "Essentials", help(PANEL_HELP.Essentials))),
+    h("dl", { class: "essentials" }, essentials.filter(Boolean).map(([k, v]) => h("div", {}, h("dt", {}, k, help(ESS_HELP[k])), h("dd", {}, v))))) : null;
   return h("div", { class: "cluster" },
     h("header", { class: "cl-head" },
       h("div", {},
@@ -248,7 +280,7 @@ function clusterView(c) {
 }
 
 const panel = (title, aside, ...body) => h("section", { class: "panel" },
-  h("div", { class: "panel-head" }, h("h2", {}, title), aside), ...body);
+  h("div", { class: "panel-head" }, h("h2", {}, title, help(PANEL_HELP[title])), aside), ...body);
 
 // Steps or checks as a list with a status mark: {status, title, detail}.
 const MARK = { running: "", pending: "", ok: "✓", done: "✓", pass: "✓", failed: "✕", fail: "✕", error: "✕", warn: "!", skipped: "–" };
@@ -276,7 +308,7 @@ function proofBlock(p) {
   if (!p) return null;
   const tag = p.proven ? ["ok", "Working"] : !p.complete ? ["warn", "Incomplete"] : ["fail", "Not proven"];
   return h("details", { class: "panel proof", open: !p.proven },
-    h("summary", { class: "panel-head" }, h("h2", {}, "OIDC"), h("span", { class: `badge ${tag[0]}` }, tag[1]), muted(when(p.at))),
+    h("summary", { class: "panel-head" }, h("h2", {}, "OIDC", help(PANEL_HELP.OIDC)), h("span", { class: `badge ${tag[0]}` }, tag[1]), muted(when(p.at))),
     checklist(p.steps));
 }
 

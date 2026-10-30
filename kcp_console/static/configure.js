@@ -1,7 +1,7 @@
 // Configure: one cluster's settings. Validation is live (POST /api/values); Save goes back to Clusters,
 // where Set up runs. Nothing here changes the cluster or JFrog.
 
-import { api, h, fill, state, refreshConfigs, route, go, clusterPath } from "./app.js";
+import { api, h, fill, help, state, refreshConfigs, route, go, clusterPath } from "./app.js";
 import { $ } from "./ui.js";
 
 const P = () => $("panel-configure");
@@ -9,23 +9,41 @@ let cfg = null;
 let blank = null;
 
 const F = {
-  "cluster.name": ["Cluster", "aks-prod-eastus-01"],
-  "cluster.project_id": ["Project ID", "my-gcp-project"],
-  "cluster.location": ["Location", "us-central1"],
-  "cluster.google_service_account": ["Google service account", "blank: jfrog-kcp@<project>.iam.gserviceaccount.com"],
-  "cluster.subscription_id": ["Subscription ID", "00000000-0000-0000-0000-000000000000"],
-  "cluster.resource_group": ["Resource group", "rg-aks-prod"],
-  "jfrog.host": ["JFrog host", "yourcompany.jfrog.io"],
-  "jfrog.test_repo": ["Docker repository", "docker-remote"],
-  "jfrog.test_image": ["Test image", "yourcompany.jfrog.io/docker-remote/library/busybox:1.36"],
-  "jfrog.mapped_user": ["Mapped JFrog user", "pull-user"],
-  "jfrog.oidc_provider": ["OIDC provider", "aks-prod-oidc"],
-  "jfrog.mapping_name": ["Identity mapping", "aks-prod-oidc-mapping"],
-  "k8s.namespace": ["Namespace", "jfrog"],
-  "k8s.service_account": ["Service account", "jfrog-provider-sa"],
-  "k8s.release": ["Helm release", "jfrog-cred-provider"],
-  "values.chart_version": ["Chart version", "1.4.0"],
-  "values.default_cache_duration": ["Token cache", "30m"],
+  "cluster.name": ["Cluster", "aks-prod-eastus-01", "The cluster's name as the cloud shows it."],
+  "cluster.project_id": ["Project ID", "my-gcp-project", "Google Cloud project that holds the cluster."],
+  "cluster.location": ["Location", "us-central1", "The cluster's zone or region, e.g. us-central1-a."],
+  "cluster.google_service_account": ["Google service account", "blank: jfrog-kcp@<project>.iam.gserviceaccount.com",
+    "Google service account the provider's Kubernetes service account acts as, through Workload Identity. Blank: Set up creates jfrog-kcp@<project>."],
+  "cluster.subscription_id": ["Subscription ID", "00000000-0000-0000-0000-000000000000", "Azure subscription that holds the cluster."],
+  "cluster.resource_group": ["Resource group", "rg-aks-prod", "Resource group of the AKS cluster."],
+  "jfrog.host": ["JFrog host", "yourcompany.jfrog.io", "Your JFrog Platform host, without https://. Nodes pull images as <host>/<repository>/<image>."],
+  "jfrog.test_repo": ["Docker repository", "docker-remote", "Docker repository the test pull reads from, e.g. a remote that proxies Docker Hub."],
+  "jfrog.test_image": ["Test image", "yourcompany.jfrog.io/docker-remote/library/busybox:1.36",
+    "Image a test pod pulls to prove a node got a JFrog token with no pull secret."],
+  "jfrog.mapped_user": ["Mapped JFrog user", "pull-user", "JFrog user the cluster's identity maps to. Pulls run with its permissions: give it read on the repository."],
+  "jfrog.oidc_provider": ["OIDC provider", "aks-prod-oidc", "JFrog OIDC integration that trusts this cluster's identity tokens. Set up creates it."],
+  "jfrog.mapping_name": ["Identity mapping", "aks-prod-oidc-mapping", "Rule on the OIDC provider that matches the cluster's token claims to the mapped user."],
+  "k8s.namespace": ["Namespace", "jfrog", "Kubernetes namespace for the credential provider and its service account."],
+  "k8s.service_account": ["Service account", "jfrog-provider-sa", "Kubernetes service account whose token the kubelet exchanges with JFrog."],
+  "k8s.release": ["Helm release", "jfrog-cred-provider", "Helm release name of the JFrog kubelet credential provider."],
+  "values.chart_version": ["Chart version", "1.4.0", "Version of the jfrog-credential-provider Helm chart."],
+  "values.default_cache_duration": ["Token cache", "30m", "How long the kubelet reuses a JFrog token. Keep it at most half the token lifetime, e.g. 30m for 60 min tokens."],
+  "name": ["Name", "aks-prod-eastus-01", "This configuration's name in the console. Letters, digits and dashes."],
+  "values.match_images": [null, null, "Image patterns the kubelet sends to this provider. Default: the JFrog host."],
+  "values.download_url": [null, null, "Where nodes download the provider binary from. Blank: the chart's default."],
+  "values.azure_app_audience": [null, null, "Audience of the service account token the provider exchanges with Azure."],
+  "values.node_affinity_label": [null, null, "Node label that marks the nodes the provider is installed on."],
+  "jfrog.scope": [null, null, "Scope of the JFrog tokens the mapping issues. Never an admin scope."],
+  "jfrog.audience": [null, null, "Audience of the JFrog tokens the mapping issues."],
+  "jfrog.expires_in": [null, null, "Lifetime of each JFrog token, in seconds."],
+  "jfrog.protected_providers": [null, null, "JFrog OIDC providers this cluster must never use or change."],
+  "k8s.test_pod": [null, null, "Name of the pod that proves a pull."],
+  "cluster.nodes": [null, null, "The cluster's nodes, as read from the cluster."],
+};
+const GROUP_HELP = {
+  Cluster: "Where the cluster is. Set up reads it; it changes nothing here.",
+  JFrog: "The JFrog side: the OIDC provider, the identity mapping and the user pulls run as.",
+  "Credential provider": "The kubelet plugin, installed with Helm, that swaps the node's identity for a JFrog token on each pull.",
 };
 const CLUSTER = {
   aks: ["cluster.name", "cluster.subscription_id", "cluster.resource_group"],
@@ -73,7 +91,7 @@ function derive() {
   if (j.oidc_provider && !j.mapping_name) j.mapping_name = `${j.oidc_provider}-mapping`;
 }
 
-function field(path, label, placeholder) {
+function field(path, label, placeholder, tip = F[path]?.[2]) {
   const v = get(path);
   const id = `f-${path.replace(/\./g, "-")}`;
   const onchange = (e) => {
@@ -86,7 +104,7 @@ function field(path, label, placeholder) {
   };
   const input = typeof v === "boolean" ? h("input", { id, type: "checkbox", checked: v, onchange })
     : h("input", { id, type: "text", value: Array.isArray(v) ? v.join(", ") : v ?? "", placeholder: placeholder || "", spellcheck: "false", autocomplete: "off", onchange });
-  return h("label", { class: "tfield", for: id }, h("span", {}, label || path.split(".").pop().replace(/_/g, " ")), input,
+  return h("label", { class: "tfield", for: id }, h("span", {}, label || path.split(".").pop().replace(/_/g, " "), help(tip)), input,
     h("span", { class: "issue small", "data-field": path }));
 }
 
@@ -101,8 +119,8 @@ function render() {
         h("button", { class: "primary", onclick: async () => { if (await save()) back(cfg.name); } }, "Save"))),
     h("p", { class: "small", id: "cfg-msg" }),
     h("div", { class: "cfg-form" },
-      h("div", { class: "tgrid" }, field("name", "Name", "aks-prod-eastus-01")),
-      ...GROUPS.map(([title, paths]) => [title, paths || CLUSTER[cfg.platform || "aks"] || CLUSTER.aks]).map(([title, paths]) => h("section", { class: "block" }, h("h2", {}, title),
+      h("div", { class: "tgrid" }, field("name", ...F.name)),
+      ...GROUPS.map(([title, paths]) => [title, paths || CLUSTER[cfg.platform || "aks"] || CLUSTER.aks]).map(([title, paths]) => h("section", { class: "block" }, h("h2", {}, title, help(GROUP_HELP[title])),
         h("div", { class: "tgrid" }, paths.map((p) => field(p, ...F[p]))))),
       h("details", { class: "advanced" }, h("summary", {}, "Advanced"),
         h("div", { class: "tgrid" }, ADVANCED.map((p) => field(p))))));

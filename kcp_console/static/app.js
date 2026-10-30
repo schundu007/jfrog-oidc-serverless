@@ -81,6 +81,17 @@ export function h(tag, attrs = {}, ...kids) {
   return el;
 }
 
+// A circled "?" that explains the thing next to it on hover or keyboard focus. The text is the
+// button's description; clicking it never reaches an enclosing label's input.
+let tips = 0;
+export function help(text) {
+  if (!text) return null;
+  const id = `tip-${++tips}`;
+  return h("span", { class: "help", tabindex: "0", role: "button", "aria-label": "What is this?", "aria-describedby": id,
+    onclick: (e) => { e.preventDefault(); e.stopPropagation(); } },
+  "?", h("span", { class: "tip", role: "tooltip", id, "aria-hidden": "true" }, text));
+}
+
 // Inline `code` spans in runbook text, as text nodes only (never parsed as HTML).
 export function rich(text) {
   return String(text ?? "").split(/(`[^`]+`)/).map((p) => (p.startsWith("`") && p.endsWith("`") && p.length > 2
