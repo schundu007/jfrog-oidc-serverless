@@ -67,7 +67,9 @@ export function renderTimeline(container, result) {
 
   // Axis: hour ticks, every 1/2/3/6 h depending on duration.
   const hours = dur / 3600;
-  const step = hours <= 12 ? 1 : hours <= 24 ? 2 : hours <= 48 ? 3 : 6;
+  // At least ~56 px between labels so they never overlap on narrow screens.
+  const step = [1, 2, 3, 6, 12, 24].find((s) => s >= (hours <= 12 ? 1 : hours <= 24 ? 2 : hours <= 48 ? 3 : 6)
+    && plotW / (hours / s) >= 56) || 24;
   for (let h = 0; h <= hours; h += step) {
     const xx = x(h * 3600);
     el("line", { x1: xx, y1: AXIS_H - 4, x2: xx, y2: height, class: "grid" }, svg);

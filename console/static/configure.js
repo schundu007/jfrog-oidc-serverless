@@ -113,8 +113,10 @@ function applyKindVisibility() {
 
 function markDirty(on) {
   st.dirty = on;
-  $("cfg-dirty").textContent = on ? "unsaved changes" : st.current ? "saved" : "";
-  $("cfg-dirty").className = on ? "small warn-text" : "small muted";
+  const dirtyEl = $("cfg-dirty");
+  dirtyEl.textContent = on ? "unsaved changes" : st.current ? "saved" : "";
+  dirtyEl.className = on ? "pill warn" : "pill ok";
+  dirtyEl.hidden = !dirtyEl.textContent;
   if (st.cfg) renderTitle();
   if (st.saved) renderList();
 }
@@ -137,6 +139,35 @@ function renderSummary() {
   $("step-app").classList.toggle("is-done", found);
   $("step-jfrog").classList.toggle("is-done", urlOk && !!c.jfrog?.reader_group);
   $("step-needs").classList.toggle("is-done", !!(c.runtime?.enabled || c.pull_path?.enabled));
+  renderEssentials(c, d, found);
+}
+
+// Label/value pairs for the side panel, read from the form's configuration.
+function renderEssentials(c, d, found) {
+  const t = c.target?.[cloud] || {};
+  const dash = (v) => (v === undefined || v === null || v === "" ? "—" : String(v));
+  const identity = d?.service_account || d?.principal_id || d?.client_id || "";
+  const paths = [c.runtime?.enabled ? "Runtime" : null, c.pull_path?.enabled ? "Image pull" : null].filter(Boolean);
+  const rows = [
+    ["Workload type", kindLabel(c.target?.kind)],
+    ...(cloud === "gcp"
+      ? [["Project", t.project], ["Region", t.region]]
+      : [["Subscription", t.subscription], ["Resource group", t.resource_group]]),
+    ["Workload", t.name],
+    ["Identity", identity ? h("span", { class: "with-icon" }, statusIcon(found ? "ok" : "warn"), h("span", { class: "mono", text: identity }))
+      : h("span", { class: "with-icon muted" }, statusIcon("skip"), "not discovered")],
+    ["JFrog", c.jfrog?.url],
+    ["Reader group", c.jfrog?.reader_group],
+    ["Token paths", paths.length ? h("span", { class: "chips-inline" }, paths.map((p) => h("span", { class: "pill info", text: p })))
+      : h("span", { class: "muted", text: "none" })],
+  ];
+  fill($("cfg-essentials"), rows.flatMap(([k, v]) => [h("dt", { text: k }),
+    h("dd", {}, v instanceof Node ? v : dash(v))]));
+}
+
+const STATUS_GLYPH = { ok: "✓", warn: "!", fail: "✕", error: "✕", warning: "!", skip: "–" };
+function statusIcon(status) {
+  return h("span", { class: `st-dot st-dot-${status}`, "aria-hidden": "true", text: STATUS_GLYPH[status] || "?" });
 }
 
 // ----------------------------------------------------------------- validation
@@ -185,9 +216,13 @@ async function validate() {
   }
   const problems = [...res.errors.map((e) => ({ ...e, level: "error" })), ...res.warnings.map((w) => ({ ...w, level: "warning" }))]
     .filter(shown);
-  const items = problems.map((p) => h("li", { class: p.level }, h("b", { text: `${labelFor(p.path).text}: ` }), p.message));
+  const items = problems.map((p) => h("li", { class: p.level }, statusIcon(p.level),
+    h("div", {}, h("b", { text: labelFor(p.path).text }), h("div", { class: "issue-msg", text: p.message }))));
   $("cfg-problems").hidden = !items.length;
-  fill($("cfg-problems"), items.length ? h("h3", { text: res.errors.length ? "Fix before running the pipeline" : "Warnings" }) : null,
+  const nErr = problems.filter((p) => p.level === "error").length;
+  fill($("cfg-problems"), items.length ? h("div", { class: "panel-head" },
+    h("h3", { text: res.errors.length ? "Fix before running the pipeline" : "Warnings" }),
+    h("span", { class: `pill ${nErr ? "bad" : "warn"}`, text: String(items.length) })) : null,
     items.length ? h("ul", { class: "issues" }, items) : null);
 }
 
@@ -213,9 +248,10 @@ function renderList() {
         open ? h("span", { class: "tag", text: st.dirty ? "open · unsaved changes" : "open" }) : null),
       h("td", { text: kindLabel(kind) + (open && kind !== c.kind ? ` (saved as ${kindLabel(c.kind)})` : "") }),
       h("td", { class: "mono small", text: c.workload || "—" }),
-      h("td", { class: "mono small", text: c.identity || "not discovered" }),
+      h("td", {}, c.identity ? h("span", { class: "with-icon" }, statusIcon("ok"), h("span", { class: "mono small", text: c.identity }))
+        : h("span", { class: "with-icon muted small" }, statusIcon("skip"), "not discovered")),
       h("td", { class: "small muted", text: (c.updated || "").replace("T", " ").replace("Z", " UTC") }),
-      h("td", { class: "actions" }, h("button", { type: "button", class: "secondary", text: "Open", "data-open": c.name }),
+      h("td", { class: "actions" }, h("button", { type: "button", class: "secondary small-btn", text: "Open", "data-open": c.name }),
         h("button", { type: "button", class: "link danger", text: "Delete", "data-delete": c.name })));
   });
   fill($("cfg-saved"), rows);
@@ -336,12 +372,12 @@ function status(text, kind) {
 }
 
 function issueList(items, cls, icon) {
-  return items.length ? h("ul", { class: "issues" }, items.map((i) => h("li", { class: cls },
-    h("b", { text: `${icon} ` }), i.message, i.fix ? h("div", { class: "fix small", text: `Fix: ${i.fix}` }) : null))) : null;
+  return items.length ? h("ul", { class: "issues" }, items.map((i) => h("li", { class: cls }, statusIcon(cls),
+    h("div", {}, h("div", { class: "issue-msg", text: i.message }), i.fix ? h("div", { class: "fix small", text: `Fix: ${i.fix}` }) : null)))) : null;
 }
 
 function badge(status) {
-  return h("span", { class: `badge ${status === "ok" ? "pass" : status === "warn" ? "degraded" : "fail"}`, text: status });
+  return h("span", { class: `pill ${status === "ok" ? "ok" : status === "warn" ? "warn" : "bad"}`, text: status });
 }
 
 function modeNote(res) {
@@ -362,7 +398,7 @@ async function runDiscover() {
     const box = $("cfg-discover");
     box.hidden = false;
     fill(box, 
-      h("h3", {}, "Discover ", badge(res.status)),
+      h("div", { class: "panel-head" }, h("h3", { text: "Discover" }), badge(res.status)),
       modeNote(res),
       res.corrections.length ? h("div", { class: "corrections" }, h("b", { text: "Corrected to match what the cloud reports:" }),
         h("ul", {}, res.corrections.map((c) => h("li", {}, h("code", { text: c.field }), ` ${String(c.from)} → `,
@@ -394,15 +430,18 @@ async function runPreflight() {
     res = await api("/api/preflight", { method: "POST", body: { config: st.cfg } });
     for (const [path, value] of Object.entries(res.config_patch || {})) setPath(st.cfg, path, value);
     renderSummary();
-    const icon = { ok: "✓", warn: "⚠", fail: "✗", skip: "–" };
+    const icon = STATUS_GLYPH;
     const box = $("cfg-preflight");
     box.hidden = false;
     fill(box, 
-      h("h3", {}, "Preflight ", badge(res.status),
-        h("span", { class: "small muted", text: ` ${res.counts.ok} ok · ${res.counts.warn} warn · ${res.counts.fail} fail` })),
+      h("div", { class: "panel-head" }, h("h3", { text: "Preflight" }), badge(res.status)),
+      h("div", { class: "counts" },
+        h("span", { class: "with-icon" }, statusIcon("ok"), `${res.counts.ok} ok`),
+        h("span", { class: "with-icon" }, statusIcon("warn"), `${res.counts.warn} warn`),
+        h("span", { class: "with-icon" }, statusIcon("fail"), `${res.counts.fail} fail`)),
       modeNote(res),
       h("ul", { class: "checklist" }, res.checks.map((c) => h("li", { class: `chk chk-${c.status}` },
-        h("span", { class: "chk-icon", "aria-label": c.status, text: icon[c.status] || "?" }),
+        h("span", { class: `chk-icon st-dot st-dot-${c.status}`, "aria-label": c.status, text: icon[c.status] || "?" }),
         h("div", {}, h("b", { text: c.title }), c.detail && c.status !== "ok" ? h("div", { class: "small mono", text: c.detail }) : null,
           c.fix && c.status !== "ok" ? h("div", { class: "fix small", text: `Fix: ${c.fix}` }) : null)))));
     status(res.status === "fail" ? "Preflight failed: see the checks" : "Preflight passed",
