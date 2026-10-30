@@ -65,15 +65,14 @@ class InventoryTests(unittest.TestCase):
             ("gcp_run_function", "resize", "us-central1"), ("gcp_run_job", "nightly", "us-central1"),
             ("gcp_run_service", "orders", "europe-west1")])
 
-    def test_azure_marks_jobs_unsupported(self):
+    def test_azure_lists_every_kind(self):
         res = inventory.run("azure", Fake(), self.repo)
         self.assertEqual(res["defaults"]["subscription"], SUB)
         kinds = {w["name"]: (w["kind"], w["supported"], w["resource_group"]) for w in res["workloads"]}
         self.assertEqual(kinds, {
             "api": ("azure_container_app", True, "rg-api"), "fn": ("azure_functions_aca", True, "rg-fn"),
             "flex": ("azure_functions_flex", True, "rg-f"), "prem": ("azure_functions_premium", True, "rg-p"),
-            "caj-x": ("azure_container_app_job", False, "rg-x")})
-        self.assertEqual(res["workloads"][-1]["name"], "caj-x")
+            "caj-x": ("azure_container_app_job", True, "rg-x")})
 
     def test_list_failure_is_reported_not_raised(self):
         res = inventory.run("gcp", Fake(fail={("gcloud", "run", "jobs", "list")}), self.repo)

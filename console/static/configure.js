@@ -171,20 +171,10 @@ async function validate() {
   }
   const problems = [...res.errors.map((e) => ({ ...e, level: "error" })), ...res.warnings.map((w) => ({ ...w, level: "warning" }))]
     .filter(shown);
-  let openAdvanced = false;
-  const items = problems.map((p) => {
-    const { el, text } = labelFor(p.path);
-    if (p.level === "error" && el?.closest("#cfg-advanced")) openAdvanced = true;
-    return h("li", { class: p.level }, h("b", { text: `${text}: ` }), p.message);
-  });
-  if (openAdvanced) $("cfg-advanced").open = true;
+  const items = problems.map((p) => h("li", { class: p.level }, h("b", { text: `${labelFor(p.path).text}: ` }), p.message));
   $("cfg-problems").hidden = !items.length;
   fill($("cfg-problems"), items.length ? h("h3", { text: res.errors.length ? "Fix before running the pipeline" : "Warnings" }) : null,
     items.length ? h("ul", { class: "issues" }, items) : null);
-  const m = res.ttl_math || {};
-  $("cfg-ttl-math").textContent = m.pull_ttl_seconds
-    ? `Pull token survives ${m.survives_missed_rotations} missed rotation(s): TTL ${m.pull_ttl_seconds}s, ` +
-      `rotation interval ${m.rotation_interval_seconds}s, minimum safe TTL ${m.min_safe_ttl_seconds}s.` : "";
 }
 
 // ----------------------------------------------------------------- saved configs

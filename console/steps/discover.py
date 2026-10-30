@@ -227,7 +227,7 @@ class Discover:
         if not (sub and rg and name):
             return self.error("missing_fields", "subscription, resource group and name are required")
         self.facts.update(subscription=sub, resource_group=rg, name=name)
-        container_family = self.kind in ("azure_container_app", "azure_functions_aca")
+        container_family = self.kind in ("azure_container_app", "azure_container_app_job", "azure_functions_aca")
         first, second = (self._containerapp, self._functionapp) if container_family else (self._functionapp, self._containerapp)
         found = first(sub, rg, name)
         if found is None:
@@ -243,7 +243,7 @@ class Discover:
         self._azure_identity(data, resource)
 
     def _show(self, what, sub, rg, name):
-        res = self.sh.run(["az", what, "show", "-g", rg, "-n", name, "--subscription", sub, "-o", "json"], timeout=120)
+        res = self.sh.run(["az", *what.split(), "show", "-g", rg, "-n", name, "--subscription", sub, "-o", "json"], timeout=120)
         if res.ok:
             return res.json() or {}
         if NOT_FOUND.search(res.error_text()):
@@ -253,13 +253,15 @@ class Discover:
             # Nothing of that type can exist in a subscription that never
             # registered its provider; the caller tries the other family.
             self.warn("provider_not_registered", f"{m.group(1)} is not registered in this subscription, so '{name}' "
-                      f"cannot be a {'Container App' if what == 'containerapp' else 'Function App'}",
+                      f"cannot be a {'Function App' if what == 'functionapp' else 'Container App'}",
                       f"az provider register -n {m.group(1)} --subscription {sub} --wait")
             return None
         self.error("lookup_failed", f"az {what} show failed", res.error_text(300))
         return False
 
     def _containerapp(self, sub, rg, name):
+        if self.kind == "azure_container_app_job":
+            return self._containerapp_job(sub, rg, name)
         d = self._show("containerapp", sub, rg, name)
         if not d:
             return d
@@ -273,6 +275,15 @@ class Discover:
         self.facts["registries"] = [{"server": r.get("server"), "identity": r.get("identity"),
                                      "username": r.get("username"),
                                      "uses_secret": bool(r.get("passwordSecretRef"))} for r in regs]
+        self.patch["target.azure.environment_id"] = self.facts["environment_id"] or ""
+        return ("containerapp", d)
+
+    def _containerapp_job(self, sub, rg, name):
+        d = self._show("containerapp job", sub, rg, name)
+        if not d:
+            return d
+        self.facts["environment_id"] = _prop(d, "environmentId") or _prop(d, "managedEnvironmentId")
+        self.facts["image"] = _dig(_prop(d, "template", {}), "containers", 0, "image")
         self.patch["target.azure.environment_id"] = self.facts["environment_id"] or ""
         return ("containerapp", d)
 

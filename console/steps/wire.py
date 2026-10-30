@@ -26,7 +26,7 @@ from ..shell import Shell
 
 SECRET_NAME = "jfrog-registry-token"
 HIDDEN = "[set, not shown]"
-CONTAINER_KINDS = ("azure_container_app", "azure_functions_aca")
+CONTAINER_KINDS = ("azure_container_app", "azure_container_app_job", "azure_functions_aca")
 
 
 class WireError(RuntimeError):
@@ -177,8 +177,11 @@ class Wire:
         a = model.get_path(self.cfg, "target.azure")
         return ["-g", a["resource_group"], "-n", a["name"], "--subscription", a["subscription"]]
 
+    def _ca(self):
+        return ["az", "containerapp", "job"] if self.kind == "azure_container_app_job" else ["az", "containerapp"]
+
     def _containerapp(self, env):
-        res = self.sh.run(["az", "containerapp", "show", *self._az_target(), "-o", "json"], timeout=120)
+        res = self.sh.run([*self._ca(), "show", *self._az_target(), "-o", "json"], timeout=120)
         if not res.ok:
             raise WireError(f"could not read the target: {res.error_text(300)}")
         props = (res.json() or {}).get("properties") or {}
@@ -189,7 +192,7 @@ class Wire:
         commands, notes = [], []
         changed = [f"{d['setting']}={d['desired']}" for d in diff if d["action"] != "same"]
         if changed:
-            commands.append(["az", "containerapp", "update", *self._az_target(), "--container-name",
+            commands.append([*self._ca(), "update", *self._az_target(), "--container-name",
                              container.get("name") or self.cfg["name"], "--set-env-vars", *changed, "-o", "none"])
         if self.pull:
             url, user = self._need("registry_secret_versionless_url", "registry_username")
@@ -200,7 +203,7 @@ class Wire:
             e = _entry("secret", SECRET_NAME, cur, f"Key Vault {url} via {ident}")
             diff.append(e)
             if e["action"] != "same":
-                commands.append(["az", "containerapp", "secret", "set", *self._az_target(), "--secrets",
+                commands.append([*self._ca(), "secret", "set", *self._az_target(), "--secrets",
                                  f"{SECRET_NAME}=keyvaultref:{url},identityref:{ident}", "-o", "none"])
             r = {x.get("server"): x for x in _dig(props, "configuration", "registries") or []}.get(self.docker_host)
             cur = None if r is None else (f"{r.get('username')} / secret {r.get('passwordSecretRef')}"
@@ -208,7 +211,7 @@ class Wire:
             e = _entry("registry", self.docker_host, cur, f"{user} / secret {SECRET_NAME}")
             diff.append(e)
             if e["action"] != "same":
-                commands.append(["az", "containerapp", "registry", "set", *self._az_target(), "--server", self.docker_host,
+                commands.append([*self._ca(), "registry", "set", *self._az_target(), "--server", self.docker_host,
                                  "--username", user, "--password-secret-name", SECRET_NAME, "-o", "none"])
             image = container.get("image") or ""
             if image and not image.startswith(self.docker_host + "/"):

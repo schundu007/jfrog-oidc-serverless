@@ -51,6 +51,7 @@ GCP_APIS_BY_KIND = {
 AZURE_PROVIDERS_COMMON = ["Microsoft.ManagedIdentity"]
 AZURE_PROVIDERS_BY_KIND = {
     "azure_container_app": ["Microsoft.App"],
+    "azure_container_app_job": ["Microsoft.App"],
     "azure_functions_aca": ["Microsoft.App", "Microsoft.Web"],
     "azure_functions_premium": ["Microsoft.Web"],
     "azure_functions_flex": ["Microsoft.Web"],

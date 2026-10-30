@@ -112,7 +112,7 @@
           <h2><span class="step-n" aria-hidden="true">3</span> Token paths</h2>
           <label class="choice">
             <input data-path="pull_path.enabled" type="checkbox">
-            <span><b>Image pull path</b></span>
+            <span><b>Image pull path</b><small class="choice-sub">Platform pulls images from JFrog · 4h token, rotated hourly</small></span>
           </label>
           <div class="grid2 indent" id="cfg-pull-fields">
             <label class="field"><span>JFrog Docker repository key</span><input data-path="jfrog.docker_repo" type="text" spellcheck="false" placeholder="docker-virtual"></label>
@@ -121,37 +121,11 @@
           </div>
           <label class="choice">
             <input data-path="runtime.enabled" type="checkbox">
-            <span><b>Runtime token exchange</b></span>
+            <span><b>Runtime token exchange</b><small class="choice-sub">App code reads artifacts from JFrog · 1h token, no stored secret</small></span>
           </label>
         </li>
         </ol>
 
-        <details class="advanced" id="cfg-advanced">
-          <summary>Advanced settings</summary>
-          <div class="grid3">
-            <label class="field" data-cloud="gcp"><span>OIDC integration name</span><input data-path="jfrog.integration_names.gcp" type="text" spellcheck="false"></label>
-            <label class="field" data-cloud="azure"><span>OIDC integration name</span><input data-path="jfrog.integration_names.azure" type="text" spellcheck="false"></label>
-            <label class="field"><span>Docker host override (optional)</span><input data-path="jfrog.docker_host" type="text" spellcheck="false" placeholder="acme-docker-virtual.jfrog.io"></label>
-            <label class="field"><span>JFrog project key (optional)</span><input data-path="jfrog.project_key" data-type="nullable" type="text" spellcheck="false"></label>
-            <label class="field" data-cloud="azure"><span>User-assigned identity resource ID</span><input data-path="target.azure.identity_resource_id" data-type="nullable" type="text" spellcheck="false" placeholder="filled by Discover identity"></label>
-            <label class="field" data-cloud="azure"><span>Container Apps environment ID (rotator)</span><input data-path="target.azure.environment_id" type="text" spellcheck="false" placeholder="filled by Discover identity"></label>
-            <label class="field" data-cloud="azure"><span>Rotator ACR resource ID (optional)</span><input data-path="pull_path.rotator_acr_id" data-type="nullable" type="text" spellcheck="false" placeholder="/subscriptions/…/registries/acr"></label>
-          </div>
-          <div class="grid3">
-            <label class="field"><span>Runtime token TTL (s, max 3600)</span><input data-path="runtime.ttl_seconds" data-type="number" type="number" min="300" max="3600" step="60"></label>
-            <label class="field"><span>Runtime mapping username</span><input data-path="runtime.username" type="text" spellcheck="false"></label>
-            <label class="field"><span>Pull token TTL (s)</span><input data-path="pull_path.ttl_seconds" data-type="number" type="number" min="300" max="86400" step="60"></label>
-            <label class="field"><span>Rotation schedule (cron, UTC)</span><input data-path="pull_path.rotation_cron" type="text" spellcheck="false"></label>
-            <label class="field"><span>Stale-rotation alert after (s)</span><input data-path="pull_path.alert_after_seconds" data-type="number" type="number" min="0" step="300"></label>
-            <label class="field"><span>MIN_TTL_SECONDS (rotator)</span><input data-path="pull_path.min_ttl_seconds" data-type="number" type="number" min="0" step="60"></label>
-            <label class="field"><span>Registry username</span><input data-path="pull_path.registry_username" type="text" spellcheck="false"></label>
-            <label class="field"><span>Resource name prefix</span><input data-path="pull_path.name_prefix" type="text" spellcheck="false"></label>
-            <label class="field"><span>Verify: artifact path</span><input data-path="verify.artifact_path" type="text" spellcheck="false"></label>
-            <label class="field"><span>Verify: probe image</span><input data-path="verify.probe_image_pull" type="text" spellcheck="false"></label>
-          </div>
-          <label class="check" data-kinds="azure_functions_premium"><input data-path="pull_path.function_app_refresh" type="checkbox"> Rotator refreshes the Key Vault reference via ARM</label>
-          <p id="cfg-ttl-math" class="small muted"></p>
-        </details>
 
       </form>
 

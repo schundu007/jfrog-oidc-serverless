@@ -583,3 +583,4 @@ td .pill, .act-last .pill, .step-table .pill { border: 0; background: none; padd
 .events-box[open] > summary::before { content: "▾ "; }
 
 #cfg-workload { margin-bottom: 12px; }
+.choice-sub { display: block; font-size: 14px; color: var(--muted); font-weight: 400; margin-top: 2px; }

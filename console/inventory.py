@@ -3,9 +3,6 @@ workloads it can target. Read-only (list/show/config get) through the console's 
 
     run("gcp", sh)   -> {"defaults": {...}, "workloads": [{kind, name, region, ...}], "errors": [...]}
     run("azure", sh) -> same shape; workloads carry subscription and resource_group.
-
-Container Apps jobs are listed with supported=False: the console's kinds cover apps,
-not jobs (stacks/azure-container-apps covers the job).
 """
 
 from __future__ import annotations
@@ -81,7 +78,7 @@ def azure(sh: Shell, errors: list) -> tuple[dict, list]:
         for d in res.json() or []:
             supported = True
             if what == "job":
-                kind, supported = "azure_container_app_job", False
+                kind = "azure_container_app_job"
             elif what == "containerapp":
                 kind = "azure_functions_aca" if "functionapp" in str(d.get("kind") or "").lower() else "azure_container_app"
             else:

@@ -15,6 +15,7 @@ KINDS = {
     "gcp_run_job": {"cloud": "gcp", "label": "Cloud Run job"},
     "gcp_run_function": {"cloud": "gcp", "label": "Cloud Run function"},
     "azure_container_app": {"cloud": "azure", "label": "Container App"},
+    "azure_container_app_job": {"cloud": "azure", "label": "Container Apps job"},
     "azure_functions_aca": {"cloud": "azure", "label": "Functions on Container Apps"},
     "azure_functions_premium": {"cloud": "azure", "label": "Functions Premium/Dedicated"},
     "azure_functions_flex": {"cloud": "azure", "label": "Functions Flex Consumption"},
@@ -239,7 +240,7 @@ class Cron:
 def pickup_lag_seconds(cfg: dict):
     """How long after a new credential version the platform starts using it."""
     kind = get_path(cfg, "target.kind")
-    if kind in ("azure_container_app", "azure_functions_aca"):
+    if kind in ("azure_container_app", "azure_container_app_job", "azure_functions_aca"):
         return ACA_PICKUP_LAG
     if kind == "azure_functions_premium":
         return 0 if get_path(cfg, "pull_path.function_app_refresh", True) else PREMIUM_NO_REFRESH_LAG
