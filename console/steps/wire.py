@@ -304,8 +304,16 @@ class Wire:
         if not self.dedicated:
             return []
         rid = self.dedicated["id"]
-        have = {k.lower() for k in (_dig(shown, "identity", "userAssignedIdentities") or {})}
-        e = _entry("identity", "user-assigned identity", rid if rid.lower() in have else None, rid)
+        have = {k.lower(): v for k, v in (_dig(shown, "identity", "userAssignedIdentities") or {}).items()}
+        attached = have.get(rid.lower())
+        want = self.dedicated.get("client_id")
+        if attached is not None and want and isinstance(attached, dict) and attached.get("clientId") not in (None, want):
+            # Re-created under the same resource ID: the app still holds the deleted identity, so
+            # detach and attach again to pick up the new one.
+            diff.insert(0, _entry("identity", "user-assigned identity", f"{rid} (client {attached['clientId']}, deleted)", rid))
+            remove = [a if a != "assign" else "remove" for a in assign]
+            return [[*remove, rid, "-o", "none"], [*assign, rid, "-o", "none"]]
+        e = _entry("identity", "user-assigned identity", rid if attached is not None else None, rid)
         diff.insert(0, e)
         return [] if e["action"] == "same" else [[*assign, rid, "-o", "none"]]
 

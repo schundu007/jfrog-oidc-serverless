@@ -175,6 +175,22 @@ class DedicatedIdentityTests(unittest.TestCase):
         self.assertEqual(env["AZURE_CLIENT_ID"], made["client_id"])
         self.assertIn(f"identityref:{made['id']}", " ".join(" ".join(c) for c in plan["commands"]))
 
+    def test_identity_recreated_under_the_same_id_is_attached_again(self):
+        # Re-created with the same resource ID: the app still holds the deleted one's client ID.
+        cfg = azure_cfg(identity="user_assigned")
+        cfg["target"]["discovered"].update(dedicated_identity="id-orders-jfrog", identity_resource_id=None, client_id=None)
+        made = {"id": f"{RG_ID}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-orders-jfrog",
+                "client_id": "new-client", "principal_id": "pp"}
+        shown = json.loads(aca_show([]))
+        shown["identity"] = {"userAssignedIdentities": {made["id"].lower(): {"clientId": "old-client", "principalId": "old"}}}
+        sh = Shell(mode="replay", fixtures=[{"argv": ACA_SHOW_ARGV, "stdout": json.dumps(shown)}])
+        plan = wire.Wire(cfg, sh, {**AZ_OUT, "dedicated_identities": {"orders": made}}).plan()
+        target = ["-g", "rg-apps", "-n", "orders", "--subscription", SUB]
+        self.assertEqual(plan["commands"][:2], [
+            ["az", "containerapp", "identity", "remove", *target, "--user-assigned", made["id"], "-o", "none"],
+            ["az", "containerapp", "identity", "assign", *target, "--user-assigned", made["id"], "-o", "none"]])
+        self.assertEqual(plan["diff"][0]["action"], "change")
+
     def test_premium_assigns_identity_before_key_vault_reference(self):
         cfg = azure_cfg("azure_functions_premium", "fn")
         cfg["target"]["discovered"].update(dedicated_identity="id-fn-jfrog", identity_resource_id=None, client_id=None)
