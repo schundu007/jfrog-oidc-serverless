@@ -522,3 +522,4 @@ ol.stages li.muted { color: var(--muted); }
 .st-running .mark { background: none; border: 2px solid var(--accent-soft); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .st-running .mark { animation: none; border-color: var(--accent); } }
+.fleet-table td.wrap { overflow-wrap: anywhere; max-width: 220px; }

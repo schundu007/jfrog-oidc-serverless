@@ -204,6 +204,11 @@ class ReplayServerTest(unittest.TestCase):
         self.assertEqual(by["aks-sandbox-02"]["oidc_issuer"], "")
         self.assertEqual(by["aks-sandbox-01"]["subscription_id"], "00000000-0000-0000-0000-0000000000a1")
 
+    def test_fleet_rows_carry_subscription_and_resource_group(self):
+        _, r = self.call("GET", "/api/fleet")
+        row = next(c for c in r["clusters"] if c["name"] == self.name)
+        self.assertEqual((row["subscription"], row["resource_group"]), ("sandbox-subscription", "rg-aks-sandbox"))
+
     def test_pilot_story(self):
         s, a = self.call("GET", f"/api/nodes?config={self.name}")
         self.assertEqual(s, 200)

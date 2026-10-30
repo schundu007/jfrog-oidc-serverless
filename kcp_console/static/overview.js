@@ -115,7 +115,7 @@ function matches(r) {
   if (F.state && r.state !== F.state) return false;
   if (F.cloud && r.cloud !== F.cloud) return false;
   const q = F.q.trim().toLowerCase();
-  return !q || [r.name, r.cluster, r.location].some((v) => (v || "").toLowerCase().includes(q));
+  return !q || [r.name, r.cluster, r.location, r.subscription, r.resource_group].some((v) => (v || "").toLowerCase().includes(q));
 }
 
 function fleetView() {
@@ -139,7 +139,7 @@ function fleetView() {
           onclick: () => { setFilter({ state: F.state === k ? "" : k }); render(); },
         }, h("b", {}, String(k ? d.counts[k] || 0 : n)), h("span", {}, label)))),
         h("div", { class: "fleet-bar" },
-          h("input", { type: "search", class: "search", placeholder: "Search by name, cluster or region", value: F.q, "aria-label": "Search clusters",
+          h("input", { type: "search", class: "search", placeholder: "Search by name, subscription, resource group or region", value: F.q, "aria-label": "Search clusters",
             oninput: (e) => { setFilter({ q: e.target.value }); fillTable(); } }),
           h("select", { "aria-label": "Platform", onchange: (e) => { setFilter({ cloud: e.target.value }); fillTable(); } },
             h("option", { value: "" }, "All platforms"),
@@ -164,12 +164,14 @@ function fleetTable(all) {
   const go = (p) => { F.page = p; history.replaceState({}, "", `/clusters${query()}`); fillTable(); };
   return [
     h("table", { class: "fleet-table" },
-      h("thead", {}, h("tr", {}, ["Cluster", "Status", "Credential provider", "Last verified", "Last action"].map((t) => h("th", { scope: "col" }, t)))),
+      h("thead", {}, h("tr", {}, ["Cluster", "Subscription", "Resource group", "Status", "Credential provider", "Last verified", "Last action"].map((t) => h("th", { scope: "col" }, t)))),
       h("tbody", {}, rows.slice(first, first + PAGE).map((r) => {
         const [cls, text] = STATE[r.state] || ["muted", r.state];
         const a = r.action;
         return h("tr", { tabindex: "0", onclick: () => openCluster(r.name), onkeydown: (e) => { if (e.key === "Enter") openCluster(r.name); } },
           h("td", {}, h("div", { class: "nm" }, r.name), h("div", { class: "sub" }, [CLOUD[r.cloud] || r.cloud, r.cluster !== r.name ? r.cluster : "", r.location].filter(Boolean).join(" · "))),
+          h("td", { class: "wrap" }, r.subscription || muted("—")),
+          h("td", { class: "wrap" }, r.resource_group || muted("—")),
           h("td", {}, h("span", { class: `badge ${cls}` }, text), r.problem ? h("div", { class: "sub" }, brief(r.problem)) : null),
           h("td", {}, r.chart ? h("div", {}, `v${r.chart}`) : muted("—"), r.ready ? h("div", { class: "sub" }, `${r.ready} nodes ready`) : null),
           h("td", {}, r.verified_at ? ago(r.verified_at) : muted("never")),
@@ -511,7 +513,8 @@ async function add(k) {
   const cfg = await api("/api/defaults");
   const name = k.name.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 63);
   cfg.name = name;
-  Object.assign(cfg.cluster, { name: k.name, resource_group: k.resource_group, subscription_id: k.subscription_id, oidc_issuer: k.oidc_issuer });
+  Object.assign(cfg.cluster, { name: k.name, resource_group: k.resource_group, subscription_id: k.subscription_id,
+    subscription_name: k.subscription_name || "", oidc_issuer: k.oidc_issuer });
   const newest = [...(state.configs || [])].sort((a, b) => (b.updated || "").localeCompare(a.updated || ""))[0];
   if (newest) {
     const src = await api(`/api/configs/${encodeURIComponent(newest.name)}`);

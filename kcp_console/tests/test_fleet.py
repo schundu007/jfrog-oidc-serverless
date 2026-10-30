@@ -23,7 +23,8 @@ class RowTest(unittest.TestCase):
                            "daemonsets": [{"jfrog": True, "ready": 2, "desired": 2}]},
               "discover_at": "2026-10-30T08:00:00Z", "preflight": {"checks": [{"status": "pass"}]}}
         runs = [run("verify", "a", False, "succeeded", "2026-10-30T09:00:00Z", PROOF_OK)]
-        r = fleet.row({"name": "a", "cluster": "aks-a", "platform": "aks"}, st, runs)
+        r = fleet.row({"name": "a", "cluster": "aks-a", "platform": "aks", "resource_group": "rg-a", "subscription": "sub-a"}, st, runs)
+        self.assertEqual((r["resource_group"], r["subscription"]), ("rg-a", "sub-a"))
         self.assertEqual((r["state"], r["oidc"], r["chart"], r["nodes"], r["ready"]), ("working", "working", "1.4.0", 2, "2/2"))
         self.assertEqual(r["cloud"], "aks")
         self.assertEqual(r["verified_at"], "2026-10-30T09:00:00Z")

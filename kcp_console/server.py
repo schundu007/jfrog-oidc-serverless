@@ -125,11 +125,14 @@ class KcpServer:
             lines = (r.stderr or r.stdout or "").strip().splitlines()
             return {"clusters": [], "error": redact.text(lines[-1] if lines else f"az aks list: exit {r.rc}")}
         used = {(c.get("cluster") or "").lower() for c in self.store.list()}
+        acct = self.shell().run(["az", "account", "list", "-o", "json"], timeout=60)
+        subs = {a.get("id"): a.get("name", "") for a in (acct.json([]) or [])} if acct.ok else {}
         out = []
         for c in r.json([]) or []:
             parts = (c.get("id") or "").split("/")
             out.append({"name": c.get("name", ""), "resource_group": c.get("resourceGroup", ""), "location": c.get("location", ""),
-                        "subscription_id": parts[2] if len(parts) > 2 else "", "version": c.get("kubernetesVersion", ""),
+                        "subscription_id": parts[2] if len(parts) > 2 else "",
+                        "subscription_name": subs.get(parts[2], "") if len(parts) > 2 else "", "version": c.get("kubernetesVersion", ""),
                         "power": (c.get("powerState") or {}).get("code", ""),
                         "oidc_issuer": (c.get("oidcIssuerProfile") or {}).get("issuerUrl") or "",
                         "workload_identity": bool(((c.get("securityProfile") or {}).get("workloadIdentity") or {}).get("enabled")),
