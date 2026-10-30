@@ -7,11 +7,15 @@
     }
   ],
   "locals": {
-    "pull_workloads": "${{ for k in (var.pull_path.enabled ? [var.pull_mapping_name] : []) : k => { cloud = \"azure\", subject = module.azure.rotator_principal_id, username = var.pull_path.registry_username, groups = var.pull_path.groups, expires_in = var.pull_path.ttl_seconds, description = \"Container Apps / Functions registry credential (rotated)\" } }}"
+    "audience_assignees": "${{ for n, p in var.audience_assignees : n => lookup(local.dedicated_subjects, n, p) }}",
+    "dedicated_subjects": "${{ for n, i in azurerm_user_assigned_identity.dedicated : n => i.principal_id }}",
+    "pull_workloads": "${{ for k in (var.pull_path.enabled ? [var.pull_mapping_name] : []) : k => { cloud = \"azure\", subject = module.azure.rotator_principal_id, username = var.pull_path.registry_username, groups = var.pull_path.groups, expires_in = var.pull_path.ttl_seconds, description = \"Container Apps / Functions registry credential (rotated)\" } }}",
+    "runtime_workloads": "${{ for k, w in var.workloads : k => merge(w, { subject = lookup(local.dedicated_subjects, trimsuffix(k, \"-runtime\"), w.subject) }) }}",
+    "secret_readers": "${{ for n, p in var.secret_readers : n => lookup(local.dedicated_subjects, n, p) }}"
   },
   "module": {
     "azure": {
-      "audience_assignees": "${var.audience_assignees}",
+      "audience_assignees": "${local.audience_assignees}",
       "container_app_environment_id": "${var.container_app_environment_id}",
       "function_app_ids": "${var.function_app_ids}",
       "jfrog_provider_name": "${var.jfrog_provider_name}",
@@ -27,7 +31,7 @@
       "rotation_cron": "${var.pull_path.rotation_cron}",
       "rotator_image": "${var.pull_path.rotator_image}",
       "rotator_registry": "${var.rotator_registry}",
-      "secret_readers": "${var.secret_readers}",
+      "secret_readers": "${local.secret_readers}",
       "source": "../../modules/azure-identity-and-pull-path"
     },
     "jfrog_oidc": {
@@ -38,12 +42,15 @@
       },
       "project_key": "${var.jfrog_project_key}",
       "source": "../../modules/jfrog-oidc",
-      "workloads": "${merge(var.workloads, local.pull_workloads)}"
+      "workloads": "${merge(local.runtime_workloads, local.pull_workloads)}"
     }
   },
   "output": {
     "audience_uri": {
       "value": "${module.azure.audience_uri}"
+    },
+    "dedicated_identities": {
+      "value": "${{ for n, i in azurerm_user_assigned_identity.dedicated : n => { id = i.id, client_id = i.client_id, principal_id = i.principal_id } }}"
     },
     "first_run_command": {
       "value": "${module.azure.first_run_command}"
@@ -52,7 +59,7 @@
       "value": "${module.jfrog_oidc.azure_provider_name}"
     },
     "mapping_names": {
-      "value": "${keys(merge(var.workloads, local.pull_workloads))}"
+      "value": "${keys(merge(local.runtime_workloads, local.pull_workloads))}"
     },
     "registry_secret_versionless_url": {
       "value": "${module.azure.registry_secret_versionless_url}"
@@ -75,6 +82,16 @@
     },
     "platform": {
       "url": "${var.jfrog_url}"
+    }
+  },
+  "resource": {
+    "azurerm_user_assigned_identity": {
+      "dedicated": {
+        "for_each": "${var.dedicated_identities}",
+        "location": "${each.value.location}",
+        "name": "${each.value.name}",
+        "resource_group_name": "${each.value.resource_group_name}"
+      }
     }
   },
   "terraform": {
@@ -113,6 +130,11 @@
     "container_app_environment_id": {
       "default": null,
       "type": "string"
+    },
+    "dedicated_identities": {
+      "default": {},
+      "description": "Existing apps with no managed identity: <config> => new user-assigned identity",
+      "type": "map(object({name = string, resource_group_name = string, location = string}))"
     },
     "function_app_ids": {
       "default": {},

@@ -22,7 +22,10 @@
   },
   "targets": {
     "caj-artifact-reader": {
+      "dedicated_identity": null,
       "function_app_id": null,
+      "identity_location": "West US 2",
+      "identity_resource_group": "rg-artifact-reader",
       "identity_type": "user_assigned",
       "kind": "azure_container_app_job",
       "name": "caj-artifact-reader",
