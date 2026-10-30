@@ -48,7 +48,7 @@
       "subscription": "0e56d318-75b3-43ef-a41b-6a1a3c95b458"
     },
     "discovered": {
-      "at": "2026-10-30T09:11:19Z",
+      "at": "2026-10-30T09:13:42Z",
       "client_id": "644cfbb6-1717-4fb2-8f4f-3c4e10ddace0",
       "environment_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourceGroups/rg-artifact-reader/providers/Microsoft.App/managedEnvironments/cae-artifact-reader",
       "identity_resource_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourcegroups/rg-artifact-reader/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-artifact-reader",
