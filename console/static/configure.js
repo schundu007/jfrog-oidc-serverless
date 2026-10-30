@@ -39,17 +39,20 @@ function mergeDeep(base, over) {
 
 // A new configuration starts with the server's defaults minus the sample names and URL,
 // so nothing on screen looks filled in when it isn't.
+const SCOPE_KEY = { gcp: "project", azure: "subscription", aws: "profile", openshift: "context" };
+const SCOPE_LABEL = { gcp: "Project", azure: "Subscription", aws: "AWS profile", openshift: "Kube context" };
+const SCOPE_FIELDS = { gcp: ["project", "region"], azure: ["subscription", "resource_group"],
+  aws: ["account", "region", "profile", "cluster"], openshift: ["context", "cluster", "namespace"] };
+
 function freshConfig(kind) {
   const cfg = clone(st.schema.defaults[kind]);
   cfg.name = "";  // set from the picked workload or the Name typed below
-  for (const f of cloud === "gcp" ? ["project", "name"] : ["subscription", "resource_group", "name"]) cfg.target[cloud][f] = "";
+  // Every identifying field starts empty; a region keeps its default.
+  for (const f of st.schema.target_fields[cloud]) if (f !== "region") cfg.target[cloud][f] = "";
   cfg.jfrog.url = "";
   // What the logged-in account and the pipelines already use.
   const d = st.inv?.defaults || {};
-  if (cloud === "gcp") {
-    if (d.project) cfg.target.gcp.project = d.project;
-    if (d.region) cfg.target.gcp.region = d.region;
-  } else if (d.subscription) cfg.target.azure.subscription = d.subscription;
+  for (const [k, v] of Object.entries(d)) if (v && k !== "name" && Object.hasOwn(cfg.target[cloud], k)) cfg.target[cloud][k] = v;
   if (d.jfrog_url) cfg.jfrog.url = d.jfrog_url;
   // Images come from Artifact Registry / ACR with the platform's own identity; JFrog
   // serves artifacts to the app's code. The JFrog image-pull path is opt-in.
@@ -106,7 +109,8 @@ function applyKindVisibility() {
   const kind = st.cfg.target.kind;
   for (const el of $("cfg-form").querySelectorAll("[data-kinds]")) el.hidden = !el.dataset.kinds.split(" ").includes(kind);
   const pullChoice = $("cfg-form").querySelector('[data-path="pull_path.enabled"]').closest("label");
-  pullChoice.hidden = kind === "azure_functions_flex";
+  // Flex has no image; AWS and Knative pull from their own registry (runtime path only).
+  pullChoice.hidden = kind === "azure_functions_flex" || !st.schema.pull_clouds.includes(cloud);
   $("cfg-pull-fields").hidden = pullChoice.hidden || !st.cfg.pull_path?.enabled;
   renderDiscovered();
 }
@@ -466,8 +470,8 @@ async function loadInventory(scope = "", refresh = false) {
   $("cfg-inv-refresh").title = st.inv.fetched_at
     ? `Listed ${new Date(st.inv.fetched_at * 1000).toLocaleString()} · fetch again` : "Fetch again";
   // Every project / subscription the login can see: existing apps live in any of them.
-  const current = cloud === "gcp" ? st.inv.defaults.project : st.inv.defaults.subscription;
-  $("cfg-scope-label").textContent = cloud === "gcp" ? "Project" : "Subscription";
+  const current = st.inv.defaults[SCOPE_KEY[cloud]];
+  $("cfg-scope-label").textContent = SCOPE_LABEL[cloud];
   const scopes = st.inv.scopes?.length ? st.inv.scopes : current ? [{ id: current, name: current }] : [];
   // Names only: the ID shows in the Project ID / Subscription ID field below. A repeated name keeps its ID.
   const seen = {};
@@ -496,8 +500,9 @@ function pickWorkload() {
   st.cfg = freshConfig(w.kind);
   st.cfg.name = w.name;
   st.cfg.target[cloud].name = w.name;
-  if (cloud === "gcp") Object.assign(st.cfg.target.gcp, { project: w.project, region: w.region });
-  else Object.assign(st.cfg.target.azure, { subscription: w.subscription, resource_group: w.resource_group });
+  // The workload carries its own scope fields (project/region, subscription/resource group, account/region/profile/cluster,
+  // context/cluster/namespace).
+  for (const k of Object.keys(st.cfg.target[cloud])) if (k !== "name" && w[k] !== undefined && SCOPE_FIELDS[cloud].includes(k)) st.cfg.target[cloud][k] = w[k];
   st.current = null;
   resetPanels();
   writeForm();
