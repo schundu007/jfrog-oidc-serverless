@@ -616,3 +616,6 @@ input:focus-visible, select:focus-visible { border-color: var(--ai-1); box-shado
 
 /* Scrollbars that match the glass. */
 * { scrollbar-width: thin; scrollbar-color: rgba(124, 92, 255, 0.35) transparent; }
+
+/* Shared gradient for the Azure AKS mark: kept rendered (not display:none) so every copy can use it. */
+.mark-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
