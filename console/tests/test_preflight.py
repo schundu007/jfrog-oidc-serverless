@@ -87,7 +87,9 @@ class GcpPreflightTests(unittest.TestCase):
     def test_delivery_needs_no_local_jfrog_token(self):
         perms = preflight.GCP_PERMISSIONS_COMMON + preflight.GCP_PERMISSIONS_BY_KIND["gcp_run_service"]
         res = preflight.run(gcp_cfg(), self._shell(perms), env={}, delivery=True)
-        self.assertEqual(by_id(res)["jfrog_token"]["status"], "skip")
+        ids = by_id(res)
+        for local_only in ("jfrog_token", "tool_terraform", "gcloud_adc", "gcp_permissions"):
+            self.assertNotIn(local_only, ids)
         self.assertNotEqual(res["status"], "fail")
 
     def test_old_terraform(self):

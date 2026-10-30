@@ -486,7 +486,8 @@ def _make_handler(console: ConsoleServer):
                 raise HttpError(409, "another Preflight or Discover is still running")
             try:
                 sh = console.shell()
-                result = preflight.run(cfg, sh, env=console.step_env()) if step == "preflight" else discover.run(cfg, sh)
+                result = (preflight.run(cfg, sh, env=console.step_env(), delivery=console.delivery is not None)
+                          if step == "preflight" else discover.run(cfg, sh))
                 console.save_recording(sh, step)
                 result["mode"] = console.mode
                 if sh.misses:

@@ -100,7 +100,9 @@ class Preflight:
         if self.cloud is None:
             self.add("config", "Target kind", "fail", f"unknown target kind {self.kind!r}", "Pick a target kind.")
             return self.result()
-        self.terraform()
+        # Delivery: the pipeline applies with its own identity; only what Discover needs is checked here.
+        if not self.delivery:
+            self.terraform()
         if self.cloud == "gcp":
             self.gcp()
         else:
@@ -157,6 +159,10 @@ class Preflight:
             return
         self.add("gcloud_login", "gcloud logged in", "ok", accounts[0])
 
+        if self.delivery:
+            del token
+            self._gcp_project(project)
+            return
         adc = self.sh.run(["gcloud", "auth", "application-default", "print-access-token"], timeout=60, sensitive=True)
         if adc.ok:
             self.add("gcloud_adc", "Application Default Credentials", "ok", "Terraform's google provider can authenticate")
@@ -165,22 +171,8 @@ class Preflight:
                      "ADC missing or expired; Terraform uses ADC, not your gcloud login",
                      "Run: gcloud auth application-default login")
 
-        res = self.sh.run(["gcloud", "projects", "describe", project, "--format=json"], timeout=60)
-        info = res.json() or {}
-        if not res.ok:
-            self.add("gcp_project", f"Project {project}", "fail", res.error_text(300),
-                     "Check the project ID and that your account can see it.")
+        if not self._gcp_project(project):
             return
-        if info.get("lifecycleState") != "ACTIVE":
-            self.add("gcp_project", f"Project {project}", "fail", f"project state {info.get('lifecycleState')}", "")
-            return
-        self.facts["gcp_project_number"] = info.get("projectNumber")
-        detail = f"{info.get('name', project)} (#{info.get('projectNumber')})"
-        prodlike = PROD_NAME.search(project) or PROD_NAME.search(str(info.get("name", "")))
-        self.add("gcp_project", f"Project {project}", "warn" if prodlike else "ok",
-                 detail + (" — name looks like production" if prodlike else ""),
-                 "Prove the setup on a non-prod project first." if prodlike else "")
-        self._gcp_apis(project)
 
         perms = GCP_PERMISSIONS_COMMON + GCP_PERMISSIONS_BY_KIND.get(self.kind, [])
         resp = self.sh.http(
@@ -200,6 +192,25 @@ class Preflight:
                      "Ask for roles/owner on a non-prod project, or a role with these permissions. Apply will fail without them.")
         else:
             self.add("gcp_permissions", "IAM permissions on the project", "ok", f"all {len(perms)} permissions granted")
+
+    def _gcp_project(self, project) -> bool:
+        res = self.sh.run(["gcloud", "projects", "describe", project, "--format=json"], timeout=60)
+        info = res.json() or {}
+        if not res.ok:
+            self.add("gcp_project", f"Project {project}", "fail", res.error_text(300),
+                     "Check the project ID and that your account can see it.")
+            return False
+        if info.get("lifecycleState") != "ACTIVE":
+            self.add("gcp_project", f"Project {project}", "fail", f"project state {info.get('lifecycleState')}", "")
+            return False
+        self.facts["gcp_project_number"] = info.get("projectNumber")
+        detail = f"{info.get('name', project)} (#{info.get('projectNumber')})"
+        prodlike = PROD_NAME.search(project) or PROD_NAME.search(str(info.get("name", "")))
+        self.add("gcp_project", f"Project {project}", "warn" if prodlike else "ok",
+                 detail + (" — name looks like production" if prodlike else ""),
+                 "Prove the setup on a non-prod project first." if prodlike else "")
+        self._gcp_apis(project)
+        return True
 
     # -- Azure ------------------------------------------------------------------------
 
@@ -242,6 +253,8 @@ class Preflight:
         rg_id = (res.json() or {}).get("id", f"/subscriptions/{sub}/resourceGroups/{rg}")
         self._azure_providers(sub)
         self.add("azure_rg", f"Resource group {rg}", "ok", (res.json() or {}).get("location", ""))
+        if self.delivery:
+            return
 
         oid = self._azure_principal_id(user)
         if not oid:
@@ -346,8 +359,8 @@ class Preflight:
                             "Check the URL, VPN/proxy, and that the platform is up.")
         self.add("jfrog_reachable", f"JFrog reachable ({url})", "ok", "access ping OK")
 
-        if self.delivery:
-            return self.add("jfrog_token", "JFrog admin token", "skip", "pipeline OIDC (ado-setup)")
+        if self.delivery:   # the pipeline gets its JFrog admin token through OIDC
+            return
         token = self.env.get("JFROG_ACCESS_TOKEN", "")
         if not token:
             return self.add("jfrog_token", "JFROG_ACCESS_TOKEN", "fail", "not set in the console's environment",
