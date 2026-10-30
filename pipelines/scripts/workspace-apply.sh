@@ -18,7 +18,12 @@ case "$cloud" in
 esac
 
 if [ "$#" -gt 0 ]; then
-  workspaces=("$@")
+  workspaces=()
+  # A bare name (gcp_<scope>) means terraform/workspaces/<name>.
+  for ws in "$@"; do
+    [ -d "$ws" ] || [ ! -d "terraform/workspaces/$ws" ] || ws="terraform/workspaces/$ws"
+    workspaces+=("$ws")
+  done
 else
   mapfile -t workspaces < <(git diff --name-only HEAD~1 HEAD -- "terraform/workspaces/${cloud}_*" \
     | cut -d/ -f1-3 | sort -u)
