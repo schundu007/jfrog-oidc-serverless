@@ -9,3 +9,4 @@ connections = {
   setup = { name = "jfrog-oidc-setup", subject = "/eid1/c/pub/t/<tenant>/a/<app>/sc/<org-id>/<connection-id>" }
 }
 gcp_project_id                = "my-project"
+ado_token_audience = "api://AzureADTokenExchange"

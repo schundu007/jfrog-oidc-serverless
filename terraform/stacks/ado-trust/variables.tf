@@ -64,3 +64,9 @@ variable "gcp_image_repository" {
   type        = string
   default     = "platform"
 }
+
+variable "ado_token_audience" {
+  description = "aud of the token a job gets from System.OidcRequestUri (check with: python -m jfrog_oidc claims)."
+  type        = string
+  default     = "api://AzureADTokenExchange"
+}
