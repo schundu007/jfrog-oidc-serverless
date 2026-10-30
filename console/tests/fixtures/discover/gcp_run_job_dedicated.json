@@ -1,0 +1,34 @@
+[
+ {
+  "argv": [
+   "gcloud",
+   "run",
+   "jobs",
+   "describe",
+   "nightly",
+   "--region",
+   "us-central1",
+   "--project",
+   "demo-nonprod-1234",
+   "--format=json"
+  ],
+  "rc": 0,
+  "stdout": "{\"apiVersion\": \"run.googleapis.com/v1\", \"kind\": \"Job\", \"metadata\": {\"name\": \"nightly\"}, \"spec\": {\"template\": {\"spec\": {\"template\": {\"spec\": {\"serviceAccountName\": \"jfrog-nightly@demo-nonprod-1234.iam.gserviceaccount.com\", \"containers\": [{\"image\": \"acme.jfrog.io/docker-virtual/nightly:2.3\"}]}}}}}}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "gcloud",
+   "iam",
+   "service-accounts",
+   "describe",
+   "jfrog-nightly@demo-nonprod-1234.iam.gserviceaccount.com",
+   "--project",
+   "demo-nonprod-1234",
+   "--format=json"
+  ],
+  "rc": 0,
+  "stdout": "{\"email\": \"jfrog-nightly@demo-nonprod-1234.iam.gserviceaccount.com\", \"uniqueId\": \"104857600000000000002\", \"disabled\": false, \"name\": \"projects/demo-nonprod-1234/serviceAccounts/jfrog-nightly@demo-nonprod-1234.iam.gserviceaccount.com\"}",
+  "stderr": ""
+ }
+]

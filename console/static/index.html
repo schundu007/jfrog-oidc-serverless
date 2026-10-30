@@ -78,7 +78,10 @@
         <ol class="rail">
         <li class="rail-step" id="step-app">
           <h2><span class="step-n" aria-hidden="true">1</span> Target workload</h2>
-          <label class="field"><span>Workload</span><select id="cfg-workload"><option value="">Loading workloads…</option></select></label>
+          <div class="grid2">
+            <label class="field"><span id="cfg-scope-label">Project</span><select id="cfg-scope"><option value="">Loading…</option></select></label>
+            <label class="field"><span>Workload</span><select id="cfg-workload"><option value="">Loading workloads…</option></select></label>
+          </div>
           <div class="grid2">
             <label class="field"><span>Workload type</span><select id="cfg-kind" data-path="target.kind"></select></label>
             <label class="field"><span>Configuration name</span><input data-path="name" type="text" spellcheck="false" autocomplete="off"></label>

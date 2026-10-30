@@ -118,10 +118,24 @@ class WarningAndErrorTests(unittest.TestCase):
         self.assertEqual(sh.misses, [])
         self.assertEqual(res["facts"]["service_account"], "123456789012-compute@developer.gserviceaccount.com")
         self.assertTrue(res["facts"]["service_account_implicit"])
-        warning = {w["code"]: w for w in res["warnings"]}["default_service_account"]
-        self.assertIn("dedicated service account", warning["fix"])
+        warning = {w["code"]: w for w in res["warnings"]}["dedicated_identity"]
+        self.assertIn("jfrog-t@demo-nonprod-1234.iam.gserviceaccount.com", warning["message"])
+        self.assertIn("roles/editor", warning["fix"])
         self.assertEqual(res["status"], "warn")
-        self.assertEqual(res["facts"]["mapping_subject"], "104857600000000000099")
+        # Existing app on a default account: the workspace creates jfrog-<name>, no mapping on the default one.
+        self.assertIsNone(res["facts"]["mapping_subject"])
+        self.assertEqual(res["facts"]["dedicated_identity"], "jfrog-t")
+        self.assertEqual(res["facts"]["replaced_service_account_roles"], ["roles/editor"])
+        self.assertIn("target.discovered", res["config_patch"])
+
+    def test_identity_created_earlier_is_kept(self):
+        cfg = gcp_cfg("gcp_run_job", "nightly")
+        cfg["name"] = "nightly"
+        res, sh = run(cfg, "gcp_run_job_dedicated")
+        self.assertEqual(sh.misses, [])
+        self.assertEqual(res["status"], "ok")
+        self.assertEqual(res["facts"]["dedicated_identity"], "jfrog-nightly")
+        self.assertEqual(res["facts"]["mapping_subject"], "104857600000000000002")
 
     def test_system_assigned_only(self):
         res, _ = run(azure_cfg("azure_container_app", "sys"), "azure_container_app_system_only")
@@ -142,9 +156,24 @@ class WarningAndErrorTests(unittest.TestCase):
         self.assertEqual(res["errors"], [])
         self.assertEqual(res["facts"]["principal_id"], "p1")
 
-    def test_no_identity(self):
-        res, _ = run(azure_cfg("azure_container_app", "noid"), "azure_container_app_no_identity")
-        self.assertEqual(res["errors"][0]["code"], "no_identity")
+    def test_no_identity_gets_a_dedicated_one(self):
+        cfg = azure_cfg("azure_container_app", "noid")
+        cfg["name"] = "noid"
+        res, _ = run(cfg, "azure_container_app_no_identity")
+        self.assertEqual(res["errors"], [])
+        self.assertEqual(res["status"], "warn")
+        self.assertEqual(res["facts"]["dedicated_identity"], "id-noid-jfrog")
+        self.assertIsNone(res["facts"]["mapping_subject"])
+        self.assertEqual(res["config_patch"]["target.azure.identity_type"], "user_assigned")
+
+    def test_dedicated_identity_assigned_earlier_is_kept(self):
+        cfg = azure_cfg("azure_container_app", "noid")
+        cfg["name"] = "noid"
+        res, _ = run(cfg, "azure_container_app_dedicated")
+        self.assertEqual(res["status"], "ok")
+        self.assertEqual(res["facts"]["dedicated_identity"], "id-noid-jfrog")
+        self.assertEqual(res["facts"]["mapping_subject"], "pp-dedicated")
+        self.assertEqual(res["facts"]["client_id"], "cc-dedicated")
 
     def test_consumption_plan_rejected(self):
         res, _ = run(azure_cfg("azure_functions_premium", "fn-y1"), "azure_consumption")

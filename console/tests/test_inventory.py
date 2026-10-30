@@ -10,6 +10,7 @@ from console import inventory
 from console.shell import Result, Shell
 
 SUB = "00000000-0000-0000-0000-000000000001"
+SUB2 = "00000000-0000-0000-0000-000000000002"
 OUT = {
     ("gcloud", "config", "get-value", "project"): "demo-nonprod-1234\n",
     ("gcloud", "config", "get-value", "run/region"): "\n",
@@ -19,7 +20,14 @@ OUT = {
                                                    "cloud.googleapis.com/location": "us-central1"}}}]),
     ("gcloud", "run", "jobs", "list"): json.dumps([
         {"metadata": {"name": "nightly", "labels": {"cloud.googleapis.com/location": "us-central1"}}}]),
+    ("gcloud", "projects", "list"): json.dumps([
+        {"projectId": "demo-nonprod-1234", "name": "Demo", "lifecycleState": "ACTIVE"},
+        {"projectId": "legacy-apps-5678", "name": "Legacy", "lifecycleState": "ACTIVE"},
+        {"projectId": "gone-0000", "lifecycleState": "DELETE_REQUESTED"}]),
     ("az", "account", "show"): json.dumps({"id": SUB, "name": "nonprod"}),
+    ("az", "account", "list"): json.dumps([{"id": SUB, "name": "nonprod", "state": "Enabled"},
+                                           {"id": SUB2, "name": "legacy", "state": "Enabled"},
+                                           {"id": "x", "name": "off", "state": "Disabled"}]),
     ("az", "containerapp", "list"): json.dumps([
         {"name": "api", "resourceGroup": "rg-api", "location": "West US 2", "kind": None},
         {"name": "fn", "resourceGroup": "rg-fn", "location": "West US 2", "kind": "functionapp"}]),
@@ -78,6 +86,64 @@ class InventoryTests(unittest.TestCase):
         res = inventory.run("gcp", Fake(fail={("gcloud", "run", "jobs", "list")}), self.repo)
         self.assertEqual([w["name"] for w in res["workloads"]], ["resize", "orders"])
         self.assertEqual(len(res["errors"]), 1)
+
+    def test_scopes_and_picking_another_project(self):
+        sh = Fake()
+        res = inventory.run("gcp", sh, self.repo, scope="legacy-apps-5678")
+        self.assertEqual([p["id"] for p in res["scopes"]], ["demo-nonprod-1234", "legacy-apps-5678"])
+        self.assertEqual(res["defaults"]["project"], "legacy-apps-5678")
+        self.assertIn(["gcloud", "run", "jobs", "list", "--project", "legacy-apps-5678", "--format=json"], sh.calls)
+        self.assertNotIn(["gcloud", "config", "get-value", "project"], sh.calls)
+
+    def test_azure_scopes_and_picking_another_subscription(self):
+        sh = Fake()
+        res = inventory.run("azure", sh, self.repo, scope=SUB2)
+        self.assertEqual([s["name"] for s in res["scopes"]], ["legacy", "nonprod"])
+        self.assertIn(["az", "account", "show", "--subscription", SUB2, "-o", "json"], sh.calls)
+
+    def test_bad_scope_is_refused_before_any_command(self):
+        sh = Fake()
+        res = inventory.run("gcp", sh, self.repo, scope="--impersonate-service-account=x")
+        self.assertEqual(sh.calls, [])
+        self.assertTrue(res["errors"])
+
+    def test_onboarded_from_saved_and_delivered_configs(self):
+        saved = {"target": {"kind": "gcp_run_job", "gcp": {"project": "demo-nonprod-1234", "region": "us-central1",
+                                                            "name": "nightly"}}}
+        ws = self.repo / "terraform" / "workspaces" / "gcp_demo" / "configs"
+        ws.mkdir(parents=True)
+        (ws / "orders.json").write_text(json.dumps({"target": {"kind": "gcp_run_service", "gcp": {
+            "project": "demo-nonprod-1234", "region": "europe-west1", "name": "orders"}}}))
+        res = inventory.run("gcp", Fake(), self.repo, configs=[saved])
+        self.assertEqual({w["name"]: w["onboarded"] for w in res["workloads"]},
+                         {"resize": False, "nightly": True, "orders": True})
+        self.assertEqual(res["workloads"][0]["name"], "resize")   # not yet onboarded first
+
+    def test_other_tenant_login_failure_is_one_clear_line(self):
+        class AuthFail(Fake):
+            def _replay_cmd(self, argv):
+                if argv[:2] == ["az", "containerapp"] or argv[:2] == ["az", "functionapp"]:
+                    self.calls.append(list(argv))
+                    return Result(argv, 1, "", "ERROR: AADSTS7000215: Invalid client secret provided.\n"
+                                               "The error may be caused by passing a certificate with --password.", 0.0)
+                return super()._replay_cmd(argv)
+        sh = AuthFail()
+        res = inventory.run("azure", sh, self.repo)
+        self.assertEqual(len(res["errors"]), 1)
+        self.assertIn("AADSTS7000215", res["errors"][0])
+        self.assertIn("az login --tenant", res["errors"][0])
+        self.assertEqual(len([c for c in sh.calls if c[1] in ("containerapp", "functionapp")]), 1)
+
+    def test_cloud_run_disabled_is_one_line(self):
+        class Disabled(Fake):
+            def _replay_cmd(self, argv):
+                if argv[:2] == ["gcloud", "run"]:
+                    self.calls.append(list(argv))
+                    return Result(argv, 1, "", "ERROR: (gcloud.run.services.list) PERMISSION_DENIED: Cloud Run Admin "
+                                               "API has not been used in project p before or it is disabled.", 0.0)
+                return super()._replay_cmd(argv)
+        res = inventory.run("gcp", Disabled(), self.repo)
+        self.assertEqual(res["errors"], ["Cloud Run is not enabled in demo-nonprod-1234: nothing to onboard there"])
 
     def test_only_read_commands(self):
         sh = Fake()

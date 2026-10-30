@@ -161,7 +161,8 @@ class Preflight:
 
         if self.delivery:
             del token
-            self._gcp_project(project)
+            if self._gcp_project(project):
+                self._gcp_pipeline_reach(project)
             return
         adc = self.sh.run(["gcloud", "auth", "application-default", "print-access-token"], timeout=60, sensitive=True)
         if adc.ok:
@@ -212,6 +213,41 @@ class Preflight:
         self._gcp_apis(project)
         return True
 
+    def _pipeline_identity(self, cloud):
+        return ((self.delivery if isinstance(self.delivery, dict) else {}).get("pipeline_identity") or {}).get(cloud)
+
+    def _gcp_pipeline_reach(self, project):
+        """Existing apps can live in any project: the pipeline's setup account needs a role in this one."""
+        sa = self._pipeline_identity("gcp")
+        if not sa:
+            return
+        res = self.sh.run(["gcloud", "projects", "get-iam-policy", project, "--format=json"], timeout=60)
+        if not res.ok:
+            return self.add("pipeline_reach", "Pipeline can change this project", "warn", res.error_text(200),
+                            f"Check that {sa} has roles in {project}.")
+        member = f"serviceAccount:{sa}"
+        roles = sorted({b.get("role") for b in (res.json() or {}).get("bindings") or [] if member in (b.get("members") or [])})
+        if roles:
+            return self.add("pipeline_reach", "Pipeline can change this project", "ok", ", ".join(roles))
+        self.add("pipeline_reach", "Pipeline can change this project", "fail", f"{sa} has no role in {project}",
+                 f"Grant it the setup roles in {project} (terraform/stacks/ado-trust), then Preflight again.")
+
+    def _azure_pipeline_reach(self, sub, rg_id):
+        principal = self._pipeline_identity("azure")
+        if not principal:
+            return
+        res = self.sh.run(["az", "role", "assignment", "list", "--assignee", principal, "--scope", rg_id,
+                           "--include-inherited", "--subscription", sub, "-o", "json"], timeout=60)
+        if not res.ok:
+            return self.add("pipeline_reach", "Pipeline can change this resource group", "warn", res.error_text(200),
+                            "Check the pipeline setup identity's role assignments.")
+        roles = sorted({a.get("roleDefinitionName") for a in res.json() or [] if a.get("roleDefinitionName")})
+        if {"Owner", "Contributor"} & set(roles):
+            return self.add("pipeline_reach", "Pipeline can change this resource group", "ok", ", ".join(roles))
+        self.add("pipeline_reach", "Pipeline can change this resource group", "fail",
+                 f"the pipeline setup identity has {', '.join(roles) or 'no role'} here",
+                 f"Grant it Contributor and RBAC Administrator on subscription {sub} (terraform/stacks/ado-trust).")
+
     # -- Azure ------------------------------------------------------------------------
 
     def azure(self):
@@ -254,6 +290,7 @@ class Preflight:
         self._azure_providers(sub)
         self.add("azure_rg", f"Resource group {rg}", "ok", (res.json() or {}).get("location", ""))
         if self.delivery:
+            self._azure_pipeline_reach(sub, rg_id)
             return
 
         oid = self._azure_principal_id(user)
@@ -416,5 +453,6 @@ class Preflight:
 
 
 def run(cfg: dict, sh: Shell, env=None, delivery=False) -> dict:
-    """delivery: the ADO pipeline applies with its own OIDC JFrog token, so no local one is needed."""
+    """delivery: the ADO pipeline applies with its own OIDC JFrog token, so no local one is needed.
+    Pass the delivery settings (pipelines/delivery.json) to also check the pipeline's reach."""
     return Preflight(cfg, sh, env, delivery).run()

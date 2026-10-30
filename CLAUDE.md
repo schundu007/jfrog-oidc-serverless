@@ -99,6 +99,8 @@ code when real providers or APIs disagree:
 - The wire step's az flags: `az containerapp secret set --secrets
   name=keyvaultref:<url>,identityref:<id>` and `az containerapp registry set
   --password-secret-name`.
+- The dedicated-identity attach flags: `az containerapp [job] identity assign
+  --user-assigned <id>` and `az functionapp identity assign --identities <id>`.
 - The Docker subdomain host form `<server>-<repo-key>.jfrog.io` on the target
   JFrog instance (it is what the AKS pilot's instance served; a self-hosted
   platform may differ: set `jfrog.docker_host`). On a JFrog Cloud trial (2026-10-30)

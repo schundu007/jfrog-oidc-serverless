@@ -67,6 +67,21 @@ class Wire:
         self.docker_host = model.docker_host(cfg)
         self.pull = bool(model.get_path(cfg, "pull_path.enabled")) and self.kind != "azure_functions_flex"
         self.runtime = bool(model.get_path(cfg, "runtime.enabled", True))
+        self.dedicated = self._dedicated()
+        if self.dedicated and self.cloud == "azure":
+            # The app runs as the identity the workspace created: env and Key Vault references use it.
+            self.d = {**self.d, "identity_type": "user_assigned", "identity_resource_id": self.dedicated["id"],
+                      "client_id": self.dedicated.get("client_id")}
+
+    def _dedicated(self):
+        """The identity the workspace created for an existing app without one (None when it has its own)."""
+        if not self.d.get("dedicated_identity"):
+            return None
+        key = "dedicated_service_accounts" if self.cloud == "gcp" else "dedicated_identities"
+        made = (self.out.get(key) or {}).get(self.cfg["name"])
+        if not made:
+            raise WireError(f"workspace outputs missing ({key}.{self.cfg['name']}): run Plan and Apply first")
+        return {"id": made} if self.cloud == "gcp" else made
 
     # -- desired -------------------------------------------------------------------
 
@@ -144,16 +159,27 @@ class Wire:
                for e in _dig(spec, "containers", 0, "env") or []}
         diff = [_entry("env", k, cur.get(k), v) for k, v in env.items()]
         changed = {d["setting"]: d["desired"] for d in diff if d["action"] != "same"}
-        commands = []
+        args = []
         if changed:
             delim = next(c for c in "@#|~" if not any(c in k + v for k, v in changed.items()))
-            commands.append(["gcloud", "run", self._gcp_resource(), "update", self._gcp_name(), *loc,
-                             f"--update-env-vars=^{delim}^" + delim.join(f"{k}={v}" for k, v in sorted(changed.items())),
-                             "--quiet"])
+            args.append(f"--update-env-vars=^{delim}^" + delim.join(f"{k}={v}" for k, v in sorted(changed.items())))
+        if self.dedicated:
+            # An empty serviceAccountName is the project's default compute account.
+            e = _entry("identity", "service account", spec.get("serviceAccountName") or self.d.get("service_account"),
+                       self.dedicated["id"])
+            diff.insert(0, e)
+            if e["action"] != "same":
+                args.append(f"--service-account={self.dedicated['id']}")
+        commands = [["gcloud", "run", self._gcp_resource(), "update", self._gcp_name(), *loc, *args, "--quiet"]] if args else []
         return diff, commands, self._gcp_notes()
 
     def _gcp_notes(self):
         notes = []
+        if self.dedicated:
+            roles = self.d.get("replaced_service_account_roles") or []
+            notes.append(f"The app moves to {self.dedicated['id']}, which has no project roles"
+                         + (f" (the old account had {', '.join(roles)})" if roles else "")
+                         + ". Grant it what the app needs, and pass --service-account in your next deploy.")
         if self.kind == "gcp_run_function":
             notes.append("The variables are set on the function's Cloud Run service. A later `gcloud functions deploy` "
                          "replaces them unless it passes the same --set-env-vars, so add them to your deploy or IaC.")
@@ -184,13 +210,15 @@ class Wire:
         res = self.sh.run([*self._ca(), "show", *self._az_target(), "-o", "json"], timeout=120)
         if not res.ok:
             raise WireError(f"could not read the target: {res.error_text(300)}")
-        props = (res.json() or {}).get("properties") or {}
+        shown = res.json() or {}
+        props = shown.get("properties") or {}
         container = _dig(props, "template", "containers", 0) or {}
         cur_env = {e.get("name"): e["value"] if "value" in e else f"[secretRef {e.get('secretRef')}]"
                    for e in container.get("env") or []}
         diff = [_entry("env", k, cur_env.get(k), v) for k, v in env.items()]
-        commands, notes = [], []
-        changed = [f"{d['setting']}={d['desired']}" for d in diff if d["action"] != "same"]
+        commands, notes = self._assign_identity(shown, diff, [*self._ca(), "identity", "assign", *self._az_target(),
+                                                               "--user-assigned"]), []
+        changed = [f"{d['setting']}={d['desired']}" for d in diff if d["scope"] == "env" and d["action"] != "same"]
         if changed:
             commands.append([*self._ca(), "update", *self._az_target(), "--container-name",
                              container.get("name") or self.cfg["name"], "--set-env-vars", *changed, "-o", "none"])
@@ -241,7 +269,8 @@ class Wire:
 
         diff = [_entry("env", k, cur.get(k), v) for k, v in env.items()]
         settings = [f"{d['setting']}={d['desired']}" for d in diff if d["action"] != "same"]
-        first, notes = [], []
+        first = self._assign_identity(app, diff, ["az", "functionapp", "identity", "assign", *self._az_target(), "--identities"])
+        notes = []
         if self.pull and self.kind == "azure_functions_premium":
             url, user = self._need("registry_secret_versionless_url", "registry_username")
             self._need_docker_host()
@@ -269,6 +298,16 @@ class Wire:
             commands = first + [["az", "functionapp", "config", "appsettings", "set", *self._az_target(),
                                  "--settings", *settings, "-o", "none"]]
         return diff, commands, notes
+
+    def _assign_identity(self, shown: dict, diff: list, assign: list) -> list:
+        """Attach the dedicated identity (additive: identities the app already has stay)."""
+        if not self.dedicated:
+            return []
+        rid = self.dedicated["id"]
+        have = {k.lower() for k in (_dig(shown, "identity", "userAssignedIdentities") or {})}
+        e = _entry("identity", "user-assigned identity", rid if rid.lower() in have else None, rid)
+        diff.insert(0, e)
+        return [] if e["action"] == "same" else [[*assign, rid, "-o", "none"]]
 
     # -- IaC ------------------------------------------------------------------------------------
 

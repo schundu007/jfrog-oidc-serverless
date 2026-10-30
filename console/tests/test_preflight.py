@@ -92,6 +92,20 @@ class GcpPreflightTests(unittest.TestCase):
             self.assertNotIn(local_only, ids)
         self.assertNotEqual(res["status"], "fail")
 
+    def _reach(self, members):
+        perms = preflight.GCP_PERMISSIONS_COMMON + preflight.GCP_PERMISSIONS_BY_KIND["gcp_run_service"]
+        sh = self._shell(perms)
+        sh.fixtures.append({"argv": ["gcloud", "projects", "get-iam-policy", "demo-nonprod-1234", "--format=json"], "rc": 0,
+                            "stdout": json.dumps({"bindings": [{"role": "roles/run.admin", "members": members}]})})
+        settings = {"pipeline_identity": {"gcp": "ado-setup@ci-1234.iam.gserviceaccount.com"}}
+        return by_id(preflight.run(gcp_cfg(), sh, env={}, delivery=settings))["pipeline_reach"]
+
+    def test_delivery_checks_the_pipeline_reaches_an_existing_apps_project(self):
+        self.assertEqual(self._reach(["serviceAccount:ado-setup@ci-1234.iam.gserviceaccount.com"])["status"], "ok")
+        miss = self._reach(["user:someone@example.com"])
+        self.assertEqual(miss["status"], "fail")
+        self.assertIn("ado-trust", miss["fix"])
+
     def test_old_terraform(self):
         res = preflight.run(gcp_cfg(), Shell.replay(FX / "old_terraform.json"), env=TOKEN_ENV)
         self.assertEqual(by_id(res)["tool_terraform"]["status"], "fail")
@@ -109,6 +123,17 @@ class AzurePreflightTests(unittest.TestCase):
         self.assertEqual(checks["jfrog_token"]["status"], "fail")
         self.assertIn("admin", checks["jfrog_token"]["detail"])
         self.assertIn("--subscription", checks["az_default_subscription"]["detail"])
+
+    def test_delivery_checks_the_pipeline_reaches_the_resource_group(self):
+        rg_id = f"/subscriptions/{SUB}/resourceGroups/rg-apps"
+        for roles, want in ((["Contributor", "Role Based Access Control Administrator"], "ok"), (["Reader"], "fail")):
+            fixtures = load_fixtures(FX / "azure_contributor_only.json")
+            fixtures.insert(0, {"argv": ["az", "role", "assignment", "list", "--assignee", "pid-setup", "--scope", rg_id,
+                                         "--include-inherited", "--subscription", SUB, "-o", "json"], "rc": 0,
+                                "stdout": json.dumps([{"roleDefinitionName": r} for r in roles])})
+            res = preflight.run(azure_cfg(), Shell(mode="replay", fixtures=fixtures), env={},
+                                delivery={"pipeline_identity": {"azure": "pid-setup"}})
+            self.assertEqual(by_id(res)["pipeline_reach"]["status"], want, roles)
 
     def test_prod_subscription_existing_integration_missing_group(self):
         res = preflight.run(azure_cfg(), Shell.replay(FX / "azure_prod.json"), env=TOKEN_ENV)

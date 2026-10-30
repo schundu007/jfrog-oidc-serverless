@@ -325,6 +325,48 @@ class AzureRenderTests(Base):
             self.render(cfg)
 
 
+class DedicatedIdentityTests(Base):
+    """Existing apps without an identity of their own: the workspace creates one."""
+
+    def test_gcp_default_account_gets_a_new_service_account(self):
+        cfg = gcp_cfg(subject=None)
+        cfg["target"]["discovered"]["dedicated_identity"] = "jfrog-orders"
+        f = self.files(self.render(cfg))
+        t, m = f["terraform.tfvars.json"], f["main.tf.json"]
+        self.assertEqual(t["dedicated_service_accounts"], {"orders": "jfrog-orders"})
+        self.assertEqual(t["workloads"]["orders-runtime"]["subject"], "")
+        self.assertIn("dedicated", m["resource"]["google_service_account"])
+        self.assertIn("local.runtime_workloads", m["module"]["jfrog_oidc"]["workloads"])
+        self.assertIn("dedicated_service_accounts", m["output"])
+
+    def test_azure_no_identity_gets_a_user_assigned_one(self):
+        cfg = azure_cfg(principal=None)
+        cfg["target"]["discovered"].update(dedicated_identity="id-orders-jfrog", identity_resource_id=None, client_id=None)
+        f = self.files(self.render(cfg))
+        t, m = f["terraform.tfvars.json"], f["main.tf.json"]
+        self.assertEqual(t["dedicated_identities"],
+                         {"orders": {"name": "id-orders-jfrog", "resource_group_name": "rg-apps", "location": "eastus"}})
+        self.assertEqual(t["audience_assignees"], {"orders": ""})
+        self.assertEqual(t["secret_readers"], {"orders": ""})
+        self.assertEqual(m["module"]["azure"]["audience_assignees"], "${local.audience_assignees}")
+        self.assertEqual(m["module"]["azure"]["secret_readers"], "${local.secret_readers}")
+        self.assertIn("dedicated_identities", m["output"])
+
+    def test_dedicated_identity_must_belong_to_the_config(self):
+        cfg = gcp_cfg(subject=None)
+        cfg["target"]["discovered"]["dedicated_identity"] = "jfrog-someone-else"
+        with self.assertRaisesRegex(tfgen.TfgenError, "does not belong"):
+            self.render(cfg)
+
+    def test_two_dedicated_targets_share_a_workspace(self):
+        for name in ("orders", "api"):
+            cfg = gcp_cfg(name=name, subject=None)
+            cfg["target"]["discovered"]["dedicated_identity"] = f"jfrog-{name}"
+            res = self.render(cfg)
+        t = self.files(res)["terraform.tfvars.json"]
+        self.assertEqual(t["dedicated_service_accounts"], {"api": "jfrog-api", "orders": "jfrog-orders"})
+
+
 class BackendTests(Base):
     def test_backends(self):
         cfg = gcp_cfg()
@@ -369,6 +411,14 @@ class TerraformValidateTests(Base):
                 cfg = gcp_cfg(kind, name="t-" + kind.replace("_", "-")) if kind.startswith("gcp") \
                     else azure_cfg(kind, name="t-" + kind.replace("_", "-"))
                 self.validate(cfg)
+
+    def test_dedicated_identities(self):
+        g = gcp_cfg(subject=None)
+        g["target"]["discovered"]["dedicated_identity"] = "jfrog-orders"
+        a = azure_cfg(principal=None)
+        a["target"]["discovered"]["dedicated_identity"] = "id-orders-jfrog"
+        for cfg in (g, a):
+            self.validate(cfg)
 
     def test_pull_path_off(self):
         for cfg in (gcp_cfg(), azure_cfg("azure_functions_flex", name="fx")):

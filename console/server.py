@@ -420,7 +420,7 @@ def _make_handler(console: ConsoleServer):
             if parts and parts[0] == "configs":
                 return self._configs(method, parts[1:])
             if method == "GET" and len(parts) == 2 and parts[0] == "inventory" and parts[1] in ("gcp", "azure"):
-                return self._inventory(parts[1])
+                return self._inventory(parts[1], (self._query().get("scope") or [None])[0])
             if method == "POST" and parts in (["preflight"], ["discover"]):
                 return self._cloud_step(parts[0], self._config_from_body())
             if parts and parts[0] == "runs":
@@ -437,6 +437,9 @@ def _make_handler(console: ConsoleServer):
             if method == "GET" and len(parts) == 3 and parts[0] == "sim" and parts[2] == "events":
                 return self._stream(self._job(parts[1]))
             raise HttpError(404, "no such endpoint")
+
+        def _query(self) -> dict:
+            return urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
 
         def _config_from_body(self) -> dict:
             cfg = self._body().get("config")
@@ -469,12 +472,18 @@ def _make_handler(console: ConsoleServer):
                 raise HttpError(400, str(exc)) from None
             raise HttpError(405, "method not allowed")
 
-        def _inventory(self, cloud: str):
+        def _inventory(self, cloud: str, scope):
             if not console.cloud_lock.acquire(timeout=30):
                 raise HttpError(409, "another cloud operation is still running")
             try:
                 sh = console.shell()
-                result = inventory.run(cloud, sh, console.repo_root)
+                saved = []
+                for c in console.store.list():
+                    try:
+                        saved.append(console.store.get(c["name"]))
+                    except (FileNotFoundError, StoreError, ValueError):
+                        continue
+                result = inventory.run(cloud, sh, console.repo_root, scope=scope, configs=saved)
                 console.save_recording(sh, "inventory")
                 return self._json(200, result)
             finally:
@@ -486,7 +495,7 @@ def _make_handler(console: ConsoleServer):
                 raise HttpError(409, "another Preflight or Discover is still running")
             try:
                 sh = console.shell()
-                result = (preflight.run(cfg, sh, env=console.step_env(), delivery=console.delivery is not None)
+                result = (preflight.run(cfg, sh, env=console.step_env(), delivery=console.delivery or False)
                           if step == "preflight" else discover.run(cfg, sh))
                 console.save_recording(sh, step)
                 result["mode"] = console.mode

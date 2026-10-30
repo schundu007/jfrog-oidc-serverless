@@ -79,6 +79,19 @@ def docker_host(cfg: dict) -> str:
     return f"{server}-{repo}.{rest}"
 
 
+def dedicated_identity_name(cfg: dict) -> str:
+    """The identity the workspace creates for an existing app that has none of its own.
+
+    GCP: a service account ID (6-30 chars, starts with a letter): jfrog-<name>.
+    Azure: a user-assigned identity name (CAF prefix): id-<name>-jfrog.
+    Discover also uses it to recognise an identity the console created earlier.
+    """
+    name = str(cfg.get("name") or "")
+    if cloud_of(get_path(cfg, "target.kind")) == "gcp":
+        return f"jfrog-{name[:24]}".rstrip("-")
+    return f"id-{name}-jfrog"
+
+
 def cloud_of(kind: str) -> str:
     return KINDS[kind]["cloud"]
 

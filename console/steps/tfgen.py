@@ -217,7 +217,7 @@ def _merge_shared(state: dict, shared: dict, target: dict) -> None:
     cur = state["shared"]
     others = [t for n, t in state["targets"].items() if n != target["name"]]
     pull_others = [t for t in others if t.get("pull_enabled")]
-    if target.get("runtime_enabled"):
+    if target.get("runtime_enabled") and target["subject"]:
         twin = [t["name"] for t in others if t.get("runtime_enabled") and t.get("subject") == target["subject"]]
         if twin:
             # One mapping per identity (AKS pilot rule): two mappings on one subject leave
@@ -305,8 +305,11 @@ def _pull_mapping_name(key: str) -> str:
 def _common(cfg: dict, cloud: str) -> tuple:
     d = model.get_path(cfg, "target.discovered") or {}
     subject = d.get("mapping_subject")
-    if not subject:
+    dedicated = d.get("dedicated_identity") or None
+    if not subject and not dedicated:
         raise TfgenError("no mapping subject: run Discover first (it reads the identity the mapping trusts)")
+    if dedicated and dedicated != model.dedicated_identity_name(cfg):
+        raise TfgenError(f"the dedicated identity {dedicated!r} does not belong to {cfg['name']}: run Discover again")
     if d.get("kind") and d["kind"] != model.get_path(cfg, "target.kind"):
         raise TfgenError(f"Discover found a {d['kind']} but the config says {model.get_path(cfg, 'target.kind')}; "
                          "run Discover again")
@@ -333,7 +336,9 @@ def _common(cfg: dict, cloud: str) -> tuple:
         raise TfgenError("jfrog.reader_group is required")
     rt = model.get_path(cfg, "runtime") or {}
     target = {
-        "name": cfg["name"], "kind": model.get_path(cfg, "target.kind"), "subject": str(subject),
+        # An empty subject is the dedicated identity's ID, known only once the workspace creates it.
+        "name": cfg["name"], "kind": model.get_path(cfg, "target.kind"), "subject": str(subject or ""),
+        "dedicated_identity": dedicated,
         "runtime_enabled": bool(rt.get("enabled", True)), "runtime_ttl": int(rt.get("ttl_seconds") or 3600),
         "pull_enabled": bool(pp.get("enabled")),
     }
@@ -404,7 +409,8 @@ def _azure_entry(cfg: dict):
         shared["pull"].update(key_vault_id=kv, key_vault_uri=kv_uri, environment_id=env, rotator_acr_id=acr)
     refresh = target["kind"] == "azure_functions_premium" and target["pull_enabled"] and pp.get("function_app_refresh", True)
     target.update(
-        principal_id=d.get("principal_id") or str(d["mapping_subject"]),
+        principal_id=d.get("principal_id") or str(d.get("mapping_subject") or ""),
+        identity_resource_group=a.get("resource_group"), identity_location=d["location"],
         identity_type=d.get("identity_type"),
         function_app_id=(d.get("resource_id") or None) if refresh else None,
     )
@@ -510,6 +516,8 @@ def _gcp_tfvars(state: dict) -> dict:
         "gcp_region": region,
         "remote_repositories": dict(sorted((state["shared"].get("remote_repositories") or {}).items())),
         "reader_members": readers,
+        "dedicated_service_accounts": {n: t["dedicated_identity"] for n, t in sorted(state["targets"].items())
+                                       if t.get("dedicated_identity")},
     }
 
 
@@ -530,7 +538,15 @@ def _azure_tfvars(state: dict) -> dict:
         "audience_assignees": {n: t["principal_id"] for n, t in sorted(targets.items()) if t["runtime_enabled"]},
         "secret_readers": {n: t["principal_id"] for n, t in sorted(pulling.items())},
         "function_app_ids": {n: t["function_app_id"] for n, t in sorted(pulling.items()) if t.get("function_app_id")},
+        "dedicated_identities": {n: {"name": t["dedicated_identity"], "resource_group_name": t["identity_resource_group"],
+                                     "location": t["identity_location"]}
+                                 for n, t in sorted(targets.items()) if t.get("dedicated_identity")},
     }
+
+
+# Runtime mappings; a target on a dedicated identity takes that identity's ID as its subject.
+RUNTIME_WORKLOADS = ("${{ for k, w in var.workloads : k => merge(w, "
+                     "{ subject = lookup(local.dedicated_subjects, trimsuffix(k, \"-runtime\"), w.subject) }) }}")
 
 
 def _var(type_, default=..., description=None) -> dict:
@@ -591,6 +607,18 @@ def _gcp_main(modules: str | None = None) -> dict:
             "gcp_region": _var("string"),
             "remote_repositories": _var("map(object({format = string, upstream_uri = string}))", {}),
             "reader_members": _var("list(string)", []),
+            "dedicated_service_accounts": _var("map(string)", {}, "Existing apps on a default account: <config> => new SA ID"),
+        },
+        "resource": {
+            "google_service_account": {
+                "dedicated": {
+                    "for_each": "${var.dedicated_service_accounts}",
+                    "project": "${var.gcp_project_id}",
+                    "account_id": "${each.value}",
+                    "display_name": "JFrog OIDC: ${each.key}",
+                    "description": "Dedicated runtime identity for ${each.key}, created by the JFrog OIDC console",
+                },
+            },
         },
         "provider": {
             "platform": {"url": "${var.jfrog_url}"},
@@ -599,13 +627,15 @@ def _gcp_main(modules: str | None = None) -> dict:
         "locals": {
             "pull_workloads": _pull_workload_local("gcp", "module.gcp_pull_path[0].rotator_unique_id",
                                                    "Artifact Registry upstream credential (rotated)"),
+            "dedicated_subjects": "${{ for n, sa in google_service_account.dedicated : n => sa.unique_id }}",
+            "runtime_workloads": RUNTIME_WORKLOADS,
         },
         "module": {
             "jfrog_oidc": {
                 "source": f"{mod}/jfrog-oidc",
                 "gcp": {"provider_name": "${var.jfrog_provider_name}", "audience": "${var.jfrog_audience}"},
                 "project_key": "${var.jfrog_project_key}",
-                "workloads": "${merge(var.workloads, local.pull_workloads)}",
+                "workloads": "${merge(local.runtime_workloads, local.pull_workloads)}",
             },
             "gcp_pull_path": {
                 "source": f"{mod}/gcp-pull-path",
@@ -628,10 +658,11 @@ def _gcp_main(modules: str | None = None) -> dict:
         "output": {
             "jfrog_provider_name": {"value": "${module.jfrog_oidc.gcp_provider_name}"},
             "jfrog_audience": {"value": "${module.jfrog_oidc.gcp_audience}"},
-            "mapping_names": {"value": "${keys(merge(var.workloads, local.pull_workloads))}"},
+            "mapping_names": {"value": "${keys(merge(local.runtime_workloads, local.pull_workloads))}"},
             "repository_urls": {"value": "${one(module.gcp_pull_path[*].repository_urls)}"},
             "rotator_job_name": {"value": "${one(module.gcp_pull_path[*].rotator_job_name)}"},
             "first_run_command": {"value": "${one(module.gcp_pull_path[*].first_run_command)}"},
+            "dedicated_service_accounts": {"value": "${{ for n, sa in google_service_account.dedicated : n => sa.email }}"},
         },
     }
 
@@ -654,6 +685,18 @@ def _azure_main(modules: str | None = None) -> dict:
             "audience_assignees": _var("map(string)", {}),
             "secret_readers": _var("map(string)", {}),
             "function_app_ids": _var("map(string)", {}),
+            "dedicated_identities": _var("map(object({name = string, resource_group_name = string, location = string}))", {},
+                                         "Existing apps with no managed identity: <config> => new user-assigned identity"),
+        },
+        "resource": {
+            "azurerm_user_assigned_identity": {
+                "dedicated": {
+                    "for_each": "${var.dedicated_identities}",
+                    "name": "${each.value.name}",
+                    "resource_group_name": "${each.value.resource_group_name}",
+                    "location": "${each.value.location}",
+                },
+            },
         },
         "provider": {
             "platform": {"url": "${var.jfrog_url}"},
@@ -663,6 +706,10 @@ def _azure_main(modules: str | None = None) -> dict:
         "locals": {
             "pull_workloads": _pull_workload_local("azure", "module.azure.rotator_principal_id",
                                                    "Container Apps / Functions registry credential (rotated)"),
+            "dedicated_subjects": "${{ for n, i in azurerm_user_assigned_identity.dedicated : n => i.principal_id }}",
+            "runtime_workloads": RUNTIME_WORKLOADS,
+            "audience_assignees": "${{ for n, p in var.audience_assignees : n => lookup(local.dedicated_subjects, n, p) }}",
+            "secret_readers": "${{ for n, p in var.secret_readers : n => lookup(local.dedicated_subjects, n, p) }}",
         },
         "module": {
             "azure": {
@@ -681,8 +728,8 @@ def _azure_main(modules: str | None = None) -> dict:
                 "rotator_registry": "${var.rotator_registry}",
                 "rotation_cron": "${var.pull_path.rotation_cron}",
                 "min_ttl_seconds": "${var.pull_path.min_ttl_seconds}",
-                "audience_assignees": "${var.audience_assignees}",
-                "secret_readers": "${var.secret_readers}",
+                "audience_assignees": "${local.audience_assignees}",
+                "secret_readers": "${local.secret_readers}",
                 "function_app_ids": "${var.function_app_ids}",
             },
             "jfrog_oidc": {
@@ -690,17 +737,19 @@ def _azure_main(modules: str | None = None) -> dict:
                 "azure": {"provider_name": "${var.jfrog_provider_name}", "tenant_id": "${module.azure.tenant_id}",
                           "audience_app_id": "${module.azure.audience_app_id}"},
                 "project_key": "${var.jfrog_project_key}",
-                "workloads": "${merge(var.workloads, local.pull_workloads)}",
+                "workloads": "${merge(local.runtime_workloads, local.pull_workloads)}",
             },
         },
         "output": {
             "jfrog_provider_name": {"value": "${module.jfrog_oidc.azure_provider_name}"},
             "audience_uri": {"value": "${module.azure.audience_uri}"},
             "tenant_id": {"value": "${module.azure.tenant_id}"},
-            "mapping_names": {"value": "${keys(merge(var.workloads, local.pull_workloads))}"},
+            "mapping_names": {"value": "${keys(merge(local.runtime_workloads, local.pull_workloads))}"},
             "registry_username": {"value": "${var.pull_path.enabled ? var.pull_path.registry_username : null}"},
             "registry_secret_versionless_url": {"value": "${module.azure.registry_secret_versionless_url}"},
             "rotator_job_name": {"value": "${module.azure.rotator_job_name}"},
             "first_run_command": {"value": "${module.azure.first_run_command}"},
+            "dedicated_identities": {"value": "${{ for n, i in azurerm_user_assigned_identity.dedicated : "
+                                              "n => { id = i.id, client_id = i.client_id, principal_id = i.principal_id } }}"},
         },
     }

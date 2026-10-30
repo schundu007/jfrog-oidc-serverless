@@ -31,16 +31,13 @@
  {
   "argv": [
    "gcloud",
-   "iam",
-   "service-accounts",
-   "describe",
-   "123456789012-compute@developer.gserviceaccount.com",
-   "--project",
+   "projects",
+   "get-iam-policy",
    "demo-nonprod-1234",
    "--format=json"
   ],
   "rc": 0,
-  "stdout": "{\"email\": \"123456789012-compute@developer.gserviceaccount.com\", \"uniqueId\": \"104857600000000000099\", \"disabled\": false, \"name\": \"projects/demo-nonprod-1234/serviceAccounts/123456789012-compute@developer.gserviceaccount.com\"}",
+  "stdout": "{\"bindings\": [{\"role\": \"roles/editor\", \"members\": [\"serviceAccount:123456789012-compute@developer.gserviceaccount.com\", \"user:a@example.com\"]}, {\"role\": \"roles/run.invoker\", \"members\": [\"serviceAccount:other@demo-nonprod-1234.iam.gserviceaccount.com\"]}]}",
   "stderr": ""
  }
 ]

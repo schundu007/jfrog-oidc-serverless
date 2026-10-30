@@ -139,6 +139,53 @@ def aca_show(env):
 ACA_SHOW_ARGV = ["az", "containerapp", "show", "-g", "rg-apps", "-n", "orders", "--subscription", SUB, "-o", "json"]
 
 
+class DedicatedIdentityTests(unittest.TestCase):
+    """Existing apps without their own identity: Wire attaches the one the workspace created."""
+
+    def test_gcp_switches_service_account_in_the_same_update(self):
+        cfg = gcp_cfg()
+        cfg["target"]["discovered"].update(dedicated_identity="jfrog-orders", mapping_subject=None,
+                                           service_account="1-compute@developer.gserviceaccount.com",
+                                           replaced_service_account_roles=["roles/editor"])
+        new = f"jfrog-orders@{P}.iam.gserviceaccount.com"
+        sh = Shell(mode="replay", fixtures=[describe_svc([])])
+        plan = wire.Wire(cfg, sh, {**GCP_OUT, "dedicated_service_accounts": {"orders": new}}).plan()
+        self.assertEqual(plan["diff"][0], {"scope": "identity", "setting": "service account", "action": "change",
+                                           "current": "1-compute@developer.gserviceaccount.com", "desired": new})
+        self.assertEqual(len(plan["commands"]), 1)
+        self.assertEqual(plan["commands"][0][-2], f"--service-account={new}")
+        self.assertTrue(any("roles/editor" in n for n in plan["notes"]))
+
+    def test_gcp_needs_the_output(self):
+        cfg = gcp_cfg()
+        cfg["target"]["discovered"]["dedicated_identity"] = "jfrog-orders"
+        with self.assertRaisesRegex(wire.WireError, "dedicated_service_accounts"):
+            wire.Wire(cfg, Shell(mode="replay", fixtures=[]), GCP_OUT)
+
+    def test_container_app_assigns_identity_first_and_uses_it(self):
+        cfg = azure_cfg(identity="user_assigned")
+        cfg["target"]["discovered"].update(dedicated_identity="id-orders-jfrog", identity_resource_id=None, client_id=None)
+        made = {"id": f"{RG_ID}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-orders-jfrog",
+                "client_id": "cccccccc-0000-0000-0000-00000000dddd", "principal_id": "pp"}
+        sh = Shell(mode="replay", fixtures=[{"argv": ACA_SHOW_ARGV, "stdout": aca_show([])}])
+        plan = wire.Wire(cfg, sh, {**AZ_OUT, "dedicated_identities": {"orders": made}}).plan()
+        self.assertEqual(plan["commands"][0], ["az", "containerapp", "identity", "assign", "-g", "rg-apps", "-n", "orders",
+                                               "--subscription", SUB, "--user-assigned", made["id"], "-o", "none"])
+        env = {d["setting"]: d["desired"] for d in plan["diff"] if d["scope"] == "env"}
+        self.assertEqual(env["AZURE_CLIENT_ID"], made["client_id"])
+        self.assertIn(f"identityref:{made['id']}", " ".join(" ".join(c) for c in plan["commands"]))
+
+    def test_premium_assigns_identity_before_key_vault_reference(self):
+        cfg = azure_cfg("azure_functions_premium", "fn")
+        cfg["target"]["discovered"].update(dedicated_identity="id-fn-jfrog", identity_resource_id=None, client_id=None)
+        made = {"id": f"{RG_ID}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-fn-jfrog", "client_id": "c"}
+        fx = AzureTests._premium(None, [])
+        sh = Shell(mode="replay", fixtures=fx)
+        plan = wire.Wire(cfg, sh, {**AZ_OUT, "dedicated_identities": {"fn": made}}).plan()
+        self.assertEqual(plan["commands"][0][:4], ["az", "functionapp", "identity", "assign"])
+        self.assertEqual(plan["commands"][1][-3], f"keyVaultReferenceIdentity={made['id']}")
+
+
 class AzureTests(unittest.TestCase):
     def test_container_app(self):
         sh = Shell(mode="replay", fixtures=[{"argv": ACA_SHOW_ARGV, "stdout": aca_show([{"name": "OTHER", "value": "x"}])}])

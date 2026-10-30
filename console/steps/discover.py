@@ -193,13 +193,25 @@ class Discover:
             email = f"{number}-compute@developer.gserviceaccount.com"
             self.facts["service_account_implicit"] = True
         self.facts["service_account"] = email
+        dedicated = model.dedicated_identity_name(self.cfg)
+        if email.split("@", 1)[0] == dedicated:
+            # Created by this console for this app earlier: keep it in the workspace.
+            self.facts["dedicated_identity"] = dedicated
         if DEFAULT_COMPUTE_SA.match(email) or APPENGINE_SA.match(email):
+            # An existing app on a default account: a mapping on it would trust every workload in the
+            # project, so the workspace creates jfrog-<name> and Wire switches the app to it.
             self.facts["default_service_account"] = True
-            self.warn("default_service_account",
-                      f"{email} is a default service account: every workload in the project that runs as it would "
-                      "match the JFrog identity mapping",
-                      "Create a dedicated service account for this target (the console won't swap it for you), "
-                      "redeploy with --service-account, then Discover again.")
+            self.facts["dedicated_identity"] = dedicated
+            self.facts["mapping_subject"] = None
+            roles = self._gcp_roles(project, email)
+            self.facts["replaced_service_account_roles"] = roles
+            new = f"{dedicated}@{project}.iam.gserviceaccount.com"
+            self.warn("dedicated_identity",
+                      f"runs as the default account {email}; Wire switches it to a new {new}",
+                      ("The new account has no project roles. The current one has "
+                       + (", ".join(roles) if roles else "none visible")
+                       + ": grant the new one only what the app needs before you approve Wire."))
+            return
         res = self.sh.run(["gcloud", "iam", "service-accounts", "describe", email, "--project", project, "--format=json"],
                           timeout=60)
         if not res.ok:
@@ -210,6 +222,13 @@ class Discover:
             self.error("sa_disabled", f"service account {email} is disabled", "Enable it or use another account.")
         self.facts["service_account_unique_id"] = sa.get("uniqueId")
         self.facts["mapping_subject"] = sa.get("uniqueId")
+
+    def _gcp_roles(self, project, email) -> list:
+        """Project roles held by email (read-only; empty when the policy cannot be read)."""
+        res = self.sh.run(["gcloud", "projects", "get-iam-policy", project, "--format=json"], timeout=60)
+        member = f"serviceAccount:{email}"
+        return sorted({b.get("role") for b in ((res.json() or {}).get("bindings") or []) if res.ok
+                       and member in (b.get("members") or []) and b.get("role")})
 
     def _gcp_lookup_failed(self, res, what):
         if NOT_FOUND.search(res.error_text()):
@@ -351,6 +370,9 @@ class Discover:
             return
         if chosen:
             u = uas[chosen]
+            if chosen.rstrip("/").rsplit("/", 1)[-1].lower() == model.dedicated_identity_name(self.cfg).lower():
+                # Created by this console for this app earlier: keep it in the workspace.
+                self.facts["dedicated_identity"] = model.dedicated_identity_name(self.cfg)
             self.facts.update(identity_type="user_assigned", identity_resource_id=chosen,
                               principal_id=u.get("principalId"), client_id=u.get("clientId"),
                               mapping_subject=u.get("principalId"))
@@ -366,8 +388,12 @@ class Discover:
                       "/healthz/jfrog self-test endpoint",
                       "Prefer a user-assigned identity: it survives app re-creation, so the JFrog mapping stays valid.")
             return
-        self.error("no_identity", "the app has no managed identity",
-                   "Assign a user-assigned managed identity to the app, then Discover again.")
+        # An existing app with no identity: the workspace creates id-<name>-jfrog and Wire assigns it
+        # (additive: nothing the app already uses changes).
+        dedicated = model.dedicated_identity_name(self.cfg)
+        self.facts.update(identity_type="user_assigned", dedicated_identity=dedicated, mapping_subject=None)
+        self.patch["target.azure.identity_type"] = "user_assigned"
+        self.warn("dedicated_identity", f"the app has no managed identity; Wire assigns a new {dedicated}")
 
 
 def run(cfg: dict, sh: Shell) -> dict:

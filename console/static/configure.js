@@ -399,14 +399,21 @@ async function runPreflight() {
 
 // ----------------------------------------------------------------- inventory
 
-async function loadInventory() {
+async function loadInventory(scope = "") {
   const sel = $("cfg-workload");
+  fill(sel, h("option", { value: "", text: "Loading workloads…" }));
   try {
-    st.inv = await api(`/api/inventory/${cloud}`);
+    st.inv = await api(`/api/inventory/${cloud}${scope ? `?scope=${encodeURIComponent(scope)}` : ""}`);
   } catch (e) {
     fill(sel, h("option", { value: "", text: `Could not list workloads: ${e.message}` }));
     return;
   }
+  // Every project / subscription the login can see: existing apps live in any of them.
+  const current = cloud === "gcp" ? st.inv.defaults.project : st.inv.defaults.subscription;
+  $("cfg-scope-label").textContent = cloud === "gcp" ? "Project" : "Subscription";
+  const scopes = st.inv.scopes?.length ? st.inv.scopes : current ? [{ id: current, name: current }] : [];
+  fill($("cfg-scope"), scopes.map((s) => h("option", { value: s.id, selected: s.id === current,
+    text: s.name && s.name !== s.id ? `${s.name} · ${s.id}` : s.id })));
   if (!st.current && !st.dirty) {
     st.cfg = freshConfig(st.cfg.target.kind);
     writeForm();
@@ -415,10 +422,11 @@ async function loadInventory() {
   st.inv.workloads.forEach((w, i) => {
     const label = st.schema.kinds[w.kind]?.label || "Container Apps job";
     (groups[label] ||= []).push(h("option", { value: String(i), disabled: !w.supported,
-      text: `${w.name} · ${w.resource_group ? `${w.resource_group} · ` : ""}${w.region}${w.supported ? "" : " · not supported"}` }));
+      text: `${w.name} · ${w.resource_group ? `${w.resource_group} · ` : ""}${w.region}${w.onboarded ? " · onboarded" : ""}${w.supported ? "" : " · not supported"}` }));
   });
   const n = st.inv.workloads.length;
-  fill(sel, h("option", { value: "", text: n ? `${n} workload${n === 1 ? "" : "s"} found` : st.inv.errors[0] || "No workloads found" }),
+  const fresh = st.inv.workloads.filter((w) => !w.onboarded).length;
+  fill(sel, h("option", { value: "", text: n ? `${n} workload${n === 1 ? "" : "s"} · ${fresh} not onboarded` : st.inv.errors[0] || "No workloads found" }),
     Object.entries(groups).map(([label, opts]) => h("optgroup", { label }, opts)));
 }
 
@@ -461,6 +469,7 @@ export async function initConfigure(deps) {
   $("cfg-save").addEventListener("click", save);
   $("cfg-discover-btn").addEventListener("click", runDiscover);
   $("cfg-workload").addEventListener("change", pickWorkload);
+  $("cfg-scope").addEventListener("change", () => loadInventory($("cfg-scope").value));
   $("cfg-preflight-btn").addEventListener("click", runPreflight);
   $("cfg-run-btn").addEventListener("click", async () => {
     st.showAll = true;
