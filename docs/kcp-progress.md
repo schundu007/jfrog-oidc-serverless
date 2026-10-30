@@ -214,3 +214,16 @@ Each row says where the fact lives. `K.` = `kcp_console/knowledge.py`.
 - [x] Rollback (5 items, including untested uninstall cleanup and the protected provider) — `K.ROLLBACK` → `static/rollback.js`; typed cluster for destructive runs; `test_runtime.ReplayServerTest.test_destructive_needs_typed_cluster`
 - [x] Open items (8) and the "where things stand" statement — `K.OPEN_ITEMS`, `K.WHERE_THINGS_STAND` → `overview.js`, `security.js` (status per item), `report.py`
 - [x] Testing performed (5) and not performed (6) — `K.TESTING_PERFORMED`, `K.TESTING_NOT_PERFORMED` → `security.js`, `report.py`
+
+## Direct execution, AZURE.md Option B (2026-10-30)
+
+- `kcp_console/direct.py`: setup (cluster → OIDC issuer → kubeconfig → SA → provider →
+  mapping → node label → helm → DaemonSet → pull test), verify, teardown. Steps are
+  idempotent; a provider with another issuer stops the plan; protected providers refused.
+- Runner kind `direct`: the plan's commands are part of the hashed request; DryRun default;
+  teardown needs the typed cluster name; demo mode refuses a real setup.
+- UI: Install → "Run directly" (Set up, Verify); Rollback → "Tear down directly"; the
+  approval panel lists every command; Configure's main button is "Set up".
+- Values file follows the reference: `tokenAttributes.serviceAccountTokenAudience`
+  (= `azure_app_audience`); a blank `downloadUrl` is left out (chart default).
+- Tests: `tests/test_direct.py` (15). Not yet run against a real cluster.

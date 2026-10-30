@@ -133,7 +133,8 @@ def subject(cfg: dict) -> str:
 # ------------------------------------------------------------------ rendering
 
 def render_values(cfg: dict) -> str:
-    """The committed values file, byte for byte in the pilot's layout."""
+    """The values file in the reference layout (AZURE.md Option B). A blank downloadUrl is
+    left out, so the chart's own default (releases.jfrog.io) applies."""
     v = cfg["values"]
     mi = "\n".join(f'      - "{m}"' for m in v["match_images"])
     return f'''providerConfig:
@@ -146,6 +147,7 @@ def render_values(cfg: dict) -> str:
     defaultCacheDuration: {v['default_cache_duration']}
     tokenAttributes:
       enabled: {str(bool(v['token_attributes_enabled'])).lower()}
+      serviceAccountTokenAudience: "{v['azure_app_audience']}"
     azure:
       enabled: true
       azure_app_audience: "{v['azure_app_audience']}"
@@ -161,8 +163,7 @@ affinity:
               operator: In
               values:
                 - "true"
-downloadUrl: "{v['download_url']}"
-'''
+''' + ('downloadUrl: "%s"\n' % v["download_url"] if v["download_url"] else "")
 
 
 def values_sha256(cfg: dict) -> str:
@@ -227,7 +228,7 @@ def validate(cfg: dict, providers: list = None) -> list:
             out.append(_issue("error", "values.match_images",
                               f"{logic.image_host(img)} (image {img}) is not matched by matchImages: kubelet would "
                               f"never invoke the provider"))
-    if err := logic.download_url_problem(v["download_url"]):
+    if v["download_url"] and (err := logic.download_url_problem(v["download_url"])):
         out.append(_issue("error", "values.download_url", f"downloadUrl {err}"))
     cache = logic.duration_seconds(v["default_cache_duration"])
     if cache is None:

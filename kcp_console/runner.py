@@ -1,6 +1,7 @@
 """Runs: prepare → approve → queue → poll → logs → parse (spec §5).
 
-A run is one ADO pipeline invocation, or one JFrog write. prepare builds the
+A run is one ADO pipeline invocation, one JFrog write, or one direct plan
+(direct.py: AZURE.md Option B with az, kubectl, helm and the Access API). prepare builds the
 canonical request {pipeline, branch, parameters, values_sha256}, applies the
 guards and computes request_sha256. Nothing is queued until approve() is called
 with that same hash; a state-changing request also needs the operator's
@@ -15,12 +16,13 @@ import secrets
 import threading
 import time
 
-from . import knowledge, logic, model, redact
+from . import direct, knowledge, logic, model, redact
 from .ado import Ado, AdoError, param_args
 from .jfrog import Jfrog
 from .parse import events, summary
 
 PILOT_EXTRAS = {"TEST_POD_IMAGE", "TEST_POD_NAME", "TEST_POD_SA", "DiagnosticImage", "ChartRepo"}
+DIRECT_PLANS = ("setup", "verify", "teardown")
 JFROG_ACTIONS = {"create-provider", "create-mapping", "promote", "delete-mapping", "delete-provider"}
 POLL_LIMIT_SECONDS = 3600
 
@@ -51,8 +53,9 @@ def prd_blocked(cfg: dict, status: dict) -> str | None:
     return (f"{knowledge.SECURITY_REVIEW['prd_gate']} Still open: {', '.join(open_rows)}.") if open_rows else None
 
 
-def build_request(cfg: dict, kind: str, name: str, params: dict, status: dict | None = None) -> dict:
-    """The canonical request and its guard result. kind: pilot | template | mappings | jfrog."""
+def build_request(cfg: dict, kind: str, name: str, params: dict, status: dict | None = None, root=".kcp-console") -> dict:
+    """The canonical request and its guard result. kind: pilot | template | mappings | jfrog | direct.
+    root is where a direct plan keeps its kubeconfig, values and manifests."""
     cfg = model.merged(cfg)
     params = dict(params or {})
     guards, warnings = [], []
@@ -129,6 +132,27 @@ def build_request(cfg: dict, kind: str, name: str, params: dict, status: dict | 
         req = {"pipeline": "jfrog", "branch": "", "parameters": {"action": name, "target": provider, "body": body},
                "values_sha256": ""}
         mutates, destructive = True, name.startswith("delete")
+    elif kind == "direct":
+        if name not in DIRECT_PLANS:
+            raise RunError(400, f"unknown direct plan {name!r}")
+        dry = bool(params.get("DryRun", True))
+        guards += direct.problems(cfg, name)
+        if name != "verify" and cfg["values"]["provider_name"] in cfg["jfrog"]["protected_providers"]:
+            guards.append(f"{cfg['values']['provider_name']} is protected: another cluster's provider. The console never edits or deletes it.")
+        if name == "setup":
+            # The issuer is read by the plan's first step, so a blank one is not an error here.
+            errs = [e for e in model.errors(model.validate(cfg)) if e["field"] not in ("cluster.oidc_issuer", "values.provider_name")]
+            if errs:
+                guards.append("The configuration has errors: " + "; ".join(f"{e['field'].split('.')[-1]}: {e['message']}" for e in errs))
+            if cfg.get("demo_mode") and not dry:
+                guards.append("Demo mode: setup runs helm upgrade, which restarts the DaemonSet. Turn demo mode off to run it.")
+        steps = direct.plan(cfg, root, name, dry)
+        req = {"pipeline": "direct", "branch": "", "parameters": {"plan": name, "DryRun": dry, "steps": steps},
+               "values_sha256": model.values_sha256(cfg) if name == "setup" else ""}
+        mutates, destructive = True, name == "teardown"
+        if name == "teardown":
+            warnings.append("Teardown removes the release, the node label, the identity mapping and the OIDC provider. "
+                            "Uninstall leaves the node's provider entry in place (untested cleanup).")
     else:
         raise RunError(400, f"unknown run kind {kind!r}")
     dry = req["parameters"].get("DryRun") is True
@@ -209,8 +233,8 @@ def bundle(cfg: dict, runs: list, logs: dict, status: dict) -> dict:
 # ---------------------------------------------------------------- the manager
 
 class RunManager:
-    def __init__(self, runs_store, shell_factory, env=None, sleep=time.sleep, poll_seconds=10.0, on_change=None):
-        self.store, self.shell_factory, self.env = runs_store, shell_factory, env
+    def __init__(self, runs_store, shell_factory, env=None, sleep=time.sleep, poll_seconds=10.0, on_change=None, root=".kcp-console"):
+        self.store, self.shell_factory, self.env, self.root = runs_store, shell_factory, env, root
         self.sleep, self.poll_seconds = sleep, poll_seconds
         self.lock = threading.Lock()
         self.cond = threading.Condition(self.lock)
@@ -243,7 +267,7 @@ class RunManager:
             self.on_change(run)
 
     def prepare(self, cfg: dict, kind: str, name: str, params: dict, status: dict | None = None) -> dict:
-        r = build_request(cfg, kind, name, params, status)
+        r = build_request(cfg, kind, name, params, status, root=self.root)
         run = {"id": new_id(), "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "status": "prepared",
                "cfg": model.merged(cfg), **r}
         if r["guards"]:
@@ -295,6 +319,8 @@ class RunManager:
         try:
             if run["kind"] == "jfrog":
                 self._jfrog(run, sh)
+            elif run["kind"] == "direct":
+                self._direct(run, sh)
             else:
                 self._pipeline(run, sh)
         except (AdoError, RunError, ValueError, OSError) as exc:
@@ -361,6 +387,23 @@ class RunManager:
         run["result"] = {"status": res["status"], "body": redact.text(res["body"] or "")[:2000]}
         run["status"] = "succeeded" if res["ok"] else "failed"
         self._event(run, "done", f"{p['action']}: HTTP {res['status']}")
+
+    def _direct(self, run, sh):
+        p = run["request"]["parameters"]
+        run["status"] = "running"
+        rn = direct.Runner(run["cfg"], sh, self.root, self.env, lambda line: self._event(run, "log", line),
+                           dry_run=p["DryRun"], sleep=self.sleep)
+        results = rn.execute(p["steps"], stop=lambda: bool(run.get("cancel")))
+        run["result"] = {"steps": results}
+        failed = [r for r in results if r["status"] == "failed"]
+        if run.get("cancel"):
+            run["status"] = "cancelled"
+        elif failed:
+            run["status"] = "failed"
+        else:
+            run["status"] = "succeeded" if len(results) == len(p["steps"]) else "failed"
+        self._event(run, "done", f"{p['plan']}{' (dry run)' if p['DryRun'] else ''}: "
+                    + ", ".join(f"{r['id']} {r['status']}" for r in results))
 
     def wait(self, run_id, timeout=10.0):
         """Tests: block until the run leaves queued/running."""

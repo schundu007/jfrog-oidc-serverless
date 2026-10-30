@@ -81,7 +81,8 @@ class KcpServer:
         self.env = {"JFROG_ACCESS_TOKEN": "replay-mode-placeholder"} if self.mode == "replay" else (env if env is not None else os.environ)
         self.status = StatusStore(self.store.root)
         self.run_store = RunStore(self.store.root)
-        self.runs = RunManager(self.run_store, self.shell, env=self.env, sleep=sleep, poll_seconds=poll_seconds)
+        self.runs = RunManager(self.run_store, self.shell, env=self.env, sleep=sleep, poll_seconds=poll_seconds,
+                               root=self.store.root)
         self.read_lock = threading.Lock()
         self.sims = collections.OrderedDict()
         self.sims_lock = threading.Lock()

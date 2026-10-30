@@ -326,3 +326,7 @@ button.link.danger { color: var(--fail); }
 .sim-side .tfield select { width: 100%; }
 .card.intro { padding: 22px 24px; font-size: 16px; color: var(--muted); }
 main { max-width: 1400px; }
+
+/* Direct runs: the exact command per step wraps instead of widening the table. */
+code.cmd { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.pill.skipped { color: var(--muted); border-color: var(--border); }

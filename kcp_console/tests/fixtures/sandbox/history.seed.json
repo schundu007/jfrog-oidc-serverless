@@ -14,9 +14,9 @@
     "parameters": {
      "TestScenario": "MIRROR_JFROG_BINARY"
     },
-    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+    "values_sha256": "7d7a532e913014522b7c8e8635f4dc48aea75123912652cafb0b947b44ad2ae8"
    },
-   "request_sha256": "abc41a1bbf99fb64c5ddf802c1b6a024dd8b9146bf4acc19dee6a4e3f693cb35",
+   "request_sha256": "cd879fdd0dcbbb656d4952f7df18f98e79e578c0f9ec705be69c993e1b6589be",
    "changes_state": true,
    "destructive": false,
    "needs_typed_cluster": false,
@@ -220,9 +220,9 @@
      "TestScenario": "INSTALL_JFROG_PROVIDER",
      "DryRun": false
     },
-    "values_sha256": "baa51a28a5d349597285b63ba9b8f78514c85fc27113baf0c50bb2c320ce2bb2"
+    "values_sha256": "6c8057d5ac6875a4d463938f4e425d52173374b2f29cf63ea2d249bc95f34de2"
    },
-   "request_sha256": "d05657e0c19c178d6e85202bc79d84b5c702a85b3a72177297bcf797e69b2431",
+   "request_sha256": "2081f3c68ba6d8e6bd282aea05e6ed3277616714e21d2749c3f4f4e4dcca9def",
    "changes_state": true,
    "destructive": false,
    "needs_typed_cluster": false,
@@ -266,9 +266,9 @@
     "parameters": {
      "TestScenario": "CREATE_TEST_POD"
     },
-    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+    "values_sha256": "7d7a532e913014522b7c8e8635f4dc48aea75123912652cafb0b947b44ad2ae8"
    },
-   "request_sha256": "373bef892b99a5b7319f313b9f8dbfa0dadcecedc002da5832ccf21850254124",
+   "request_sha256": "a41258f5bbe6b6d35408dfae0d52991a96c2ecc83c913a6c1196ee106bb2a49b",
    "changes_state": true,
    "destructive": false,
    "needs_typed_cluster": false,
@@ -310,9 +310,9 @@
     "parameters": {
      "TestScenario": "CHECK_KUBELET_PROVIDER"
     },
-    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+    "values_sha256": "7d7a532e913014522b7c8e8635f4dc48aea75123912652cafb0b947b44ad2ae8"
    },
-   "request_sha256": "16b8d02f5ff6328db14626e1b43aabece5dcf2370f63c11c3b028af323995407",
+   "request_sha256": "24956be1d6be2082805faac2b80ee523b39dc3113d4e55cde47e74c60842cae1",
    "changes_state": false,
    "destructive": false,
    "needs_typed_cluster": false,
@@ -355,9 +355,9 @@
      "TestScenario": "INSTALL_JFROG_PROVIDER",
      "DryRun": false
     },
-    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+    "values_sha256": "7d7a532e913014522b7c8e8635f4dc48aea75123912652cafb0b947b44ad2ae8"
    },
-   "request_sha256": "985ded2bfd97f83c57b8d86457c0f025e643e8dd1f0d9ec55487800403fff47b",
+   "request_sha256": "16cde3c650ba6cbb9b7521cce243176da11321460d3cc72389243db3ca92264e",
    "changes_state": true,
    "destructive": false,
    "needs_typed_cluster": false,
@@ -401,9 +401,9 @@
     "parameters": {
      "TestScenario": "CREATE_TEST_POD"
     },
-    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+    "values_sha256": "7d7a532e913014522b7c8e8635f4dc48aea75123912652cafb0b947b44ad2ae8"
    },
-   "request_sha256": "373bef892b99a5b7319f313b9f8dbfa0dadcecedc002da5832ccf21850254124",
+   "request_sha256": "a41258f5bbe6b6d35408dfae0d52991a96c2ecc83c913a6c1196ee106bb2a49b",
    "changes_state": true,
    "destructive": false,
    "needs_typed_cluster": false,
@@ -445,9 +445,9 @@
     "parameters": {
      "TestScenario": "CHECK_JFROG_POD_CONFIG"
     },
-    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+    "values_sha256": "7d7a532e913014522b7c8e8635f4dc48aea75123912652cafb0b947b44ad2ae8"
    },
-   "request_sha256": "fbe9ffe21a86f3c08f297ea95b33285176c188cdb47ec22b9d1004397e56c102",
+   "request_sha256": "4426849096a64eaa716a601f439e020dfc67b4f16701500c1d278b543f4b796c",
    "changes_state": true,
    "destructive": false,
    "needs_typed_cluster": false,
@@ -471,10 +471,10 @@
    "ado_run_id": 4109,
    "result": {
     "ado_result": "succeeded",
-    "chars": 3005
+    "chars": 3098
    }
   },
-  "log": "2026-10-16T12:25:17.0000000Z Starting: CHECK_JFROG_POD_CONFIG\n2026-10-16T12:25:17.0000000Z TestScenario=CHECK_JFROG_POD_CONFIG\n2026-10-16T12:25:17.0000000Z ===== helm get values -a =====\n2026-10-16T12:25:17.0000000Z providerConfig:\n2026-10-16T12:25:17.0000000Z   - name: jfrog-credentials-provider\n2026-10-16T12:25:17.0000000Z     # Bare hostname, NOT a URL: the plugin prepends \"https://\" itself.\n2026-10-16T12:25:17.0000000Z     artifactoryUrl: \"example.jfrog.io\"\n2026-10-16T12:25:17.0000000Z     matchImages:\n2026-10-16T12:25:17.0000000Z       # The repo's dedicated subdomain (the bare-domain path method does not work here).\n2026-10-16T12:25:17.0000000Z       - \"example-aks-sandbox-test-docker-local.jfrog.io\"\n2026-10-16T12:25:17.0000000Z     defaultCacheDuration: 5h\n2026-10-16T12:25:17.0000000Z     tokenAttributes:\n2026-10-16T12:25:17.0000000Z       enabled: true\n2026-10-16T12:25:17.0000000Z     azure:\n2026-10-16T12:25:17.0000000Z       enabled: true\n2026-10-16T12:25:17.0000000Z       azure_app_audience: \"api://AzureADTokenExchange\"\n2026-10-16T12:25:17.0000000Z       jfrog_oidc_provider_name: \"aks-sandbox-oidc\"\n2026-10-16T12:25:17.0000000Z rbac:\n2026-10-16T12:25:17.0000000Z   create: true\n2026-10-16T12:25:17.0000000Z affinity:\n2026-10-16T12:25:17.0000000Z   nodeAffinity:\n2026-10-16T12:25:17.0000000Z     requiredDuringSchedulingIgnoredDuringExecution:\n2026-10-16T12:25:17.0000000Z       nodeSelectorTerms:\n2026-10-16T12:25:17.0000000Z         - matchExpressions:\n2026-10-16T12:25:17.0000000Z             - key: credentialsProviderEnabled\n2026-10-16T12:25:17.0000000Z               operator: In\n2026-10-16T12:25:17.0000000Z               values:\n2026-10-16T12:25:17.0000000Z                 - \"true\"\n2026-10-16T12:25:17.0000000Z downloadUrl: \"https://example.jfrog.io/artifactory/aks-sandbox-generic-local/jfrog-credential-provider/1.4.0/jfrog-credential-provider-linux\"\n2026-10-16T12:25:17.0000000Z \n2026-10-16T12:25:17.0000000Z ===== rendered artifactory_url =====\n2026-10-16T12:25:17.0000000Z         - name: artifactory_url\n2026-10-16T12:25:17.0000000Z           value: \"example.jfrog.io\"\n2026-10-16T12:25:17.0000000Z ===== chart =====\n2026-10-16T12:25:17.0000000Z NAME                 NAMESPACE  REVISION  STATUS    CHART                            APP VERSION\n2026-10-16T12:25:17.0000000Z jfrog-cred-provider  jfrog  2  deployed  jfrog-credential-provider-1.4.0  1.4.0\n2026-10-16T12:25:17.0000000Z ===== service account =====\n2026-10-16T12:25:17.0000000Z apiVersion: v1\n2026-10-16T12:25:17.0000000Z kind: ServiceAccount\n2026-10-16T12:25:17.0000000Z metadata:\n2026-10-16T12:25:17.0000000Z   name: jfrog-provider-sa\n2026-10-16T12:25:17.0000000Z   namespace: jfrog\n2026-10-16T12:25:17.0000000Z   annotations:\n2026-10-16T12:25:17.0000000Z     JFrogExchange: \"true\"\n2026-10-16T12:25:17.0000000Z ===== restart =====\n2026-10-16T12:25:17.0000000Z daemonset.apps/jfrog-cred-provider-jfrog-credential-provider-daemonset restarted\n2026-10-16T12:25:17.0000000Z Finishing: CHECK_JFROG_POD_CONFIG"
+  "log": "2026-10-16T12:25:17.0000000Z Starting: CHECK_JFROG_POD_CONFIG\n2026-10-16T12:25:17.0000000Z TestScenario=CHECK_JFROG_POD_CONFIG\n2026-10-16T12:25:17.0000000Z ===== helm get values -a =====\n2026-10-16T12:25:17.0000000Z providerConfig:\n2026-10-16T12:25:17.0000000Z   - name: jfrog-credentials-provider\n2026-10-16T12:25:17.0000000Z     # Bare hostname, NOT a URL: the plugin prepends \"https://\" itself.\n2026-10-16T12:25:17.0000000Z     artifactoryUrl: \"example.jfrog.io\"\n2026-10-16T12:25:17.0000000Z     matchImages:\n2026-10-16T12:25:17.0000000Z       # The repo's dedicated subdomain (the bare-domain path method does not work here).\n2026-10-16T12:25:17.0000000Z       - \"example-aks-sandbox-test-docker-local.jfrog.io\"\n2026-10-16T12:25:17.0000000Z     defaultCacheDuration: 5h\n2026-10-16T12:25:17.0000000Z     tokenAttributes:\n2026-10-16T12:25:17.0000000Z       enabled: true\n2026-10-16T12:25:17.0000000Z       serviceAccountTokenAudience: \"api://AzureADTokenExchange\"\n2026-10-16T12:25:17.0000000Z     azure:\n2026-10-16T12:25:17.0000000Z       enabled: true\n2026-10-16T12:25:17.0000000Z       azure_app_audience: \"api://AzureADTokenExchange\"\n2026-10-16T12:25:17.0000000Z       jfrog_oidc_provider_name: \"aks-sandbox-oidc\"\n2026-10-16T12:25:17.0000000Z rbac:\n2026-10-16T12:25:17.0000000Z   create: true\n2026-10-16T12:25:17.0000000Z affinity:\n2026-10-16T12:25:17.0000000Z   nodeAffinity:\n2026-10-16T12:25:17.0000000Z     requiredDuringSchedulingIgnoredDuringExecution:\n2026-10-16T12:25:17.0000000Z       nodeSelectorTerms:\n2026-10-16T12:25:17.0000000Z         - matchExpressions:\n2026-10-16T12:25:17.0000000Z             - key: credentialsProviderEnabled\n2026-10-16T12:25:17.0000000Z               operator: In\n2026-10-16T12:25:17.0000000Z               values:\n2026-10-16T12:25:17.0000000Z                 - \"true\"\n2026-10-16T12:25:17.0000000Z downloadUrl: \"https://example.jfrog.io/artifactory/aks-sandbox-generic-local/jfrog-credential-provider/1.4.0/jfrog-credential-provider-linux\"\n2026-10-16T12:25:17.0000000Z \n2026-10-16T12:25:17.0000000Z ===== rendered artifactory_url =====\n2026-10-16T12:25:17.0000000Z         - name: artifactory_url\n2026-10-16T12:25:17.0000000Z           value: \"example.jfrog.io\"\n2026-10-16T12:25:17.0000000Z ===== chart =====\n2026-10-16T12:25:17.0000000Z NAME                 NAMESPACE  REVISION  STATUS    CHART                            APP VERSION\n2026-10-16T12:25:17.0000000Z jfrog-cred-provider  jfrog  2  deployed  jfrog-credential-provider-1.4.0  1.4.0\n2026-10-16T12:25:17.0000000Z ===== service account =====\n2026-10-16T12:25:17.0000000Z apiVersion: v1\n2026-10-16T12:25:17.0000000Z kind: ServiceAccount\n2026-10-16T12:25:17.0000000Z metadata:\n2026-10-16T12:25:17.0000000Z   name: jfrog-provider-sa\n2026-10-16T12:25:17.0000000Z   namespace: jfrog\n2026-10-16T12:25:17.0000000Z   annotations:\n2026-10-16T12:25:17.0000000Z     JFrogExchange: \"true\"\n2026-10-16T12:25:17.0000000Z ===== restart =====\n2026-10-16T12:25:17.0000000Z daemonset.apps/jfrog-cred-provider-jfrog-credential-provider-daemonset restarted\n2026-10-16T12:25:17.0000000Z Finishing: CHECK_JFROG_POD_CONFIG"
  },
  {
   "run": {
@@ -491,9 +491,9 @@
     "parameters": {
      "TestScenario": "CHECK_KUBELET_PROVIDER"
     },
-    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+    "values_sha256": "7d7a532e913014522b7c8e8635f4dc48aea75123912652cafb0b947b44ad2ae8"
    },
-   "request_sha256": "16b8d02f5ff6328db14626e1b43aabece5dcf2370f63c11c3b028af323995407",
+   "request_sha256": "24956be1d6be2082805faac2b80ee523b39dc3113d4e55cde47e74c60842cae1",
    "changes_state": false,
    "destructive": false,
    "needs_typed_cluster": false,
@@ -536,9 +536,9 @@
      "TestScenario": "RESET_NODE_JFROG_ENTRY",
      "DryRun": true
     },
-    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+    "values_sha256": "7d7a532e913014522b7c8e8635f4dc48aea75123912652cafb0b947b44ad2ae8"
    },
-   "request_sha256": "ab0b6268a86dbf03444353193325d7acc7d0e33cd06f8290f5ab946a60feb1ee",
+   "request_sha256": "584c2b230c3fa09a149859234d030dc700b31e5925073a19004fb270a9a81a03",
    "changes_state": false,
    "destructive": false,
    "needs_typed_cluster": false,
@@ -583,9 +583,9 @@
      "TestScenario": "RESET_NODE_JFROG_ENTRY",
      "DryRun": false
     },
-    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+    "values_sha256": "7d7a532e913014522b7c8e8635f4dc48aea75123912652cafb0b947b44ad2ae8"
    },
-   "request_sha256": "15bf440d28c8b30c7e8c2e6d2804f0872929402d31d7bcb12cce902a12bc2261",
+   "request_sha256": "35128bf855b045032793f64501409ed6b6946814a6e5ce7ac4ced6c8bfb63fd3",
    "changes_state": true,
    "destructive": true,
    "needs_typed_cluster": true,
@@ -629,9 +629,9 @@
     "parameters": {
      "TestScenario": "CREATE_TEST_POD"
     },
-    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+    "values_sha256": "7d7a532e913014522b7c8e8635f4dc48aea75123912652cafb0b947b44ad2ae8"
    },
-   "request_sha256": "373bef892b99a5b7319f313b9f8dbfa0dadcecedc002da5832ccf21850254124",
+   "request_sha256": "a41258f5bbe6b6d35408dfae0d52991a96c2ecc83c913a6c1196ee106bb2a49b",
    "changes_state": true,
    "destructive": false,
    "needs_typed_cluster": false,
@@ -673,9 +673,9 @@
     "parameters": {
      "TestScenario": "CHECK_KUBELET_PROVIDER"
     },
-    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+    "values_sha256": "7d7a532e913014522b7c8e8635f4dc48aea75123912652cafb0b947b44ad2ae8"
    },
-   "request_sha256": "16b8d02f5ff6328db14626e1b43aabece5dcf2370f63c11c3b028af323995407",
+   "request_sha256": "24956be1d6be2082805faac2b80ee523b39dc3113d4e55cde47e74c60842cae1",
    "changes_state": false,
    "destructive": false,
    "needs_typed_cluster": false,
@@ -717,9 +717,9 @@
     "parameters": {
      "TestScenario": "CREATE_TEST_POD"
     },
-    "values_sha256": "eefe600e3a1e3cdc1cc99ca92dcf2d03a37e8859b4cb207cb67e851ce4ee08c1"
+    "values_sha256": "7d7a532e913014522b7c8e8635f4dc48aea75123912652cafb0b947b44ad2ae8"
    },
-   "request_sha256": "373bef892b99a5b7319f313b9f8dbfa0dadcecedc002da5832ccf21850254124",
+   "request_sha256": "a41258f5bbe6b6d35408dfae0d52991a96c2ecc83c913a6c1196ee106bb2a49b",
    "changes_state": true,
    "destructive": false,
    "needs_typed_cluster": false,

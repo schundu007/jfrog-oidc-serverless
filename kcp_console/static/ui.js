@@ -96,16 +96,21 @@ export function runControl({ kind, name, params = {}, label, dryRun = false, not
   function showPrepared(run) {
     panel.hidden = false;
     const req = run.request;
-    const rows = Object.entries(req.parameters).map(([k, v]) => [k, typeof v === "object" ? JSON.stringify(v) : String(v)]);
+    const directRun = req.pipeline === "direct";
+    const rows = Object.entries(req.parameters).filter(([k]) => !(directRun && k === "steps"))
+      .map(([k, v]) => [k, typeof v === "object" ? JSON.stringify(v) : String(v)]);
     const approve = h("input", { type: "checkbox", id: `ap-${run.id}` });
     const typed = h("input", { type: "text", class: "typed", placeholder: run.cluster, "aria-label": "Type the cluster name", autocomplete: "off" });
     const go = h("button", { class: "primary", onclick: () => queue(run, approve.checked, typed.value) },
       run.changes_state ? "Approve and run" : "Run (read-only)");
     fill(panel,
-      h("p", {}, h("strong", {}, req.pipeline === "jfrog" ? "JFrog write" : `Pipeline ${req.pipeline}`),
+      h("p", {}, h("strong", {}, req.pipeline === "jfrog" ? "JFrog write" : directRun ? `Direct ${req.parameters.plan}` : `Pipeline ${req.pipeline}`),
         req.branch ? ` on ${req.branch}` : "", " ",
         run.changes_state ? h("span", { class: "pill fail" }, "changes state") : h("span", { class: "pill pass" }, "read-only / dry run")),
       table(["parameter", "value"], rows),
+      directRun ? table(["#", "step", "", "command or request"], req.parameters.steps.map((st, i) => [String(i + 1), st.title,
+        h("span", { class: `pill ${st.kind === "change" ? "warn" : "pass"}` }, st.kind),
+        h("span", {}, h("code", { class: "cmd" }, st.command), st.dry_run_note ? h("span", { class: "small muted" }, ` (${st.dry_run_note})`) : null)])) : null,
       h("p", { class: "small muted mono" }, `request sha256 ${run.request_sha256}`,
         req.values_sha256 ? ` · values sha256 ${req.values_sha256.slice(0, 16)}…` : ""),
       run.warnings.length ? h("ul", { class: "small warnlist" }, run.warnings.map((w) => h("li", {}, w))) : null,
@@ -131,6 +136,8 @@ export function runControl({ kind, name, params = {}, label, dryRun = false, not
         if (kind === "done") {
           status.replaceWith(pill(data.status));
           if (data.error) panel.append(h("p", { class: "error small" }, data.error));
+          if (data.result && data.result.steps) panel.append(table(["step", "result", "detail"],
+            data.result.steps.map((st) => [st.id, pill(st.status === "done" ? "succeeded" : st.status === "ok" ? "succeeded" : st.status), st.detail])));
           if (onDone) onDone(data);
           state.emit("runs");
         }

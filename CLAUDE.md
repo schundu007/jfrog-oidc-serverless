@@ -21,8 +21,10 @@ it before starting any milestone. Record progress in `docs/progress.md`.
 - `console/` — to be built, per the spec.
 - `kcp_console/` — the KCP console: the AKS kubelet credential provider sibling
   (spec `docs/kcp-console-spec.md`, progress `docs/kcp-progress.md`). Same rules
-  as `console/`. It never runs state-changing kubectl/helm; changes go through
-  ADO pipeline runs behind approvals.
+  as `console/`. State-changing az/kubectl/helm and JFrog writes run only as a
+  direct plan (`kcp_console/direct.py`, AZURE.md Option B) or an ADO pipeline
+  run, after a DryRun and an explicit, hash-bound approval. Ad-hoc reads stay
+  read-only (`k8s.py`).
 
 ## Commands
 

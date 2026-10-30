@@ -16,6 +16,7 @@ VALUES_SANDBOX = '''providerConfig:
     defaultCacheDuration: 5h
     tokenAttributes:
       enabled: true
+      serviceAccountTokenAudience: "api://AzureADTokenExchange"
     azure:
       enabled: true
       azure_app_audience: "api://AzureADTokenExchange"

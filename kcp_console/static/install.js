@@ -14,6 +14,11 @@ const PILOT = [
   ["Pull test", "A pod with imagePullSecrets: [] pulls the test image.", "pilot", "CREATE_TEST_POD"],
 ];
 
+const DIRECT = [
+  ["Set up", "Cluster OIDC issuer, service account, JFrog provider and mapping, node label, helm install, DaemonSet, pull test.", "setup"],
+  ["Verify", "DaemonSet ready, then a pod with imagePullSecrets: [] pulls the test image.", "verify"],
+];
+
 export function initInstall() {
   state.on("config", render);
   state.on("runs", render);
@@ -30,8 +35,14 @@ async function render() {
     ? await stepList(k.TEMPLATE_ACTIONS.map((a) => ({ title: a.name, line: a.does, kind: "template", name: a.name, dryRun: true }))
       .concat([{ title: "Identity mappings", line: "jfrog-kcp-mappings: apply the mappings file (Prune stays false).", kind: "mappings", name: "Apply", dryRun: true, params: { Prune: false } }]))
     : await stepList(PILOT.map(([title, line, kind, name]) => ({ title, line, kind, name })));
+  const directList = tmpl ? null : await stepList(DIRECT.map(([title, line, name]) => ({ title, line, kind: "direct", name, dryRun: true,
+    label: "Prepare (shows every command)" })));
   fill(P,
-    pageHead("Install", tmpl ? "Cluster template pipeline (jfrog-kcp-cluster)" : "Utility pipeline scenarios. DryRun first; every change waits for your approval."),
+    pageHead("Install", tmpl ? "Cluster template pipeline (jfrog-kcp-cluster)" : "AZURE.md Option B. DryRun first; every change waits for your approval."),
+    directList ? h("section", { class: "card" }, h("h2", {}, "Run directly"),
+      h("p", { class: "small muted" }, "With your az login and JFROG_ACCESS_TOKEN: az, kubectl, helm and the JFrog Access API, step by step. Steps already in place are left alone."),
+      directList) : null,
+    directList ? h("h2", {}, "Or through the utility pipeline") : null,
     list,
     h("details", { class: "advanced" }, h("summary", {}, "All pipeline scenarios"),
       table(["scenario", "does", "changes state", ""], all.map((s) => [h("code", {}, s.name), s.does,

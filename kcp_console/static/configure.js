@@ -183,7 +183,7 @@ function renderSide() {
       planned.length ? h("ul", { class: "plan-list" }, planned.map(([verb, what, name, det]) => h("li", {}, `${verb} ${what} `, h("code", {}, name), ` ${det}`)))
         : h("p", { class: "small muted" }, "Nothing: Preflight found every piece in place."),
       h("div", { class: "cfg-actions" },
-        h("button", { class: "primary big", onclick: async () => { if (await save()) selectTab("install"); } }, "Run pipeline"),
+        h("button", { class: "primary big", onclick: async () => { if (await save()) selectTab("install"); } }, cfg.mode === "template" ? "Run pipeline" : "Set up"),
         h("div", { class: "row-tight" },
           h("button", { class: "secondary", onclick: () => discover(true) }, "Preflight"),
           h("button", { class: "secondary", onclick: save }, "Save")),

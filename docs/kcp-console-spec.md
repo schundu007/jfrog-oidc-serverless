@@ -35,8 +35,13 @@ these places, and `docs/kcp-progress.md` §Traceability says which:
 - **Execution model.** Personal accounts have *AKS Cluster User* and *RBAC
   Reader*: read-only, namespaced objects only (Nodes are cluster-scoped and
   excluded). So the console:
-  - never runs a state-changing `kubectl` or `helm` (enforced in `k8s.py`: only
+  - never runs an ad-hoc state-changing `kubectl` or `helm` (enforced in `k8s.py`: only
     `get`/`auth can-i`/`version`; helm only `get`/`list`/`history`/`status`);
+  - where the operator has the rights, runs jfrog/jfrog-credentials-provider AZURE.md
+    Option B directly (`direct.py`: setup, verify, teardown) as one approved run: the
+    approval screen lists every command and request, the request hash binds them,
+    DryRun is the default (`--dry-run=server`; az and JFrog writes shown, not sent),
+    and teardown needs the cluster name typed in;
   - queues Azure DevOps pipeline runs (`az pipelines run`) with parameters using
     the operator's `az login`, and streams and stores their logs;
   - uses local `kubectl` for reads personal RBAC allows, and on
