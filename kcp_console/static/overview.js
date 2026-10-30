@@ -245,7 +245,8 @@ function clusterView(c) {
     facts,
     problems.length ? panel("Problems", null, checklist(problems)) : null,
     actionEl(c.name),
-    busy ? null : proofBlock(s.proof));
+    // The proof's run already shows above as the latest action: its steps are the proof, not shown twice.
+    busy || (s.proof && acts[c.name]?.real?.created === s.proof.at) ? null : proofBlock(s.proof));
 }
 
 const panel = (title, aside, ...body) => h("section", { class: "panel" },
