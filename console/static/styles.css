@@ -109,10 +109,14 @@ main { padding: 16px 20px 40px; max-width: 1600px; margin: 0 auto; }
 
 /* ------------------------------------------------------------ simulate */
 
-.sim-layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; align-items: start; }
-@media (max-width: 900px) { .sim-layout { grid-template-columns: 1fr; } }
-
-.controls { position: sticky; top: 64px; max-height: calc(100vh - 80px); overflow-y: auto; }
+.sim-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.sim-bar { display: grid; grid-template-columns: minmax(240px, 420px) 160px auto; gap: 16px; align-items: end; }
+.sim-bar .sim-actions { margin-top: 0; }
+.sim-bar + #scenario-meta { margin: 6px 0 0; }
+#sim-advanced { padding: 12px 0 0; margin-top: 12px; }
+.sim-adv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+#sim-advanced .sim-adv-grid fieldset { margin: 0; }
+@media (max-width: 760px) { .sim-bar { grid-template-columns: 1fr; } }
 .controls fieldset { border: 1px solid var(--border); border-radius: 6px; margin: 10px 0; padding: 8px 10px 10px; }
 .controls legend { font-size: 14px; color: var(--muted); padding: 0 4px; }
 
@@ -577,3 +581,5 @@ td .pill, .act-last .pill, .step-table .pill { border: 0; background: none; padd
 .events-box > summary h2 { display: inline; }
 .events-box > summary::before { content: "▸ "; }
 .events-box[open] > summary::before { content: "▾ "; }
+
+#cfg-workload { margin-bottom: 12px; }

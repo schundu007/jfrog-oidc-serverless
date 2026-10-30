@@ -29,7 +29,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import model, redact
+from . import inventory, model, redact
 from .runner import STEPS, RunError, RunManager
 from .shell import Shell, load_fixtures
 from .sim import scenario as sc
@@ -195,6 +195,7 @@ class ConsoleServer:
         self.runs = RunManager(self.store.root, cloud_shell=self._run_shell, tf_shell=self._tf_shell,
                                env=self.step_env(), simulate=self.simulate_config, store=self.store,
                                delivery=delivery, repo_root=repo_root)
+        self.repo_root = repo_root
         self._catalogue = None
         self._httpd = None
         self.port = None
@@ -418,6 +419,8 @@ def _make_handler(console: ConsoleServer):
                 return self._json(200, console.session_info())
             if parts and parts[0] == "configs":
                 return self._configs(method, parts[1:])
+            if method == "GET" and len(parts) == 2 and parts[0] == "inventory" and parts[1] in ("gcp", "azure"):
+                return self._inventory(parts[1])
             if method == "POST" and parts in (["preflight"], ["discover"]):
                 return self._cloud_step(parts[0], self._config_from_body())
             if parts and parts[0] == "runs":
@@ -465,6 +468,17 @@ def _make_handler(console: ConsoleServer):
             except StoreError as exc:
                 raise HttpError(400, str(exc)) from None
             raise HttpError(405, "method not allowed")
+
+        def _inventory(self, cloud: str):
+            if not console.cloud_lock.acquire(timeout=30):
+                raise HttpError(409, "another cloud operation is still running")
+            try:
+                sh = console.shell()
+                result = inventory.run(cloud, sh, console.repo_root)
+                console.save_recording(sh, "inventory")
+                return self._json(200, result)
+            finally:
+                console.cloud_lock.release()
 
         def _cloud_step(self, step: str, cfg: dict):
             # One cloud operation at a time: they share CLI logins and caches.

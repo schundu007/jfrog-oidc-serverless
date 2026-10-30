@@ -79,10 +79,11 @@ def _version_tuple(text: str):
 
 
 class Preflight:
-    def __init__(self, cfg: dict, sh: Shell, env=None):
+    def __init__(self, cfg: dict, sh: Shell, env=None, delivery=False):
         self.cfg = cfg
         self.sh = sh
         self.env = os.environ if env is None else env
+        self.delivery = delivery
         self.kind = model.get_path(cfg, "target.kind")
         self.cloud = model.cloud_of(self.kind) if self.kind in model.KINDS else None
         self.checks: list = []
@@ -344,6 +345,8 @@ class Preflight:
                             "Check the URL, VPN/proxy, and that the platform is up.")
         self.add("jfrog_reachable", f"JFrog reachable ({url})", "ok", "access ping OK")
 
+        if self.delivery:
+            return self.add("jfrog_token", "JFrog admin token", "skip", "pipeline OIDC (ado-setup)")
         token = self.env.get("JFROG_ACCESS_TOKEN", "")
         if not token:
             return self.add("jfrog_token", "JFROG_ACCESS_TOKEN", "fail", "not set in the console's environment",
@@ -398,5 +401,6 @@ class Preflight:
             self.add("jfrog_group", f"Reader group '{group}'", "warn", f"lookup returned {res.status or res.error}", "")
 
 
-def run(cfg: dict, sh: Shell, env=None) -> dict:
-    return Preflight(cfg, sh, env).run()
+def run(cfg: dict, sh: Shell, env=None, delivery=False) -> dict:
+    """delivery: the ADO pipeline applies with its own OIDC JFrog token, so no local one is needed."""
+    return Preflight(cfg, sh, env, delivery).run()

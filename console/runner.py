@@ -314,7 +314,7 @@ class RunManager:
     # -- steps ----------------------------------------------------------------------------------
 
     def _step_preflight(self, run, ctx):
-        res = preflight.run(run.cfg, self._shell(run, ctx), env=self.env)
+        res = preflight.run(run.cfg, self._shell(run, ctx), env=self.env, delivery=self.delivery is not None)
         self._evidence(run, "preflight", result=res)
         for path, value in (res.get("config_patch") or {}).items():
             model.set_path(run.cfg, path, value)

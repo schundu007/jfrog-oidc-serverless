@@ -9,7 +9,7 @@ const fill = (el, ...kids) => el.replaceChildren(...kids.flat().filter((k) => k 
 
 let api, h, cloud, ofCloud, onRun, selectTab;
 // showAll: list problems on empty fields too. Off for a new configuration until a button is pressed.
-const st = { schema: null, cfg: null, dirty: false, busy: false, validateTimer: null, validation: null, showAll: false, saved: null, current: null };
+const st = { inv: null, schema: null, cfg: null, dirty: false, busy: false, validateTimer: null, validation: null, showAll: false, saved: null, current: null };
 
 // ----------------------------------------------------------------- path helpers
 
@@ -44,6 +44,13 @@ function freshConfig(kind) {
   cfg.name = "new-app";
   for (const f of cloud === "gcp" ? ["project", "name"] : ["subscription", "resource_group", "name"]) cfg.target[cloud][f] = "";
   cfg.jfrog.url = "";
+  // What the logged-in account and the pipelines already use.
+  const d = st.inv?.defaults || {};
+  if (cloud === "gcp") {
+    if (d.project) cfg.target.gcp.project = d.project;
+    if (d.region) cfg.target.gcp.region = d.region;
+  } else if (d.subscription) cfg.target.azure.subscription = d.subscription;
+  if (d.jfrog_url) cfg.jfrog.url = d.jfrog_url;
   // Images come from Artifact Registry / ACR with the platform's own identity; JFrog
   // serves artifacts to the app's code. The JFrog image-pull path is opt-in.
   cfg.pull_path.enabled = false;
@@ -449,6 +456,47 @@ async function runPreflight() {
 
 // ----------------------------------------------------------------- init
 
+// ----------------------------------------------------------------- inventory
+
+async function loadInventory() {
+  const sel = $("cfg-workload");
+  try {
+    st.inv = await api(`/api/inventory/${cloud}`);
+  } catch (e) {
+    fill(sel, h("option", { value: "", text: `Could not list workloads: ${e.message}` }));
+    return;
+  }
+  if (!st.current && !st.dirty) {
+    st.cfg = freshConfig(st.cfg.target.kind);
+    writeForm();
+  }
+  const groups = {};
+  st.inv.workloads.forEach((w, i) => {
+    const label = st.schema.kinds[w.kind]?.label || "Container Apps job";
+    (groups[label] ||= []).push(h("option", { value: String(i), disabled: !w.supported,
+      text: `${w.name} · ${w.resource_group ? `${w.resource_group} · ` : ""}${w.region}${w.supported ? "" : " · not supported"}` }));
+  });
+  const n = st.inv.workloads.length;
+  fill(sel, h("option", { value: "", text: n ? `${n} workload${n === 1 ? "" : "s"} found` : st.inv.errors[0] || "No workloads found" }),
+    Object.entries(groups).map(([label, opts]) => h("optgroup", { label }, opts)));
+}
+
+function pickWorkload() {
+  const w = st.inv?.workloads[Number($("cfg-workload").value)];
+  if (!w || !$("cfg-workload").value) return;
+  st.cfg = freshConfig(w.kind);
+  st.cfg.name = w.name;
+  st.cfg.target[cloud].name = w.name;
+  if (cloud === "gcp") Object.assign(st.cfg.target.gcp, { project: w.project, region: w.region });
+  else Object.assign(st.cfg.target.azure, { subscription: w.subscription, resource_group: w.resource_group });
+  st.current = null;
+  resetPanels();
+  writeForm();
+  markDirty(true);
+  scheduleValidate();
+  runDiscover();
+}
+
 export async function initConfigure(deps) {
   ({ api, h, cloud, ofCloud, onRun, selectTab } = deps);
   st.schema = await api("/api/schema");
@@ -471,6 +519,7 @@ export async function initConfigure(deps) {
   $("cfg-back").addEventListener("click", () => selectTab("tab-configs"));
   $("cfg-save").addEventListener("click", save);
   $("cfg-discover-btn").addEventListener("click", runDiscover);
+  $("cfg-workload").addEventListener("change", pickWorkload);
   $("cfg-preflight-btn").addEventListener("click", runPreflight);
   $("cfg-run-btn").addEventListener("click", async () => {
     st.showAll = true;
@@ -487,4 +536,5 @@ export async function initConfigure(deps) {
   // The path picks the tab; with none (or Configurations and nothing saved), land on the useful one.
   const named = location.pathname.split("/")[2] || "";
   if (!named || (named === "configs" && !st.saved.length)) selectTab(st.saved.length ? "tab-configs" : "tab-configure", "replace");
+  loadInventory();
 }

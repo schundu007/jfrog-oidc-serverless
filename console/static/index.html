@@ -78,6 +78,7 @@
         <ol class="rail">
         <li class="rail-step" id="step-app">
           <h2><span class="step-n" aria-hidden="true">1</span> Target workload</h2>
+          <label class="field"><span>Workload</span><select id="cfg-workload"><option value="">Loading workloads…</option></select></label>
           <div class="grid2">
             <label class="field"><span>Workload type</span><select id="cfg-kind" data-path="target.kind"></select></label>
             <label class="field"><span>Configuration name</span><input data-path="name" type="text" spellcheck="false" autocomplete="off"></label>
@@ -178,18 +179,24 @@
     <section id="panel-simulate" role="tabpanel" aria-labelledby="tab-simulate" hidden>
       <div class="sim-layout">
         <form id="sim-form" class="controls card" novalidate aria-label="Simulation settings">
-          <label class="field">
-            <span>Scenario</span>
-            <select id="scenario" required></select>
-          </label>
+          <div class="sim-bar">
+            <label class="field sim-scenario">
+              <span>Scenario</span>
+              <select id="scenario" required></select>
+            </label>
+            <label class="field"><span>Duration</span>
+              <select id="duration"><option>6h</option><option>12h</option><option selected>24h</option><option>48h</option></select>
+            </label>
+            <div class="row sim-actions">
+              <button id="run" type="submit" class="primary">Run simulation</button>
+              <button id="reset" type="button" class="secondary">Reset</button>
+            </div>
+          </div>
           <p id="scenario-meta" class="small"></p>
-
-          <label class="field"><span>Duration</span>
-            <select id="duration"><option>6h</option><option>12h</option><option selected>24h</option><option>48h</option></select>
-          </label>
 
           <details class="advanced" id="sim-advanced">
             <summary>Advanced</summary>
+            <div class="sim-adv-grid">
             <fieldset>
               <legend>Overrides</legend>
               <div id="overrides" class="grid2"></div>
@@ -207,14 +214,10 @@
             <fieldset>
               <legend>Load</legend>
               <div id="load"></div>
+              <label class="field"><span>Seed</span><input id="seed" type="number" min="0" step="1" value="1"></label>
             </fieldset>
-            <label class="field"><span>Seed</span><input id="seed" type="number" min="0" step="1" value="1"></label>
+            </div>
           </details>
-
-          <div class="row">
-            <button id="run" type="submit" class="primary">Run simulation</button>
-            <button id="reset" type="button" class="secondary">Reset</button>
-          </div>
           <div id="progress" class="progress" hidden aria-live="polite">
             <div class="track"><div class="bar" id="progress-bar"></div></div>
             <span id="progress-text" class="small muted"></span>
