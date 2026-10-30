@@ -353,7 +353,8 @@ tr.diff-same td { color: var(--muted); }
 .danger-box input { font-family: var(--mono); }
 pre.cmds, pre.run-log { font-family: var(--mono); font-size: 14px; background: var(--lane); border-radius: 6px; padding: 8px 10px;
   overflow: auto; white-space: pre-wrap; word-break: break-all; }
-pre.run-log { max-height: 260px; min-height: 60px; }
+/* The run log grows with the page: no inner scrollbar. */
+pre.run-log { min-height: 60px; overflow: visible; }
 .run-log-box { margin-top: 14px; }
 .run-log-box summary { cursor: pointer; font-size: 15px; color: var(--muted); }
 .auth-form { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
