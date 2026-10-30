@@ -206,9 +206,13 @@ class AzureDevOpsSource:
 def _error_message(exc: urllib.error.HTTPError) -> str:
     """The "message" of an Azure DevOps error body (never echoes request headers)."""
     try:
-        msg = json.loads(exc.read().decode("utf-8-sig", "replace")).get("message", "")
-    except (ValueError, AttributeError, OSError):
+        text = exc.read().decode("utf-8-sig", "replace")
+    except (AttributeError, OSError):
         return ""
+    try:
+        msg = json.loads(text).get("message", "")
+    except (ValueError, AttributeError):
+        msg = " ".join(text.split())
     return str(msg)[:300]
 
 

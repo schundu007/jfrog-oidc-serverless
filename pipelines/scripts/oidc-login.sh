@@ -1,4 +1,5 @@
-# Sourced by the pipeline scripts.
+# Sourced by the pipeline scripts, run by AzureCLI@2: the task references the
+# service connection, which Azure DevOps requires before it issues its token.
 #
 # The service connection's OIDC token (requested from System.OidcRequestUri with
 # the job token: Entra-issued, aud api://AzureADTokenExchange, sub unique to the

@@ -38,9 +38,15 @@ stages:
             displayName: Install Terraform $(TERRAFORM_VERSION)
           - bash: mkdir -p "$(Pipeline.Workspace)/plan"
             displayName: Prepare
-          - bash: pipelines/scripts/terraform-stack.sh plan ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
+          - task: AzureCLI@2
             name: tf
             displayName: terraform plan (OIDC)
+            inputs:
+              azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
+              scriptType: bash
+              scriptLocation: scriptPath
+              scriptPath: pipelines/scripts/terraform-stack.sh
+              arguments: plan ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
               JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
@@ -67,8 +73,14 @@ stages:
                   artifact: plan
                 - bash: pipelines/scripts/install-terraform.sh
                   displayName: Install Terraform $(TERRAFORM_VERSION)
-                - bash: pipelines/scripts/terraform-stack.sh apply ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
+                - task: AzureCLI@2
                   displayName: terraform apply (OIDC)
+                  inputs:
+                    azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
+                    scriptType: bash
+                    scriptLocation: scriptPath
+                    scriptPath: pipelines/scripts/terraform-stack.sh
+                    arguments: apply ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
                   env:
                     SYSTEM_ACCESSTOKEN: $(System.AccessToken)
                     JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
