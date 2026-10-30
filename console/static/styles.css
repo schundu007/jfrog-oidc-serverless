@@ -1044,3 +1044,97 @@ button.primary:hover:not(:disabled), .primary-cmd:hover:not(:disabled) { backgro
 /* Failures: dark grey, bold text on light backgrounds; the status pills are filled dark grey with white text. */
 .error, .danger-text, .mismatch, .field-msg.error, .status-error, .st-failed .st-status, button.link.danger, tr.ev-bad td { font-weight: 600; }
 .pill.bad, .pill.run-failed, .pill.run-cancelled, .pill.v-fail, .pill.step-failed, .pill.step-cancelled, .badge.fail { color: #ffffff; background: #333333; border-color: #333333; }
+
+/* ================================================================== cards and run log */
+/* One card system: a 20px gutter between cards everywhere, compact 16/20 padding inside,
+   a tinted header band, a hairline border and a soft two-step shadow that lifts on hover. */
+:root {
+  --card-gap: 20px; --card-pad-y: 16px; --card-pad-x: 20px; --card-r: 14px;
+  --card-line: #e2e2e2; --card-line-hover: #cfcfcf; --card-head: #f8f9f7;
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 18px -12px rgba(0, 0, 0, 0.18);
+  --card-shadow-hover: 0 1px 2px rgba(0, 0, 0, 0.05), 0 12px 28px -14px rgba(0, 0, 0, 0.26);
+}
+.card, .side-box, .table-card, .rail-step, .panel, details.panel, .saved .panel {
+  background: var(--surface); border: 1px solid var(--card-line); border-radius: var(--card-r);
+  box-shadow: var(--card-shadow); backdrop-filter: none; -webkit-backdrop-filter: none;
+  transition: box-shadow 160ms ease, border-color 160ms ease;
+}
+.card:hover, .side-box:hover, .table-card:hover, .rail-step:hover, .panel:hover {
+  box-shadow: var(--card-shadow-hover); border-color: var(--card-line-hover);
+}
+.card, .panel, .side-box, .detail-card { padding: var(--card-pad-y) var(--card-pad-x); }
+.card + .card, .panel + .panel, .side-box + .side-box { margin-top: var(--card-gap); }
+.rail, .cfg-side { gap: var(--card-gap); }
+.cfg-layout, .runs-layout, .sim-layout { gap: var(--card-gap); }
+.runs-layout > .card + .card { margin-top: 0; }
+.saved { margin-bottom: var(--s-6); }
+.saved-head { margin-bottom: var(--s-3); }
+
+/* Step cards: the heading is a tinted band; the body is compact. */
+.rail-step > h2 {
+  padding: 12px var(--card-pad-x); font-size: var(--t-md); font-weight: 650; background: var(--card-head);
+  border-bottom: 1px solid var(--card-line); border-radius: var(--card-r) var(--card-r) 0 0;
+}
+.rail-step.collapsed > h2 { border-radius: var(--card-r); }
+.step-body { padding: var(--card-pad-y) var(--card-pad-x) calc(var(--card-pad-y) + 4px); }
+.panel-title, .steps-card .panel-title { font-size: var(--t-xs); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--fg-3); margin-bottom: var(--s-3); }
+.steps-card { padding: var(--card-pad-y) var(--s-3); }
+.detail-head { padding-bottom: var(--s-3); margin-bottom: var(--card-pad-y); border-bottom-color: var(--card-line); }
+.result-box { border-radius: 10px; border-color: var(--card-line); }
+
+/* The saved table is a card too: header band, roomy rows, no double border. */
+.table-card thead th, .cfg-table thead th { background: var(--card-head); border-bottom: 1px solid var(--card-line); }
+
+/* Run log: a table (time, step, event, result, duration) that grows with the page.
+   The header sticks under the top bar while the rows scroll by. */
+.run-log-box > summary { gap: var(--s-2); }
+.count-badge:not(:empty) {
+  display: inline-grid; place-items: center; min-width: 22px; height: 20px; padding: 0 7px; border-radius: 999px;
+  font-size: var(--t-xs); font-weight: 700; color: var(--accent); background: var(--accent-soft);
+}
+div.run-log { margin-top: var(--s-3); border: 1px solid var(--card-line); border-radius: 12px; overflow: clip; background: var(--surface); }
+.log-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--t-sm); table-layout: auto; }
+.log-table thead th {
+  position: sticky; top: var(--top-h); z-index: 1; padding: 9px 12px; background: var(--card-head);
+  border-bottom: 1px solid var(--card-line); font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--fg-3); white-space: nowrap;
+}
+.log-table td { padding: 7px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+.log-table tbody tr:last-child td { border-bottom: 0; }
+.log-table tbody tr:nth-child(even) td { background: #fbfbfb; }
+.log-table tbody tr:hover td { background: var(--accent-soft); }
+.log-t, .log-took { font-family: var(--mono); font-size: 12px; color: var(--fg-3); white-space: nowrap; width: 1%; }
+.log-took { text-align: right; }
+.log-step-cell { width: 1%; white-space: nowrap; }
+.log-step {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 650; text-transform: capitalize; color: var(--accent); background: var(--accent-soft);
+}
+.log-msg { font-family: var(--mono); font-size: 12.5px; color: var(--fg); overflow-wrap: anywhere; }
+.log-res-cell { width: 1%; white-space: nowrap; }
+.log-res {
+  display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 6px;
+  font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+}
+.log-res::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.log-res.log-ok { color: #3f6c12; background: #eef6e6; }
+.log-res.log-info { color: #555555; background: #f2f2f2; }
+.log-res.log-bad { color: #ffffff; background: #333333; }
+tr.log-row-bad td { background: #f4f4f4; }
+tr.log-row-bad td:first-child { box-shadow: inset 3px 0 0 #333333; }
+tr.log-row-bad .log-msg { font-weight: 600; }
+.log-empty { margin: 0; padding: var(--s-4); color: var(--fg-3); font-size: var(--t-sm); text-align: center; }
+@media (max-width: 860px) {
+  .log-table thead th { top: 0; }
+  .log-took, .log-table th:last-child { display: none; }
+}
+.log-verb {
+  display: inline-block; min-width: 40px; margin-right: 8px; padding: 1px 6px; border-radius: 4px; text-align: center;
+  font: 700 10.5px/16px var(--mono); letter-spacing: 0.02em; color: #4e8416; background: #eef6e6; vertical-align: 1px;
+}
+.log-verb.verb-post, .log-verb.verb-put, .log-verb.verb-patch { color: #333333; background: #eeeeee; }
+.log-verb.verb-delete { color: #ffffff; background: #333333; }
+.log-call { display: flex; align-items: baseline; gap: 8px; }
+.log-call > .log-verb { flex: none; margin-right: 0; }
+.log-call > span:last-child { min-width: 0; overflow-wrap: anywhere; }

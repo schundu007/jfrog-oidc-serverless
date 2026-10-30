@@ -328,11 +328,40 @@ function viewWire(step, ev) {
   return out;
 }
 
+// A log line reads "<event> → <result> (<seconds>)": each part gets its own column.
+const LOG_LINE = /^(.*?) → (.+?)(?: \((\d+(?:\.\d+)?s)\))?$/;
+const BAD = /^(exit [1-9]|[45]\d\d\b)|fail|error|denied|forbidden/i;
+
+// "GET https://…": the method becomes a tag so the URLs line up.
+function logEvent(event) {
+  const m = /^(GET|POST|PUT|PATCH|DELETE|HEAD) (\S.*)$/.exec(event);
+  return m ? [h("div", { class: "log-call" }, h("span", { class: `log-verb verb-${m[1].toLowerCase()}`, text: m[1] }),
+    h("span", { text: m[2] }))] : [event];
+}
+
+function logRow(e, showStep) {
+  const m = LOG_LINE.exec(e.line || "");
+  const [event, result, took] = m ? [m[1], m[2], m[3] || ""] : [e.line || "", "", ""];
+  const tone = result ? (/^(exit 0|[23]\d\d)\b/.test(result) ? "ok" : BAD.test(result) ? "bad" : "info")
+    : BAD.test(event) ? "bad" : "";
+  return h("tr", { class: tone === "bad" ? "log-row-bad" : null },
+    h("td", { class: "log-t", text: (e.t || "").slice(11, 19) }),
+    h("td", { class: "log-step-cell" }, showStep && e.step ? h("span", { class: "log-step", text: e.step.replaceAll("_", " ") }) : null),
+    h("td", { class: "log-msg" }, ...logEvent(event)),
+    h("td", { class: "log-res-cell" }, result ? h("span", { class: `log-res log-${tone}`, text: result }) : null),
+    h("td", { class: "log-took", text: took }));
+}
+
 function renderLog() {
-  const pre = $("run-log");
   // Steps and outcomes only: command lines ("$ az …") stay in the server's log.
-  pre.textContent = rs.log.filter((e) => !/^\$ /.test(e.line || "")).map((e) => `${(e.t || "").slice(11, 19)} ${e.step ? `[${e.step}] ` : ""}${e.line}`).join("\n");
-  pre.scrollTop = pre.scrollHeight;
+  const lines = rs.log.filter((e) => !/^\$ /.test(e.line || ""));
+  $("run-log-count").textContent = lines.length ? String(lines.length) : "";
+  // The step shows once, where it starts: the rows below it belong to it.
+  fill($("run-log"), lines.length
+    ? h("table", { class: "log-table" },
+      h("thead", {}, h("tr", {}, ["Time", "Step", "Event", "Result", "Took"].map((t) => h("th", { scope: "col", text: t })))),
+      h("tbody", {}, lines.map((e, i) => logRow(e, i === 0 || lines[i - 1].step !== e.step))))
+    : h("p", { class: "log-empty", text: "No log lines yet." }));
 }
 
 async function cancel(ev) {
