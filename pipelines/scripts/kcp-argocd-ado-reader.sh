@@ -26,12 +26,15 @@ if ! az ad app federated-credential list --id "$APP_ID" --query "[?subject=='$SU
   az ad app federated-credential create --id "$APP_ID" --parameters "$(printf '{"name":"argocd-repo-server","issuer":"%s","subject":"%s","audiences":["api://AzureADTokenExchange"]}' "$ISSUER" "$SUBJECT")" >/dev/null
 fi
 
-PROJECT_ID=$(az devops project show --org "$ORG_URL" -p "$PROJECT" --query id -o tsv)
+# Azure DevOps REST with the az login's Entra token (resource 499b84ac-…, Azure DevOps): no PAT, no az devops login.
+ADO=499b84ac-1321-427f-aa17-267ca6975798
+PROJECT_ID=$(az rest --resource "$ADO" --url "$ORG_URL/_apis/projects/$PROJECT?api-version=7.1" --query id -o tsv)
 BODY=$(mktemp)
 trap 'rm -f "$BODY"' EXIT
 printf '{"accessLevel":{"accountLicenseType":"express"},"projectEntitlements":[{"group":{"groupType":"projectReader"},"projectRef":{"id":"%s"}}],"servicePrincipal":{"origin":"aad","originId":"%s","subjectKind":"servicePrincipal"}}' \
   "$PROJECT_ID" "$SP_ID" > "$BODY"
-az devops invoke --org "$ORG_URL" --area MemberEntitlementManagement --resource ServicePrincipalEntitlements \
-  --http-method POST --api-version 7.1-preview --in-file "$BODY" --query "operationResult.isSuccess" -o tsv
+az rest --method post --resource "$ADO" --headers "Content-Type=application/json" --body "@$BODY" \
+  --url "https://vsaex.dev.azure.com/$ORG/_apis/serviceprincipalentitlements?api-version=7.1-preview.1" \
+  --query "operationResult.isSuccess" -o tsv
 
 echo "app (client) id: $APP_ID"
