@@ -2,7 +2,8 @@
 
 Short-lived JFrog tokens for Cloud Run (services, jobs, functions), Azure
 Container Apps and Azure Functions (Flex, Premium/Dedicated, Functions on ACA),
-using OIDC token exchange. Nothing long-lived is stored anywhere.
+AWS Lambda, ECS tasks and App Runner, and Knative services (OpenShift Serverless
+or any Knative cluster), using OIDC token exchange. Nothing long-lived is stored anywhere.
 
 We are now building **the console**: a local web UI that configures, simulates
 and verifies this for a target. The full spec is in `docs/console-spec.md`; read
@@ -10,25 +11,31 @@ it before starting any milestone. Record progress in `docs/progress.md`.
 
 ## Layout
 
-- `client/` — `jfrog_oidc`, a stdlib-only Python client: identity sources, the
-  exchange with caching, helpers and a CLI.
+- `client/` — `jfrog_oidc`, a stdlib-only Python client: identity sources (GCP,
+  Azure, AWS STS `GetWebIdentityToken` with its own SigV4 in `sigv4.py`, ADO,
+  file), the exchange with caching, helpers and a CLI.
 - `rotator/` — the pull-path rotator for GCP (Secret Manager + AR repoint) and
   Azure (Key Vault + ARM refresh).
 - `terraform/modules/` — `jfrog-oidc`, `gcp-pull-path`,
-  `azure-identity-and-pull-path`. `terraform/stacks/` holds the deployable root
-  configs: `ado-trust` (one-time ADO trust for JFrog, GCP and Azure),
+  `azure-identity-and-pull-path`, `aws-identity` (dedicated roles and the
+  `sts:GetWebIdentityToken` policy). `terraform/stacks/` holds the deployable root
+  configs: `ado-trust` (one-time ADO trust for JFrog, GCP, Azure and, when
+  `aws_account_id` is set, AWS),
   `gcp-cloud-run`, `azure-container-apps` (one workload each, inputs in
   `env/<env>.tfvars`) and `all-targets`.
 - `apps/` — workload images and functions that use the client:
-  `artifact-reader` (job for Cloud Run and Container Apps), `cloud-run-function`,
-  `azure-function`.
+  `artifact-reader` (job for Cloud Run, Container Apps and ECS tasks),
+  `cloud-run-service` (also the App Runner / ECS service image), `cloud-run-function`,
+  `azure-function`, `aws-lambda`.
 - `pipelines/` — Azure DevOps pipelines (the only CI/CD), separate per cloud:
   `<cloud>-stack-setup.yml` (Terraform plan, apply), `<cloud>-build-deploy.yml`
   and `<cloud>-workload-onboard.yml` (applies and wires the workspaces the
   console proposes by pull request, `terraform/workspaces/<cloud>_*`). Every
   job authenticates with its service connection's OIDC token; settings per
   environment in `pipelines/vars/<env>.yml`.
-- `console/` — to be built, per the spec.
+- `console/` — the Serverless console, per the spec. Clouds: GCP, Azure, AWS
+  (`steps/aws.py`, spec §11) and Knative (`steps/openshift.py`, spec §12; works on
+  any cluster through a kubectl context). AWS and Knative are runtime path only.
 - `portal/` — one UI for both consoles (`docs/merge-plan.md`): Serverless (`console/`)
   at `/serverless`, Kubernetes (`kcp_console/`) at `/k8s`. It only routes by prefix; the
   two consoles never import each other and keep separate stores, runs and gates.
@@ -48,8 +55,9 @@ cd client && PYTHONPATH=src python -m unittest discover -s tests -v
 cd rotator && PYTHONPATH=../client/src:. python -m unittest test_rotate -v
 # console tests (once console/ exists)
 PYTHONPATH=client/src:. python -m unittest discover -s console/tests -v
-# simulation scenarios vs expectations (M1+)
+# simulation scenarios vs expectations (M1+), including AWS and Knative
 PYTHONPATH=client/src:rotator:. python -m console.sim check-all
+PYTHONPATH=client/src:rotator:. python -m console.sim run happy-aws-lambda
 # terraform (needs network to the provider registry)
 terraform -chdir=terraform/stacks/all-targets init -backend=false && terraform -chdir=terraform/stacks/all-targets validate
 terraform fmt -recursive -check terraform/
@@ -102,6 +110,30 @@ code when real providers or APIs disagree:
 - The dedicated-identity attach flag `az containerapp [job] identity assign
   --user-assigned <id>` (`az functionapp identity assign --identities <id>` worked
   live on Flex, 2026-10-30).
+- AWS (built from the AWS docs; account 365506438424 read-only so far:
+  `get-outbound-web-identity-federation-info` returns `FeatureDisabled`, recorded as
+  the Preflight fixture):
+  - The JWT's `sub` for a workload's assumed-role session: the docs' example shows
+    the role ARN; the mapping and the sim assume that. It may be the
+    assumed-role ARN (`arn:aws:sts::<acct>:assumed-role/<role>/<session>`).
+  - App Runner's instance-role credentials: assumed to be the container
+    credentials endpoint (`AWS_CONTAINER_CREDENTIALS_*_URI`), and that App Runner
+    accepts `JFROG_OIDC_AWS_REGION` (it reserves some `AWS_*` names).
+  - Wire flags: `aws lambda update-function-configuration --environment <json>
+    --role <arn>` then `aws lambda wait function-updated`; `aws ecs
+    register-task-definition --cli-input-json` then `update-service
+    --task-definition <family>` (family only = latest ACTIVE revision);
+    `aws apprunner update-service --source-configuration/--instance-configuration`.
+  - STS answers the Query API in XML; JSON (`Accept: application/json`) is not used.
+  - IAM action names for the ado-setup policy
+    (`iam:GetOutboundWebIdentityFederationInfo`) and the
+    `aws_iam_outbound_web_identity_federation` resource (provider >= 6.26).
+  - The ADO trust: IAM OIDC provider for the Entra v2.0 issuer with
+    `client_id_list = [api://AzureADTokenExchange]` and `:sub` conditions.
+- OpenShift / Knative: simulation only, no live cluster. Also unverified: Knative
+  accepting a projected `serviceAccountToken` volume source in a ksvc (it may need
+  a flag in the `config-features` ConfigMap), and the
+  `kubernetes` state backend from an ADO agent.
 - The Docker subdomain host form `<server>-<repo-key>.jfrog.io` on the target
   JFrog instance (it is what the AKS pilot's instance served; a self-hosted
   platform may differ: set `jfrog.docker_host`). On a JFrog Cloud trial (2026-10-30)

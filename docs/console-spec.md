@@ -27,6 +27,8 @@ In scope:
   - `azure_functions_aca` (Functions on Container Apps)
   - `azure_functions_premium` (Premium or Dedicated, custom container)
   - `azure_functions_flex` (Flex Consumption, code)
+  - `aws_lambda`, `aws_ecs_task`, `aws_app_runner` (runtime path only, §11)
+  - `openshift_knative_service` (OpenShift Serverless or any Knative cluster; runtime path only, §12)
 - For each target:
   1. Discover its identity.
   2. Create the JFrog integration and identity mapping.
@@ -39,7 +41,7 @@ In scope:
 
 Out of scope for v1:
 - Multi-user hosting and RBAC.
-- AWS targets.
+- A JFrog image-pull path on AWS and Knative (§11.5, §12.4).
 - Managing the target's own deployment (image builds, revisions). The console
   owns identity, the JFrog side and the pull path. It only *patches* env and
   registry settings on the target, and only after showing a diff.
@@ -621,3 +623,139 @@ in `docs/progress.md`.
      state, or app settings beyond the Key Vault reference.
 - `python -m console.sim check-all` and all unit tests run in CI without cloud
   access.
+
+## 11. AWS targets (Lambda, ECS, App Runner)
+
+Sidebar item **AWS** (`/aws`). Code: `console/steps/aws.py` (mixins of Preflight,
+Discover and Wire), `client/src/jfrog_oidc/sigv4.py` and `AwsStsSource`,
+`terraform/modules/aws-identity`, workspace `terraform/workspaces/aws_<account>`.
+
+### 11.1 Identity and token
+
+- The identity is the workload's IAM role: the Lambda execution role, the ECS
+  task role, the App Runner instance role. Never a shared one: a role used by
+  more than one workload, an ECS task role equal to its execution role, or a
+  well-known shared name gets a dedicated role `jfrog-<name>` instead (§3
+  `dedicated_identity`). The role it replaces keeps its policies; Discover lists
+  them so the operator can attach what the app still needs.
+- The JWT comes from STS `GetWebIdentityToken` (IAM outbound identity
+  federation): a SigV4-signed `POST /` to the **regional** endpoint (not the
+  global one), `Audience.member.1 = jfrog-aws`, `SigningAlgorithm = RS256`,
+  `DurationSeconds` 60–3600 (client default 900). XML response; `iss` is the
+  account's issuer `https://<id>.tokens.sts.global.api.aws`, `sub` the role ARN.
+- Credentials for signing: Lambda's `AWS_ACCESS_KEY_ID`/`…SECRET…`/`AWS_SESSION_TOKEN`;
+  ECS and App Runner's container credentials endpoint (`…_RELATIVE_URI` on
+  169.254.170.2, or `…_FULL_URI` with `AWS_CONTAINER_AUTHORIZATION_TOKEN[_FILE]`;
+  `FULL_URI` must be a local host). Region: `JFROG_OIDC_AWS_REGION` (set by Wire,
+  since Lambda reserves `AWS_REGION`), then `AWS_REGION`, `AWS_DEFAULT_REGION`.
+- The role needs `sts:GetWebIdentityToken`, limited by the module to the JFrog
+  audience (`sts:IdentityTokenAudience`) and the TTL (`sts:DurationSeconds`).
+
+### 11.2 Preflight
+
+`aws --version`; `sts get-caller-identity` (account must match the target; root
+is a warning and skips the policy simulation); account aliases (prod warning);
+`iam get-outbound-web-identity-federation-info` — **fail** when federation is
+off (`FeatureDisabled`), fix: `aws iam enable-outbound-web-identity-federation
+--region <region>` (once per account); the issuer's discovery document must be
+reachable; `iam simulate-principal-policy` for the caller's rights per kind.
+
+### 11.3 Discover
+
+Reads the issuer first (fails with the enable command when off), then per kind:
+`lambda get-function-configuration` (+ `list-functions` to count users of the
+role), `ecs describe-services` (when an ECS cluster is set) and
+`describe-task-definition`, `apprunner list-services`/`describe-service`. Then
+`iam get-role` for the mapping subject (the role ARN). Sets
+`jfrog.integration_names.aws = aws-<account>`. Calls that return environments
+run as sensitive: values never reach the plan, logs or the store.
+
+### 11.4 Workspace and Wire
+
+- `aws_<account>`: provider `aws` (`allowed_account_ids`), module
+  `aws-identity` (dedicated roles with per-kind trust and `aws:SourceAccount`,
+  the inline `jfrog-oidc-web-identity` policy on every role, optional
+  `aws_iam_outbound_web_identity_federation`), module `jfrog-oidc` with the
+  `aws` integration (generic provider, claims `{sub, aud}`). State: S3 with
+  `use_lockfile`.
+- Wire sets `JFROG_URL`, `JFROG_OIDC_PROVIDER`, `JFROG_OIDC_AUDIENCE`,
+  `JFROG_OIDC_SOURCE=aws`, `JFROG_OIDC_AWS_REGION`, and switches the role when it
+  is dedicated:
+  - Lambda: `update-function-configuration --environment … [--role …]`, then
+    `lambda wait function-updated`.
+  - ECS: `register-task-definition --cli-input-json …` (a new revision; every
+    container keeps its other settings), then `update-service --task-definition
+    <family>` when a cluster is set.
+  - App Runner: `update-service --source-configuration … [--instance-configuration …]`.
+- These APIs replace the whole environment, so the plan carries
+  `@resolve:<what>` placeholders and `apply()` fills them from a fresh read.
+  The diff, the plan hash and the logs only ever see the placeholder form.
+
+### 11.5 Pull path (seam)
+
+ECR pull-through cache accepts only fixed upstreams (no custom registry), and
+Lambda cannot use pull-through at all, so JFrog cannot be an ECR upstream.
+`model.validate` refuses `pull_path.enabled` for AWS (`no_pull_path`). Images
+come in at build time: `aws-build-deploy` pulls the base through JFrog with the
+OIDC token and pushes to ECR. A future seam is ECS `repositoryCredentials`
+(Secrets Manager) refreshed by a rotator; not built.
+
+### 11.6 Simulation
+
+`console/sim/emulators/aws.py`: the container credentials endpoint and STS
+`GetWebIdentityToken`, which recomputes the SigV4 signature with the client's
+own signer, checks the session token, the form, the region and the federation
+switch, and answers in XML. Fault `federation_disabled` (AWS only); root cause
+names the enable command. Scenarios: `happy-aws-lambda`, `happy-aws-ecs`,
+`happy-aws-app-runner`, `aws-federation-disabled`, `aws-role-recreated`.
+
+### 11.7 Pipelines
+
+`aws-workload-onboard` (workspaces `aws_*`, as `ado-setup`) and
+`aws-build-deploy` (`lambda|ecs|apprunner`, as `ado-build`). Both get their
+role with AssumeRoleWithWebIdentity on the ADO connection's OIDC token
+(`AWS_ROLE_ARN` + `AWS_WEB_IDENTITY_TOKEN_FILE`, `oidc-login.sh`). Trust:
+`terraform/stacks/ado-trust/aws.tf` (IAM OIDC provider for the Entra issuer,
+roles bound to each connection's `sub`, S3 state bucket, ECR repository).
+
+## 12. Knative targets (OpenShift Serverless or any Knative cluster)
+
+Sidebar item **OpenShift** (`/openshift`). Code: `console/steps/openshift.py`.
+Everything goes through `kubectl` and a kube context, so any cluster with
+Knative Serving works; nothing assumes `oc`. Simulation only so far.
+
+### 12.1 Identity
+
+The Knative service's service account, through a projected token with the JFrog
+audience (`jfrog-k8s`, 3600 s) mounted at `/var/run/secrets/jfrog/token`; the
+client reads it with the file source. Mapping subject
+`system:serviceaccount:<ns>:<sa>`. A service on `default` (or a SA several
+services share) gets a dedicated `jfrog-<name>`. The cluster's issuer
+(`/.well-known/openid-configuration`) must be https, public, and serve its JWKS
+without auth: JFrog fetches it. Cluster-internal or private issuers fail with
+the `serviceAccountIssuer` fix.
+
+### 12.2 Preflight and Discover
+
+Preflight: `kubectl version --client`, the context exists, the Knative CRD
+`services.serving.knative.dev`, the issuer and its JWKS reachable over http,
+`auth can-i patch ksvc` / `create serviceaccounts`. Discover: the issuer, then
+`kubectl get ksvc <name> -n <ns> -o json` (sensitive) and the SA users in the
+namespace. Sets `jfrog.integration_names.openshift = openshift-<cluster>`.
+
+### 12.3 Workspace and Wire
+
+`openshift_<cluster>`: `kubernetes_service_account_v1` for dedicated SAs,
+`jfrog-oidc` with the `openshift` integration. State: Kubernetes Secret
+backend. Wire shows a diff (env, volume, mount, SA) and runs
+`kubectl patch ksvc … --type merge -p @resolve:ksvc-template`: the template's
+container list is kept, `metadata.name` dropped so Knative names the revision.
+
+### 12.4 Pull path, simulation, pipeline
+
+No JFrog pull path (`no_pull_path`): the cluster pulls with its own pull
+secrets. Simulation: `console/sim/emulators/k8s.py` plays the kubelet (writes the
+token, refreshes at 80% of its lifetime); scenarios `happy-openshift-knative`,
+`openshift-wrong-audience`. Pipeline `openshift-workload-onboard` logs in with a
+Kubernetes service connection (`Kubernetes@1`, `KUBECONFIG`); `KUBE_CONTEXT`
+overrides the console's context name on the agent.
