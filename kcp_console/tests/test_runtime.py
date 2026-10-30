@@ -196,6 +196,14 @@ class ReplayServerTest(unittest.TestCase):
         ct = r.getheader("Content-Type") or ""
         return r.status, (json.loads(raw) if "json" in ct else raw.decode())
 
+    def test_aks_list_marks_the_configured_cluster(self):
+        _, r = self.call("GET", "/api/aks")
+        by = {c["name"]: c for c in r["clusters"]}
+        self.assertTrue(by["aks-sandbox-01"]["configured"])
+        self.assertFalse(by["aks-sandbox-02"]["configured"])
+        self.assertEqual(by["aks-sandbox-02"]["oidc_issuer"], "")
+        self.assertEqual(by["aks-sandbox-01"]["subscription_id"], "00000000-0000-0000-0000-0000000000a1")
+
     def test_pilot_story(self):
         s, a = self.call("GET", f"/api/nodes?config={self.name}")
         self.assertEqual(s, 200)

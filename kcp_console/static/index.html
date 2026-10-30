@@ -42,31 +42,7 @@
   </div>
 
   <main>
-    <section id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" hidden>
-      <div class="cfg-head">
-        <div>
-          <h1>Clusters</h1>
-          <p class="small muted">Each configuration is one AKS cluster: its OIDC issuer, the JFrog provider and mapping, and the credential provider on its nodes. Saved in .kcp-console/configs (no secrets).</p>
-        </div>
-        <button type="button" id="ov-new" class="primary">New cluster</button>
-      </div>
-      <table class="cfg-table">
-        <thead><tr><th scope="col">Name</th><th scope="col">Cluster</th><th scope="col">Pipeline</th><th scope="col">Preflight</th><th scope="col">Last pull</th><th scope="col">Updated</th><th scope="col"><span class="sr-only">Open</span></th></tr></thead>
-        <tbody id="ov-clusters"></tbody>
-      </table>
-      <div id="ov-current"></div>
-      <h2>How it works</h2>
-      <div class="diagram-row">
-        <figure class="card"><figcaption>Before and after</figcaption><div id="dg-before-after"></div></figure>
-        <figure class="card"><figcaption>Option B: the token exchange</figcaption><div id="dg-flow"></div>
-          <p class="small muted" id="dg-flow-note"></p></figure>
-      </div>
-      <div class="diagram-row">
-        <figure class="card"><figcaption id="dg-node-cap">On each node</figcaption><div id="dg-node"></div>
-          <p class="small muted" id="dg-node-note"></p></figure>
-        <figure class="card"><figcaption>The pipeline scenarios</figcaption><div id="dg-pipeline"></div></figure>
-      </div>
-    </section>
+    <section id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" hidden></section>
 
     <section id="panel-simulate" role="tabpanel" aria-labelledby="tab-simulate" hidden>
       <div class="sim-layout">

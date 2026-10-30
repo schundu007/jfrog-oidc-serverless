@@ -21,8 +21,7 @@ async function render() {
     state.emit("config", state.config);
   } });
   fill(P,
-    pageHead("Demo", `${d.duration}.`, h("label", { class: "check" }, mode, " Demo mode")),
-    h("p", { class: "small muted" }, `Demo mode refuses ${d.blocked_scenarios.join(", ")} (they restart the DaemonSet).`),
+    pageHead("Demo", h("label", { class: "check" }, mode, " Demo mode")),
     h("h2", {}, "Rehearsal ", h("span", { class: `pill ${ready ? "pass" : "warn"}` }, ready ? "ready" : "not ready")),
     d.rehearsal.map((r) => h("label", { class: "check" },
       h("input", { type: "checkbox", checked: !!ticks[r.id], onchange: async (e) => {

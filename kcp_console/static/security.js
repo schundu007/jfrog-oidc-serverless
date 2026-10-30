@@ -25,7 +25,7 @@ async function render() {
   const gateOpen = sr.rows.filter((r) => r.prd_gate && (sec[r.id] || {}).status !== "decided");
   const decided = sr.rows.filter((r) => (sec[r.id] || {}).status === "decided").length;
   fill(P,
-    pageHead("Security", `${decided}/${sr.rows.length} review items decided.`),
+    pageHead("Security", h("span", { class: "pill" }, `${decided}/${sr.rows.length} decided`)),
     gateOpen.length ? h("div", { class: `outcome ${prd ? "is-fail" : "is-warn"}` },
       h("div", {}, h("b", {}, prd ? "PRD blocked. " : "PRD gate: "), `decide ${gateOpen.map((r) => r.area).join(" and ")} before any PRD run.`)) : null,
     h("h2", {}, "Checks"),

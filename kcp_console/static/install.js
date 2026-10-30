@@ -36,16 +36,14 @@ async function render() {
       .concat([{ title: "Identity mappings", line: "jfrog-kcp-mappings: apply the mappings file (Prune stays false).", kind: "mappings", name: "Apply", dryRun: true, params: { Prune: false } }]))
     : await stepList(PILOT.map(([title, line, kind, name]) => ({ title, line, kind, name })));
   const directList = tmpl ? null : await stepList(DIRECT.map(([title, line, name]) => ({ title, line, kind: "direct", name, dryRun: true,
-    label: "Prepare (shows every command)" })));
+    label: "Run" })));
   fill(P,
-    pageHead("Install", tmpl ? "Cluster template pipeline (jfrog-kcp-cluster)" : "AZURE.md Option B. DryRun first; every change waits for your approval."),
-    directList ? h("section", { class: "card" }, h("h2", {}, "Run directly"),
-      h("p", { class: "small muted" }, "With your az login and JFROG_ACCESS_TOKEN: az, kubectl, helm and the JFrog Access API, step by step. Steps already in place are left alone."),
-      directList) : null,
-    directList ? h("h2", {}, "Or through the utility pipeline") : null,
+    pageHead("Install"),
+    directList ? h("section", { class: "card" }, h("h2", {}, "Direct"), directList) : null,
+    directList ? h("h2", {}, "Pipeline") : null,
     list,
-    h("details", { class: "advanced" }, h("summary", {}, "All pipeline scenarios"),
-      table(["scenario", "does", "changes state", ""], all.map((s) => [h("code", {}, s.name), s.does,
+    h("details", { class: "advanced" }, h("summary", {}, "All scenarios"),
+      table(["scenario", "changes state", ""], all.map((s) => [h("code", { title: s.does }, s.name),
         s.changes_state + (s.restarts_daemonset ? " · restarts the DaemonSet" : ""),
-        runControl({ kind: "pilot", name: s.name, dryRun: scenarioDry(s.name), label: "Prepare" })]))));
+        runControl({ kind: "pilot", name: s.name, dryRun: scenarioDry(s.name), label: "Run" })]))));
 }

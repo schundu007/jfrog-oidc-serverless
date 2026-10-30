@@ -18,7 +18,7 @@ async function render() {
   const nodes = (a.three_layers && a.checks_count) ? a.three_layers.nodes : [];
   const restart = Object.fromEntries(a.kubelet_restart.map((r) => [r.node, r]));
   fill(P,
-    pageHead("Nodes", `${a.checks_count} node check(s); showing the newest.`),
+    pageHead("Nodes"),
     nodes.length ? table(["node", "provider entry", "problems", "kubelet", "new"], nodes.map((n) => [
       h("b", {}, n.node || "—"), pill(n.status),
       n.problems.length ? n.problems.map((p) => `${p.layer} ${p.field}`).join(", ") : "none",

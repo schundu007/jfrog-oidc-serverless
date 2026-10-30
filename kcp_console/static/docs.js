@@ -3,6 +3,7 @@
 
 import { api, h, fill, rich, state } from "./app.js";
 import { $, doc, table } from "./ui.js";
+import { beforeAfter, optionBFlow, nodeDiagram, pipeline } from "./diagrams.js";
 
 export function initDocs() {
   render();
@@ -79,6 +80,15 @@ async function render() {
   ];
   const id = (i) => `doc-${i}`;
   const body = h("div", { class: "docs-body" },
+    h("section", { id: "doc-how", class: "block" }, h("h2", {}, "How it works"),
+      h("div", { class: "diagram-row" },
+        h("figure", { class: "card" }, h("figcaption", {}, "Before and after"), beforeAfter(k.DIAGRAMS.before_after)),
+        h("figure", { class: "card" }, h("figcaption", {}, "Option B: the token exchange"), optionBFlow(k.DIAGRAMS.option_b_flow),
+          h("p", { class: "small muted" }, `${k.DIAGRAMS.option_b_flow.note} ${k.DIAGRAMS.option_b_flow.why_b}`))),
+      h("div", { class: "diagram-row" },
+        h("figure", { class: "card" }, h("figcaption", {}, "On each node"), nodeDiagram(k.DIAGRAMS.node),
+          h("p", { class: "small muted" }, k.DIAGRAMS.node.kubelet)),
+        h("figure", { class: "card" }, h("figcaption", {}, "The pipeline scenarios"), pipeline(k.PIPELINE_DIAGRAM)))),
     h("section", { id: "doc-own", class: "block" }, h("h2", {}, "Your runbook"),
       own.text ? markdown(own.text)
         : h("p", { class: "muted" }, `Put your runbook (Markdown) at ${own.path} to read it here. That folder is gitignored: it stays on this machine.`)),
@@ -87,6 +97,7 @@ async function render() {
         : Array.isArray(value) && value.some((v) => Array.isArray(v) || (v && typeof v === "object")) && value.length <= 3 && value.some((v) => typeof v === "string")
           ? value.map((v) => doc(v)) : doc(value))));
   const toc = h("nav", { class: "docs-toc", "aria-label": "Contents" },
+    h("a", { href: "#doc-how", onclick: (e) => jump(e, "doc-how") }, "How it works"),
     h("a", { href: "#doc-own", onclick: (e) => jump(e, "doc-own") }, "Your runbook"),
     sections.map(([title], i) => h("a", { href: `#${id(i)}`, onclick: (e) => jump(e, id(i)) }, title)));
   fill($("panel-docs"), h("div", { class: "docs-layout" }, toc, body));

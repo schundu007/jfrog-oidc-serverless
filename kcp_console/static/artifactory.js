@@ -17,7 +17,7 @@ function check(title, line, action, show, extra) {
     fill(out, h("p", { class: "muted small" }, "…"));
     try { fill(out, show(await call(action, extra ? extra() : {}))); } catch (e) { fill(out, h("p", { class: "error small" }, e.message)); }
   } }, "Run");
-  return h("div", { class: "check-card" }, h("div", { class: "act-head" }, h("div", { class: "act-text" }, h("b", {}, title), h("span", { class: "small muted" }, line)), btn), out);
+  return h("div", { class: "check-card", title: line }, h("div", { class: "act-head" }, h("div", { class: "act-text" }, h("b", {}, title)), btn), out);
 }
 
 async function render() {
@@ -27,7 +27,7 @@ async function render() {
   let m = null;
   try { m = await call("mappings"); } catch { /* not discovered */ }
   fill(P,
-    pageHead("Artifactory", "Reads use JFROG_ACCESS_TOKEN from the console's environment (never shown). Writes wait for your approval."),
+    pageHead("Artifactory"),
     h("div", { class: "check-grid" },
       check("Registry host", "GET /v2/ on the repo subdomain and the bare domain: does the realm name the repo?", "probe",
         (r) => table(["host", "status", "verdict"], r.probes.map((p) => [p.host, String(p.status), h("span", {}, pill(p.check.status), " ", p.check.detail)]))),

@@ -135,12 +135,12 @@ function render() {
           i === 3 ? h("div", { class: "mode" },
             h("label", {}, h("input", { type: "radio", name: "mode", checked: !tmpl, onchange: () => { cfg.mode = "pilot"; render(); } }), " Utility pipeline scenarios"),
             h("label", {}, h("input", { type: "radio", name: "mode", checked: tmpl, onchange: () => { cfg.mode = "template"; render(); } }), " Cluster template pipeline (jfrog-kcp-cluster)")) : null))),
-        h("details", { class: "advanced" }, h("summary", {}, "Advanced settings ", h("span", { class: "small muted" }, "names, token spec, chart, overrides, template inputs")),
+        h("details", { class: "advanced" }, h("summary", {}, "Advanced settings"),
           h("div", { class: "tgrid" }, Object.entries(ADVANCED).flatMap(([g, keys]) => keys.map((key) => field(`${g}.${key}`)))),
           h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!cfg.demo_mode, onchange: (e) => { cfg.demo_mode = e.target.checked; } }),
             " Demo mode: refuse scenarios that restart the DaemonSet"),
           tmpl ? h("div", { class: "tgrid" }, k.TEMPLATE_INPUTS.map((i) => field(`template.${i.name}`, i.name, i.default))) : null),
-        h("details", { class: "advanced" }, h("summary", {}, "Generated files ", h("span", { class: "small muted" }, "values file, JFrog requests, test pod")),
+        h("details", { class: "advanced" }, h("summary", {}, "Generated files"),
           h("div", { id: "cfg-values" }), h("div", { id: "cfg-requests" })),
         h("div", { id: "cfg-preflight" })),
       h("aside", { class: "cfg-side", id: "cfg-side" })));
@@ -181,14 +181,14 @@ function renderSide() {
         node("is-end", "JFrog access token", `scope ${j.scope}, expires_in ${j.expires_in}s, cached ${cfg.values.default_cache_duration}`)),
       h("h3", {}, "Planned changes"),
       planned.length ? h("ul", { class: "plan-list" }, planned.map(([verb, what, name, det]) => h("li", {}, `${verb} ${what} `, h("code", {}, name), ` ${det}`)))
-        : h("p", { class: "small muted" }, "Nothing: Preflight found every piece in place."),
+        : h("p", { class: "small muted" }, "Nothing to change"),
       h("div", { class: "cfg-actions" },
         h("button", { class: "primary big", onclick: async () => { if (await save()) selectTab("install"); } }, cfg.mode === "template" ? "Run pipeline" : "Set up"),
         h("div", { class: "row-tight" },
           h("button", { class: "secondary", onclick: () => discover(true) }, "Preflight"),
           h("button", { class: "secondary", onclick: save }, "Save")),
         state.config ? h("button", { class: "link danger", onclick: remove }, `Delete ${state.config}`) : null,
-        h("p", { class: "small muted", id: "cfg-msg" }, "Every pipeline run and JFrog write waits for your approval; DryRun is the default."))));
+        h("p", { class: "small muted", id: "cfg-msg" }))));
 }
 
 let timer = null;

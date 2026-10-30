@@ -1,74 +1,101 @@
-// Overview: the saved clusters with their Preflight and last pull, the selected cluster's state
-// and next step, and how the exchange works.
+// Clusters: the saved clusters with their state, the selected cluster's direct actions, and the
+// AKS clusters the operator's az login can see, each one a click away from a configuration.
 
 import { api, h, fill, state, selectTab, refreshConfigs } from "./app.js";
-import { beforeAfter, optionBFlow, nodeDiagram, pipeline } from "./diagrams.js";
-import { pill } from "./ui.js";
+import { $, pill, pageHead, stepList } from "./ui.js";
 
-const $ = (id) => document.getElementById(id);
+let aks = null;           // {clusters, error} from GET /api/aks, loaded once per page view
 
-export function initOverview(k) {
-  fill($("dg-before-after"), beforeAfter(k.DIAGRAMS.before_after));
-  fill($("dg-flow"), optionBFlow(k.DIAGRAMS.option_b_flow));
-  $("dg-flow-note").textContent = `${k.DIAGRAMS.option_b_flow.note} ${k.DIAGRAMS.option_b_flow.why_b}`;
-  fill($("dg-node"), nodeDiagram(k.DIAGRAMS.node));
-  $("dg-node-note").textContent = k.DIAGRAMS.node.kubelet;
-  fill($("dg-pipeline"), pipeline(k.PIPELINE_DIAGRAM));
-  $("ov-new").addEventListener("click", () => state.emit("new-config"));
+export function initOverview() {
   state.on("config", render);
   state.on("runs", render);
   state.on("status", render);
   render();
 }
 
+const real = (r) => r.request.parameters.DryRun !== true;
+const stepOf = (r, id) => ((r.result || {}).steps || []).find((s) => s.id === id);
+const onOff = (b) => h("span", { class: `pill ${b ? "pass" : "fail"}` }, b ? "on" : "off");
+
 async function render() {
+  const P = $("panel-overview");
   const configs = state.configs || [];
   let runs = [];
   try { runs = (await api("/api/runs")).runs; } catch { /* none */ }
-  const statuses = await Promise.all(configs.map((c) => api(`/api/status/${encodeURIComponent(c.name)}`).then((r) => r.status).catch(() => ({}))));
-  const lastPull = (name) => runs.find((r) => r.config === name && /CREATE_(TEST|CONTROL)_POD/.test(r.name));
-  fill($("ov-clusters"), configs.length ? configs.map((c, i) => {
-    const pf = statuses[i].preflight, pull = lastPull(c.name);
-    return h("tr", { class: c.name === state.config ? "is-open" : "" },
-      h("td", {}, h("button", { class: "link cfg-open", onclick: () => open(c.name, "configure") }, c.name)),
-      h("td", {}, c.cluster || h("span", { class: "muted" }, "not set")),
-      h("td", {}, c.mode === "template" ? "cluster template" : "utility scenarios"),
-      h("td", {}, pf ? pill(pf.status) : h("span", { class: "muted small" }, "not run")),
-      h("td", {}, pull ? h("span", {}, pill(pull.status), " ", h("span", { class: "small muted" }, pull.created.slice(0, 10))) : h("span", { class: "muted small" }, "none")),
-      h("td", { class: "small muted" }, (c.updated || "").slice(0, 16).replace("T", " ")),
-      h("td", {}, h("button", { class: "secondary small-btn", onclick: () => open(c.name, "overview") }, c.name === state.config ? "Selected" : "Select")));
-  }) : h("tr", {}, h("td", { colspan: "7", class: "muted" }, "No clusters yet. Click New cluster.")));
-  const cur = configs.findIndex((c) => c.name === state.config);
-  fill($("ov-current"), cur < 0 ? null : current(configs[cur], statuses[cur], runs.filter((r) => r.config === state.config)));
+  if (!aks) loadAks();
+  const rows = configs.map((c) => {
+    const rs = runs.filter((r) => r.config === c.name && real(r));
+    const setup = rs.find((r) => (r.kind === "direct" && r.name === "setup") || r.name === "INSTALL_JFROG_PROVIDER");
+    const pull = rs.find((r) => (r.kind === "direct" && stepOf(r, "pull")) || r.name === "CREATE_TEST_POD");
+    const pullStatus = pull && (pull.kind === "direct" ? (stepOf(pull, "pull").status === "done" ? "succeeded" : "failed") : pull.status);
+    return h("tr", { class: c.name === state.config ? "is-open" : "", onclick: () => select(c.name) },
+      h("td", {}, h("b", {}, c.name)),
+      h("td", {}, c.cluster || h("span", { class: "muted" }, "—")),
+      h("td", {}, setup ? pill(setup.status) : h("span", { class: "muted" }, "—")),
+      h("td", {}, pull ? pill(pullStatus) : h("span", { class: "muted" }, "—")),
+      h("td", { class: "muted small" }, (c.updated || "").slice(0, 16).replace("T", " ")),
+      h("td", { class: "row-actions" },
+        h("button", { class: "secondary small-btn", onclick: (e) => { e.stopPropagation(); open(c.name); } }, "Edit")));
+  });
+  const cur = configs.find((c) => c.name === state.config);
+  fill(P,
+    pageHead("Clusters", h("button", { class: "primary", onclick: () => state.emit("new-config") }, "New cluster")),
+    h("table", { class: "cfg-table clickable" },
+      h("thead", {}, h("tr", {}, ["Name", "AKS cluster", "Provider", "Pull test", "Updated", ""].map((t) => h("th", { scope: "col" }, t)))),
+      h("tbody", {}, rows.length ? rows : h("tr", {}, h("td", { colspan: "6", class: "muted" }, "None yet")))),
+    cur ? await selected(cur) : null,
+    aksTable());
 }
 
-async function open(name, tab) {
+async function selected(c) {
+  return h("section", { class: "summary" },
+    h("h2", {}, c.name, h("span", { class: "muted" }, ` · ${c.cluster || "—"}`)),
+    await stepList([
+      { title: "Set up", kind: "direct", name: "setup", dryRun: true, line: "OIDC issuer, service account, JFrog provider and mapping, node label, helm install, pull test" },
+      { title: "Verify", kind: "direct", name: "verify", dryRun: true, line: "DaemonSet ready and a pull with imagePullSecrets: []" },
+      { title: "Tear down", kind: "direct", name: "teardown", dryRun: true, line: "helm uninstall, unlabel, delete mapping and provider" },
+    ]));
+}
+
+function aksTable() {
+  const head = h("div", { class: "cfg-head" }, h("h2", {}, "AKS clusters"),
+    h("button", { class: "secondary", onclick: () => { aks = null; render(); } }, "Refresh"));
+  if (!aks || aks.loading) return h("div", {}, head, h("p", { class: "muted" }, "Loading…"));
+  if (aks.error) return h("div", {}, head, h("p", { class: "error small" }, aks.error));
+  return h("div", {}, head, h("table", { class: "cfg-table" },
+    h("thead", {}, h("tr", {}, ["Cluster", "Resource group", "Location", "Kubernetes", "OIDC issuer", "Workload Identity", ""].map((t) => h("th", { scope: "col" }, t)))),
+    h("tbody", {}, aks.clusters.length ? aks.clusters.map((k) => h("tr", {},
+      h("td", {}, h("b", {}, k.name), k.power && k.power !== "Running" ? h("span", { class: "muted small" }, ` ${k.power}`) : null),
+      h("td", {}, k.resource_group), h("td", {}, k.location), h("td", {}, k.version),
+      h("td", {}, onOff(!!k.oidc_issuer)), h("td", {}, onOff(k.workload_identity)),
+      h("td", { class: "row-actions" }, k.configured ? h("span", { class: "muted small" }, "added")
+        : h("button", { class: "primary small-btn", onclick: () => add(k) }, "Add"))))
+      : h("tr", {}, h("td", { colspan: "7", class: "muted" }, "None found")))));
+}
+
+async function loadAks() {
+  aks = { clusters: [], loading: true };
+  try { aks = await api("/api/aks"); } catch (err) { aks = { clusters: [], error: err.message }; }
+  render();
+}
+
+// A new configuration from a listed cluster: the cluster fields filled, the rest from the defaults.
+async function add(k) {
+  const cfg = await api("/api/defaults");
+  const name = k.name.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 63);
+  cfg.name = name;
+  Object.assign(cfg.cluster, { name: k.name, resource_group: k.resource_group, subscription_id: k.subscription_id, oidc_issuer: k.oidc_issuer });
+  await api(`/api/configs/${encodeURIComponent(name)}`, { method: "PUT", body: { config: cfg } });
+  aks = null;
+  await open(name);
+}
+
+async function select(name) {
   await refreshConfigs(name);
   state.emit("config", name);
-  if (tab !== "overview") selectTab(tab);
 }
 
-// The selected cluster: where it stands and the one next step.
-function current(c, st, runs) {
-  const pf = st.preflight;
-  const failed = (pf?.checks || []).filter((x) => x.status === "fail");
-  const pull = runs.find((r) => /CREATE_(TEST|CONTROL)_POD/.test(r.name));
-  const installed = runs.some((r) => r.name === "INSTALL_JFROG_PROVIDER" && r.status === "succeeded" && r.request.parameters.DryRun !== true);
-  let next;
-  if (!pf) next = ["Run Preflight", "configure", "Checks the issuer, Workload Identity, the JFrog provider and mapping, the service account and the release."];
-  else if (failed.length) next = [`Fix: ${failed[0].title}`, "configure", failed[0].fix || failed[0].detail];
-  else if (!installed) next = ["Install the provider", "install", "Mirror the binary, create the provider and mapping, then INSTALL_JFROG_PROVIDER (DryRun first)."];
-  else if (!pull || pull.status !== "succeeded") next = ["Run the pull test", "verify", "CREATE_TEST_POD pulls through the plugin with imagePullSecrets: []."];
-  else next = ["Check the node config", "nodes", "CHECK_KUBELET_PROVIDER confirms each node's provider entry against the release."];
-  const stat = (label, value) => h("div", { class: "stat" }, h("span", { class: "small muted" }, label), h("b", {}, value));
-  return h("div", { class: "summary current" },
-    h("h2", {}, c.name, h("span", { class: "muted" }, ` · ${c.cluster || "cluster not set"}`)),
-    h("div", { class: "stats" },
-      stat("Preflight", pf ? pill(pf.status) : "not run"),
-      stat("Failing checks", String(failed.length)),
-      stat("Provider installed", installed ? "yes" : "no"),
-      stat("Last pull test", pull ? pill(pull.status) : "none"),
-      stat("Runs", String(runs.length))),
-    h("div", { class: "outcome" }, h("div", {}, h("b", {}, "Next: "), next[0], h("p", { class: "small muted" }, next[2])),
-      h("button", { class: "primary", onclick: () => selectTab(next[1]) }, "Go")));
+async function open(name) {
+  await select(name);
+  selectTab("configure");
 }

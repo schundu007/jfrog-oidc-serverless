@@ -18,6 +18,17 @@
  },
  {
   "argv": [
+   "az",
+   "aks",
+   "list",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "[{\"id\": \"/subscriptions/00000000-0000-0000-0000-0000000000a1/resourcegroups/rg-aks-sandbox/providers/Microsoft.ContainerService/managedClusters/aks-sandbox-01\", \"name\": \"aks-sandbox-01\", \"resourceGroup\": \"rg-aks-sandbox\", \"location\": \"centralus\", \"kubernetesVersion\": \"1.31.7\", \"powerState\": {\"code\": \"Running\"}, \"oidcIssuerProfile\": {\"enabled\": true, \"issuerUrl\": \"https://centralus.oic.prod-aks.azure.com/00000000-0000-0000-0000-0000000000b2/00000000-0000-0000-0000-0000000000c3/\"}, \"securityProfile\": {\"workloadIdentity\": {\"enabled\": true}}}, {\"id\": \"/subscriptions/00000000-0000-0000-0000-0000000000a1/resourcegroups/rg-aks-sandbox/providers/Microsoft.ContainerService/managedClusters/aks-sandbox-02\", \"name\": \"aks-sandbox-02\", \"resourceGroup\": \"rg-aks-sandbox\", \"location\": \"centralus\", \"kubernetesVersion\": \"1.30.4\", \"powerState\": {\"code\": \"Running\"}, \"oidcIssuerProfile\": {\"enabled\": false}}]"
+ },
+ {
+  "argv": [
    "kubectl",
    "get",
    "daemonsets",

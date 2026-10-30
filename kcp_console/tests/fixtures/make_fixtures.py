@@ -124,6 +124,13 @@ def shell_fixtures(cfg, w, steps) -> list:
                         "--subscription", c["subscription_id"], "-o", "json"], "rc": 0, "stdout": json.dumps({
         "name": c["name"], "kubernetesVersion": "1.31.7", "oidcIssuerProfile": {"enabled": True, "issuerUrl": c["oidc_issuer"]},
         "securityProfile": {"workloadIdentity": {"enabled": True}}})})
+    sub = f"/subscriptions/{c['subscription_id']}/resourcegroups/{c['resource_group']}/providers/Microsoft.ContainerService/managedClusters/"
+    fx.append({"argv": ["az", "aks", "list", "-o", "json"], "rc": 0, "stdout": json.dumps([
+        {"id": sub + c["name"], "name": c["name"], "resourceGroup": c["resource_group"], "location": "centralus",
+         "kubernetesVersion": "1.31.7", "powerState": {"code": "Running"},
+         "oidcIssuerProfile": {"enabled": True, "issuerUrl": c["oidc_issuer"]}, "securityProfile": {"workloadIdentity": {"enabled": True}}},
+        {"id": sub + "aks-sandbox-02", "name": "aks-sandbox-02", "resourceGroup": c["resource_group"], "location": "centralus",
+         "kubernetesVersion": "1.30.4", "powerState": {"code": "Running"}, "oidcIssuerProfile": {"enabled": False}}])})
     ds = {"items": [
         {"metadata": {"name": cfg["k8s"]["daemonset"], "namespace": "jfrog", "creationTimestamp": "2026-10-16T12:05:00Z"},
          "spec": {"template": {"spec": {"volumes": [{"name": "host", "hostPath": {"path": "/var/lib/kubelet"}}],

@@ -160,8 +160,8 @@ async function start() {
   $("auth-banner").hidden = true;
   $("tabs").hidden = false;
   const pill = $("mode-pill");
-  pill.hidden = false;
-  pill.textContent = session.mode === "replay" ? "replay: recorded fixtures" : "live: read-only until approved";
+  pill.hidden = session.mode !== "replay";
+  pill.textContent = "replay";
   state.knowledge = knowledge;
   state.session = session;
   await refreshConfigs();

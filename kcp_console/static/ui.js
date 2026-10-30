@@ -106,7 +106,7 @@ export function runControl({ kind, name, params = {}, label, dryRun = false, not
     fill(panel,
       h("p", {}, h("strong", {}, req.pipeline === "jfrog" ? "JFrog write" : directRun ? `Direct ${req.parameters.plan}` : `Pipeline ${req.pipeline}`),
         req.branch ? ` on ${req.branch}` : "", " ",
-        run.changes_state ? h("span", { class: "pill fail" }, "changes state") : h("span", { class: "pill pass" }, "read-only / dry run")),
+        run.changes_state ? h("span", { class: "pill fail" }, "changes state") : h("span", { class: "pill pass" }, "dry run")),
       table(["parameter", "value"], rows),
       directRun ? table(["#", "step", "", "command or request"], req.parameters.steps.map((st, i) => [String(i + 1), st.title,
         h("span", { class: `pill ${st.kind === "change" ? "warn" : "pass"}` }, st.kind),
@@ -204,18 +204,18 @@ export async function stepList(items) {
   return h("ol", { class: "rail actions" }, items.map((it, i) => {
     const r = it.name ? last(it) : null;
     const ok = r && r.status === "succeeded" && r.request.parameters.DryRun !== true;
-    return h("li", { class: `rail-step ${ok ? "is-done" : ""}` },
+    return h("li", { class: `rail-step ${ok ? "is-done" : ""}`, title: it.line || "" },
       h("div", { class: "act-head" }, h("span", { class: "step-n" }, String(i + 1)),
-        h("div", { class: "act-text" }, h("b", {}, it.title), it.line ? h("span", { class: "small muted" }, it.line) : null),
+        h("div", { class: "act-text" }, h("b", {}, it.title)),
         r ? h("span", { class: "act-last small muted" }, pill(r.status), ` ${r.request.parameters.DryRun === true ? "dry run " : ""}${r.created.slice(0, 16).replace("T", " ")}`) : null),
       it.body || null,
       it.name ? runControl({ kind: it.kind, name: it.name, params: it.params || {}, dryRun: it.dryRun ?? (it.kind === "pilot" && scenarioDry(it.name)),
-        label: it.label || (it.kind === "jfrog" ? "Prepare (JFrog write)" : "Prepare run") }) : null);
+        label: it.label || "Run" }) : null);
   }));
 }
 
 // A page header with optional actions on the right.
-export function pageHead(title, sub, ...actions) {
-  return h("div", { class: "cfg-head" }, h("div", {}, h("h1", {}, title), sub ? h("p", { class: "small muted" }, sub) : null),
+export function pageHead(title, ...actions) {
+  return h("div", { class: "cfg-head" }, h("div", {}, h("h1", {}, title)),
     actions.length ? h("div", { class: "head-actions" }, actions) : null);
 }

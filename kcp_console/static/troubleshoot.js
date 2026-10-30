@@ -19,7 +19,7 @@ async function render(text) {
   try { a = await api("/api/diagnose", { method: "POST", body: { config: state.config, text: text || "" } }); }
   catch (e) { fill(P, h("p", { class: "error" }, e.message)); return; }
   fill(P,
-    pageHead("Troubleshoot", `Diagnosis from ${a.runs_used.length} run(s)${text ? " and the pasted text" : ""}.`,
+    pageHead("Troubleshoot",
       h("button", { class: "primary", onclick: () => render(box.value) }, "Analyse")),
     box,
     a.findings.length ? a.findings.map((f, i) => findingView(f, f.rule === a.verdict.root_cause || (i === 0 && f.level === "cause")))

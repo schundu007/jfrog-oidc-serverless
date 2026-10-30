@@ -18,7 +18,7 @@ async function render() {
   const paste = h("textarea", { rows: "3", class: "paste", placeholder: "Optional: paste artifactory-request.log lines", spellcheck: "false" });
   const stat = (label, value) => h("div", { class: "stat" }, h("span", { class: "small muted" }, label), h("b", {}, value));
   fill(P,
-    pageHead("Verify", "Does a pod pull through the plugin, with its own identity?"),
+    pageHead("Verify"),
     h("div", { class: "summary current" },
       h("div", { class: "stats" },
         stat("Newest pull", pill(v.status)),

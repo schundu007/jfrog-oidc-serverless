@@ -18,9 +18,9 @@ async function render() {
       { title: "Delete the OIDC provider", line: "DELETE /access/api/v1/oidc/<name> (protected providers refused)", kind: "jfrog", name: "delete-provider" }]
     : [{ title: r.title, line: r.command, kind: "pilot", name: r.scenario, params: r.params || {} }]);
   const tmpl = (state.configs.find((c) => c.name === state.config) || {}).mode === "template";
-  const teardown = tmpl ? null : await stepList([{ title: "Tear down directly", kind: "direct", name: "teardown", dryRun: true,
+  const teardown = tmpl ? null : await stepList([{ title: "Tear down (direct)", kind: "direct", name: "teardown", dryRun: true,
     line: "helm uninstall, remove the node label, delete the identity mapping and the OIDC provider (protected providers refused).",
-    label: "Prepare (shows every command)" }]);
-  fill(P, pageHead("Rollback", "DryRun first; destructive runs need the cluster name typed in."), teardown,
-    teardown ? h("h2", {}, "Or through the utility pipeline") : null, await stepList(items));
+    label: "Run" }]);
+  fill(P, pageHead("Rollback"), teardown,
+    teardown ? h("h2", {}, "Pipeline") : null, await stepList(items));
 }

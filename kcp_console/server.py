@@ -101,6 +101,24 @@ class KcpServer:
     def config(self, name: str) -> dict:
         return model.merged(self.store.get(name))
 
+    def aks_clusters(self) -> dict:
+        """The AKS clusters the operator's az login can see (read-only), marked when a config already uses one."""
+        r = self.shell().run(["az", "aks", "list", "-o", "json"], timeout=90)
+        if not r.ok:
+            lines = (r.stderr or r.stdout or "").strip().splitlines()
+            return {"clusters": [], "error": redact.text(lines[-1] if lines else f"az aks list: exit {r.rc}")}
+        used = {(c.get("cluster") or "").lower() for c in self.store.list()}
+        out = []
+        for c in r.json([]) or []:
+            parts = (c.get("id") or "").split("/")
+            out.append({"name": c.get("name", ""), "resource_group": c.get("resourceGroup", ""), "location": c.get("location", ""),
+                        "subscription_id": parts[2] if len(parts) > 2 else "", "version": c.get("kubernetesVersion", ""),
+                        "power": (c.get("powerState") or {}).get("code", ""),
+                        "oidc_issuer": (c.get("oidcIssuerProfile") or {}).get("issuerUrl") or "",
+                        "workload_identity": bool(((c.get("securityProfile") or {}).get("workloadIdentity") or {}).get("enabled")),
+                        "configured": (c.get("name") or "").lower() in used})
+        return {"clusters": sorted(out, key=lambda x: (x["configured"], x["name"]))}
+
     def discover(self, name: str, with_preflight: bool) -> dict:
         cfg = self.config(name)
         if not self.read_lock.acquire(timeout=1):
@@ -416,6 +434,8 @@ def _make_handler(console: KcpServer):
                                         "issues": model.validate(cfg), "template_issues": model.validate_template(cfg),
                                         "provider_request": model.provider_request(cfg), "mapping_request": model.mapping_request(cfg),
                                         "test_pod": model.test_pod_yaml(cfg), "provider_name": model.provider_name(cfg)})
+            if method == "GET" and parts == ["aks"]:
+                return self._json(200, console.aks_clusters())
             if method == "POST" and parts in (["discover"], ["preflight"]):
                 name = self._name(self._body().get("config"))
                 return self._json(200, console.discover(name, parts[0] == "preflight"))
