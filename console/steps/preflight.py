@@ -221,8 +221,9 @@ class Preflight:
     def _pipeline_identity(self, cloud):
         return ((self.delivery if isinstance(self.delivery, dict) else {}).get("pipeline_identity") or {}).get(cloud)
 
-    # The pipeline wires and applies with the code in the ADO repo, not this checkout's.
-    PIPELINE_CODE = ("console", "terraform/modules")
+    # The pipeline wires and applies with the code in the ADO repo, not this checkout's. Only what it
+    # runs counts: the UI and the tests can differ without changing a delivery.
+    PIPELINE_CODE = {"console": ("static", "tests"), "terraform/modules": ()}
 
     def _pipeline_code(self):
         ado = (self.delivery if isinstance(self.delivery, dict) else {}).get("ado")
@@ -231,18 +232,25 @@ class Preflight:
         title = "Pipeline runs this console's code"
         branch = ado.get("target_branch") or "main"
         stale = []
-        for path in self.PIPELINE_CODE:
-            local = self.sh.run(["git", "-C", str(self.repo_root), "rev-parse", f"HEAD:{path}"], timeout=30)
+        for path, skip in self.PIPELINE_CODE.items():
+            local = self.sh.run(["git", "-C", str(self.repo_root), "ls-tree", "HEAD", f"{path}/"], timeout=30)
             remote = self.sh.run(["az", "devops", "invoke", "--org", f"https://dev.azure.com/{ado['organization']}",
                                   "--area", "git", "--resource", "items", "--route-parameters",
                                   f"project={ado['project']}", f"repositoryId={ado['repository']}",
-                                  "--query-parameters", f"path=/{path}", f"versionDescriptor.version={branch}",
-                                  "--api-version", "7.1", "-o", "json"], timeout=60)
+                                  "--query-parameters", f"scopePath=/{path}", "recursionLevel=OneLevel",
+                                  f"versionDescriptor.version={branch}", "--api-version", "7.1", "-o", "json"], timeout=60)
             if not local.ok or not remote.ok:
                 return self.add("pipeline_code", title, "warn",
                                 f"could not compare {path}/: {(remote if local.ok else local).error_text(200)}",
                                 f"Check that the ADO repo's {branch} has this checkout's {path}/.")
-            if local.stdout.strip() != str((remote.json() or {}).get("objectId", "")):
+            mine = {}
+            for line in local.stdout.splitlines():
+                meta, _, name = line.partition("\t")
+                if meta:
+                    mine[name.rsplit("/", 1)[-1]] = meta.split()[2]
+            theirs = {e["path"].rsplit("/", 1)[-1]: e.get("objectId") for e in (remote.json() or {}).get("value", [])
+                      if e.get("path", "").rstrip("/") != f"/{path}"}
+            if {k: v for k, v in mine.items() if k not in skip} != {k: v for k, v in theirs.items() if k not in skip}:
                 stale.append(path)
         if not stale:
             return self.add("pipeline_code", title, "ok", f"{', '.join(self.PIPELINE_CODE)} match {branch}")

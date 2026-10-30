@@ -106,28 +106,38 @@ class GcpPreflightTests(unittest.TestCase):
         self.assertEqual(miss["status"], "fail")
         self.assertIn("ado-trust", miss["fix"])
 
-    def _code(self, remote_console, remote_modules):
+    def _code(self, remote_console, remote_modules, local_static="s1"):
         perms = preflight.GCP_PERMISSIONS_COMMON + preflight.GCP_PERMISSIONS_BY_KIND["gcp_run_service"]
         sh = self._shell(perms)
         ado = {"organization": "org", "project": "proj", "repository": "repo", "target_branch": "main"}
-        for path, tree in (("console", "aaa111"), ("terraform/modules", "bbb222")):
-            sh.fixtures.append({"argv": ["git", "-C", "/repo", "rev-parse", f"HEAD:{path}"], "rc": 0, "stdout": tree + "\n"})
-        for path, tree in (("console", remote_console), ("terraform/modules", remote_modules)):
+        local = {"console": {"deliver.py": "aaa111", "static": local_static, "tests": "t1"},
+                 "terraform/modules": {"jfrog-oidc": "bbb222"}}
+        remote = {"console": remote_console, "terraform/modules": remote_modules}
+        for path, entries in local.items():
+            sh.fixtures.append({"argv": ["git", "-C", "/repo", "ls-tree", "HEAD", f"{path}/"], "rc": 0,
+                                "stdout": "".join(f"040000 tree {sha}\t{path}/{n}\n" for n, sha in entries.items())})
+        for path, entries in remote.items():
             sh.fixtures.append({"argv": ["az", "devops", "invoke", "--org", "https://dev.azure.com/org", "--area", "git",
                                          "--resource", "items", "--route-parameters", "project=proj", "repositoryId=repo",
-                                         "--query-parameters", f"path=/{path}", "versionDescriptor.version=main",
-                                         "--api-version", "7.1", "-o", "json"], "rc": 0,
-                                "stdout": json.dumps({"objectId": tree})})
+                                         "--query-parameters", f"scopePath=/{path}", "recursionLevel=OneLevel",
+                                         "versionDescriptor.version=main", "--api-version", "7.1", "-o", "json"], "rc": 0,
+                                "stdout": json.dumps({"value": [{"path": f"/{path}", "objectId": "root"}] + [
+                                    {"path": f"/{path}/{n}", "objectId": sha} for n, sha in entries.items()]})})
         res = preflight.run(gcp_cfg(), sh, env={}, delivery={"ado": ado}, repo_root="/repo")
         self.assertEqual(sh.misses, [])
         return by_id(res)["pipeline_code"]
 
     def test_delivery_checks_the_pipeline_runs_this_code(self):
-        self.assertEqual(self._code("aaa111", "bbb222")["status"], "ok")
-        stale = self._code("old999", "bbb222")
+        same = {"deliver.py": "aaa111", "static": "s1", "tests": "t1"}
+        mods = {"jfrog-oidc": "bbb222"}
+        self.assertEqual(self._code(same, mods)["status"], "ok")
+        stale = self._code({**same, "deliver.py": "old999"}, mods)
         self.assertEqual(stale["status"], "fail")
         self.assertIn("console", stale["detail"])
         self.assertIn("git push", stale["fix"])
+        self.assertEqual(self._code(same, {"jfrog-oidc": "old"})["status"], "fail")
+        # The pipeline doesn't run the UI or the tests: a UI-only change still matches.
+        self.assertEqual(self._code({**same, "static": "s0", "tests": "t0"}, mods, local_static="s2")["status"], "ok")
 
     def test_old_terraform(self):
         res = preflight.run(gcp_cfg(), Shell.replay(FX / "old_terraform.json"), env=TOKEN_ENV)
