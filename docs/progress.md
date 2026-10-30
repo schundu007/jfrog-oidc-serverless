@@ -613,3 +613,11 @@ Two bugs found on the way, both fixed:
   commit's identity. `workspace-apply.sh` now leaves a workspace a newer commit changed to that run.
 - A dedicated identity re-created under the same resource ID stayed attached by its old client ID.
   Wire now detaches and attaches it again when the attached client ID differs.
+
+### GCP service and function pipelines, live (2026-10-30)
+
+`gcp-service-build-deploy` (run 45) built `apps/cloud-run-service` through JFrog and rolled it out to
+jfrog-svc-demo; `gcp-function-deploy` (run 50) redeployed jfrog-fn-demo from source. Both keep the
+console's wiring and pass `/healthz/jfrog` as their dedicated SAs. The build SA needed
+`roles/cloudfunctions.developer` and `roles/iam.serviceAccountUser` (granted, as in ado-trust); the
+function redeploy leaves out `--no-allow-unauthenticated`, which would need `run.services.setIamPolicy`.
