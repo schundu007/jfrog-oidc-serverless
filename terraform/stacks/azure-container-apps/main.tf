@@ -35,6 +35,7 @@ resource "azurerm_container_app_environment" "workload" {
   name                       = "cae-${var.workload}"
   location                   = azurerm_resource_group.workload.location
   resource_group_name        = azurerm_resource_group.workload.name
+  logs_destination           = "log-analytics"
   log_analytics_workspace_id = azurerm_log_analytics_workspace.workload.id
   tags                       = var.tags
 }
