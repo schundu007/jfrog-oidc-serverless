@@ -21,6 +21,20 @@
     }
   },
   "targets": {
+    "ca-jfrog-demo": {
+      "dedicated_identity": null,
+      "function_app_id": null,
+      "identity_location": "West US 2",
+      "identity_resource_group": "rg-jfrog-types",
+      "identity_type": "system_assigned",
+      "kind": "azure_container_app",
+      "name": "ca-jfrog-demo",
+      "principal_id": "318106ba-58f5-47c1-8d91-2b62f42153a8",
+      "pull_enabled": false,
+      "runtime_enabled": true,
+      "runtime_ttl": 3600,
+      "subject": "318106ba-58f5-47c1-8d91-2b62f42153a8"
+    },
     "caj-artifact-reader": {
       "dedicated_identity": null,
       "function_app_id": null,
