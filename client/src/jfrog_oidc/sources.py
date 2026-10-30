@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Optional, Protocol
 
+from . import sigv4
 from .errors import IdentityError
 
 DEFAULT_TIMEOUT = 5.0
@@ -203,6 +205,137 @@ class AzureDevOpsSource:
         return token
 
 
+class AwsStsSource:
+    """JWT from AWS IAM outbound identity federation (STS GetWebIdentityToken).
+
+    The workload signs the call (SigV4) with its own temporary role credentials:
+    Lambda puts them in AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY /
+    AWS_SESSION_TOKEN; ECS tasks and App Runner serve them from the container
+    credentials endpoint (AWS_CONTAINER_CREDENTIALS_RELATIVE_URI on 169.254.170.2,
+    or AWS_CONTAINER_CREDENTIALS_FULL_URI with AWS_CONTAINER_AUTHORIZATION_TOKEN[_FILE]).
+    STS answers with a JWT whose iss is the account's issuer
+    (https://<id>.tokens.sts.global.api.aws) and whose sub is the role ARN.
+
+    The API is not served by the global STS endpoint: the regional one comes from
+    AWS_REGION / AWS_DEFAULT_REGION, or AWS_ENDPOINT_URL_STS (the SDKs' standard
+    override). The account must have outbound federation enabled
+    (aws iam enable-outbound-web-identity-federation).
+    """
+
+    name = "aws"
+    VERSION = "2011-06-15"
+    ECS_HOST = "http://169.254.170.2"
+    SIGNING_ALGORITHM = "RS256"
+
+    def __init__(self, region: Optional[str] = None, duration_seconds: int = 900,
+                 timeout: float = DEFAULT_TIMEOUT, clock=time.time):
+        env = os.environ
+        self._region = region or env.get("AWS_REGION") or env.get("AWS_DEFAULT_REGION") or ""
+        self._endpoint = (env.get("AWS_ENDPOINT_URL_STS") or env.get("AWS_ENDPOINT_URL") or "").rstrip("/")
+        if not self._region:
+            raise IdentityError("AwsStsSource needs a region (AWS_REGION): GetWebIdentityToken is regional only")
+        if not self._endpoint:
+            self._endpoint = f"https://sts.{self._region}.amazonaws.com"
+        if not self._endpoint.startswith("https://") and env.get("JFROG_OIDC_ALLOW_HTTP") != "1":
+            raise IdentityError("the STS endpoint must be https")
+        if not 60 <= int(duration_seconds) <= 3600:
+            raise IdentityError("duration_seconds must be between 60 and 3600")
+        self._duration = int(duration_seconds)
+        self._timeout = timeout
+        self._clock = clock
+
+    # -- credentials ---------------------------------------------------------------
+
+    def _credentials(self) -> dict:
+        env = os.environ
+        if env.get("AWS_ACCESS_KEY_ID") and env.get("AWS_SECRET_ACCESS_KEY"):
+            return {"AccessKeyId": env["AWS_ACCESS_KEY_ID"], "SecretAccessKey": env["AWS_SECRET_ACCESS_KEY"],
+                    "Token": env.get("AWS_SESSION_TOKEN") or None}
+        rel, full = env.get("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"), env.get("AWS_CONTAINER_CREDENTIALS_FULL_URI")
+        headers = {}
+        if rel:
+            url = self.ECS_HOST + rel
+        elif full:
+            host = urllib.parse.urlsplit(full).hostname or ""
+            if host not in ("127.0.0.1", "localhost", "::1", "169.254.170.2", "169.254.170.23", "fd00:ec2::23"):
+                raise IdentityError("AWS_CONTAINER_CREDENTIALS_FULL_URI must point at a local credentials endpoint")
+            url = full
+            token_file = env.get("AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE")
+            if token_file:
+                try:
+                    with open(token_file, encoding="utf-8") as fh:
+                        headers["Authorization"] = fh.read().strip()
+                except OSError as exc:
+                    raise IdentityError(f"cannot read AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE: {exc}") from None
+            elif env.get("AWS_CONTAINER_AUTHORIZATION_TOKEN"):
+                headers["Authorization"] = env["AWS_CONTAINER_AUTHORIZATION_TOKEN"]
+        else:
+            raise IdentityError("no AWS credentials: expected Lambda's AWS_ACCESS_KEY_ID or a container "
+                                "credentials endpoint (ECS task role, App Runner instance role)")
+        try:
+            body = json.loads(_get(url, headers, self._timeout))
+        except ValueError:
+            raise IdentityError("container credentials endpoint returned non-JSON") from None
+        if not (body.get("AccessKeyId") and body.get("SecretAccessKey")):
+            raise IdentityError("container credentials response missing AccessKeyId/SecretAccessKey")
+        return {"AccessKeyId": body["AccessKeyId"], "SecretAccessKey": body["SecretAccessKey"],
+                "Token": body.get("Token") or None}
+
+    # -- token ---------------------------------------------------------------------
+
+    def get_token(self, audience: str) -> str:
+        if not audience:
+            raise IdentityError("AwsStsSource needs an audience (JFROG_OIDC_AUDIENCE)")
+        creds = self._credentials()
+        form = urllib.parse.urlencode({"Action": "GetWebIdentityToken", "Version": self.VERSION,
+                                       "Audience.member.1": audience, "SigningAlgorithm": self.SIGNING_ALGORITHM,
+                                       "DurationSeconds": str(self._duration)}).encode()
+        url = self._endpoint + "/"
+        headers = sigv4.sign("POST", url, {"Content-Type": "application/x-www-form-urlencoded; charset=utf-8"}, form,
+                             access_key=creds["AccessKeyId"], secret_key=creds["SecretAccessKey"],
+                             session_token=creds["Token"], region=self._region, service="sts", now=self._clock())
+        del creds
+        req = urllib.request.Request(url, data=form, method="POST", headers=headers)
+        # The regional STS endpoint may sit behind the operator's proxy; a local (http) one never does.
+        opener = _NO_PROXY_OPENER if url.startswith("http://") else urllib.request.build_opener()
+        try:
+            with opener.open(req, timeout=self._timeout) as resp:
+                raw = resp.read()
+        except urllib.error.HTTPError as exc:
+            code, message = _sts_error(exc)
+            hint = (": enable it with aws iam enable-outbound-web-identity-federation"
+                    if code == "OutboundWebIdentityFederationDisabledException" else "")
+            raise IdentityError(f"STS GetWebIdentityToken returned HTTP {exc.code} {code}: {message}{hint}") from None
+        except (urllib.error.URLError, OSError) as exc:
+            raise IdentityError(f"STS endpoint unreachable: {exc}") from None
+        token = _xml_text(raw, "WebIdentityToken")
+        if not token or token.count(".") != 2:
+            raise IdentityError("STS did not return a WebIdentityToken JWT")
+        return token
+
+
+def _xml_text(raw: bytes, tag: str) -> str:
+    """Text of the first element named tag (any namespace) in an STS XML response."""
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return ""
+    for el in root.iter():
+        if el.tag.rsplit("}", 1)[-1] == tag:
+            return (el.text or "").strip()
+    return ""
+
+
+def _sts_error(exc: urllib.error.HTTPError) -> tuple:
+    """(Code, Message) from an STS XML error body; never echoes request headers."""
+    try:
+        raw = exc.read()[:4000]
+    except (AttributeError, OSError):
+        raw = b""
+    return _xml_text(raw, "Code") or "error", _xml_text(raw, "Message")[:300]
+
+
 def _error_message(exc: urllib.error.HTTPError) -> str:
     """The "message" of an Azure DevOps error body (never echoes request headers)."""
     try:
@@ -227,8 +360,10 @@ def detect_source() -> IdentitySource:
         return FileTokenSource()
     if choice == "ado":
         return AzureDevOpsSource()
+    if choice == "aws":
+        return AwsStsSource()
     if choice != "auto":
-        raise IdentityError(f"unknown JFROG_OIDC_SOURCE={choice!r} (use auto, gcp, azure, ado or file)")
+        raise IdentityError(f"unknown JFROG_OIDC_SOURCE={choice!r} (use auto, gcp, azure, aws, ado or file)")
 
     if os.environ.get("JFROG_OIDC_TOKEN_FILE"):
         return FileTokenSource()
@@ -237,9 +372,13 @@ def detect_source() -> IdentitySource:
         return AzureDevOpsSource()
     if os.environ.get("IDENTITY_ENDPOINT") or os.environ.get("MSI_ENDPOINT"):
         return AzureManagedIdentitySource()
+    # Lambda sets AWS_LAMBDA_FUNCTION_NAME; ECS tasks and App Runner serve a container credentials endpoint.
+    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME") or os.environ.get("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI") \
+            or os.environ.get("AWS_CONTAINER_CREDENTIALS_FULL_URI"):
+        return AwsStsSource()
     # Cloud Run services/functions set K_SERVICE; jobs set CLOUD_RUN_JOB.
     if any(os.environ.get(v) for v in ("K_SERVICE", "CLOUD_RUN_JOB", "FUNCTION_TARGET", "GCE_METADATA_HOST")):
         return GcpMetadataSource()
     raise IdentityError(
-        "could not detect the runtime; set JFROG_OIDC_SOURCE to gcp, azure, ado or file"
+        "could not detect the runtime; set JFROG_OIDC_SOURCE to gcp, azure, aws, ado or file"
     )
