@@ -106,6 +106,29 @@ class GcpPreflightTests(unittest.TestCase):
         self.assertEqual(miss["status"], "fail")
         self.assertIn("ado-trust", miss["fix"])
 
+    def _code(self, remote_console, remote_modules):
+        perms = preflight.GCP_PERMISSIONS_COMMON + preflight.GCP_PERMISSIONS_BY_KIND["gcp_run_service"]
+        sh = self._shell(perms)
+        ado = {"organization": "org", "project": "proj", "repository": "repo", "target_branch": "main"}
+        for path, tree in (("console", "aaa111"), ("terraform/modules", "bbb222")):
+            sh.fixtures.append({"argv": ["git", "-C", "/repo", "rev-parse", f"HEAD:{path}"], "rc": 0, "stdout": tree + "\n"})
+        for path, tree in (("console", remote_console), ("terraform/modules", remote_modules)):
+            sh.fixtures.append({"argv": ["az", "devops", "invoke", "--org", "https://dev.azure.com/org", "--area", "git",
+                                         "--resource", "items", "--route-parameters", "project=proj", "repositoryId=repo",
+                                         "--query-parameters", f"path=/{path}", "versionDescriptor.version=main",
+                                         "--api-version", "7.1", "-o", "json"], "rc": 0,
+                                "stdout": json.dumps({"objectId": tree})})
+        res = preflight.run(gcp_cfg(), sh, env={}, delivery={"ado": ado}, repo_root="/repo")
+        self.assertEqual(sh.misses, [])
+        return by_id(res)["pipeline_code"]
+
+    def test_delivery_checks_the_pipeline_runs_this_code(self):
+        self.assertEqual(self._code("aaa111", "bbb222")["status"], "ok")
+        stale = self._code("old999", "bbb222")
+        self.assertEqual(stale["status"], "fail")
+        self.assertIn("console", stale["detail"])
+        self.assertIn("git push", stale["fix"])
+
     def test_old_terraform(self):
         res = preflight.run(gcp_cfg(), Shell.replay(FX / "old_terraform.json"), env=TOKEN_ENV)
         self.assertEqual(by_id(res)["tool_terraform"]["status"], "fail")
@@ -197,10 +220,10 @@ class ProviderAndApiTests(unittest.TestCase):
         self.assertEqual(sh.misses, [])
         self.assertEqual(checks["azure_providers"]["status"], "ok")
 
-    def test_unregistered_provider_warns_with_register_command(self):
+    def test_unregistered_provider_fails_with_register_command(self):
         checks, _ = self._azure({"Microsoft.App"})
         c = checks["azure_providers"]
-        self.assertEqual(c["status"], "warn")
+        self.assertEqual(c["status"], "fail")
         self.assertIn("Microsoft.App", c["detail"])
         self.assertIn(f"az provider register -n Microsoft.App --subscription {SUB} --wait", c["fix"])
 
@@ -209,7 +232,7 @@ class ProviderAndApiTests(unittest.TestCase):
         checks, _ = self._azure({"Microsoft.App"}, kind=cfg_kind)
         self.assertEqual(checks["azure_providers"]["status"], "ok")
         checks, _ = self._azure({"Microsoft.Web"}, kind=cfg_kind)
-        self.assertEqual(checks["azure_providers"]["status"], "warn")
+        self.assertEqual(checks["azure_providers"]["status"], "fail")
 
     def test_gcp_function_needs_cloudfunctions_api(self):
         fixtures = [f for f in load_fixtures(FX / "gcp_ok.json") if f.get("argv", [])[:3] != ["gcloud", "services", "list"]]
@@ -221,5 +244,5 @@ class ProviderAndApiTests(unittest.TestCase):
         sh = Shell(mode="replay", fixtures=fixtures)
         c = by_id(preflight.run(gcp_cfg("gcp_run_function"), sh, env=TOKEN_ENV))["gcp_apis"]
         self.assertEqual(sh.misses, [])
-        self.assertEqual(c["status"], "warn")
+        self.assertEqual(c["status"], "fail")
         self.assertIn("gcloud services enable cloudfunctions.googleapis.com --project demo-nonprod-1234", c["fix"])

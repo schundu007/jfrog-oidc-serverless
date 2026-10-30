@@ -80,8 +80,9 @@ def _version_tuple(text: str):
 
 
 class Preflight:
-    def __init__(self, cfg: dict, sh: Shell, env=None, delivery=False):
+    def __init__(self, cfg: dict, sh: Shell, env=None, delivery=False, repo_root=None):
         self.cfg = cfg
+        self.repo_root = repo_root
         self.sh = sh
         self.env = os.environ if env is None else env
         self.delivery = delivery
@@ -108,6 +109,7 @@ class Preflight:
         else:
             self.azure()
         self.jfrog()
+        self._pipeline_code()
         return self.result()
 
     def result(self) -> dict:
@@ -215,6 +217,36 @@ class Preflight:
 
     def _pipeline_identity(self, cloud):
         return ((self.delivery if isinstance(self.delivery, dict) else {}).get("pipeline_identity") or {}).get(cloud)
+
+    # The pipeline wires and applies with the code in the ADO repo, not this checkout's.
+    PIPELINE_CODE = ("console", "terraform/modules")
+
+    def _pipeline_code(self):
+        ado = (self.delivery if isinstance(self.delivery, dict) else {}).get("ado")
+        if not ado or not self.repo_root:
+            return
+        title = "Pipeline runs this console's code"
+        branch = ado.get("target_branch") or "main"
+        stale = []
+        for path in self.PIPELINE_CODE:
+            local = self.sh.run(["git", "-C", str(self.repo_root), "rev-parse", f"HEAD:{path}"], timeout=30)
+            remote = self.sh.run(["az", "devops", "invoke", "--org", f"https://dev.azure.com/{ado['organization']}",
+                                  "--area", "git", "--resource", "items", "--route-parameters",
+                                  f"project={ado['project']}", f"repositoryId={ado['repository']}",
+                                  "--query-parameters", f"path=/{path}", f"versionDescriptor.version={branch}",
+                                  "--api-version", "7.1", "-o", "json"], timeout=60)
+            if not local.ok or not remote.ok:
+                return self.add("pipeline_code", title, "warn",
+                                f"could not compare {path}/: {(remote if local.ok else local).error_text(200)}",
+                                f"Check that the ADO repo's {branch} has this checkout's {path}/.")
+            if local.stdout.strip() != str((remote.json() or {}).get("objectId", "")):
+                stale.append(path)
+        if not stale:
+            return self.add("pipeline_code", title, "ok", f"{', '.join(self.PIPELINE_CODE)} match {branch}")
+        self.add("pipeline_code", title, "fail",
+                 f"the ADO repo's {branch} has a different {', '.join(p + '/' for p in stale)}",
+                 f"Merge and push this checkout to the ADO repo: git push "
+                 f"https://dev.azure.com/{ado['organization']}/{ado['project']}/_git/{ado['repository']} HEAD:{branch}")
 
     def _gcp_pipeline_reach(self, project):
         """Existing apps can live in any project: the pipeline's setup account needs a role in this one."""
@@ -333,7 +365,7 @@ class Preflight:
         enabled = {_get(s, "config", "name") for s in (res.json() or []) if isinstance(s, dict)}
         missing = [a for a in need if a not in enabled]
         if missing:
-            self.add("gcp_apis", "Target APIs enabled", "warn", "disabled: " + ", ".join(missing),
+            self.add("gcp_apis", "Target APIs enabled", "fail", "disabled: " + ", ".join(missing),
                      " && ".join(f"gcloud services enable {a} --project {project}" for a in missing))
         else:
             self.add("gcp_apis", "Target APIs enabled", "ok", ", ".join(need))
@@ -352,7 +384,7 @@ class Preflight:
         state = {str(p.get("namespace", "")).lower(): p.get("state") for p in (res.json() or []) if isinstance(p, dict)}
         missing = [n for n in need if state.get(n.lower()) != "Registered"]
         if missing:
-            self.add("azure_providers", "Resource providers registered", "warn",
+            self.add("azure_providers", "Resource providers registered", "fail",
                      "not registered: " + ", ".join(f"{n} ({state.get(n.lower()) or 'NotRegistered'})" for n in missing),
                      " && ".join(f"az provider register -n {n} --subscription {sub} --wait" for n in missing))
         else:
@@ -452,7 +484,8 @@ class Preflight:
             self.add("jfrog_group", f"Reader group '{group}'", "warn", f"lookup returned {res.status or res.error}", "")
 
 
-def run(cfg: dict, sh: Shell, env=None, delivery=False) -> dict:
+def run(cfg: dict, sh: Shell, env=None, delivery=False, repo_root=None) -> dict:
     """delivery: the ADO pipeline applies with its own OIDC JFrog token, so no local one is needed.
-    Pass the delivery settings (pipelines/delivery.json) to also check the pipeline's reach."""
-    return Preflight(cfg, sh, env, delivery).run()
+    Pass the delivery settings (pipelines/delivery.json) to also check the pipeline's reach, and
+    repo_root to check the pipeline runs this checkout's console and modules."""
+    return Preflight(cfg, sh, env, delivery, repo_root).run()

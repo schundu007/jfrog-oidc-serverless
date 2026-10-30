@@ -146,6 +146,14 @@ function scheduleValidate() {
   st.validateTimer = setTimeout(validate, 250);
 }
 
+// Run pipeline needs a workload; until one is picked it is off with a quiet hint, not errors.
+function gateRun() {
+  const ready = !!st.cfg?.target?.[cloud]?.name;
+  $("cfg-run-btn").disabled = !ready || st.busy;
+  if (!ready && !st.busy) status("Pick a workload to run the pipeline.", "idle");
+  else if (ready && $("cfg-status").textContent === "Pick a workload to run the pipeline.") status("", "idle");
+}
+
 async function validate() {
   let res;
   try {
@@ -154,6 +162,7 @@ async function validate() {
     return;
   }
   st.validation = res;
+  gateRun();
   const shown = (p) => {
     if (st.showAll) return true;
     const el = $("cfg-form").querySelector(`[data-path="${CSS.escape(p.path)}"]`);
@@ -380,8 +389,9 @@ function renderDiscovered() {
 // ----------------------------------------------------------------- preflight
 
 async function runPreflight() {
+  let res = null;
   await busy("Running preflight… read-only, up to a minute", async () => {
-    const res = await api("/api/preflight", { method: "POST", body: { config: st.cfg } });
+    res = await api("/api/preflight", { method: "POST", body: { config: st.cfg } });
     for (const [path, value] of Object.entries(res.config_patch || {})) setPath(st.cfg, path, value);
     renderSummary();
     const icon = { ok: "✓", warn: "⚠", fail: "✗", skip: "–" };
@@ -398,6 +408,7 @@ async function runPreflight() {
     status(res.status === "fail" ? "Preflight failed: see the checks" : "Preflight passed",
       res.status === "fail" ? "error" : "ok");
   });
+  return res;
 }
 
 // ----------------------------------------------------------------- init
@@ -488,6 +499,9 @@ export async function initConfigure(deps) {
     st.showAll = true;
     await validate();
     if (st.validation?.errors?.length) return status("Fix the validation errors first.", "error");
+    // Missing APIs, providers, roles or pipeline code stop here, not halfway through the run.
+    const pre = await runPreflight();
+    if (!pre || pre.status === "fail") return status("Preflight failed: fix the checks, then Run pipeline again.", "error");
     onRun(clone(st.cfg));
   });
 

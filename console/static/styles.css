@@ -234,6 +234,7 @@ tr.ev-alert td, tr.ev-fault td { font-weight: 600; }
 .warn-text { color: var(--unavail); }
 .status-ok { color: var(--ok); }
 .status-warn, .status-busy { color: var(--unavail); }
+.status-idle { color: var(--muted); }
 .status-error { color: var(--fail); }
 .status-busy::before { content: "⏳ "; }
 
