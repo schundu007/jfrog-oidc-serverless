@@ -77,7 +77,7 @@
   --ctl-h: 36px;
 }
 
-@media (prefers-color-scheme: dark) {
+@media not all {
   :root {
     --brand: #4ade80;
     --accent: #4ade80;
@@ -353,7 +353,7 @@ ul.checks .d { color: var(--fg-2); overflow-wrap: anywhere; }
 .st-running .t { color: var(--info-fg); }
 .st-running .dot { background: none; border: 2px solid var(--info-line); border-top-color: var(--info-fg); animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-color-scheme: dark) { .st-ok .dot, .st-fail .dot, .st-failed .dot, .st-error .dot, .st-warn .dot { color: #10140d; } }
+@media not all { .st-ok .dot, .st-fail .dot, .st-failed .dot, .st-error .dot, .st-warn .dot { color: #10140d; } }
 
 /* Run stages: dry run → approval → applied. */
 ol.stages { list-style: none; margin: 0 0 var(--s-3); padding: 0; display: flex; flex-wrap: wrap; gap: 6px var(--s-2); font-size: var(--t-sm); }
@@ -497,7 +497,7 @@ input.typed { width: 220px; }
   --font: Seravek, "Gill Sans Nova", Ubuntu, Calibri, "DejaVu Sans", source-sans-pro, sans-serif;
 }
 h1, h2, h3 { letter-spacing: 0; }
-@media (prefers-color-scheme: dark) {
+@media not all {
   :root:not([data-theme="light"]) {
     --glass: rgba(20, 26, 40, 0.72); --glass-strong: rgba(24, 30, 46, 0.86); --card-solid: #171d2b; --glass-tile: rgba(255, 255, 255, 0.04);
     --glass-line: rgba(255, 255, 255, 0.09); --glass-edge: rgba(255, 255, 255, 0.06);
@@ -568,7 +568,7 @@ body::before {
 .cl-title h1, .cfg-head h1 {
   background: var(--ai-grad-deep); -webkit-background-clip: text; background-clip: text; color: transparent;
 }
-@media (prefers-color-scheme: dark) {
+@media not all {
   :root:not([data-theme="light"]) .cl-title h1, :root:not([data-theme="light"]) .cfg-head h1 {
     background-image: linear-gradient(120deg, #c4b5fd, #67e8f9 55%, #86efac);
   }
@@ -649,3 +649,57 @@ input:focus-visible, select:focus-visible { border-color: var(--ai-1); box-shado
 .stat[data-tip]::after { content: attr(data-tip); max-width: 240px; }
 /* Panels clip nothing, so a popup near a panel's top edge stays whole. */
 .panel, details.panel, .cfg-form .block, .essentials > div { overflow: visible; }
+
+/* ================================================================== Humana palette */
+/* Backgrounds and text use Humana colours only: Humana Green #5BA908, its dark shade #4E8416,
+   white and neutral greys (#333 text). Status reads from green (good) versus dark grey (needs action). */
+:root {
+  color-scheme: light;
+  --brand: #5ba908; --accent: #4e8416; --accent-hover: #5ba908; --on-accent: #ffffff;
+  --accent-soft: #eef6e6; --accent-ring: rgba(91, 169, 8, 0.35);
+  --rail: #4e8416; --rail-2: #4e8416; --rail-fg: #ffffff; --rail-fg-strong: #ffffff;
+  --rail-hover: rgba(255, 255, 255, 0.12); --rail-on: rgba(255, 255, 255, 0.18); --rail-on-fg: #ffffff;
+  --rail-line: rgba(255, 255, 255, 0.22); --rail-group: rgba(255, 255, 255, 0.82);
+  --bg: #ffffff; --surface: #ffffff; --surface-2: #f7f7f7; --surface-3: #eeeeee;
+  --fg: #333333; --fg-2: #333333; --fg-3: #666666; --border: #dddddd; --border-strong: #999999;
+  --ok-fg: #4e8416;   --ok-bg: #eef6e6;   --ok-line: #5ba908;
+  --info-fg: #4e8416; --info-bg: #eef6e6; --info-line: #5ba908;
+  --warn-fg: #333333; --warn-bg: #eeeeee; --warn-line: #999999;
+  --bad-fg: #ffffff;  --bad-bg: #333333;  --bad-line: #333333;
+  --neutral-fg: #666666; --neutral-bg: #f7f7f7; --neutral-line: #dddddd;
+  --ok: #5ba908; --cached: #999999; --unavail: #999999; --fail: #333333; --exposure: rgba(0, 0, 0, 0.18);
+  --token: #4e8416; --hold: #5ba908; --alert: #666666; --fault: #333333; --fault-band: rgba(0, 0, 0, 0.05); --lane: #f7f7f7;
+  --ai-1: #5ba908; --ai-2: #4e8416; --ai-3: #5ba908;
+  --ai-grad: linear-gradient(120deg, #5ba908, #4e8416);
+  --ai-grad-deep: linear-gradient(120deg, #4e8416, #5ba908);
+  --glass: rgba(255, 255, 255, 0.9); --glass-strong: #ffffff; --card-solid: #ffffff; --glass-tile: #ffffff;
+  --glass-line: #dddddd; --glass-edge: #dddddd;
+  --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 10px 30px -18px rgba(0, 0, 0, 0.25);
+  --glow: 0 8px 22px -10px rgba(78, 132, 22, 0.55);
+}
+body::before { background: radial-gradient(45% 40% at 85% 5%, rgba(91, 169, 8, 0.10), transparent 70%); }
+.topbar { background: #4e8416; }
+.sidenav { background: #4e8416; }
+.logo { fill: #ffffff; filter: none; }
+.nav-item { color: #ffffff; }
+.nav-item[aria-current="page"], .nav-item[aria-selected="true"] { background: rgba(255, 255, 255, 0.18); color: #ffffff; box-shadow: none; }
+.nav-item[aria-current="page"]::before, .nav-item[aria-selected="true"]::before { background: #ffffff; box-shadow: none; }
+.subnav .nav-item[aria-selected="true"] { color: #ffffff; font-weight: 700; }
+.title-row h1, .page-header h1, #cfg-title, .cl-title h1, .cfg-head h1 { background: none; color: #4e8416; -webkit-text-fill-color: #4e8416; }
+button.primary, .primary-cmd { background: #4e8416; color: #ffffff; }
+button.primary:hover:not(:disabled), .primary-cmd:hover:not(:disabled) { background: #5ba908; color: #ffffff; }
+.pill.bad::before, .pill.warn::before { background: currentColor; }
+/* KCP's own accents on the Humana palette. */
+.fleet-table tbody tr:hover td { background: #f7f7f7; }
+input:focus-visible, select:focus-visible { border-color: #5ba908; box-shadow: 0 0 0 4px rgba(91, 169, 8, 0.2); }
+* { scrollbar-color: #999999 transparent; }
+.help:hover, .help:focus-visible { color: #4e8416; box-shadow: 0 0 0 3px rgba(91, 169, 8, 0.25); }
+.tip, .stat[data-tip]::after { color: #333333; box-shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.3), 0 0 0 1px #dddddd; }
+.nav-item[aria-current="true"] { color: #ffffff; }
+.subnav .nav-item { color: #ffffff; }
+.logo .logo-in { fill: #4e8416; }
+/* --bad-fg is white for the filled failure pills; failure text on white is #333, bold. */
+.error, .danger-text, .mismatch, ol.stages li.error, .pick-list li.bad, .issue.error,
+button.ghost.danger, button.secondary.danger, button.link.danger,
+.stat.s-attention b, .stat.s-not_proven b { color: #333333; }
+.error, .issue.error, button.link.danger { font-weight: 600; }
