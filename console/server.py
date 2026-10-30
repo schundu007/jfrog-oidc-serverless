@@ -178,8 +178,14 @@ def _scenario_catalogue() -> dict:
 
 class ConsoleServer:
     def __init__(self, host: str = "127.0.0.1", port: int = 8765, token: str | None = None, log=sys.stderr,
-                 store: Store | None = None, fixtures=None, record_dir=None, delivery=None, repo_root=None):
+                 store: Store | None = None, fixtures=None, record_dir=None, delivery=None, repo_root=None,
+                 base: str = ""):
         self.host = host
+        # Mounted under a path prefix (the portal serves this console at /serverless): the page
+        # learns it from a meta tag and prefixes its API and static URLs. "" = standalone.
+        if not re.fullmatch(r"(/[a-z0-9-]+)?", base):
+            raise ValueError(f"bad base path: {base!r}")
+        self.base = base
         self.requested_port = port
         self.token = token or secrets.token_urlsafe(32)
         self.log = log
@@ -401,6 +407,10 @@ def _make_handler(console: ConsoleServer):
             if name == "index.html" and self.headers.get("Sec-Fetch-Site") in ("none", "same-origin"):
                 data = data.replace(b'<meta charset="utf-8">', b'<meta charset="utf-8">\n  <meta name="console-token" content="'
                                     + console.token.encode() + b'">', 1)
+            if name == "index.html" and console.base:
+                base = console.base.encode()
+                data = data.replace(b'<meta charset="utf-8">', b'<meta charset="utf-8">\n  <meta name="console-base" content="'
+                                    + base + b'">', 1).replace(b'"/static/', b'"' + base + b'/static/')
             self._headers(200, CONTENT_TYPES[Path(name).suffix], len(data))
             self.wfile.write(data)
 

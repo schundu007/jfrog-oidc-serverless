@@ -11,6 +11,7 @@
 <div class="shell">
   <header class="topbar">
     <div class="brand"><svg class="logo" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.5l7.4 4.25v8.5L10 18.5l-7.4-4.25v-8.5z"/><path class="logo-in" d="M10 6l3.5 2v4L10 14l-3.5-2V8z"/></svg><span>JFrog OIDC Console</span></div>
+    <span class="section-label" data-portal hidden>Serverless</span>
     <span class="ctx" id="ctx-cloud" hidden></span>
     <span class="pill bad" id="session-state" hidden></span>
   </header>
@@ -27,6 +28,10 @@
       <div class="nav-group">Activity</div>
       <button role="tab" class="nav-item" id="tab-runs" aria-controls="panel-runs" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4l10 6-10 6z"/></svg><span>Runs</span></button>
       <button role="tab" class="nav-item" id="tab-simulate" aria-controls="panel-simulate" aria-selected="false" tabindex="-1"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3h6M8 3v5l-4 8h12l-4-8V3"/></svg><span>Simulate</span></button>
+    </nav>
+    <nav class="section-switch" aria-label="Other section" data-portal hidden>
+      <div class="nav-group">Kubernetes</div>
+      <a class="nav-item" href="/k8s/clusters" data-section><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2 17 6v8l-7 4-7-4V6z"/></svg><span>Clusters</span></a>
     </nav>
   </aside>
   <div class="main-col">

@@ -1,7 +1,6 @@
 # Plan: one UI for the JFrog OIDC console and the KCP console
 
-Status: planned, not started. It starts once the serverless (`console/`) and KCP
-(`kcp_console/`) sessions have finished their current work.
+Status: done (2026-10-30). Run `python -m portal`; KCP seam a14fab8.
 
 ## Goal
 

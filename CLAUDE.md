@@ -29,6 +29,9 @@ it before starting any milestone. Record progress in `docs/progress.md`.
   job authenticates with its service connection's OIDC token; settings per
   environment in `pipelines/vars/<env>.yml`.
 - `console/` — to be built, per the spec.
+- `portal/` — one UI for both consoles (`docs/merge-plan.md`): Serverless (`console/`)
+  at `/serverless`, Kubernetes (`kcp_console/`) at `/k8s`. It only routes by prefix; the
+  two consoles never import each other and keep separate stores, runs and gates.
 - `kcp_console/` — the KCP console: the AKS kubelet credential provider sibling
   (spec `docs/kcp-console-spec.md`, progress `docs/kcp-progress.md`). Same rules
   as `console/`. State-changing az/kubectl/helm and JFrog writes run only as a
@@ -56,6 +59,9 @@ PYTHONPATH=client/src:rotator:. python -m console
 python3 -m unittest discover -s kcp_console/tests -t .
 python3 -m kcp_console.sim check-all
 python3 -m kcp_console --fixtures kcp_console/tests/fixtures/sandbox
+# portal: both consoles on one port, Serverless at /serverless, Kubernetes at /k8s
+PYTHONPATH=client/src:rotator:. python3 -m unittest discover -s portal/tests -t .
+PYTHONPATH=client/src:rotator:. python -m portal
 ```
 
 ## Rules

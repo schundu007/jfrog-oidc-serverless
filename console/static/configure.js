@@ -495,6 +495,7 @@ function pickWorkload() {
 
 export async function initConfigure(deps) {
   ({ api, h, cloud, ofCloud, onRun, selectTab } = deps);
+  const localPath = deps.localPath || (() => location.pathname);
   st.schema = await api("/api/schema");
   $("cfg-kind").replaceChildren(...cloudKinds().map((k) => h("option", { value: k, text: st.schema.kinds[k].label })));
 
@@ -535,7 +536,7 @@ export async function initConfigure(deps) {
   markDirty(false);
   scheduleValidate();
   // The path picks the tab; with none (or Configurations and nothing saved), land on the useful one.
-  const named = location.pathname.split("/")[2] || "";
+  const named = localPath().split("/")[2] || "";
   if (!named || (named === "configs" && !st.saved.length)) selectTab(st.saved.length ? "tab-configs" : "tab-configure", "replace");
   loadInventory();
 }

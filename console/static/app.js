@@ -14,10 +14,15 @@ const $ = (id) => document.getElementById(id);
 const REDIRECTING = location.hostname === "localhost";
 if (REDIRECTING) location.replace(location.href.replace("//localhost", "//127.0.0.1"));
 
+// Inside the portal this console lives under a prefix (/serverless): the server says so in a meta tag.
+// Every API call, static file and page link carries it; localPath() is the path without it.
+const BASE = document.querySelector('meta[name="console-base"]')?.content || "";
+const localPath = () => (BASE && location.pathname.startsWith(BASE) ? location.pathname.slice(BASE.length) || "/" : location.pathname);
+
 // Google Cloud and Azure are separate pages (/gcp, /azure; ?cloud= still works); nothing on one
 // shows the other. Each tab has its own path: /<cloud>/configs|configure|runs|simulate.
 const CLOUDS = { gcp: "Google Cloud", azure: "Azure" };
-const CLOUD = [location.pathname.split("/")[1], new URLSearchParams(location.search).get("cloud")]
+const CLOUD = [localPath().split("/")[1], new URLSearchParams(location.search).get("cloud")]
   .find((c) => Object.hasOwn(CLOUDS, c)) || null;
 const ofCloud = (kind) => !!kind && String(kind).startsWith(`${CLOUD}_`);
 
@@ -63,7 +68,7 @@ class ApiError extends Error {
 async function api(path, { method = "GET", body } = {}) {
   const headers = { "X-Console-Token": TOKEN };
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  const resp = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body),
+  const resp = await fetch(BASE + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body),
     credentials: "omit", cache: "no-store" });
   const text = await resp.text();
   let data = null;
@@ -74,7 +79,7 @@ async function api(path, { method = "GET", body } = {}) {
 
 // Server-sent events over fetch, so the token stays in a header (EventSource can't set headers).
 async function streamEvents(path, onFrame, signal) {
-  const resp = await fetch(path, { headers: { "X-Console-Token": TOKEN }, credentials: "omit", cache: "no-store", signal });
+  const resp = await fetch(BASE + path, { headers: { "X-Console-Token": TOKEN }, credentials: "omit", cache: "no-store", signal });
   if (!resp.ok || !resp.body) throw new ApiError(resp.status, `event stream failed: HTTP ${resp.status}`);
   const reader = resp.body.pipeThrough(new TextDecoderStream()).getReader();
   let buf = "";
@@ -133,12 +138,12 @@ function setupTabs() {
       $(t.getAttribute("aria-controls")).hidden = !on;
     }
     if (focus) tab.focus();
-    const path = CLOUD ? `/${CLOUD}/${tab.id.slice("tab-".length)}` : "/";
+    const path = BASE + (CLOUD ? `/${CLOUD}/${tab.id.slice("tab-".length)}` : "/");
     if (how !== "none" && location.pathname !== path) history[how === "replace" ? "replaceState" : "pushState"](null, "", path);
   };
   state.selectTab = (id, how = "push") => select($(id), false, how);
   window.addEventListener("popstate", () => {
-    const t = $(`tab-${location.pathname.split("/")[2] || ""}`);
+    const t = $(`tab-${localPath().split("/")[2] || ""}`);
     if (t && tabs.includes(t)) select(t, false, "none");
   });
   tabs.forEach((t) => {
@@ -431,6 +436,12 @@ async function connect() {
 
 // Keep only this cloud's fields and links, then show the picker or the tabs.
 function applyCloud() {
+  if (BASE) {
+    // Portal: this console is the Serverless section; links to its own pages carry the prefix,
+    // and the switch to the Kubernetes section (a different console) is a full page load.
+    for (const a of document.querySelectorAll('a[href^="/"]:not([data-section])')) a.setAttribute("href", BASE + a.getAttribute("href"));
+    for (const el of document.querySelectorAll("[data-portal]")) el.hidden = false;
+  }
   document.title = CLOUD ? `JFrog OIDC Console · ${CLOUDS[CLOUD]}` : "JFrog OIDC Console";
   if (!CLOUD) {
     $("panel-pick").hidden = false;
@@ -445,7 +456,7 @@ function applyCloud() {
   }
   $("cloud-switch").hidden = false;
   $("tabs").hidden = false;
-  const want = $(`tab-${location.pathname.split("/")[2] || ""}`);
+  const want = $(`tab-${localPath().split("/")[2] || ""}`);
   state.selectTab(want && want.getAttribute("role") === "tab" ? want.id : "tab-configure", "replace");
 }
 
@@ -495,7 +506,7 @@ function wire() {
   if (initial && scenarioByName(initial)) sel.value = initial;
   selectScenario(sel.value);
   const runs = initRuns({ api, h, streamEvents, selectTab: state.selectTab, ofCloud }).catch((e) => showError(`Runs tab: ${e.message}`));
-  initConfigure({ api, h, cloud: CLOUD, ofCloud, selectTab: state.selectTab, onRun: (cfg) => runs.then((r) => r && r.startRun(cfg)) })
+  initConfigure({ api, h, localPath, cloud: CLOUD, ofCloud, selectTab: state.selectTab, onRun: (cfg) => runs.then((r) => r && r.startRun(cfg)) })
     .catch((e) => showError(`Configure tab: ${e.message}`));
   return true;
 }
