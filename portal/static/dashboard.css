@@ -37,3 +37,19 @@
 .tile small { color: var(--fg-3); font-size: var(--t-sm); }
 .tile .pill { margin-top: var(--s-1); }
 .tile .mark .cut { stroke: var(--surface); }
+
+/* Glass: KPIs and tiles frosted, gradient ring on hover. */
+.kpi, .tile {
+  background: var(--glass); border: 1px solid var(--glass-line); border-radius: var(--r-glass);
+  box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+}
+.kpi { transition: transform 160ms ease, box-shadow 160ms ease; }
+.tile:hover, .kpi:hover {
+  border-color: transparent; transform: translateY(-2px);
+  background: linear-gradient(var(--card-solid), var(--card-solid)) padding-box, var(--ai-grad) border-box;
+  box-shadow: var(--glass-shadow), var(--glow);
+}
+.tile-mark { display: grid; place-items: center; width: 80px; height: 80px; margin-bottom: var(--s-2); border-radius: 22px;
+  background: var(--glass-strong); border: 1px solid var(--glass-edge); }
+.tile-mark svg { width: 48px; height: 48px; margin: 0; }
+.dash-row:hover { background: rgba(124, 92, 255, 0.06); }

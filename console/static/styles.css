@@ -749,3 +749,167 @@ pre.pf-log { min-height: 0; max-height: 280px; overflow: auto; font-size: 11px; 
   .sidenav { view-transition-name: sidenav; }
   ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 160ms; }
 }
+
+/* ================================================================== glass */
+/* Glass and AI accents over the shared shell: an aurora behind everything, frosted surfaces, gradient
+   accents. Text sits on surfaces at least 72% opaque; white text only on the dark gradient stops. */
+
+:root {
+  --ai-1: #7c5cff; --ai-2: #22d3ee; --ai-3: #4cc552;
+  --ai-grad: linear-gradient(120deg, var(--ai-1), var(--ai-2) 55%, var(--ai-3));
+  --ai-grad-deep: linear-gradient(120deg, #6d28d9, #4f46e5 50%, #0f766e);
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-strong: rgba(255, 255, 255, 0.86);
+  --card-solid: #ffffff;
+  --glass-tile: rgba(255, 255, 255, 0.55);
+  --glass-line: rgba(255, 255, 255, 0.75);
+  --glass-edge: rgba(36, 51, 82, 0.10);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 10px 36px -14px rgba(36, 51, 82, 0.28);
+  --glass-blur: blur(18px) saturate(170%);
+  --glow: 0 8px 24px -8px rgba(124, 92, 255, 0.55);
+  --r-glass: 16px;
+  /* Humanist sans: installed fonts only, no download. */
+  --font: Seravek, "Gill Sans Nova", Ubuntu, Calibri, "DejaVu Sans", source-sans-pro, sans-serif;
+}
+h1, h2, h3 { letter-spacing: 0; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --glass: rgba(20, 26, 40, 0.72); --glass-strong: rgba(24, 30, 46, 0.86); --card-solid: #171d2b; --glass-tile: rgba(255, 255, 255, 0.04);
+    --glass-line: rgba(255, 255, 255, 0.09); --glass-edge: rgba(255, 255, 255, 0.06);
+    --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 40px -16px rgba(0, 0, 0, 0.7);
+  }
+}
+
+/* Aurora: three soft blooms that drift slowly behind the page. */
+body { background: var(--bg); }
+body::before {
+  content: ""; position: fixed; inset: -20%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(40% 35% at 82% 8%, rgba(124, 92, 255, 0.22), transparent 70%),
+    radial-gradient(38% 34% at 12% 92%, rgba(34, 211, 238, 0.20), transparent 70%),
+    radial-gradient(30% 30% at 58% 55%, rgba(76, 197, 82, 0.12), transparent 70%);
+  filter: blur(30px);
+}
+.shell { position: relative; isolation: isolate; }
+@media (prefers-reduced-motion: no-preference) {
+  body::before { animation: aurora 26s ease-in-out infinite alternate; }
+}
+@keyframes aurora {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-3%, 2%, 0) scale(1.05); }
+  100% { transform: translate3d(2%, -2%, 0) scale(1.02); }
+}
+
+/* Shell: navy glass. The open item carries a gradient edge and a soft glow. */
+.topbar { background: rgba(28, 40, 67, 0.96); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
+.sidenav { background: linear-gradient(180deg, rgba(36, 51, 82, 0.97), rgba(28, 40, 67, 0.97)); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
+.logo { filter: drop-shadow(0 0 8px rgba(76, 197, 82, 0.55)); }
+.nav-item { border-radius: 10px; margin: 1px var(--s-2); width: calc(100% - 2 * var(--s-2)); padding-left: 12px; }
+.nav-item[aria-current="page"] {
+  background: linear-gradient(90deg, rgba(124, 92, 255, 0.28), rgba(34, 211, 238, 0.10) 70%, transparent);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.nav-item[aria-current="page"]::before {
+  content: ""; position: absolute; left: -8px; top: 8px; bottom: 8px; width: 3px; border-radius: 3px;
+  background: var(--ai-grad); box-shadow: 0 0 10px rgba(34, 211, 238, 0.7);
+}
+.subnav { background: transparent; }
+/* The open platform while one of its clusters is open: named, not highlighted. */
+.nav-item[aria-current="true"] { color: var(--rail-fg-strong); font-weight: 600; background: none; }
+.subnav .nav-item { padding-left: 44px; }
+
+/* Frosted surfaces. Tiles inside a panel are lighter and unblurred (one blur layer is enough). */
+.panel, details.panel, .stat, .pick-card, .fleet-table, .empty, .approve-box,
+.cfg-form > .tgrid, .cfg-form .block, .cfg-form .advanced {
+  background: var(--glass); border: 1px solid var(--glass-line); border-radius: var(--r-glass);
+  box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+}
+.fleet-table { border-collapse: separate; border-spacing: 0; overflow: hidden; }
+.fleet-table th { background: var(--glass-strong); }
+.fleet-table tbody tr:hover td { background: rgba(124, 92, 255, 0.06); }
+.essentials > div, ul.checks { background: var(--glass-tile); border-color: var(--glass-edge); border-radius: 12px; }
+.empty { border-style: solid; }
+
+/* Gradient ring on hover: the card's border becomes the AI gradient. */
+.stat, .pick-card { transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease; }
+.stat:hover, .stat.on, .pick-card:hover:not(:disabled) {
+  border-color: transparent;
+  background: linear-gradient(var(--card-solid), var(--card-solid)) padding-box, var(--ai-grad) border-box;
+  box-shadow: var(--glass-shadow), var(--glow);
+}
+.stat:hover, .pick-card:hover:not(:disabled) { transform: translateY(-2px); }
+
+/* Titles: gradient ink from the dark stops, so it stays readable on light glass. */
+.cl-title h1, .cfg-head h1 {
+  background: var(--ai-grad-deep); -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .cl-title h1, :root:not([data-theme="light"]) .cfg-head h1 {
+    background-image: linear-gradient(120deg, #c4b5fd, #67e8f9 55%, #86efac);
+  }
+}
+
+/* The page mark sits in a glass orb with a slowly turning gradient halo. */
+.head-mark { position: relative; background: var(--glass-strong); border: 1px solid var(--glass-line); border-radius: 14px; }
+.head-mark::before {
+  content: ""; position: absolute; inset: -3px; z-index: -1; border-radius: 16px;
+  background: conic-gradient(from 0deg, var(--ai-1), var(--ai-2), var(--ai-3), var(--ai-1)); filter: blur(6px); opacity: 0.55;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .head-mark::before { animation: orb 8s linear infinite; }
+}
+@keyframes orb { to { transform: rotate(1turn); } }
+
+/* Actions: the primary button is the deep gradient with a glow; the rest are glass. */
+button.primary {
+  background: var(--ai-grad-deep); background-size: 160% 100%; border: 0; color: #fff; box-shadow: var(--glow);
+  transition: background-position 300ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+button.primary:hover:not(:disabled) { background: var(--ai-grad-deep); background-size: 160% 100%; background-position: 100% 0; transform: translateY(-1px); }
+button.secondary, .topbar-back { background: var(--glass-strong); border-color: var(--glass-edge); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
+input[type="text"], input[type="search"], input[type="password"], select { background: var(--glass-strong); border-color: var(--glass-edge); }
+input:focus-visible, select:focus-visible { border-color: var(--ai-1); box-shadow: 0 0 0 4px rgba(124, 92, 255, 0.18); outline: none; }
+.fleet-bar .search { border-radius: 999px; padding-left: var(--s-4); }
+
+/* Pills: soft glass chips; anything running shimmers. */
+.badge, .pill { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.badge.info, .st-running .t {
+  background-image: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%);
+  background-size: 220% 100%; background-repeat: no-repeat;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .badge.info, .st-running .t { animation: shimmer 1.8s linear infinite; }
+}
+@keyframes shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+
+/* Tiles: mark large and centred, name, count, status, stacked in a column. */
+.pick-card { flex-direction: column; align-items: center; text-align: center; gap: var(--s-2); padding: var(--s-5) var(--s-4); }
+.pick-mark { width: 64px; height: 64px; border-radius: 18px; background: var(--glass-strong); border: 1px solid var(--glass-edge); }
+.pick-mark svg.mark { width: 40px; height: 40px; }
+.pick-list { align-items: center; }
+.pick-go { margin: var(--s-2) 0 0; }
+
+/* Scrollbars that match the glass. */
+* { scrollbar-width: thin; scrollbar-color: rgba(124, 92, 255, 0.35) transparent; }
+
+/* Serverless surfaces on the same glass (selectors KCP doesn't have). */
+.card, .side-box, .table-card, .saved .panel {
+  background: var(--glass); border: 1px solid var(--glass-line); border-radius: var(--r-glass);
+  box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+}
+.title-row h1, .page-header h1, #cfg-title, .dash-head h1 {
+  background: var(--ai-grad-deep); -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .title-row h1, :root:not([data-theme="light"]) .page-header h1,
+  :root:not([data-theme="light"]) #cfg-title, :root:not([data-theme="light"]) .dash-head h1 {
+    background-image: linear-gradient(120deg, #c4b5fd, #67e8f9 55%, #86efac);
+  }
+}
+.pill.run-running, .pill.step-running {
+  background-image: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%);
+  background-size: 220% 100%; background-repeat: no-repeat;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pill.run-running, .pill.step-running { animation: shimmer 1.8s linear infinite; }
+}
