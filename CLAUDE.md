@@ -90,22 +90,22 @@ python3 -m kcp_console --fixtures kcp_console/tests/fixtures/sandbox
 These come from the README's "Verify in your environment" section. Fix them in
 code when real providers or APIs disagree:
 
-- The `jfrog/platform` value `provider_type = "Azure"` is accepted by the
-  JFrog API. (The schemas, including `token_spec`, passed `terraform validate`
-  against jfrog/platform 2.2.11 in M4; only the API-side values remain.)
-- The Functions-on-ACA `Microsoft.App` API version that accepts
-  `kind = functionapp`.
-- The Container Apps log table name used in the Azure alert.
 - The wire step's az flags: `az containerapp secret set --secrets
   name=keyvaultref:<url>,identityref:<id>` and `az containerapp registry set
   --password-secret-name`.
-- The dedicated-identity attach flags: `az containerapp [job] identity assign
-  --user-assigned <id>` and `az functionapp identity assign --identities <id>`.
+- The dedicated-identity attach flag `az containerapp [job] identity assign
+  --user-assigned <id>` (`az functionapp identity assign --identities <id>` worked
+  live on Flex, 2026-10-30).
 - The Docker subdomain host form `<server>-<repo-key>.jfrog.io` on the target
   JFrog instance (it is what the AKS pilot's instance served; a self-hosted
   platform may differ: set `jfrog.docker_host`). On a JFrog Cloud trial (2026-10-30)
   it only redirected; the path form `<server>/<repo-key>/<image>` worked end to end
   with the KCP direct setup.
+
+Verified live (2026-10-30): all eight workload types exchanged their identity for a
+JFrog token after console onboarding (docs/progress.md); Functions on ACA with
+`kind = functionapp`; the Container Apps log table `ContainerAppConsoleLogs_CL`; JFrog
+accepts `provider_type = "Azure"` (the `azure-entra` integration issued the Azure tokens).
 
 Verified in M4 by `terraform validate` (azurerm 5.12.0): the
 `azurerm_function_app_flex_consumption` argument names. Verified by `terraform validate`

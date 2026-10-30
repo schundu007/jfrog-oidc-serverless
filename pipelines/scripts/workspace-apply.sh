@@ -54,9 +54,19 @@ for ws in "${workspaces[@]}"; do
     [ "$code" = 200 ] && adopt=true
   fi
   echo "integration $provider: adopt=$adopt"
-  terraform -chdir="$ws" plan -input=false -no-color -lock-timeout=5m -out=tfplan \
-    -var "adopt_jfrog_integration=$adopt"
-  terraform -chdir="$ws" apply -input=false -no-color -lock-timeout=5m tfplan
+  # Onboarding several apps starts one run each on the same workspace. The azurerm
+  # backend can fail at once on a lock another run holds, so wait and plan again.
+  for try in 1 2 3 4 5 6; do
+    if terraform -chdir="$ws" plan -input=false -no-color -lock-timeout=5m -out=tfplan \
+        -var "adopt_jfrog_integration=$adopt" 2>"$OIDC_DIR/plan.err" \
+      && terraform -chdir="$ws" apply -input=false -no-color -lock-timeout=5m tfplan 2>"$OIDC_DIR/plan.err"; then
+      break
+    fi
+    cat "$OIDC_DIR/plan.err" >&2
+    grep -q "state lock" "$OIDC_DIR/plan.err" && [ "$try" -lt 6 ] || exit 1
+    echo "state locked by another run: retry $try in 60s"
+    sleep 60
+  done
   terraform -chdir="$ws" output -json > "$OIDC_DIR/outputs.json"
   python3 -m console.deliver wire "$ws" "$OIDC_DIR/outputs.json"
 done

@@ -560,3 +560,43 @@ Cloud Build and GitHub Actions options are removed for now:
   app's project / resource group (`pipeline_identity` in `pipelines/delivery.json`).
 - Live: `orders-legacy` (an existing Cloud Run job, own SA) discovers and
   preflights green in delivery mode.
+
+## Every workload type, live through the console (2026-10-30)
+
+Existing apps were created with no JFrog settings, then onboarded with the
+console in delivery mode (Discover, Preflight, Publish, then the
+`<cloud>-workload-onboard` pipeline applied and wired them). Each app then
+exchanged its own identity for a 1 h JFrog token (3599 s):
+
+| Type | App | Identity | Proof |
+|---|---|---|---|
+| Cloud Run job | `artifact-reader` | own SA | read `demo-generic/hello.txt` (earlier) |
+| Cloud Run service | `jfrog-svc-demo` | default compute → `jfrog-jfrog-svc-demo` (dedicated) | `/healthz/jfrog` ok, read `hello.txt` |
+| Cloud Run function (gen2) | `jfrog-fn-demo` | default compute → `jfrog-jfrog-fn-demo` | `/healthz/jfrog` ok, read `hello.txt` |
+| Container Apps job | `caj-artifact-reader` | user-assigned | logs: exchanged, read `hello.txt` |
+| Container App | `ca-jfrog-demo` | system-assigned | logs: exchanged, read `hello.txt` |
+| Functions on Container Apps | `fnaca-jfrog-demo` | system-assigned | `/api/healthz/jfrog` ok |
+| Functions Premium (EP1) | `func-jfrog-prem-0e56` | system-assigned | `/api/healthz/jfrog` ok |
+| Functions Flex Consumption | `func-jfrog-flex-0e56` | none → `id-func-jfrog-flex-0e56-jfrog` (dedicated) | `/api/healthz/jfrog` ok |
+
+Test apps: GCP `csb-test-257615` (us-central1); Azure `rg-jfrog-types`
+(westus2), with the Container Apps in the existing `cae-artifact-reader` environment.
+
+Lessons, now in code:
+- The pipelines run the ADO repo's code, which had fallen behind GitHub, so
+  Wire never switched the service to its dedicated account (403 from JFrog).
+  Delivery Preflight now fails when the ADO repo's `console/` or
+  `terraform/modules/` differ from this checkout (`pipeline_code`).
+- Missing APIs and resource providers are Preflight failures, not warnings
+  (Cloud Functions API was off; `Microsoft.Web` was not registered).
+- Run pipeline is off until a workload is picked and runs Preflight first.
+- Several onboardings at once race on the workspace state lock; the azurerm
+  backend fails at once despite `-lock-timeout`, so `workspace-apply.sh`
+  retries on lock errors. It also accepts a bare workspace name.
+- Functions on Container Apps: `az containerapp function keys list` returned
+  500s (preview); `keys set` with a known value worked.
+- Build and deploy pipelines for the Cloud Run service (`gcp-service-build-deploy`,
+  stdlib `apps/cloud-run-service`) and function (`gcp-function-deploy`, source
+  deploy that carries over the wired identity and env) sit beside the job one.
+  The build SA needs `roles/cloudfunctions.developer` and
+  `roles/iam.serviceAccountUser` (in `ado-trust`, not yet applied).
