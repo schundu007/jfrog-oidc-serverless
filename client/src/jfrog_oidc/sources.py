@@ -158,8 +158,10 @@ class AzureDevOpsSource:
     """ID token for an Azure DevOps pipeline job, issued for a service connection.
 
     The job POSTs to SYSTEM_OIDCREQUESTURI with its job token (SYSTEM_ACCESSTOKEN,
-    mapped into the step's env) and gets a token with iss
-    https://vstoken.dev.azure.com/<org-id> and sub sc://<org>/<project>/<connection>.
+    mapped into the step's env) and gets the connection's token: iss
+    https://login.microsoftonline.com/<tenant>/v2.0 and sub
+    /eid1/c/pub/t/.../sc/<org-id>/<connection-id> (older connections: iss
+    https://vstoken.dev.azure.com/<org-id>, sub sc://<org>/<project>/<connection>).
     The audience is fixed by Azure DevOps (api://AzureADTokenExchange), so the one
     passed in is ignored. The connection must be referenced by a task in the job
     (or authorized for the pipeline) before Azure DevOps will issue the token.
@@ -181,7 +183,7 @@ class AzureDevOpsSource:
     def get_token(self, audience: str) -> str:
         if not self._uri.startswith("https://") and os.environ.get("JFROG_OIDC_ALLOW_HTTP") != "1":
             raise IdentityError("SYSTEM_OIDCREQUESTURI must be https")
-        query = urllib.parse.urlencode({"api-version": "7.1", "serviceConnectionId": self._connection})
+        query = urllib.parse.urlencode({"api-version": "7.1-preview.1", "serviceConnectionId": self._connection})
         url = f"{self._uri}{'&' if '?' in self._uri else '?'}{query}"
         req = urllib.request.Request(url, data=b"{}", method="POST", headers={
             "Authorization": f"Bearer {self._job_token}", "Content-Type": "application/json"})
@@ -189,7 +191,7 @@ class AzureDevOpsSource:
             with urllib.request.urlopen(req, timeout=self._timeout) as resp:
                 raw = resp.read()
         except urllib.error.HTTPError as exc:
-            raise IdentityError(f"Azure DevOps OIDC endpoint returned HTTP {exc.code}") from None
+            raise IdentityError(f"Azure DevOps OIDC endpoint returned HTTP {exc.code}: {_error_message(exc)}") from None
         except (urllib.error.URLError, OSError) as exc:
             raise IdentityError(f"Azure DevOps OIDC endpoint unreachable: {exc}") from None
         try:
@@ -199,6 +201,15 @@ class AzureDevOpsSource:
         if not isinstance(token, str) or token.count(".") != 2:
             raise IdentityError("Azure DevOps did not return a JWT")
         return token
+
+
+def _error_message(exc: urllib.error.HTTPError) -> str:
+    """The "message" of an Azure DevOps error body (never echoes request headers)."""
+    try:
+        msg = json.loads(exc.read().decode("utf-8-sig", "replace")).get("message", "")
+    except (ValueError, AttributeError, OSError):
+        return ""
+    return str(msg)[:300]
 
 
 def detect_source() -> IdentitySource:

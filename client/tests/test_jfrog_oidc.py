@@ -78,6 +78,8 @@ class FakeCloud(BaseHTTPRequestHandler):
         if url.path.endswith("/oidctoken"):  # Azure DevOps SYSTEM_OIDCREQUESTURI
             if self.headers.get("Authorization") != "Bearer ado-job-token":
                 return self._send(401, {"message": "bad job token"})
+            if urllib.parse.parse_qs(url.query).get("api-version") != ["7.1-preview.1"]:
+                return self._send(400, {"message": "The requested REST API version is in preview."})
             st.setdefault("ado_requests", []).append(dict(urllib.parse.parse_qsl(url.query)))
             sub = "sc://acme/payments/jfrog-oidc"
             return self._send(200, {"oidcToken": _jwt({"iss": "https://vstoken.dev.azure.com/org-guid", "sub": sub,
@@ -324,7 +326,7 @@ class AzureDevOpsFlowTests(BaseCase):
         self.assertEqual(tok.username, "cr-orders")
         req = FakeCloud.state["ado_requests"][0]
         self.assertEqual(req["serviceConnectionId"], "sc-123")
-        self.assertEqual(req["api-version"], "7.1")
+        self.assertEqual(req["api-version"], "7.1-preview.1")
         self.assertEqual(FakeCloud.state["exchanges"][0]["provider_name"], "ado")
 
     def test_needs_a_service_connection(self):
@@ -338,6 +340,7 @@ class AzureDevOpsFlowTests(BaseCase):
             with self.assertRaises(IdentityError) as ctx:
                 AzureDevOpsSource(service_connection_id="sc-1").get_token("ignored")
         self.assertIn("401", str(ctx.exception))
+        self.assertIn("bad job token", str(ctx.exception))
         self.assertNotIn("wrong-job-token-value", str(ctx.exception))
 
     def test_refuses_plain_http_unless_allowed(self):
