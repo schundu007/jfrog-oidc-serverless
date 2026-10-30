@@ -29,6 +29,8 @@ class BuiltInScenarioTests(unittest.TestCase):
             "happy-gcp-function", "happy-aca", "happy-functions-premium", "jfrog-outage-90m",
             "rotator-misses-2-runs", "rotator-misses-3-runs", "rotator-down-5h", "ttl-too-short",
             "premium-no-refresh-permission", "azure-v1-tokens", "wrong-audience", "sa-recreated", "min-ttl-refusal",
+            "happy-aws-lambda", "happy-aws-ecs", "happy-aws-app-runner", "aws-federation-disabled", "aws-role-recreated",
+            "happy-openshift-knative", "openshift-wrong-audience",
         })
 
     def test_every_builtin_meets_expectation(self):

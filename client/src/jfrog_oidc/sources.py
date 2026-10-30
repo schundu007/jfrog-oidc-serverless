@@ -304,7 +304,8 @@ class AwsStsSource:
             with opener.open(req, timeout=self._timeout) as resp:
                 raw = resp.read()
         except urllib.error.HTTPError as exc:
-            code, message = _sts_error(exc)
+            with exc:
+                code, message = _sts_error(exc)
             hint = (": enable it with aws iam enable-outbound-web-identity-federation"
                     if code == "OutboundWebIdentityFederationDisabledException" else "")
             raise IdentityError(f"STS GetWebIdentityToken returned HTTP {exc.code} {code}: {message}{hint}") from None

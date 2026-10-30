@@ -1,0 +1,17 @@
+{
+  "name": "openshift-wrong-audience",
+  "description": "The projected token's audience does not match the JFrog integration: every exchange is rejected.",
+  "target_kind": "openshift_knative_service",
+  "duration": "24h",
+  "clock_start": "2026-01-01T00:00:00Z",
+  "seed": 1,
+  "config_overrides": {
+    "sim.runtime_audience": "jfrog-k8"
+  },
+  "load": {},
+  "faults": [],
+  "expect": {
+    "verdict": "fail",
+    "root_cause_contains": "audience"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "happy-aws-app-runner",
+  "description": "App Runner service, no faults, 24 h: instance-role credentials from the container credentials endpoint.",
+  "target_kind": "aws_app_runner",
+  "duration": "24h",
+  "clock_start": "2026-01-01T00:00:00Z",
+  "seed": 1,
+  "config_overrides": {},
+  "load": {},
+  "faults": [],
+  "expect": {
+    "verdict": "pass"
+  }
+}

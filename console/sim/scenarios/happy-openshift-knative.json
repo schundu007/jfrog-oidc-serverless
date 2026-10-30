@@ -1,0 +1,14 @@
+{
+  "name": "happy-openshift-knative",
+  "description": "Knative service, no faults, 24 h: projected service-account token file refreshed by the kubelet at 80% of 1 h.",
+  "target_kind": "openshift_knative_service",
+  "duration": "24h",
+  "clock_start": "2026-01-01T00:00:00Z",
+  "seed": 1,
+  "config_overrides": {},
+  "load": {},
+  "faults": [],
+  "expect": {
+    "verdict": "pass"
+  }
+}

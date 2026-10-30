@@ -32,6 +32,14 @@ FAULT_TYPES = {
     "arm_refresh_forbidden": "ARM Key Vault reference refresh returns 403 to the rotator",
     "mapping_revoked": "an identity mapping is removed (params.mapping: runtime | pull)",
     "integration_misconfigured": "the JFrog integration's issuer is wrong (params.issuer)",
+    "federation_disabled": "AWS outbound identity federation is off: STS GetWebIdentityToken returns 403",
+}
+# Faults that only exist on some clouds (the rest apply everywhere).
+FAULT_CLOUDS = {
+    "rotator_down": ("gcp", "azure"),
+    "arm_refresh_forbidden": ("azure",),
+    "sa_recreated": ("gcp",),
+    "federation_disabled": ("aws",),
 }
 
 DEFAULT_LOAD = {"cold_starts_per_hour": 6.0, "requests_per_minute": 2.0, "uncached_pull_ratio": 0.2,
@@ -111,6 +119,9 @@ def normalize(raw: dict) -> dict:
     for f in s.get("faults") or []:
         if f.get("type") not in FAULT_TYPES:
             raise ValueError(f"unknown fault type {f.get('type')!r}; known: {', '.join(FAULT_TYPES)}")
+        clouds = FAULT_CLOUDS.get(f["type"])
+        if clouds and model.cloud_of(kind) not in clouds and model.cloud_of(kind) not in ("gcp", "azure"):
+            raise ValueError(f"fault {f['type']} does not apply to {model.KINDS[kind]['label']}")
         nf = {"type": f["type"], "params": dict(f.get("params") or {})}
         nf["start_s"] = parse_offset(f.get("start", "00:00"))
         nf["end_s"] = parse_offset(f["end"]) if f.get("end") is not None else None

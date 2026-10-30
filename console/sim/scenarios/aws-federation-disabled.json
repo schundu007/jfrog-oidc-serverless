@@ -1,0 +1,20 @@
+{
+  "name": "aws-federation-disabled",
+  "description": "The account never enabled outbound identity federation: STS refuses every GetWebIdentityToken.",
+  "target_kind": "aws_lambda",
+  "duration": "24h",
+  "clock_start": "2026-01-01T00:00:00Z",
+  "seed": 1,
+  "config_overrides": {},
+  "load": {},
+  "faults": [
+    {
+      "type": "federation_disabled",
+      "start": "00:00"
+    }
+  ],
+  "expect": {
+    "verdict": "fail",
+    "root_cause_contains": "aws iam enable-outbound-web-identity-federation"
+  }
+}
