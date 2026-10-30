@@ -24,7 +24,8 @@ def from_daemonsets(data: dict, cfg: dict) -> list:
             continue
         out.append({"namespace": md.get("namespace"), "name": md.get("name"), "mounts": mounts, "jfrog": jfrog,
                     "release": md.get("namespace") == cfg["k8s"]["namespace"] and md.get("name") == cfg["k8s"]["daemonset"],
-                    "created": md.get("creationTimestamp"), "images": images})
+                    "created": md.get("creationTimestamp"), "images": images,
+                    "ready": (d.get("status") or {}).get("numberReady", 0), "desired": (d.get("status") or {}).get("desiredNumberScheduled", 0)})
     return out
 
 

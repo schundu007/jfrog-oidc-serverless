@@ -4,7 +4,7 @@
 // refresh or another page in between finds it where it was. The approval is the only click inside it.
 
 import { api, h, fill, state, selectTab, refreshConfigs } from "./app.js";
-import { $, pill, table, workflow, brief } from "./ui.js";
+import { $, workflow, brief } from "./ui.js";
 
 let aks = null;             // GET /api/aks
 const live = {};            // config name -> {loading, facts, preflight, error}
@@ -31,60 +31,65 @@ function render() {
   const configs = state.configs || [];
   if (!aks) loadAks();
   const cur = configs.find((c) => c.name === state.config);
-  fill(P,
-    h("div", { class: "cfg-head" }, h("div", {}, h("h1", {}, "Clusters"))),
-    configs.length ? savedTable(configs) : null,
-    cur ? clusterCard(cur) : null,
-    aksTable(configs));
+  fill(P, cur ? clusterView(cur) : h("h1", {}, "Clusters"), aksTable(configs));
 }
 
-function savedTable(configs) {
-  return h("table", { class: "cfg-table clickable" },
-    h("thead", {}, h("tr", {}, ["Name", "AKS cluster", "State", "Updated"].map((t) => h("th", { scope: "col" }, t)))),
-    h("tbody", {}, configs.map((c) => h("tr", { class: c.name === state.config ? "is-open" : "", onclick: () => select(c.name) },
-      h("td", {}, h("b", {}, c.name)), h("td", {}, c.cluster || muted("—")),
-      h("td", {}, stateText(live[c.name])), h("td", { class: "muted small" }, when(c.updated))))));
+// One status for the header badge: [class, text].
+function verdict(s) {
+  if (!s || s.loading) return ["muted", s ? "Reading…" : "Not read"];
+  if (s.error) return ["fail", "Unreachable"];
+  if ((s.preflight?.checks || []).some((c) => c.status === "fail")) return ["fail", "Needs attention"];
+  if (!s.facts?.release) return ["muted", "Not installed"];
+  if (s.proof?.proven) return ["ok", "OIDC working"];
+  return s.proof?.complete ? ["fail", "OIDC not proven"] : ["warn", "Installed · not verified"];
 }
 
-// Installed, not installed, or the first problem Preflight found.
-function stateText(s) {
-  if (!s || s.loading) return muted(s ? "reading…" : "—");
-  if (s.error) return h("span", { class: "error small" }, brief(s.error));
-  const bad = (s.preflight?.checks || []).find((c) => c.status === "fail");
-  if (bad) return h("span", { class: "pill fail" }, bad.title);
-  return s.facts?.release ? h("span", { class: "pill pass" }, "installed") : muted("not installed");
-}
-
-function clusterCard(c) {
+function clusterView(c) {
   const s = live[c.name] || {};
   const f = s.facts || {};
   const rel = f.release;
-  const ds = (f.daemonsets || []).find((d) => /jfrog/i.test(d.name));
-  const facts = [
-    ["Kubernetes", f.cluster?.kubernetes_version || "—"],
-    ["OIDC issuer · Workload Identity", f.cluster ? `${f.cluster.oidc_enabled ? "on" : "off"} · ${f.cluster.workload_identity ? "on" : "off"}` : "—"],
-    ["Helm release", rel ? `${rel.chart} · rev ${rel.revision} · ${rel.status}` : "not installed"],
-    ["DaemonSet", ds ? "installed" : "—"],
-    ["Service account", f.service_account ? (f.service_account.exists ? `JFrogExchange: ${f.service_account.annotation ?? "missing"}` : "not created") : "—"],
-    ["Nodes", f.nodes ? String(f.nodes.length) : "—"],
-    ["JFrog OIDC provider", f.providers ? ((f.providers || []).some((p) => p.name === c.provider) ? "present" : "missing") : "—"],
-  ];
-  const problems = (s.preflight?.checks || []).filter((x) => x.status === "fail" || x.status === "warn");
   const busy = isBusy(c.name);
-  return h("section", { class: "summary cluster-card" },
-    h("div", { class: "toolbar" },
-      h("h2", {}, c.name, muted(` · ${c.cluster || "—"}`)),
-      h("div", { class: "tools" },
-        h("button", { class: "secondary", disabled: s.loading || busy, onclick: () => readStatus(c.name) }, s.loading ? "Reading…" : "Refresh"),
-        h("button", { class: "secondary", disabled: busy, onclick: () => selectTab("configure") }, "Edit"),
-        h("button", { class: "secondary", disabled: busy || !rel, onclick: () => start("teardown") }, "Tear down"),
-        h("button", { class: "secondary", disabled: busy || !rel, onclick: () => start("verify") }, "Verify"),
-        h("button", { class: "primary", disabled: busy, onclick: () => start("setup") }, rel ? "Set up again" : "Set up"))),
-    s.error ? h("p", { class: "error small" }, brief(s.error)) : null,
-    problems.length ? table(["", "check", "detail"], problems.map((x) => [pill(x.status), x.title, brief(x.detail)])) : null,
-    proofBlock(s.proof),
-    table(["", ""], facts, "grid small facts"),
-    actionEl(c.name));
+  const [vcls, vtext] = verdict(s);
+  const problems = (s.preflight?.checks || []).filter((x) => x.status === "fail" || x.status === "warn");
+  const sa = f.service_account;
+  const tiles = [
+    ["Kubernetes", f.cluster?.kubernetes_version || "—"],
+    ["OIDC · Workload Identity", f.cluster ? `${f.cluster.oidc_enabled ? "On" : "Off"} · ${f.cluster.workload_identity ? "On" : "Off"}` : "—"],
+    ["Credential provider", rel ? `${rel.chart.replace(/^.*-(?=\d)/, "v")} · rev ${rel.revision}` : "Not installed"],
+    ["Nodes", f.nodes ? String(f.nodes.length) : "—"],
+    ["Service account", sa ? (sa.exists ? (sa.annotation === "true" ? "Allowed" : "Not allowed") : "Missing") : "—"],
+    ["JFrog provider", f.providers ? (f.providers.some((p) => p.name === c.provider) ? "Present" : "Missing") : "—"],
+  ];
+  return h("div", { class: "cluster" },
+    h("header", { class: "cl-head" },
+      h("div", { class: "cl-title" },
+        h("h1", {}, c.name),
+        h("span", { class: `badge ${vcls}` }, vtext),
+        c.cluster && c.cluster !== c.name ? muted(c.cluster) : null),
+      h("div", { class: "cl-actions" },
+        h("button", { class: "ghost", disabled: s.loading || busy, onclick: () => readStatus(c.name) }, s.loading ? "Reading…" : "Refresh"),
+        h("button", { class: "ghost", disabled: busy, onclick: () => selectTab("configure") }, "Edit"),
+        rel ? h("button", { class: "ghost danger", disabled: busy, onclick: () => start("teardown") }, "Tear down") : null,
+        rel ? h("button", { class: "secondary", disabled: busy, onclick: () => start("setup") }, "Set up again") : null,
+        h("button", { class: "primary", disabled: busy, onclick: () => start(rel ? "verify" : "setup") }, rel ? "Verify" : "Set up"))),
+    s.error ? h("div", { class: "callout fail" }, brief(s.error)) : null,
+    problems.length ? panel("Problems", null, checklist(problems)) : null,
+    actionEl(c.name),
+    h("div", { class: "tiles" }, tiles.map(([k, v]) => h("div", { class: "tile" }, h("span", {}, k), h("b", {}, v)))),
+    proofBlock(s.proof));
+}
+
+const panel = (title, aside, ...body) => h("section", { class: "panel" },
+  h("div", { class: "panel-head" }, h("h2", {}, title), aside), ...body);
+
+// Steps or checks as a list with a status mark: {status, title, detail}.
+const MARK = { ok: "✓", done: "✓", pass: "✓", failed: "✕", fail: "✕", error: "✕", warn: "!", skipped: "–" };
+function checklist(items) {
+  return h("ul", { class: "checks" }, items.map((x) => {
+    const st = String(x.status === "done" ? "ok" : x.status || "").toLowerCase();
+    return h("li", { class: `st-${st}` }, h("span", { class: "mark", title: st }, MARK[st] || "•"),
+      h("span", { class: "t" }, x.title || x.id), h("span", { class: "d" }, brief(x.detail)));
+  }));
 }
 
 // The OIDC proof: each link of the newest real Set up or Verify that checked it, cluster to JFrog.
@@ -100,11 +105,11 @@ function latestProof(runs, name) {
 }
 
 function proofBlock(p) {
-  const head = (cls, text) => h("div", { class: "toolbar" }, h("h3", {}, "OIDC"), h("span", { class: `pill ${cls}` }, text));
-  if (!p) return h("div", { class: "proof" }, head("notrun", "not checked"));
-  const verdict = p.proven ? ["pass", `working · ${when(p.at)}`] : !p.complete ? ["notrun", "run Verify"] : ["fail", `not proven · ${when(p.at)}`];
-  return h("div", { class: "proof" }, head(...verdict),
-    table(["", "check", "result"], p.steps.map((st) => [pill(st.status === "done" ? "ok" : st.status), st.title || st.id, brief(st.detail)])));
+  if (!p) return null;
+  const tag = p.proven ? ["ok", "Working"] : !p.complete ? ["warn", "Incomplete"] : ["fail", "Not proven"];
+  return h("details", { class: "panel proof", open: !p.proven },
+    h("summary", { class: "panel-head" }, h("h2", {}, "OIDC proof"), h("span", { class: `badge ${tag[0]}` }, tag[1]), muted(when(p.at))),
+    checklist(p.steps));
 }
 
 // One read per cluster at a time: a second call while one is in flight joins it.
@@ -241,8 +246,7 @@ function actionEl(name) {
     }
   }
   if (a.error) parts.push(h("p", { class: "error small" }, brief(a.error)));
-  return h("div", { class: "flow" },
-    h("h3", {}, TITLES[a.which], muted(` · ${when((r || d || {}).created)}`)),
+  return panel(TITLES[a.which], muted(when((r || d || {}).created)),
     h("ol", { class: "stages" }, stages.map(([t, cls]) => h("li", { class: cls }, t))),
     ...parts);
 }
@@ -277,8 +281,7 @@ function approvalBox(name, run, dry) {
   const no = h("button", { class: "secondary" }, "Cancel");
   const msg = h("p", { class: "error small" });
   const box = h("div", { class: "approve-box" },
-    table(["", "step", "dry run"], run.request.parameters.steps.map((s, i) => [String(i + 1), s.title,
-      dryById[s.id] ? h("span", {}, pill(dryById[s.id].status === "done" ? "ok" : dryById[s.id].status), " ", brief(dryById[s.id].detail)) : ""])),
+    checklist(run.request.parameters.steps.map((s) => ({ status: dryById[s.id]?.status || "", title: s.title, detail: dryById[s.id]?.detail }))),
     h("div", { class: "approve" }, run.needs_typed_cluster ? typed : null, go, no), msg);
   const act = async (path, body) => {
     go.disabled = no.disabled = true;
@@ -298,7 +301,7 @@ function approvalBox(name, run, dry) {
 
 function stepTable(result) {
   const steps = (result || {}).steps || [];
-  return steps.length ? table(["", "step", "detail"], steps.map((s) => [pill(s.status === "done" ? "ok" : s.status), s.title || s.id, brief(s.detail)])) : null;
+  return steps.length ? checklist(steps) : null;
 }
 
 // The cause of a failed run, from its evidence; read once per run.
@@ -316,7 +319,7 @@ function causeEl(name, run) {
 
 function aksTable(configs) {
   const added = new Set(configs.map((c) => (c.cluster || "").toLowerCase()));
-  const head = h("div", { class: "toolbar" }, h("h2", {}, "Add an AKS cluster"),
+  const head = h("div", { class: "toolbar" }, h("h2", {}, "Add a cluster"),
     h("div", { class: "tools" }, h("button", { class: "secondary", onclick: () => { aks = null; render(); } }, "Refresh")));
   if (!aks || aks.loading) return h("div", {}, head, muted("Reading az aks list…"));
   if (aks.error) return h("div", {}, head, h("p", { class: "error small" }, brief(aks.error)));
