@@ -314,7 +314,8 @@ function viewWire(step, ev) {
 
 function renderLog() {
   const pre = $("run-log");
-  pre.textContent = rs.log.map((e) => `${(e.t || "").slice(11, 19)} ${e.step ? `[${e.step}] ` : ""}${e.line}`).join("\n");
+  // Steps and outcomes only: command lines ("$ az …") stay in the server's log.
+  pre.textContent = rs.log.filter((e) => !/^\$ /.test(e.line || "")).map((e) => `${(e.t || "").slice(11, 19)} ${e.step ? `[${e.step}] ` : ""}${e.line}`).join("\n");
   pre.scrollTop = pre.scrollHeight;
 }
 
