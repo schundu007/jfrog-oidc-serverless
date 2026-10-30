@@ -123,40 +123,36 @@ function renderSummary() {
   const d = c.target?.discovered;
   const found = !!d && (!d.kind || d.kind === c.target.kind);
   const who = d?.service_account || d?.principal_id || null;
-  const sub = d?.mapping_subject || null;
   const integration = c.jfrog?.integration_names?.[cloud] || "";
   const adopt = !!c.jfrog?.adopt_integration;
   const ttl = c.runtime?.ttl_seconds || 3600;
-  const group = c.jfrog?.reader_group || "(reader group)";
+  const group = c.jfrog?.reader_group || "?";
   const mapping = `${c.name || "config"}-runtime`;
-  const target = c.target?.[cloud]?.name || "the workload";
   const issuer = cloud === "gcp" ? "https://accounts.google.com" : "https://login.microsoftonline.com/<tenant>/v2.0";
 
   const node = (state, title, detail) => h("li", { class: `chain-node is-${state}` },
     h("span", { class: "chain-dot", "aria-hidden": "true" }),
     h("div", {}, h("b", { text: title }), detail ? h("span", { class: "chain-detail", text: detail }) : null));
   const nodes = [
-    node(found ? "done" : "todo", "Workload identity", found ? `${who}${sub && sub !== who ? ` (sub ${sub})` : ""}` : "—"),
-    node(found ? "done" : "todo", "Issuer", `${issuer}, ${cloud === "gcp" ? "Google ID token" : "Entra ID v2 token"}`),
-    node(adopt ? "done" : "todo", `OIDC integration ${integration}`, adopt ? "existing" : "new"),
-    node("todo", `Identity mapping ${mapping}`, `sub ${sub || "?"} → group ${group}`),
+    node(found ? "done" : "todo", "Workload identity", found ? who : ""),
+    node(found ? "done" : "todo", "Issuer", issuer),
+    node(adopt ? "done" : "todo", "Integration", adopt ? `${integration} (existing)` : integration),
+    node("todo", "Mapping", `${mapping} → ${group}`),
   ];
-  if (c.runtime?.enabled) nodes.push(node("end", "JFrog access token", `TTL ${ttl}s, scope applied-permissions/groups`));
-  if (c.pull_path?.enabled) nodes.push(node("end", "Pull token (rotated)",
-    `TTL ${c.pull_path.ttl_seconds}s, stored in ${cloud === "gcp" ? "Secret Manager" : "Key Vault"}`));
+  if (c.runtime?.enabled) nodes.push(node("end", "JFrog token", `${ttl}s`));
+  if (c.pull_path?.enabled) nodes.push(node("end", "Pull token", `${c.pull_path.ttl_seconds}s`));
   fill($("chain"), nodes);
 
-  const item = (verb, type, name) => h("li", {}, `${verb} `, h("code", { text: type }), name ? ` ${name}` : "");
+  const code = (t) => h("code", { text: t });
   const items = [
-    item(adopt ? "import" : "create", "platform_oidc_configuration", integration),
-    item("create", "platform_oidc_identity_mapping", mapping),
+    h("li", {}, code("platform_oidc_configuration"), ` ${integration}`),
+    h("li", {}, code("platform_oidc_identity_mapping"), ` ${mapping}`),
   ];
-  if (c.runtime?.enabled) items.push(h("li", {}, "set env ", h("code", { text: "JFROG_URL" }), ", ",
-    h("code", { text: "JFROG_OIDC_PROVIDER" }), ", ", h("code", { text: "JFROG_OIDC_AUDIENCE" }), ", ",
-    h("code", { text: "JFROG_OIDC_SOURCE" }), ` on ${target}`));
-  if (c.pull_path?.enabled) items.push(cloud === "gcp"
-    ? h("li", { text: "create rotator job, Cloud Scheduler job, Secret Manager secret, Artifact Registry remote" })
-    : h("li", { text: "create rotator job, Key Vault secret; set the registry password to a Key Vault reference" }));
+  if (c.runtime?.enabled) items.push(h("li", {}, code("JFROG_URL"), " ", code("JFROG_OIDC_PROVIDER"), " ",
+    code("JFROG_OIDC_AUDIENCE"), " ", code("JFROG_OIDC_SOURCE")));
+  if (c.pull_path?.enabled) items.push(h("li", {}, ...(cloud === "gcp"
+    ? [code("rotator job"), " ", code("scheduler"), " ", code("secret"), " ", code("AR remote")]
+    : [code("rotator job"), " ", code("Key Vault secret"), " ", code("registry password ref")])));
   fill($("cfg-plan-list"), items);
   const urlOk = /^https:\/\/[a-z0-9.-]+\/?$/i.test(c.jfrog?.url || "");
   $("step-app").classList.toggle("is-done", found);
