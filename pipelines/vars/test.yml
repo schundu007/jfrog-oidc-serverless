@@ -2,8 +2,8 @@
 # every job authenticates with its service connection's OIDC token.
 variables:
   ENVIRONMENT: test
-  BUILD_SERVICE_CONNECTION: jfrog-oidc-wif
-  SETUP_SERVICE_CONNECTION: jfrog-oidc-setup
+  BUILD_SERVICE_CONNECTION_ID: 00d00a9a-4216-46c9-bfb7-718d75d629d8 # jfrog-oidc-wif
+  SETUP_SERVICE_CONNECTION_ID: e28f21a9-bc58-4522-b9f0-370e8cf112ab # jfrog-oidc-setup
   TERRAFORM_VERSION: 1.15.5
 
   JFROG_URL: https://trial9hnw59.jfrog.io

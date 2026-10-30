@@ -1,21 +1,28 @@
-# Sourced by the pipeline scripts inside AzureCLI@2 (addSpnToEnvironment: true).
+# Sourced by the pipeline scripts.
 #
-# The service connection's OIDC token ($idToken: Entra-issued, aud
-# api://AzureADTokenExchange, sub unique to the connection) becomes:
+# The service connection's OIDC token (requested from System.OidcRequestUri with
+# the job token: Entra-issued, aud api://AzureADTokenExchange, sub unique to the
+# connection) becomes:
 #   - the identity source for the JFrog exchange (jfrog_oidc, file source)
 #   - a gcloud / Google ADC login through Workload Identity Federation
 # Everything lives in a private temp dir removed on exit. No token is printed.
 
-: "${idToken:?run inside AzureCLI@2 with addSpnToEnvironment: true}"
-: "${JFROG_URL:?}" "${JFROG_OIDC_PROVIDER:?}"
+: "${SYSTEM_ACCESSTOKEN:?map SYSTEM_ACCESSTOKEN: \$(System.AccessToken) on the step}"
+: "${JFROG_OIDC_ADO_SERVICE_CONNECTION_ID:?}" "${JFROG_URL:?}" "${JFROG_OIDC_PROVIDER:?}"
 
 umask 077
 OIDC_DIR=$(mktemp -d)
 trap 'rm -rf "$OIDC_DIR"' EXIT
-printf '%s' "$idToken" > "$OIDC_DIR/id-token"
-unset idToken
-
 export PYTHONPATH="$BUILD_SOURCESDIRECTORY/client/src${PYTHONPATH:+:$PYTHONPATH}"
+
+python3 - "$OIDC_DIR/id-token" <<'PY'
+import sys
+from jfrog_oidc import AzureDevOpsSource
+with open(sys.argv[1], "w", encoding="ascii") as f:
+    f.write(AzureDevOpsSource().get_token("api://AzureADTokenExchange"))
+PY
+unset SYSTEM_ACCESSTOKEN
+
 export JFROG_OIDC_SOURCE=file
 export JFROG_OIDC_TOKEN_FILE="$OIDC_DIR/id-token"
 export JFROG_OIDC_AUDIENCE=api://AzureADTokenExchange
