@@ -52,7 +52,6 @@ function render(r) {
   v.textContent = r.verdict;
   v.className = `pill ${r.verdict.toLowerCase()}`;
   $("sim-story").textContent = r.story;
-  $("sim-runbook").textContent = `Runbook: ${r.runbook}`;
   const top = r.diagnosis.findings.find((f) => f.rule === r.root_cause);
   const root = $("sim-root");
   root.className = `callout ${r.verdict === "PASS" ? "ok" : r.verdict === "FAIL" ? "fail" : "warn"}`;

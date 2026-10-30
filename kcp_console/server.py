@@ -37,9 +37,10 @@ from .parse import summary
 from .store import RUN_ID_RE, RunStore, StatusStore, Store, StoreError
 
 STATIC_DIR = Path(__file__).parent / "static"
-# Page URLs: each tab (and each Operate page) has its own path; all serve index.html.
-OPERATE_PAGES = ("install", "verify", "nodes", "artifactory", "troubleshoot", "security", "demo", "rollback")
-PAGE_ROUTES = {"/", "/clusters", "/configure", "/operate", "/runs", "/simulate"} | {f"/operate/{p}" for p in OPERATE_PAGES}
+# Page URLs: each section has its own path (old /operate/<page> links still work); all serve index.html.
+OPERATE_PAGES = ("install", "verify", "nodes", "artifactory", "troubleshoot", "security", "demo", "rollback", "runs", "simulate")
+PAGE_ROUTES = ({"/", "/clusters", "/configure", "/operate"} | {f"/{p}" for p in OPERATE_PAGES}
+               | {f"/operate/{p}" for p in OPERATE_PAGES})
 MAX_BODY = 1024 * 1024
 MAX_DRAIN = 8 * 1024 * 1024
 MAX_SIMS_KEPT = 20

@@ -69,12 +69,6 @@ h2 { font-size: 18px; font-weight: 600; margin: 28px 0 10px; }
 .pill.fail { color: var(--fail); border-color: var(--fail); background: var(--fail-soft); }
 .pill.inconclusive, .pill.unknown { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
 
-.tabs { display: flex; gap: 4px; }
-.tabs button {
-  font: inherit; font-size: 15px; background: none; border: 0; border-bottom: 2px solid transparent;
-  padding: 6px 12px; color: var(--muted); cursor: pointer;
-}
-.tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--brand); font-weight: 600; }
 
 .banner { margin: 16px 20px; padding: 12px 16px; border: 1px solid var(--fail); border-radius: 8px; background: var(--fail-soft); }
 .banner p { margin: 0 0 8px; }
@@ -159,7 +153,6 @@ svg.tl .ev.bad { fill: var(--fail); }
 svg.tl .tick { stroke: var(--border); }
 
 /* M3–M6 */
-.topbar { flex-wrap: wrap; }
 .config-pick { display: flex; align-items: center; gap: 8px; }
 select, input[type=text], textarea { font: inherit; font-size: 14px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--fg); }
 button.secondary { font: inherit; font-size: 14px; padding: 5px 12px; border: 1px solid var(--accent); border-radius: 6px; background: var(--card); color: var(--accent); cursor: pointer; }
@@ -203,18 +196,7 @@ input.note { width: 100%; margin-top: 4px; }
 /* ------------------------------------------------------------ tool design (shared with the 8765 console) */
 
 :root { --forest: #1f3d0c; }
-.topbar { display: block; background: var(--forest); color: #fff; border: 0; padding: 0 24px; box-shadow: inset 0 -3px 0 var(--brand); }
-.topbar-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0 6px; }
 .brand { color: #fff; font-size: 17px; letter-spacing: 0.01em; }
-.topbar .pill { background: rgba(255, 255, 255, 0.12); color: #fff; border-color: rgba(255, 255, 255, 0.35); }
-.topbar .config-pick label { color: rgba(255, 255, 255, 0.75); }
-.topbar .config-pick select { background-color: #fff; color: #22261f; }
-.topbar button.secondary { color: #fff; border-color: rgba(255, 255, 255, 0.5); background: transparent; }
-.topbar :focus-visible { outline-color: #fff; }
-.topbar nav.tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 0 0 3px; background: none; border: 0; position: static; }
-.topbar .tabs button { color: rgba(255, 255, 255, 0.75); border-bottom: 3px solid transparent; padding: 8px 12px; font-size: 15px; }
-.topbar .tabs button:hover { color: #fff; }
-.topbar .tabs button[aria-selected="true"] { color: #fff; font-weight: 600; border-bottom-color: var(--brand); background: rgba(255, 255, 255, 0.1); }
 
 button.primary, button.secondary { border-radius: 8px; padding: 9px 16px; font-size: 15px; }
 button.secondary { border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
@@ -311,24 +293,66 @@ button.link.danger { color: var(--fail); }
 .docs-body section.block { scroll-margin-top: 130px; }
 @media (max-width: 900px) { .docs-layout { grid-template-columns: 1fr; } .docs-toc { position: static; max-height: none; } }
 
-/* Operate: a side menu of pages */
-.ops-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 32px; align-items: start; }
-.ops-nav { position: sticky; top: 120px; display: flex; flex-direction: column; gap: 2px; }
-.ops-nav button { font: inherit; font-size: 15px; text-align: left; background: none; border: 0; border-left: 3px solid transparent;
-  padding: 8px 12px; border-radius: 0 6px 6px 0; color: var(--muted); cursor: pointer; }
-.ops-nav button:hover { color: var(--fg); background: var(--accent-soft); }
-.ops-nav button[aria-current="page"] { color: var(--fg); font-weight: 600; border-left-color: var(--brand); background: var(--accent-soft); }
-@media (max-width: 900px) { .ops-layout { grid-template-columns: 1fr; } .ops-nav { position: static; flex-direction: row; flex-wrap: wrap; } }
 
 /* Simulate, as in the 8765 console */
 #panel-simulate { max-width: none; }
-.sim-side { position: sticky; top: 120px; display: flex; flex-direction: column; gap: 12px; padding: 18px; }
+.sim-side { position: sticky; top: 76px; display: flex; flex-direction: column; gap: 12px; padding: 18px; }
 .sim-side .tfield select { width: 100%; }
 .card.intro { padding: 22px 24px; font-size: 16px; color: var(--muted); }
-main { max-width: 1400px; }
 
 /* Direct runs: the exact command per step wraps instead of widening the table. */
 code.cmd { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
 .pill.skipped { color: var(--muted); border-color: var(--border); }
 .cfg-table.clickable tbody tr { cursor: pointer; }
 .cfg-table td.row-actions { text-align: right; white-space: nowrap; }
+
+/* Shell: the JFrog Platform layout (a dark side rail and top bar, white content, bordered cards),
+   in this console's green palette. */
+:root { --rail: #16300a; --rail-fg: #c8d6bd; --rail-hover: rgba(255, 255, 255, 0.07); --rail-on: rgba(124, 199, 58, 0.18);
+  --bg: #f5f7f3; --rail-w: 224px; }
+@media (prefers-color-scheme: dark) { :root { --rail: #0d1a07; --bg: #121411; } }
+.shell { display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); min-height: 100vh; }
+.sidenav { background: var(--rail); color: var(--rail-fg); position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  display: flex; flex-direction: column; padding: 0 10px 16px; }
+.sidenav .brand { height: 56px; padding: 0 10px; color: #fff; font-size: 16px; font-weight: 700; letter-spacing: 0.01em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08); margin: 0 -10px 10px; padding-left: 20px; }
+.sidenav nav { display: flex; flex-direction: column; gap: 2px; }
+.nav-item { display: flex; align-items: center; gap: 12px; width: 100%; font: inherit; font-size: 14px; text-align: left;
+  background: none; border: 0; border-radius: 6px; padding: 9px 12px; color: var(--rail-fg); cursor: pointer; }
+.nav-item svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6;
+  stroke-linecap: round; stroke-linejoin: round; }
+.nav-item:hover { background: var(--rail-hover); color: #fff; }
+.nav-item[aria-current="page"] { background: var(--rail-on); color: #fff; font-weight: 600; box-shadow: inset 3px 0 0 var(--brand); }
+.nav-item:focus-visible { outline-color: #fff; }
+.nav-group { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(200, 214, 189, 0.6);
+  padding: 18px 12px 6px; }
+.main-col { min-width: 0; display: flex; flex-direction: column; }
+.topbar { position: sticky; top: 0; z-index: 3; height: 56px; display: flex; align-items: center; justify-content: flex-end; gap: 14px;
+  padding: 0 32px; background: var(--card); border: 0; border-bottom: 1px solid var(--border); }
+.topbar .config-pick select { min-width: 240px; }
+main { width: 100%; max-width: 1440px; margin: 0; padding: 28px 32px 64px; }
+main h1 { font-size: 24px; font-weight: 600; margin: 0 0 4px; }
+.card, .summary, .cfg-table { box-shadow: 0 1px 2px rgba(16, 24, 8, 0.04); }
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidenav { position: static; height: auto; padding-bottom: 8px; }
+  .sidenav nav { flex-direction: row; flex-wrap: wrap; }
+  .nav-item { width: auto; }
+  .nav-group { display: none; }
+  .topbar { padding: 0 16px; }
+  main { padding: 20px 16px 48px; }
+}
+
+/* Action rows: one line per action, the run panel opens below it. */
+.action-list { background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+.action-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 16px; border-top: 1px solid var(--border); }
+.action-row:first-child { border-top: 0; }
+.action-row .step-n { position: static; width: 26px; height: 26px; flex: none; display: inline-grid; place-items: center; border-radius: 50%;
+  border: 2px solid var(--accent); color: var(--accent); font-size: 13px; font-weight: 600; background: none; }
+.action-row.is-done .step-n { background: var(--accent); color: var(--on-accent); }
+.act-title { flex: 1; font-size: 15px; font-weight: 600; }
+.action-row .runctl { display: contents; }
+.action-row .runrow { order: 3; }
+.action-row .runpanel { order: 4; flex-basis: 100%; margin-top: 4px; }
+.summary .action-list, .card .action-list { border: 0; }
+.summary .action-row, .card .action-row { padding-left: 0; padding-right: 0; }

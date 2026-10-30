@@ -79,7 +79,7 @@ export function runControl({ kind, name, params = {}, label, dryRun = false, not
   const dry = dryRun ? h("input", { type: "checkbox", checked: true, "aria-label": `DryRun for ${name}` }) : null;
   const btn = h("button", { class: "secondary", onclick: () => prepare() }, label || `Prepare ${name}`);
   const panel = h("div", { class: "runpanel", hidden: true });
-  fill(box, h("div", { class: "runrow" }, btn, dry ? h("label", { class: "small" }, dry, " DryRun") : null,
+  fill(box, h("div", { class: "runrow" }, dry ? h("label", { class: "small" }, dry, " Dry run") : null, btn,
     note ? h("span", { class: "small muted" }, note) : null), panel);
 
   async function prepare() {
@@ -195,19 +195,19 @@ export function scenarioDry(name) {
   return !!(s && s.dry_run);
 }
 
-// A list of actions as numbered steps: status from this config's newest run of each, one line
-// of explanation, and the run control. items: {title, line, kind, name, params, dryRun, label}.
+// A list of actions, one row each: number, title, this config's newest run of it, and the run control
+// (its panel opens under the row). The explanation is the row's hover text. items: {title, line, kind, name, params, dryRun, label}.
 export async function stepList(items) {
   let runs = [];
   try { runs = (await api("/api/runs")).runs.filter((r) => r.config === state.config); } catch { /* none */ }
   const last = (it) => runs.find((r) => r.kind === it.kind && r.name === it.name);
-  return h("ol", { class: "rail actions" }, items.map((it, i) => {
+  return h("div", { class: "action-list" }, items.map((it, i) => {
     const r = it.name ? last(it) : null;
     const ok = r && r.status === "succeeded" && r.request.parameters.DryRun !== true;
-    return h("li", { class: `rail-step ${ok ? "is-done" : ""}`, title: it.line || "" },
-      h("div", { class: "act-head" }, h("span", { class: "step-n" }, String(i + 1)),
-        h("div", { class: "act-text" }, h("b", {}, it.title)),
-        r ? h("span", { class: "act-last small muted" }, pill(r.status), ` ${r.request.parameters.DryRun === true ? "dry run " : ""}${r.created.slice(0, 16).replace("T", " ")}`) : null),
+    return h("div", { class: `action-row ${ok ? "is-done" : ""}`, title: it.line || "" },
+      h("span", { class: "step-n" }, String(i + 1)),
+      h("b", { class: "act-title" }, it.title),
+      r ? h("span", { class: "act-last small muted" }, pill(r.status), ` ${r.request.parameters.DryRun === true ? "dry run " : ""}${r.created.slice(0, 16).replace("T", " ")}`) : null,
       it.body || null,
       it.name ? runControl({ kind: it.kind, name: it.name, params: it.params || {}, dryRun: it.dryRun ?? (it.kind === "pilot" && scenarioDry(it.name)),
         label: it.label || "Run" }) : null);

@@ -8,28 +8,35 @@
   <script type="module" src="/static/app.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar-row">
-    <div class="brand">
-      <span class="logo" aria-hidden="true">◆</span>
-      <span>KCP Console</span>
-      <span class="pill" id="mode-pill" hidden></span>
-    </div>
-    <div class="config-pick" id="config-pick" hidden>
-      <label for="config-select" class="small muted">Config</label>
-      <select id="config-select"></select>
-      <button type="button" class="secondary small-btn" id="report-link" hidden>Report</button>
-    </div>
-    </div>
-    <nav class="tabs" role="tablist" aria-label="Sections" id="tabs" hidden>
-      <button role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true">Clusters</button>
-      <button role="tab" id="tab-configure" aria-controls="panel-configure" aria-selected="false" tabindex="-1">Configure</button>
-      <button role="tab" id="tab-operate" aria-controls="panel-operate" aria-selected="false" tabindex="-1">Operate</button>
-      <button role="tab" id="tab-runs" aria-controls="panel-runs" aria-selected="false" tabindex="-1">Runs</button>
-      <button role="tab" id="tab-simulate" aria-controls="panel-simulate" aria-selected="false" tabindex="-1">Simulate</button>
+<div class="shell">
+  <aside class="sidenav">
+    <div class="brand"><span class="logo" aria-hidden="true">◆</span><span>KCP Console</span></div>
+    <nav id="sidenav" aria-label="Sections" hidden>
+      <button type="button" class="nav-item" id="nav-overview"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg><span>Clusters</span></button>
+      <button type="button" class="nav-item" id="nav-configure"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3"/><path d="M10 2v3M10 15v3M2 10h3M15 10h3M4.3 4.3l2.1 2.1M13.6 13.6l2.1 2.1M4.3 15.7l2.1-2.1M13.6 6.4l2.1-2.1"/></svg><span>Configure</span></button>
+      <div class="nav-group">Operate</div>
+      <button type="button" class="nav-item" id="nav-install"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 17h12"/></svg><span>Install</span></button>
+      <button type="button" class="nav-item" id="nav-verify"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10l4 4 8-8"/></svg><span>Verify</span></button>
+      <button type="button" class="nav-item" id="nav-nodes"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="11" y="3" width="6" height="6" rx="1"/><rect x="3" y="11" width="6" height="6" rx="1"/><rect x="11" y="11" width="6" height="6" rx="1"/></svg><span>Nodes</span></button>
+      <button type="button" class="nav-item" id="nav-artifactory"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2l7 4v8l-7 4-7-4V6z"/><path d="M3 6l7 4 7-4M10 10v8"/></svg><span>Artifactory</span></button>
+      <button type="button" class="nav-item" id="nav-troubleshoot"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5"/><path d="M13 13l4 4"/></svg><span>Troubleshoot</span></button>
+      <button type="button" class="nav-item" id="nav-security"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2l6 3v5c0 4-3 6.5-6 8-3-1.5-6-4-6-8V5z"/></svg><span>Security</span></button>
+      <button type="button" class="nav-item" id="nav-demo"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4l10 6-10 6z"/></svg><span>Demo</span></button>
+      <button type="button" class="nav-item" id="nav-rollback"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 8h9a4 4 0 010 8H8"/><path d="M7 5L4 8l3 3"/></svg><span>Rollback</span></button>
+      <div class="nav-group">Activity</div>
+      <button type="button" class="nav-item" id="nav-runs"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h8"/></svg><span>Runs</span></button>
+      <button type="button" class="nav-item" id="nav-simulate"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3h6M8 3v5l-4 8h12l-4-8V3"/></svg><span>Simulate</span></button>
     </nav>
-  </header>
-
+  </aside>
+  <div class="main-col">
+    <header class="topbar">
+      <span class="pill" id="mode-pill" hidden></span>
+      <div class="config-pick" id="config-pick" hidden>
+        <label for="config-select" class="small muted">Cluster</label>
+        <select id="config-select"></select>
+        <button type="button" class="secondary small-btn" id="report-link" hidden>Report</button>
+      </div>
+    </header>
   <div id="auth-banner" class="banner error" role="alert" hidden>
     <p>Not signed in. Paste the console URL (it ends in #t=…). If the console was started in the background,
       get it with <code>python3 -m kcp_console --print-url</code>.</p>
@@ -39,11 +46,19 @@
       <button type="submit" class="primary">Sign in</button>
     </form>
   </div>
-
-  <main>
-    <section id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" hidden></section>
-
-    <section id="panel-simulate" role="tabpanel" aria-labelledby="tab-simulate" hidden>
+    <main>
+    <section id="panel-overview" hidden></section>
+    <section id="panel-configure" hidden></section>
+    <section id="panel-install" hidden></section>
+    <section id="panel-verify" hidden></section>
+    <section id="panel-nodes" hidden></section>
+    <section id="panel-artifactory" hidden></section>
+    <section id="panel-troubleshoot" hidden></section>
+    <section id="panel-security" hidden></section>
+    <section id="panel-demo" hidden></section>
+    <section id="panel-rollback" hidden></section>
+    <section id="panel-runs" hidden></section>
+    <section id="panel-simulate" hidden>
       <div class="sim-layout">
         <aside class="sim-side card">
           <label class="tfield" for="sim-pick"><span>Scenario</span><select id="sim-pick"></select></label>
@@ -58,7 +73,6 @@
               <span class="pill" id="sim-verdict"></span>
             </div>
             <p id="sim-story"></p>
-            <p class="small muted" id="sim-runbook"></p>
             <div class="callout" id="sim-root"></div>
             <p class="small error" id="sim-mismatch" hidden></p>
             <h2>What happened</h2>
@@ -75,32 +89,8 @@
         </div>
       </div>
     </section>
-    <section id="panel-configure" role="tabpanel" aria-labelledby="tab-configure" hidden></section>
-    <section id="panel-operate" role="tabpanel" aria-labelledby="tab-operate" hidden>
-      <div class="ops-layout">
-        <nav class="ops-nav" aria-label="Operate">
-          <button type="button" id="sub-install" data-sub="install">Install</button>
-          <button type="button" id="sub-verify" data-sub="verify">Verify</button>
-          <button type="button" id="sub-nodes" data-sub="nodes">Nodes</button>
-          <button type="button" id="sub-artifactory" data-sub="artifactory">Artifactory</button>
-          <button type="button" id="sub-troubleshoot" data-sub="troubleshoot">Troubleshoot</button>
-          <button type="button" id="sub-security" data-sub="security">Security</button>
-          <button type="button" id="sub-demo" data-sub="demo">Demo</button>
-          <button type="button" id="sub-rollback" data-sub="rollback">Rollback</button>
-        </nav>
-        <div class="ops-body">
-          <section id="panel-install" hidden></section>
-          <section id="panel-verify" hidden></section>
-          <section id="panel-nodes" hidden></section>
-          <section id="panel-artifactory" hidden></section>
-          <section id="panel-troubleshoot" hidden></section>
-          <section id="panel-security" hidden></section>
-          <section id="panel-demo" hidden></section>
-          <section id="panel-rollback" hidden></section>
-        </div>
-      </div>
-    </section>
-    <section id="panel-runs" role="tabpanel" aria-labelledby="tab-runs" hidden></section>
-  </main>
+    </main>
+  </div>
+</div>
 </body>
 </html>

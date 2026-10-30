@@ -94,58 +94,37 @@ export function rich(text) {
 
 function showAuth() {
   $("auth-banner").hidden = false;
-  $("tabs").hidden = true;
+  $("sidenav").hidden = true;
   document.querySelectorAll("[role=tabpanel]").forEach((p) => { p.hidden = true; });
 }
 
-// ----------------------------------------------------------------- tabs
+// ----------------------------------------------------------------- pages
 
-const TABS = ["overview", "configure", "operate", "runs", "simulate"];
-// Pages inside Operate, picked from its side menu.
-const SUBS = ["install", "verify", "nodes", "artifactory", "troubleshoot", "security", "demo", "rollback"];
-// Each tab has its own URL (/clusters, /configure, /operate/<page>, /runs, /simulate); the server
-// serves index.html for all of them, so a reload or a shared link opens the same page.
-const PATHS = { overview: "/clusters", configure: "/configure", operate: "/operate", runs: "/runs", simulate: "/simulate" };
+// One page, a side menu, and a URL per section: /clusters, /configure, /install … /simulate. The server
+// serves index.html for all of them, so a reload or a shared link opens the same section.
+const PAGES = ["overview", "configure", "install", "verify", "nodes", "artifactory", "troubleshoot", "security", "demo",
+  "rollback", "runs", "simulate"];
+const pathOf = (p) => (p === "overview" ? "/clusters" : `/${p}`);
 
 function fromPath(path) {
-  const [top, sub] = path.replace(/\/+$/, "").split("/").slice(1);
-  if (top === "operate") return SUBS.includes(sub) ? sub : "operate";
-  return Object.keys(PATHS).find((t) => PATHS[t] === `/${top}`) || "overview";
+  const parts = path.replace(/\/+$/, "").split("/").slice(1);
+  const name = parts[0] === "operate" ? parts[1] : parts[0];   // old /operate/<page> links
+  return PAGES.includes(name) ? name : "overview";
 }
 
 export function selectTab(name, { history: how = "push" } = {}) {
-  let sub = null;
-  if (SUBS.includes(name)) { sub = name; name = "operate"; }
-  if (!TABS.includes(name)) name = "overview";
-  for (const t of TABS) {
-    const on = t === name;
-    $(`tab-${t}`).setAttribute("aria-selected", String(on));
-    $(`tab-${t}`).tabIndex = on ? 0 : -1;
-    $(`panel-${t}`).hidden = !on;
+  if (!PAGES.includes(name)) name = "overview";
+  for (const p of PAGES) {
+    $(`panel-${p}`).hidden = p !== name;
+    $(`nav-${p}`).setAttribute("aria-current", p === name ? "page" : "false");
   }
-  if (name === "operate") {
-    try { sub ||= sessionStorage.getItem("kcp-sub") || "install"; } catch { sub ||= "install"; }
-    if (!SUBS.includes(sub)) sub = "install";
-    for (const s of SUBS) {
-      $(`panel-${s}`).hidden = s !== sub;
-      $(`sub-${s}`).setAttribute("aria-current", s === sub ? "page" : "false");
-    }
-    try { sessionStorage.setItem("kcp-sub", sub); } catch { /* ignore */ }
-  }
-  const path = name === "operate" ? `/operate/${sub}` : PATHS[name];
+  const path = pathOf(name);
   if (how !== "none" && location.pathname !== path) history[how === "replace" ? "replaceState" : "pushState"]({}, "", path);
+  window.scrollTo(0, 0);
 }
 
 function wireTabs() {
-  for (const t of TABS) $(`tab-${t}`).addEventListener("click", () => selectTab(t));
-  for (const s of SUBS) $(`sub-${s}`).addEventListener("click", () => selectTab(s));
-  $("tabs").addEventListener("keydown", (e) => {
-    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-    const i = TABS.findIndex((t) => $(`tab-${t}`).getAttribute("aria-selected") === "true");
-    const next = TABS[(i + (e.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length];
-    selectTab(next);
-    $(`tab-${next}`).focus();
-  });
+  for (const p of PAGES) $(`nav-${p}`).addEventListener("click", () => selectTab(p));
 }
 
 $("auth-form").addEventListener("submit", (e) => {
@@ -168,7 +147,7 @@ async function start() {
     return;
   }
   $("auth-banner").hidden = true;
-  $("tabs").hidden = false;
+  $("sidenav").hidden = false;
   const pill = $("mode-pill");
   pill.hidden = session.mode !== "replay";
   pill.textContent = "replay";

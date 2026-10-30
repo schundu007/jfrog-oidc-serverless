@@ -39,7 +39,8 @@ async function render() {
     label: "Run" })));
   fill(P,
     pageHead("Install"),
-    directList ? h("section", { class: "card" }, h("h2", {}, "Direct"), directList) : null,
+    directList ? h("h2", {}, "Direct") : null,
+    directList,
     directList ? h("h2", {}, "Pipeline") : null,
     list,
     h("details", { class: "advanced" }, h("summary", {}, "All scenarios"),
