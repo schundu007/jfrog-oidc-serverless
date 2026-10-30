@@ -21,3 +21,8 @@ h1 { font-size: 22px; margin: 0 0 20px; }
 .card b { font-size: 18px; color: var(--accent); }
 .card span { color: var(--fg-2); }
 .card small { color: var(--fg-2); margin-top: 6px; }
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+  .topbar { view-transition-name: topbar; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 160ms; }
+}

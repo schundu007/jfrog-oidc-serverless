@@ -134,20 +134,60 @@ function showError(msg) {
   e.hidden = !msg;
 }
 
+// ----------------------------------------------------------------- back
+
+// Back: the previous page of this console when there is one (tabs push history entries),
+// otherwise one level up: a cloud's pages -> the cloud picker -> the portal's home.
+function parentPath() {
+  if (localPath() !== "/") return `${BASE}/`;
+  return BASE ? "/" : null;
+}
+
+function setupBack() {
+  const btn = $("nav-back");
+  const inApp = () => (window.navigation?.currentEntry?.index ?? 0) > 0;
+  const update = () => {
+    const up = parentPath();
+    btn.hidden = !inApp() && !up;
+    btn.title = inApp() ? "Back" : up === "/" ? "Back to Home" : "Back to clouds";
+  };
+  btn.addEventListener("click", () => {
+    if (inApp()) history.back();
+    else if (parentPath()) location.assign(parentPath());
+  });
+  window.addEventListener("popstate", update);
+  state.onNavigate = update;
+  update();
+}
+
+// Same-page changes (tabs) cross-fade like page loads do, where the browser supports it.
+function smoothly(fn) {
+  if (!document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) return fn();
+  const t = document.startViewTransition(fn);
+  // A transition skipped by a page load or a newer one is fine: fn still ran.
+  t.ready.catch(() => {});
+  t.finished.catch(() => {});
+}
+
 // ----------------------------------------------------------------- tabs
 
 function setupTabs() {
   const tabs = [...document.querySelectorAll('[role="tab"]')];
   const select = (tab, focus = true, how = "push") => {
-    for (const t of tabs) {
-      const on = t === tab;
-      t.setAttribute("aria-selected", String(on));
-      t.tabIndex = on ? 0 : -1;
-      $(t.getAttribute("aria-controls")).hidden = !on;
-    }
+    const show = () => {
+      for (const t of tabs) {
+        const on = t === tab;
+        t.setAttribute("aria-selected", String(on));
+        t.tabIndex = on ? 0 : -1;
+        $(t.getAttribute("aria-controls")).hidden = !on;
+      }
+    };
+    if (how === "replace" || tab.getAttribute("aria-selected") === "true") show();
+    else smoothly(show);
     if (focus) tab.focus();
     const path = BASE + (CLOUD ? `/${CLOUD}/${tab.id.slice("tab-".length)}` : "/");
     if (how !== "none" && location.pathname !== path) history[how === "replace" ? "replaceState" : "pushState"](null, "", path);
+    state.onNavigate?.();
   };
   state.selectTab = (id, how = "push") => select($(id), false, how);
   window.addEventListener("popstate", () => {
@@ -470,6 +510,7 @@ function applyCloud() {
 
 async function boot() {
   setupTabs();
+  setupBack();
   applyCloud();
   $("legend").replaceChildren(...LEGEND.map(([cls, label]) => h("span", { class: "lg" }, h("i", { class: `sw ${cls}` }), label)));
   let wired = false;
