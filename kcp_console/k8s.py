@@ -37,11 +37,12 @@ def check_helm(args: list) -> None:
 
 
 class Kube:
-    def __init__(self, shell, context: str | None = None):
+    def __init__(self, shell, context: str | None = None, kubeconfig=None):
         self.sh, self.context = shell, context
+        self.env = {"KUBECONFIG": str(kubeconfig)} if kubeconfig else None
 
     def _read(self, what, argv, parse_json=True):
-        res = self.sh.run(argv, timeout=60)
+        res = self.sh.run(argv, timeout=60, extra_env=self.env)
         out = {"ok": res.ok, "argv": argv, "what": what}
         if res.ok:
             out["data"] = res.json() if parse_json else res.stdout

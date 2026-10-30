@@ -3,16 +3,7 @@
 // It is kept in localStorage for this origin so reloads and new tabs work: never in a cookie or the URL.
 
 import { initOverview } from "./overview.js";
-import { initSimulate } from "./simulate.js";
 import { initConfigure } from "./configure.js";
-import { initInstall } from "./install.js";
-import { initNodes } from "./nodes.js";
-import { initArtifactory } from "./artifactory.js";
-import { initVerify } from "./verify.js";
-import { initTroubleshoot } from "./troubleshoot.js";
-import { initDemo } from "./demo.js";
-import { initSecurity } from "./security.js";
-import { initRollback } from "./rollback.js";
 import { initRuns } from "./runs.js";
 
 const $ = (id) => document.getElementById(id);
@@ -48,7 +39,7 @@ let TOKEN = REDIRECTING ? null : rememberToken(takeTokenFromHash() || pageToken(
 // Shared state: the selected config and a tiny event bus ("config", "runs", "status").
 export const state = {
   get token() { return TOKEN; },
-  config: null, configs: [], knowledge: null, session: null,
+  config: null, configs: [], started: false, session: null,
   listeners: {},
   on(evt, fn) { (this.listeners[evt] ||= []).push(fn); },
   emit(evt, data) { for (const fn of this.listeners[evt] || []) { try { fn(data); } catch (e) { console.error(e); } } },
@@ -102,8 +93,7 @@ function showAuth() {
 
 // One page, a side menu, and a URL per section: /clusters, /configure, /install … /simulate. The server
 // serves index.html for all of them, so a reload or a shared link opens the same section.
-const PAGES = ["overview", "configure", "install", "verify", "nodes", "artifactory", "troubleshoot", "security", "demo",
-  "rollback", "runs", "simulate"];
+const PAGES = ["overview", "configure", "runs"];
 const pathOf = (p) => (p === "overview" ? "/clusters" : `/${p}`);
 
 function fromPath(path) {
@@ -121,6 +111,7 @@ export function selectTab(name, { history: how = "push" } = {}) {
   const path = pathOf(name);
   if (how !== "none" && location.pathname !== path) history[how === "replace" ? "replaceState" : "pushState"]({}, "", path);
   window.scrollTo(0, 0);
+  state.emit("tab", name);
 }
 
 function wireTabs() {
@@ -139,9 +130,9 @@ $("auth-form").addEventListener("submit", (e) => {
 async function start() {
   if (REDIRECTING) return;
   if (!TOKEN) { showAuth(); return; }
-  let session, knowledge;
+  let session;
   try {
-    [session, knowledge] = await Promise.all([api("/api/session"), api("/api/knowledge")]);
+    session = await api("/api/session");
   } catch (err) {
     if (err.status !== 401) { $("auth-banner").hidden = false; $("auth-banner").querySelector("p").textContent = err.message; }
     return;
@@ -151,13 +142,11 @@ async function start() {
   const pill = $("mode-pill");
   pill.hidden = session.mode !== "replay";
   pill.textContent = "replay";
-  state.knowledge = knowledge;
+  state.started = true;
   state.session = session;
   await refreshConfigs();
-  initOverview(knowledge);
-  initSimulate({ api });
-  for (const init of [initConfigure, initInstall, initNodes, initArtifactory, initVerify, initTroubleshoot, initDemo,
-    initSecurity, initRollback, initRuns]) {
+  initOverview();
+  for (const init of [initConfigure, initRuns]) {
     try { init(); } catch (e) { console.error(e); }
   }
   state.emit("config", state.config);
@@ -175,34 +164,20 @@ export async function refreshConfigs(select) {
   fill(sel, configs.length ? configs.map((c) => h("option", { value: c.name, selected: c.name === want }, `${c.name} · ${c.cluster}`))
     : [h("option", { value: "" }, "no saved config")]);
   $("config-pick").hidden = false;
-  $("report-link").hidden = !want;
   if (want !== state.config) {
     state.config = want;
     try { if (want) localStorage.setItem("kcp-config", want); } catch { /* ignore */ }
-    if (select !== undefined || state.knowledge) state.emit("config", want);
+    if (select !== undefined || state.started) state.emit("config", want);
   }
 }
 
 $("config-select").addEventListener("change", (e) => {
   state.config = e.target.value || null;
   try { localStorage.setItem("kcp-config", state.config || ""); } catch { /* ignore */ }
-  $("report-link").hidden = !state.config;
   state.emit("config", state.config);
 });
 
-// The report is fetched with the token header, then handed to the browser as a download.
-$("report-link").addEventListener("click", async () => {
-  if (!state.config) return;
-  const resp = await fetch(`/api/report/${encodeURIComponent(state.config)}?format=md`, {
-    headers: { "X-Console-Token": TOKEN }, credentials: "omit", cache: "no-store" });
-  if (!resp.ok) return;
-  const url = URL.createObjectURL(await resp.blob());
-  const a = h("a", { href: url, download: `kcp-report-${state.config}.md` });
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-});
+
 
 wireTabs();
 window.addEventListener("hashchange", () => { const t = takeTokenFromHash(); if (t) { TOKEN = rememberToken(t); start(); } });

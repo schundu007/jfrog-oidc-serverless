@@ -14,7 +14,6 @@
     <div class="config-pick" id="config-pick" hidden>
       <label for="config-select" class="small">Cluster</label>
       <select id="config-select"></select>
-      <button type="button" class="secondary small-btn" id="report-link" hidden>Report</button>
     </div>
     <span class="pill" id="mode-pill" hidden></span>
   </header>
@@ -22,18 +21,7 @@
     <nav id="sidenav" aria-label="Sections" hidden>
       <button type="button" class="nav-item" id="nav-overview"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg><span>Clusters</span></button>
       <button type="button" class="nav-item" id="nav-configure"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3"/><path d="M10 2v3M10 15v3M2 10h3M15 10h3M4.3 4.3l2.1 2.1M13.6 13.6l2.1 2.1M4.3 15.7l2.1-2.1M13.6 6.4l2.1-2.1"/></svg><span>Configure</span></button>
-      <div class="nav-group">Operate</div>
-      <button type="button" class="nav-item" id="nav-install"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 17h12"/></svg><span>Install</span></button>
-      <button type="button" class="nav-item" id="nav-verify"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10l4 4 8-8"/></svg><span>Verify</span></button>
-      <button type="button" class="nav-item" id="nav-nodes"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="11" y="3" width="6" height="6" rx="1"/><rect x="3" y="11" width="6" height="6" rx="1"/><rect x="11" y="11" width="6" height="6" rx="1"/></svg><span>Nodes</span></button>
-      <button type="button" class="nav-item" id="nav-artifactory"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2l7 4v8l-7 4-7-4V6z"/><path d="M3 6l7 4 7-4M10 10v8"/></svg><span>Artifactory</span></button>
-      <button type="button" class="nav-item" id="nav-troubleshoot"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5"/><path d="M13 13l4 4"/></svg><span>Troubleshoot</span></button>
-      <button type="button" class="nav-item" id="nav-security"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2l6 3v5c0 4-3 6.5-6 8-3-1.5-6-4-6-8V5z"/></svg><span>Security</span></button>
-      <button type="button" class="nav-item" id="nav-demo"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4l10 6-10 6z"/></svg><span>Demo</span></button>
-      <button type="button" class="nav-item" id="nav-rollback"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 8h9a4 4 0 010 8H8"/><path d="M7 5L4 8l3 3"/></svg><span>Rollback</span></button>
-      <div class="nav-group">Activity</div>
       <button type="button" class="nav-item" id="nav-runs"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h8"/></svg><span>Runs</span></button>
-      <button type="button" class="nav-item" id="nav-simulate"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3h6M8 3v5l-4 8h12l-4-8V3"/></svg><span>Simulate</span></button>
     </nav>
   </aside>
   <div class="main-col">
@@ -49,47 +37,7 @@
     <main>
     <section id="panel-overview" hidden></section>
     <section id="panel-configure" hidden></section>
-    <section id="panel-install" hidden></section>
-    <section id="panel-verify" hidden></section>
-    <section id="panel-nodes" hidden></section>
-    <section id="panel-artifactory" hidden></section>
-    <section id="panel-troubleshoot" hidden></section>
-    <section id="panel-security" hidden></section>
-    <section id="panel-demo" hidden></section>
-    <section id="panel-rollback" hidden></section>
     <section id="panel-runs" hidden></section>
-    <section id="panel-simulate" hidden>
-      <div class="cfg-head"><h1>Simulate</h1></div>
-      <div class="sim-layout">
-        <aside class="sim-side card">
-          <label class="tfield" for="sim-pick"><span>Scenario</span><select id="sim-pick"></select></label>
-          <p class="small" id="sim-expect"></p>
-          <button type="button" class="primary big" id="sim-run">Run scenario</button>
-        </aside>
-        <div class="sim-main" id="sim-main">
-          <div class="card intro" id="sim-empty" hidden></div>
-          <div id="sim-result" hidden>
-            <div class="page-head">
-              <h1 id="sim-title"></h1>
-              <span class="pill" id="sim-verdict"></span>
-            </div>
-            <p id="sim-story"></p>
-            <div class="callout" id="sim-root"></div>
-            <p class="small error" id="sim-mismatch" hidden></p>
-            <h2>What happened</h2>
-            <ol class="chain" id="sim-chain"></ol>
-            <h2>Timeline</h2>
-            <div class="card timeline" id="sim-timeline"></div>
-            <h2>Diagnosis</h2>
-            <div id="sim-findings"></div>
-            <h2>Three layers, per node</h2>
-            <div id="sim-layers"></div>
-            <h2>Evidence</h2>
-            <div id="sim-evidence"></div>
-          </div>
-        </div>
-      </div>
-    </section>
     </main>
   </div>
 </div>

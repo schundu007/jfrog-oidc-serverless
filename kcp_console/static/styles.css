@@ -417,3 +417,19 @@ td .pill, .act-last .pill, .step-table .pill { border: 0; background: none; padd
 .toolbar input[type="search"] { font: inherit; font-size: 14px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
   background: var(--card); color: var(--fg); }
 .empty p { margin: 0 0 14px; font-size: 16px; }
+
+/* Clusters: the selected cluster's state and the automated action. */
+.cluster-card .facts td:first-child { width: 260px; color: var(--muted); }
+.cluster-card .facts thead { display: none; }
+.flow { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
+.flow h3 { margin: 0 0 8px; font-size: 16px; }
+ol.stages { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 22px; }
+ol.stages li { font-weight: 600; color: var(--info); }
+ol.stages li::before { content: "● "; }
+ol.stages li.ok { color: var(--ok); }
+ol.stages li.ok::before { content: "✓ "; }
+ol.stages li.error { color: var(--fail); }
+ol.stages li.error::before { content: "✗ "; }
+ol.stages li.muted { color: var(--muted); }
+.approve-box { display: grid; gap: 12px; margin: 8px 0 12px; }
+.approve-box .approve { display: flex; gap: 10px; align-items: center; }

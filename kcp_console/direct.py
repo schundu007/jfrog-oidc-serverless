@@ -89,18 +89,18 @@ def plan(cfg: dict, root: Path, which: str = "setup", dry_run: bool = True) -> l
         "cluster": ("Read the cluster", "read", ["az", "aks", "show", *_az(cfg), "-o", "json"]),
         "oidc": ("Enable the OIDC issuer (only if off)", "change", ["az", "aks", "update", *_az(cfg), "--enable-oidc-issuer"]),
         "kubeconfig": ("Get cluster credentials", "local", ["az", "aks", "get-credentials", *_az(cfg), "--file", str(p["kubeconfig"]), "--overwrite-existing"]),
-        "sa": ("Namespace and service account (JFrogExchange: \"true\")", "change", ["kubectl", *kc, "apply", "-f", str(p["sa"]), *srv]),
+        "sa": ("Namespace and service account", "change", ["kubectl", *kc, "apply", "-f", str(p["sa"]), *srv]),
         "provider": (f"JFrog OIDC provider {v['provider_name']}", "change", f"POST https://{host}/access/api/v1/oidc  {json.dumps(model.provider_request(cfg))}"),
         "mapping": (f"Identity mapping {j['mapping_name']}", "change",
                     f"POST https://{host}/access/api/v1/oidc/{v['provider_name']}/identity_mappings  {json.dumps(model.mapping_request(cfg))}"),
-        "label": (f"Label nodes {label_sel}", "change", ["kubectl", *kc, "label", "nodes", *nodes, label_sel, "--overwrite", *srv]),
-        "helm": (f"helm upgrade --install {k['release']}", "change",
+        "label": ("Label the nodes", "change", ["kubectl", *kc, "label", "nodes", *nodes, label_sel, "--overwrite", *srv]),
+        "helm": (f"Install the credential provider chart {v['chart_version']}", "change",
                  ["helm", "upgrade", "--install", k["release"], CHART, "--repo", CHART_REPO, "--version", v["chart_version"],
                   "--namespace", k["namespace"], "--create-namespace", "-f", str(p["values"]),
                   *(["--dry-run=server"] if dry_run else [])]),
         "daemonset": ("DaemonSet ready on the labelled nodes", "read", ["kubectl", *kc, "get", "daemonset", "-n", k["namespace"], "-o", "json"]),
-        "pull": (f"Test pull of {j['test_image'] or '<test image>'}", "change", ["kubectl", *kc, "apply", "-f", str(p["pod"]), *srv]),
-        "uninstall": (f"helm uninstall {k['release']}", "change", ["helm", "uninstall", k["release"], "--namespace", k["namespace"],
+        "pull": ("Test pull without a pull secret", "change", ["kubectl", *kc, "apply", "-f", str(p["pod"]), *srv]),
+        "uninstall": ("Uninstall the credential provider", "change", ["helm", "uninstall", k["release"], "--namespace", k["namespace"],
                                                                   *(["--dry-run"] if dry_run else [])]),
         "unlabel": (f"Remove the label {v['node_affinity_label']}", "change", ["kubectl", *kc, "label", "nodes", "--all", f"{v['node_affinity_label']}-", *srv]),
         "delete-mapping": (f"Delete identity mapping {j['mapping_name']}", "change",
@@ -161,10 +161,10 @@ class Runner:
                 res = fn()
                 status, detail = res if isinstance(res, tuple) else ("ok", res)
             except StepError as exc:
-                results.append({"id": st["id"], "status": "failed", "detail": str(exc)})
+                results.append({"id": st["id"], "title": st["title"], "status": "failed", "detail": str(exc)})
                 self.log(f"✗ {st['title']}: {exc}")
                 break
-            results.append({"id": st["id"], "status": status, "detail": detail})
+            results.append({"id": st["id"], "title": st["title"], "status": status, "detail": detail})
             self.log(f"{'✓' if status in ('ok', 'done') else '•'} {st['title']}: {detail}")
         return results
 
@@ -186,7 +186,7 @@ class Runner:
         if self.facts.get("oidc"):
             return "ok", "already enabled"
         if self.dry:
-            return "skipped", "dry run: az aks update --enable-oidc-issuer would run"
+            return "skipped", "dry run: would enable it"
         self._run(["az", "aks", "update", *_az(self.cfg), "--enable-oidc-issuer"], timeout=1800)
         self.s_cluster()
         return "done", f"enabled; issuer {self.facts.get('issuer')}"

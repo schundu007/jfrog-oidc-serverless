@@ -27,7 +27,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import diagnose as diag, knowledge, logic, model, redact, report
+from . import diagnose as diag, direct, knowledge, logic, model, redact, report
 from .checks import artifactory as art_checks, hygiene, preflight as pf, verify as vchecks
 from .jfrog import Jfrog
 from .runner import RunError, RunManager, bundle as run_bundle, pod_from_log
@@ -38,9 +38,7 @@ from .store import RUN_ID_RE, RunStore, StatusStore, Store, StoreError
 
 STATIC_DIR = Path(__file__).parent / "static"
 # Page URLs: each section has its own path (old /operate/<page> links still work); all serve index.html.
-OPERATE_PAGES = ("install", "verify", "nodes", "artifactory", "troubleshoot", "security", "demo", "rollback", "runs", "simulate")
-PAGE_ROUTES = ({"/", "/clusters", "/configure", "/operate"} | {f"/{p}" for p in OPERATE_PAGES}
-               | {f"/operate/{p}" for p in OPERATE_PAGES})
+PAGE_ROUTES = {"/", "/clusters", "/configure", "/runs"}
 MAX_BODY = 1024 * 1024
 MAX_DRAIN = 8 * 1024 * 1024
 MAX_SIMS_KEPT = 20
@@ -129,7 +127,9 @@ class KcpServer:
             raise HttpError(409, "another Discover or Preflight is still running")
         try:
             sh = self.shell()
-            facts = pf.discover(cfg, sh, env=self.env)
+            kc = direct.paths(Path(self.store.root), name)["kubeconfig"] if self.mode == "live" else None
+            # Rendered manifests and values can hold secret-looking strings; store and show them redacted.
+            facts = redact.obj(pf.discover(cfg, sh, env=self.env, kubeconfig=kc))
             out = {"facts": facts, "mode": self.mode}
             patch = {"discover": facts}
             if with_preflight:

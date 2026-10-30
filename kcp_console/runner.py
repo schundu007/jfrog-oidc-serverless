@@ -124,6 +124,8 @@ def build_request(cfg: dict, kind: str, name: str, params: dict, status: dict | 
             body = model.mapping_request(cfg)
         elif name == "promote":
             src = params.get("source") or cfg["jfrog"]["promote_source_repo"]
+            if not src:
+                guards.append("jfrog.promote_source_repo is empty: set the repo to promote the test image from")
             body = {"targetRepo": cfg["jfrog"]["test_repo"], "dockerRepository": params.get("dockerRepository", "mcp/sonarqube"),
                     "tag": params.get("tag", "1.26-v1"), "copy": True}
             provider = src
@@ -385,7 +387,9 @@ class RunManager:
         else:
             res = jf.delete_provider(p["target"])
         run["result"] = {"status": res["status"], "body": redact.text(res["body"] or "")[:2000]}
-        run["status"] = "succeeded" if res["ok"] else "failed"
+        # 409 on a create: it is already there (Set up made it), which is the state the action wants.
+        exists = res["status"] == 409 and p["action"].startswith("create")
+        run["status"] = "succeeded" if res["ok"] or exists else "failed"
         self._event(run, "done", f"{p['action']}: HTTP {res['status']}")
 
     def _direct(self, run, sh):

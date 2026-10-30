@@ -9,6 +9,8 @@ Forbidden answer is recorded with the read-only pipeline scenario to run instead
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from .. import logic, model
 from ..jfrog import Jfrog
 from ..k8s import Kube
@@ -16,7 +18,9 @@ from ..parse import helm
 from . import writers
 
 
-def discover(cfg: dict, shell, env=None) -> dict:
+def discover(cfg: dict, shell, env=None, kubeconfig=None) -> dict:
+    """kubeconfig: the console's file for this cluster (az aks get-credentials --file), so the reads hit the
+    configured cluster and not whatever the operator's current kubectl context is."""
     cfg = model.merged(cfg)
     c, k = cfg["cluster"], cfg["k8s"]
     out = {"cluster": {}, "reads": []}
@@ -32,7 +36,14 @@ def discover(cfg: dict, shell, env=None) -> dict:
         out["cluster"] = {"error": aks.error_text()}
     out["reads"].append({"what": "az aks show", "ok": aks.ok})
 
-    kube = Kube(shell)
+    if kubeconfig is not None and aks.ok:
+        Path(kubeconfig).parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        got = shell.run(["az", "aks", "get-credentials", "--resource-group", c["resource_group"], "--name", c["name"],
+                         "--subscription", c["subscription_id"], "--file", str(kubeconfig), "--overwrite-existing"], timeout=120)
+        out["reads"].append({"what": "az aks get-credentials", "ok": got.ok})
+        if Path(kubeconfig).exists():
+            Path(kubeconfig).chmod(0o600)
+    kube = Kube(shell, kubeconfig=kubeconfig)
     ds = kube.daemonsets()
     out["daemonsets"] = writers.from_daemonsets(ds.get("data") or {}, cfg) if ds["ok"] else []
     sa = kube.service_account(k["namespace"], k["service_account"])

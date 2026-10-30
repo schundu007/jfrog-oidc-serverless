@@ -180,7 +180,7 @@ class RunnerTest(unittest.TestCase):
         kc = str(self.root / "kube" / "sandbox-pilot.kubeconfig")
         kube = [e for c, e in zip(sh.calls, sh.env_seen) if c[0] in ("kubectl", "helm")]
         self.assertTrue(kube and all(e.get("KUBECONFIG") == kc for e in kube))
-        self.assertEqual(res[-1], {"id": "pull", "status": "done", "detail": "pulled with imagePullSecrets: [] — Successfully pulled image"})
+        self.assertEqual(res[-1], {"id": "pull", "title": "Test pull without a pull secret", "status": "done", "detail": "pulled with imagePullSecrets: [] — Successfully pulled image"})
 
     def test_existing_provider_and_mapping_are_left_alone(self):
         sh = FakeShell(providers=[{"name": "aks-sandbox-oidc", "issuer_url": ISSUER}], mappings=[{"name": "aks-workload-identity-mapping"}])
@@ -259,3 +259,60 @@ class ManagerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConflictShell(FakeShell):
+    """JFrog answers 409: the provider and mapping were already created (by Set up)."""
+
+    def http(self, method, url, headers=None, body=None, timeout=20.0, sensitive=False):
+        if method == "POST":
+            self.http_calls.append((method, url, ""))
+            return HttpResult(method, url, 409, '{"errors":[{"code":"CONFLICT","message":"already exists"}]}')
+        return super().http(method, url, headers, body, timeout, sensitive)
+
+
+class JfrogActionTest(unittest.TestCase):
+    def manager(self, sh):
+        root = Path(tempfile.mkdtemp())
+        return RunManager(RunStore(root), lambda log: sh, env={"JFROG_ACCESS_TOKEN": TOKEN}, sleep=lambda s: None, root=root)
+
+    def test_create_that_already_exists_succeeds(self):
+        m = self.manager(ConflictShell())
+        for name in ("create-provider", "create-mapping"):
+            run = m.prepare(cfg(), "jfrog", name, {})
+            m.approve(run["id"], run["request_sha256"], approved=True)
+            done = m.wait(run["id"])
+            self.assertEqual(done["status"], "succeeded", name)
+            self.assertEqual(done["result"]["status"], 409)
+
+    def test_promote_needs_a_source_repo(self):
+        r = build_request(cfg(jfrog={"promote_source_repo": ""}), "jfrog", "promote", {}, root="/tmp/x")
+        self.assertTrue([g for g in r["guards"] if "promote_source_repo" in g], r["guards"])
+
+
+class DiscoverKubeconfigTest(unittest.TestCase):
+    """Discover reads the configured cluster through the console's kubeconfig, never the operator's
+    current kubectl context (which may be another cluster)."""
+
+    def test_reads_use_the_clusters_kubeconfig(self):
+        from kcp_console.checks import preflight
+        root = Path(tempfile.mkdtemp())
+        sh = FakeShell()
+        kc = direct.paths(root, "sandbox-pilot")["kubeconfig"]
+        preflight.discover(cfg(), sh, env={}, kubeconfig=kc)
+        reads = [(c, e) for c, e in zip(sh.calls, sh.env_seen) if c[0] in ("kubectl", "helm")]
+        self.assertTrue(reads)
+        for c, e in reads:
+            self.assertEqual(e.get("KUBECONFIG"), str(kc), c)
+        self.assertIn(["az", "aks", "get-credentials"], [c[:3] for c in sh.calls])
+        self.assertTrue(kc.exists())
+
+
+class DiscoverStoreTest(unittest.TestCase):
+    def test_secret_looking_manifest_is_redacted_not_refused(self):
+        from kcp_console.store import StatusStore
+        st = StatusStore(Path(tempfile.mkdtemp()))
+        from kcp_console import redact
+        facts = {"manifest": "data:\n  token: eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJlc2lnbmF0dXJl\n"}
+        st.update("sandbox-pilot", {"discover": redact.obj(facts)})
+        self.assertNotIn("eyJhbGci", json.dumps(st.get("sandbox-pilot")))
