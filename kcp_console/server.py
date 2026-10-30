@@ -76,8 +76,12 @@ class HttpError(Exception):
 
 class KcpServer:
     def __init__(self, host: str = "127.0.0.1", port: int = 8766, token: str | None = None, log=sys.stderr,
-                 store: Store | None = None, fixtures=None, env=None, poll_seconds: float = 10.0, sleep=time.sleep):
+                 store: Store | None = None, fixtures=None, env=None, poll_seconds: float = 10.0, sleep=time.sleep,
+                 base: str = ""):
         self.host, self.requested_port = host, port
+        # The path the page is served under when mounted in the unified console (e.g. "/k8s"). The handler
+        # still sees unprefixed paths: the portal strips the base before delegating.
+        self.base = base.rstrip("/")
         self.token = token or secrets.token_urlsafe(32)
         self.log = log
         self.store = store or Store()
@@ -447,6 +451,10 @@ def _make_handler(console: KcpServer):
             if name == "index.html" and self.headers.get("Sec-Fetch-Site") in ("none", "same-origin"):
                 data = data.replace(b'<meta charset="utf-8">', b'<meta charset="utf-8">\n  <meta name="console-token" content="'
                                     + console.token.encode() + b'">', 1)
+            if name == "index.html" and console.base:
+                b = console.base.encode()
+                data = data.replace(b'<meta charset="utf-8">', b'<meta charset="utf-8">\n  <meta name="console-base" content="' + b + b'">', 1)
+                data = data.replace(b'"/static/', b'"' + b + b'/static/')
             self._headers(200, CONTENT_TYPES[Path(name).suffix], len(data))
             self.wfile.write(data)
 
@@ -651,3 +659,7 @@ def _make_handler(console: KcpServer):
             self.wfile.flush()
 
     return Handler
+
+
+# The unified console (portal/) mounts this console's handler under its base path.
+make_handler = _make_handler

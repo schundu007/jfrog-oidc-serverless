@@ -1,6 +1,6 @@
 // Shared UI pieces: tables, status text and the event-stream reader.
 
-import { h, rich, state } from "./app.js";
+import { h, rich, state, url } from "./app.js";
 
 export const $ = (id) => document.getElementById(id);
 
@@ -16,7 +16,7 @@ export const pill = (status) => h("span", { class: `pill ${String(status).toLowe
 
 // Server-sent events over fetch, so the token stays in a header.
 export async function stream(path, onFrame) {
-  const resp = await fetch(path, { headers: { "X-Console-Token": state.token }, credentials: "omit", cache: "no-store" });
+  const resp = await fetch(url(path), { headers: { "X-Console-Token": state.token }, credentials: "omit", cache: "no-store" });
   if (!resp.ok || !resp.body) throw new Error(`event stream failed: HTTP ${resp.status}`);
   const reader = resp.body.pipeThrough(new TextDecoderStream()).getReader();
   let buf = "";

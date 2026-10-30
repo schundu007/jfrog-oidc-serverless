@@ -33,6 +33,11 @@ function pageToken() {
   return t;
 }
 
+// The path this console is served under: "" on its own, "/k8s" inside the unified console. Paths inside
+// the app stay unprefixed; url() adds the base wherever the browser sees one (fetch, history, links).
+export const BASE = (document.querySelector('meta[name="console-base"]') || {}).content || "";
+export const url = (path) => BASE + path;
+
 let TOKEN = REDIRECTING ? null : rememberToken(takeTokenFromHash() || pageToken()) || storedToken();
 
 // Shared state: the selected config and a tiny event bus ("config", "runs", "status").
@@ -51,7 +56,7 @@ export class ApiError extends Error {
 export async function api(path, { method = "GET", body } = {}) {
   const headers = { "X-Console-Token": TOKEN || "" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  const resp = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body),
+  const resp = await fetch(url(path), { method, headers, body: body === undefined ? undefined : JSON.stringify(body),
     credentials: "omit", cache: "no-store" });
   const text = await resp.text();
   let data = null;
@@ -104,6 +109,7 @@ export const clusterPath = (name, edit = false) => `/clusters/${cloudOf(name)}/$
 
 // {cloud, name, page} from the address; moved: an older link to rewrite.
 export function route(path = location.pathname) {
+  if (BASE && path.startsWith(BASE)) path = path.slice(BASE.length) || "/";
   const p = path.replace(/\/+$/, "").split("/").slice(1).map(decodeURIComponent);
   if (p[0] === "configure") return { cloud: cloudOf(state.config), name: state.config, page: "configure", moved: true };
   if (p[0] !== "clusters") return { cloud: null, name: null, page: "overview", moved: true };
@@ -122,13 +128,13 @@ function canonical(r) {
 
 // Go to a path inside the console without a reload.
 export function go(path, { replace = false } = {}) {
-  if (path !== location.pathname + location.search) history[replace ? "replaceState" : "pushState"]({}, "", path);
+  if (url(path) !== location.pathname + location.search) history[replace ? "replaceState" : "pushState"]({}, "", url(path));
   show();
 }
 
 function show() {
   const r = route();
-  if (r.moved) history.replaceState({}, "", canonical(r) + (r.name ? "" : location.search));
+  if (r.moved) history.replaceState({}, "", url(canonical(r)) + (r.name ? "" : location.search));
   const cloud = route().cloud;
   for (const p of PAGES) $(`panel-${p}`).hidden = p !== r.page;
   document.querySelectorAll("#sidenav [data-cloud]").forEach((a) => {
@@ -143,12 +149,19 @@ export function selectTab(name) {
   go(state.config ? clusterPath(state.config, name === "configure") : `/clusters/${route().cloud || homeCloud()}`);
 }
 
+// Platform links go through the router; any other link (the other console's section) loads its page.
 function wireTabs() {
-  document.querySelectorAll("#sidenav [data-cloud]").forEach((a) => a.addEventListener("click", (e) => {
-    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
-    e.preventDefault();
-    go(a.getAttribute("href"));
-  }));
+  document.querySelectorAll("#sidenav [data-cloud]").forEach((a) => {
+    const path = `/clusters/${a.dataset.cloud}`;
+    a.setAttribute("href", url(path));
+    a.addEventListener("click", (e) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      go(path);
+    });
+  });
+  // Inside the unified console: the section title and the switch to the serverless section.
+  for (const id of ["section-title", "section-switch"]) $(id).hidden = !BASE;
 }
 
 $("auth-form").addEventListener("submit", (e) => {

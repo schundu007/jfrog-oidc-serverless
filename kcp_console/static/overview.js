@@ -3,7 +3,7 @@
 // evidence and a fresh status read. The action is rebuilt from the server's run records, so a page
 // refresh or another page in between finds it where it was. The approval is the only click inside it.
 
-import { api, h, fill, state, selectTab, refreshConfigs, route, go, clusterPath, CLOUDS as CLOUD } from "./app.js";
+import { api, h, fill, state, selectTab, refreshConfigs, route, go, url, clusterPath, CLOUDS as CLOUD } from "./app.js";
 import { $, workflow, brief } from "./ui.js";
 
 const live = {};            // config name -> {loading, facts, preflight, error}
@@ -85,7 +85,7 @@ function query() {
 // Filters live in the address, so a refresh or a shared link shows the same list.
 function setFilter(patch) {
   Object.assign(F, { page: 1 }, patch);
-  history.replaceState({}, "", `/clusters/${cloud()}${query()}`);
+  history.replaceState({}, "", url(`/clusters/${cloud()}${query()}`));
 }
 
 async function loadFleet() {
@@ -158,7 +158,7 @@ function fleetTable(all) {
   const pages = Math.ceil(rows.length / PAGE);
   F.page = Math.min(Math.max(1, F.page), pages);
   const first = (F.page - 1) * PAGE;
-  const go = (p) => { F.page = p; history.replaceState({}, "", `/clusters/${cloud()}${query()}`); fillTable(); };
+  const go = (p) => { F.page = p; history.replaceState({}, "", url(`/clusters/${cloud()}${query()}`)); fillTable(); };
   return [
     h("table", { class: "fleet-table" },
       h("thead", {}, h("tr", {}, (gke ? ["Cluster", "Project", "Status", "Credential provider", "Last verified", "Last action"]
@@ -228,7 +228,7 @@ function clusterView(c) {
   return h("div", { class: "cluster" },
     h("nav", { class: "crumbs", "aria-label": "Breadcrumb" },
       h("span", {}, "Clusters"), h("span", {}, "/"),
-      h("a", { href: `/clusters/${cloud()}`, onclick: (e) => { e.preventDefault(); openFleet(); } }, CLOUD[cloud()]), h("span", {}, "/"), h("span", {}, c.name)),
+      h("a", { href: url(`/clusters/${cloud()}`), onclick: (e) => { e.preventDefault(); openFleet(); } }, CLOUD[cloud()]), h("span", {}, "/"), h("span", {}, c.name)),
     h("header", { class: "cl-head" },
       h("div", {},
         h("div", { class: "cl-title" },

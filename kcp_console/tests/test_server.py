@@ -281,3 +281,41 @@ class DiscoverRaceTest(unittest.TestCase):
         self.assertEqual(errs, [])
         self.assertEqual(len(out), 3)
         self.assertEqual(len(calls), 1)
+
+
+class BaseTest(unittest.TestCase):
+    """Mounted under the unified console (portal/) at /k8s: the page learns its base from a meta tag and
+    loads its static files from under it. The handler still sees unprefixed paths (the portal strips them)."""
+
+    def page(self, base):
+        with tempfile.TemporaryDirectory() as d:
+            srv = KcpServer(port=0, log=io.StringIO(), store=Store(Path(d)), base=base)
+            srv.start()
+            try:
+                c = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=10)
+                c.request("GET", "/clusters/aks", headers={"Host": f"127.0.0.1:{srv.port}", "Sec-Fetch-Site": "none"})
+                r = c.getresponse()
+                raw = r.read()
+                c.close()
+                return r.status, raw.replace(srv.token.encode(), b"TOKEN")
+            finally:
+                srv.stop()
+
+    def test_no_base_is_the_page_as_before(self):
+        status, raw = self.page("")
+        self.assertEqual(status, 200)
+        index = (Path(__file__).parent.parent / "static" / "index.html").read_bytes()
+        self.assertEqual(raw, index.replace(b'<meta charset="utf-8">',
+                                            b'<meta charset="utf-8">\n  <meta name="console-token" content="TOKEN">', 1))
+
+    def test_base_adds_the_meta_and_prefixes_static_links(self):
+        status, raw = self.page("/k8s")
+        self.assertEqual(status, 200)
+        self.assertIn(b'<meta name="console-base" content="/k8s">', raw)
+        self.assertNotIn(b'"/static/', raw)
+        self.assertIn(b'"/k8s/static/app.js"', raw)
+        self.assertIn(b"<title>KCP Console</title>", raw)
+
+    def test_make_handler_is_public(self):
+        from kcp_console import server
+        self.assertIs(server.make_handler, server._make_handler)
