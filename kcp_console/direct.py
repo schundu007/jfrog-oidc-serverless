@@ -305,9 +305,10 @@ class Runner:
             return "skipped", f"dry run: pod validated {'by the API server' if flag.endswith('server') else 'client-side'}"
         self._run(["kubectl", "delete", "pod", k["test_pod"], "-n", k["namespace"], "--ignore-not-found", "--wait=true"], timeout=120)
         self._run(["kubectl", "apply", "-f", str(self.p["pod"])])
-        waited, phase, reason = 0, "", ""
+        waited, phase, reason, uid = 0, "", "", ""
         while waited < self.pull_timeout:
             d = self._run(["kubectl", "get", "pod", k["test_pod"], "-n", k["namespace"], "-o", "json"]).json({}) or {}
+            uid = (d.get("metadata") or {}).get("uid", uid)
             phase = (d.get("status") or {}).get("phase", "")
             cs = ((d.get("status") or {}).get("containerStatuses") or [{}])[0]
             reason = ((cs.get("state") or {}).get("waiting") or {}).get("reason", "")
@@ -316,7 +317,9 @@ class Runner:
             self.sleep(5)
             waited += 5
         ev = self._run(["kubectl", "get", "events", "-n", k["namespace"], "--field-selector", f"involvedObject.name={k['test_pod']}", "-o", "json"]).json({}) or {}
-        msgs = [e.get("message", "") for e in ev.get("items", []) if e.get("reason") in ("Pulled", "Failed", "BackOff")]
+        # Events outlive a deleted pod; an earlier test pod with the same name is told apart by its uid.
+        msgs = [e.get("message", "") for e in ev.get("items", []) if e.get("reason") in ("Pulled", "Failed", "BackOff")
+                and (not uid or (e.get("involvedObject") or {}).get("uid") in (None, uid))]
         self._run(["kubectl", "delete", "pod", k["test_pod"], "-n", k["namespace"], "--ignore-not-found", "--wait=false"])
         if phase in ("Running", "Succeeded"):
             return "done", "pulled with imagePullSecrets: [] — " + (msgs[0] if msgs else phase)

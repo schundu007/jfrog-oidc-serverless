@@ -163,10 +163,16 @@ def diagnose(bundle: dict) -> dict:
                            f"system:serviceaccount:{(cfg.get('k8s') or {}).get('namespace')}:{(cfg.get('k8s') or {}).get('service_account')})",
                            plines[-2:], None))
 
-    # --- token issued, pull 403 (expected, not observed)
+    # --- token issued, pull 403 (observed on a real cluster as the remote-cache case below)
     if pev.get("pull_403") or (last and "403 Forbidden" in last.get("events", "")):
-        findings.append(_f("pull-403", 89, "The token was issued but the pull was refused: the mapped user lacks permission on the repo",
-                           [l.strip() for l in last["events"].splitlines() if "403" in l][:2]))
+        ev = last["events"] if last else ""
+        # A first pull through a remote repo stores the image in <repo>-cache, which needs Deploy/Cache, not just Read.
+        m = re.search(r"User (\S+) is not permitted to deploy .*? into '([\w.-]+)-cache:", ev)
+        title = (f"The token was issued but the pull was refused: {m.group(1)} can read {m.group(2)} but a first pull through a "
+                 f"remote repository also needs Deploy/Cache on it" if m else
+                 "The token was issued but the pull was refused: the mapped user lacks permission on the repo")
+        findings.append(_f("pull-403", 89, title,
+                           [l.strip() for l in ev.splitlines() if "403" in l or "not permitted" in l][:2]))
 
     # --- bare domain / virtual promote
     if pev.get("unsupported_repo") is not None:

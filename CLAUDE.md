@@ -99,7 +99,9 @@ code when real providers or APIs disagree:
   --password-secret-name`.
 - The Docker subdomain host form `<server>-<repo-key>.jfrog.io` on the target
   JFrog instance (it is what the AKS pilot's instance served; a self-hosted
-  platform may differ: set `jfrog.docker_host`).
+  platform may differ: set `jfrog.docker_host`). On a JFrog Cloud trial (2026-10-30)
+  it only redirected; the path form `<server>/<repo-key>/<image>` worked end to end
+  with the KCP direct setup.
 
 Verified in M4 by `terraform validate` (azurerm 5.12.0): the
 `azurerm_function_app_flex_consumption` argument names. Verified by `terraform validate`

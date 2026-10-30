@@ -48,7 +48,7 @@ class Counts(unittest.TestCase):
         self.assertEqual(len(k.KUBELET_LINES), 2)
         self.assertEqual(len(k.TROUBLESHOOTING), 9)
         not_observed = {t["id"] for t in k.TROUBLESHOOTING if not t["observed"]}
-        self.assertEqual(not_observed, {"token-endpoint-refused", "pull-403"})
+        self.assertEqual(not_observed, {"token-endpoint-refused"})
 
     def test_template(self):
         self.assertEqual(len({p["path"] for p in k.TEMPLATE_PATHS}), 8)   # 7 rows; the steps row names two files

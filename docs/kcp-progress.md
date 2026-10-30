@@ -226,4 +226,23 @@ Each row says where the fact lives. `K.` = `kcp_console/knowledge.py`.
   approval panel lists every command; Configure's main button is "Set up".
 - Values file follows the reference: `tokenAttributes.serviceAccountTokenAudience`
   (= `azure_app_audience`); a blank `downloadUrl` is left out (chart default).
-- Tests: `tests/test_direct.py` (15). Not yet run against a real cluster.
+- Tests: `tests/test_direct.py` (20), `tests/test_diagnose.py`.
+
+### Real cluster run (2026-10-30)
+
+Test AKS cluster (Kubernetes 1.36, one node, OIDC issuer and Workload Identity on) and a
+JFrog Cloud trial instance, driven through the console's run API (prepare, hash-bound
+approval, run). Dry run, Set up, Verify, Tear down and Set up again all succeeded; the test
+pod pulled through a Docker remote repo with `imagePullSecrets: []`.
+
+Found and fixed on the way:
+- A server-side dry run cannot place the service account or test pod in a namespace it only
+  pretends to create: those are checked client-side until the namespace exists.
+- A dry run without a JFrog token now skips the provider and mapping reads instead of failing.
+- The pull step read a failure event left by an earlier pod with the same name: events are now
+  matched by the pod's uid.
+- First pull through a remote repo: 403 "not permitted to deploy ... into <repo>-cache". The
+  mapped user needs Deploy/Cache on the remote, not only Read. `pull-403` is now observed and
+  names that case.
+- The Docker subdomain host `<server>-<repo>.jfrog.io` only redirected on the trial instance; the
+  path form `<server>/<repo>/<image>` served the pull (`match_images: [<server>]`).

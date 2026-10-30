@@ -49,10 +49,12 @@ class FakeShell:
             st = {"phase": self.pod_phase}
             if self.pod_reason:
                 st["containerStatuses"] = [{"state": {"waiting": {"reason": self.pod_reason}}}]
-            out = json.dumps({"status": st})
+            out = json.dumps({"metadata": {"uid": "pod-uid-2"}, "status": st})
         elif argv[:3] == ["kubectl", "get", "events"]:
             ok = self.pod_phase == "Running"
-            out = json.dumps({"items": [{"reason": "Pulled" if ok else "Failed",
+            # An earlier test pod with the same name left a failure behind; only uid pod-uid-2 is this run's.
+            out = json.dumps({"items": [{"reason": "Failed", "message": "old 403 Forbidden", "involvedObject": {"uid": "pod-uid-1"}},
+                                        {"reason": "Pulled" if ok else "Failed", "involvedObject": {"uid": "pod-uid-2"},
                                          "message": "Successfully pulled image" if ok else "401 Unauthorized"}]})
         elif argv[:2] == ["kubectl", "apply"]:
             out = "serviceaccount/jfrog-provider-sa created\n"
@@ -161,6 +163,11 @@ class RunnerTest(unittest.TestCase):
         res = rn.execute(direct.plan(cfg(), self.root, "setup", dry_run=False))
         self.assertEqual(res[-1]["id"], "provider")
         self.assertEqual(res[-1]["status"], "failed")
+
+    def test_pull_reports_this_pods_events_only(self):
+        res = self.runner(FakeShell(), dry=False).execute([{"id": "pull", "title": "pull"}])
+        self.assertIn("Successfully pulled image", res[0]["detail"])
+        self.assertNotIn("old 403", res[0]["detail"])
 
     def test_real_setup_creates_what_is_missing(self):
         sh = FakeShell(oidc=False)
