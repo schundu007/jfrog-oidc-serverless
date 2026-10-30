@@ -19,6 +19,7 @@ import urllib.parse
 from .. import model
 from ..shell import Shell
 from .aws import AwsPreflight
+from .openshift import OpenShiftPreflight
 
 TF_MIN = (1, 6)
 PROD_NAME = re.compile(r"(^|[-_. ])(prod|prd|production|live)([-_. ]|$)", re.I)
@@ -80,7 +81,7 @@ def _version_tuple(text: str):
     return tuple(int(n) for n in nums[:3]) if nums else None
 
 
-class Preflight(AwsPreflight):
+class Preflight(AwsPreflight, OpenShiftPreflight):
     def __init__(self, cfg: dict, sh: Shell, env=None, delivery=False, repo_root=None):
         self.cfg = cfg
         self.repo_root = repo_root

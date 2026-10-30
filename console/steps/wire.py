@@ -24,6 +24,7 @@ import json
 from .. import model, redact
 from ..shell import Shell
 from .aws import AwsWire
+from .openshift import OpenShiftWire
 
 SECRET_NAME = "jfrog-registry-token"
 HIDDEN = "[set, not shown]"
@@ -56,7 +57,7 @@ def _entry(scope, key, current, desired):
     return {"scope": scope, "setting": key, "current": current, "desired": desired, "action": action}
 
 
-class Wire(AwsWire):
+class Wire(AwsWire, OpenShiftWire):
     def __init__(self, cfg: dict, sh: Shell, outputs: dict):
         self.cfg, self.sh, self.out = cfg, sh, outputs or {}
         self.kind = model.get_path(cfg, "target.kind")
@@ -107,6 +108,8 @@ class Wire(AwsWire):
             return {}
         if self.cloud == "aws":
             return self._aws_env()
+        if self.cloud == "openshift":
+            return self._k8s_env()
         if self.cloud == "gcp":
             provider, audience = self._need("jfrog_provider_name", "jfrog_audience")
             return {"JFROG_OIDC_AUDIENCE": audience, "JFROG_OIDC_PROVIDER": provider, "JFROG_OIDC_SOURCE": "gcp",
@@ -130,6 +133,8 @@ class Wire(AwsWire):
         elif self.cloud == "aws":
             diff, commands, notes = self._aws(env)
             self._aws_cache = {}          # the reads held the whole environment: drop it
+        elif self.cloud == "openshift":
+            diff, commands, notes = self._openshift(env)
         elif self._is_container_app():
             diff, commands, notes = self._containerapp(env)
         else:
@@ -147,6 +152,8 @@ class Wire(AwsWire):
             return f"gcp:{g['project']}:{g['region']}:{self._gcp_resource()}/{self._gcp_name()}"
         if self.cloud == "aws":
             return self._aws_target_id()
+        if self.cloud == "openshift":
+            return self._k8s_target_id()
         return self.d.get("resource_id") or "azure:" + str(model.get_path(self.cfg, "target.azure.name", ""))
 
     # -- GCP ---------------------------------------------------------------------------------
@@ -350,7 +357,9 @@ class Wire(AwsWire):
 
     def _resolve(self, argv: list) -> list:
         """Commands that send a whole configuration back carry a placeholder; fill it from a fresh read."""
-        return self._aws_resolve(argv) if self.cloud == "aws" else argv
+        if self.cloud == "aws":
+            return self._aws_resolve(argv)
+        return self._k8s_resolve(argv) if self.cloud == "openshift" else argv
 
     def apply(self, plan: dict, approval) -> dict:
         if not isinstance(approval, dict) or not approval.get("diff_sha256"):

@@ -22,6 +22,7 @@ import time
 from .. import model
 from ..shell import Shell
 from .aws import AwsDiscover
+from .openshift import OpenShiftDiscover
 
 DEFAULT_COMPUTE_SA = re.compile(r"^\d+-compute@developer\.gserviceaccount\.com$")
 APPENGINE_SA = re.compile(r"^[a-z][a-z0-9-]*@appspot\.gserviceaccount\.com$")
@@ -56,7 +57,7 @@ def _prop(d: dict, key: str, default=None):
     return _dig(d, "properties", key, default=default)
 
 
-class Discover(AwsDiscover):
+class Discover(AwsDiscover, OpenShiftDiscover):
     def __init__(self, cfg: dict, sh: Shell):
         self.cfg = cfg
         self.sh = sh
