@@ -8,10 +8,8 @@ QUICK SUMMARY footer are reconstructed from the runbook's field names.
 
 VALUES_SANDBOX = '''providerConfig:
   - name: jfrog-credentials-provider
-    # Bare hostname, NOT a URL: the plugin prepends "https://" itself.
     artifactoryUrl: "example.jfrog.io"
     matchImages:
-      # The repo's dedicated subdomain (the bare-domain path method does not work here).
       - "example-aks-sandbox-test-docker-local.jfrog.io"
     defaultCacheDuration: 5h
     tokenAttributes:

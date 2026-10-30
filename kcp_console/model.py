@@ -139,10 +139,8 @@ def render_values(cfg: dict) -> str:
     mi = "\n".join(f'      - "{m}"' for m in v["match_images"])
     return f'''providerConfig:
   - name: jfrog-credentials-provider
-    # Bare hostname, NOT a URL: the plugin prepends "https://" itself.
     artifactoryUrl: "{v['artifactory_url']}"
     matchImages:
-      # The repo's dedicated subdomain (the bare-domain path method does not work here).
 {mi}
     defaultCacheDuration: {v['default_cache_duration']}
     tokenAttributes:

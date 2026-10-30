@@ -9,7 +9,6 @@ const P = () => $("panel-configure");
 let cfg = null;
 let blank = null;
 let lastPreflight = null;
-let lastValues = null;
 
 // Field labels, placeholders and hints, in the order the steps show them.
 const F = {
@@ -138,8 +137,6 @@ function render() {
           h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!cfg.demo_mode, onchange: (e) => { cfg.demo_mode = e.target.checked; } }),
             " Demo mode"),
           tmpl ? h("div", { class: "tgrid" }, k.TEMPLATE_INPUTS.map((i) => field(`template.${i.name}`, i.name, i.default))) : null),
-        h("details", { class: "advanced" }, h("summary", {}, "Generated files"),
-          h("div", { id: "cfg-values" }), h("div", { id: "cfg-requests" })),
         h("div", { id: "cfg-preflight" })),
       h("aside", { class: "cfg-side", id: "cfg-side" })));
   renderSide();
@@ -186,33 +183,20 @@ function validateSoon(ms = 300) {
   timer = setTimeout(async () => {
     let v;
     try { v = await api("/api/values", { method: "POST", body: { config: cfg } }); } catch { return; }
-    lastValues = v;
     const issues = cfg.mode === "template" ? v.issues.concat(v.template_issues) : v.issues;
     document.querySelectorAll("#panel-configure .issue").forEach((el) => { el.textContent = ""; el.className = "issue small"; });
     for (const i of issues.filter((x) => x.level === "error" && filled(x.field))) {
       const el = document.querySelector(`#panel-configure .issue[data-field="${i.field}"]`);
       if (el && !el.textContent) { el.textContent = i.message.split(/[:(]/)[0].trim(); el.title = i.message; el.classList.add(i.level); }
     }
-    fill($("cfg-values"), h("p", { class: "small muted" }, `Committed to ${v.path} · sha256 ${v.sha256.slice(0, 12)}…`),
-      h("div", { class: "two-col" }, h("div", {}, h("h3", {}, "values.yaml"), h("pre", { class: "code" }, v.text)),
-        h("div", {}, h("h3", {}, "Live release (helm get values -a)"), v.live ? diff(v.text, v.live) : h("p", { class: "muted small" }, "Run Discover to read the live release."))));
-    fill($("cfg-requests"), h("div", { class: "two-col" },
-      h("div", {}, h("h3", {}, "POST /access/api/v1/oidc"), h("pre", { class: "code" }, JSON.stringify(v.provider_request, null, 2))),
-      h("div", {}, h("h3", {}, `POST …/oidc/${v.provider_name || "<provider>"}/identity_mappings`), h("pre", { class: "code" }, JSON.stringify(v.mapping_request, null, 2)))),
-      h("h3", {}, "Test pod"), h("pre", { class: "code" }, v.test_pod));
   }, ms);
-}
-
-function diff(want, live) {
-  const w = new Set(want.split("\n").map((l) => l.trim()));
-  return h("pre", { class: "code" }, live.split("\n").map((l) => h("span", { class: l.trim() && !w.has(l.trim()) ? "diff-bad" : "" }, l + "\n")));
 }
 
 function msg(text, cls = "small") { const m = $("cfg-msg"); if (m) { m.textContent = text; m.className = cls; } }
 
 async function save() {
   const name = (cfg.name || "").trim();
-  if (!name) { msg("Give the configuration a name first.", "small error"); return false; }
+  if (!name) { msg("Name required", "small error"); return false; }
   try {
     await api(`/api/configs/${encodeURIComponent(name)}`, { method: "PUT", body: { config: cfg } });
     await refreshConfigs(name);

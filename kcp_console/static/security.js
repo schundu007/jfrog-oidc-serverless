@@ -27,15 +27,15 @@ async function render() {
   fill(P,
     pageHead("Security", h("span", { class: "pill" }, `${decided}/${sr.rows.length} decided`)),
     gateOpen.length ? h("div", { class: `outcome ${prd ? "is-fail" : "is-warn"}` },
-      h("div", {}, h("b", {}, prd ? "PRD blocked. " : "PRD gate: "), `decide ${gateOpen.map((r) => r.area).join(" and ")} before any PRD run.`)) : null,
+      h("div", {}, h("b", {}, prd ? "PRD blocked: " : "PRD gate: "), gateOpen.map((r) => r.area).join(", "))) : null,
     h("h2", {}, "Checks"),
     table(["check", "result", "detail"], [
       ["Chart RBAC", pill(a.chart_rbac.status), a.chart_rbac.detail],
       ["Secrets in stored logs", pill(a.log_leaks.status), a.log_leaks.detail]]),
     h("h2", {}, "Review"),
-    table(["area", "finding", "PRD gate", "status", "note"], sr.rows.map((r) => {
+    table(["area", "PRD gate", "status", "note"], sr.rows.map((r) => {
       const cur = sec[r.id] || {};
-      return [h("b", {}, r.area), r.finding, r.prd_gate ? "yes" : "",
+      return [h("b", { title: r.finding }, r.area), r.prd_gate ? "yes" : "",
         h("select", { "aria-label": `status of ${r.area}`, onchange: (e) => save({ security: { [r.id]: { ...cur, status: e.target.value } } }) },
           sr.statuses.map((s) => h("option", { selected: (cur.status || "open") === s }, s))),
         h("input", { type: "text", value: cur.note || "", "aria-label": `note for ${r.area}`, spellcheck: "false",
@@ -46,7 +46,7 @@ async function render() {
       const cur = items[o.id] || {};
       return [h("input", { type: "checkbox", checked: cur.status === "done", "aria-label": o.title,
         onchange: (e) => save({ open_items: { [o.id]: { ...cur, status: e.target.checked ? "done" : "open" } } }) }),
-        h("span", {}, h("b", {}, o.title), h("br"), h("span", { class: "small muted" }, o.check || "")),
+        h("b", { title: o.check || "" }, o.title),
         h("input", { type: "text", value: cur.note || "", "aria-label": `note for ${o.title}`,
           onchange: (e) => save({ open_items: { [o.id]: { ...cur, note: e.target.value } } }) })];
     })));

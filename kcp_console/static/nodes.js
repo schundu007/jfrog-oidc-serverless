@@ -29,7 +29,7 @@ async function render() {
     h("h2", {}, "Writers of the node config"),
     a.writers.length ? table(["DaemonSet", "mounts", "role"], a.writers.map((d) => [`${d.namespace}/${d.name}`, d.mounts.join(", "),
       d.release ? "the release" : d.jfrog ? h("b", { class: "error" }, "orphaned JFrog writer") : "other"]))
-      : h("p", { class: "muted small" }, "Not read yet: run Discover or Find writers."),
+      : h("p", { class: "muted small" }, "Not read yet"),
     h("h2", {}, "Actions"),
     await stepList([
       { title: "Check the nodes", line: "CHECK_KUBELET_PROVIDER (read-only).", kind: "pilot", name: "CHECK_KUBELET_PROVIDER" },
