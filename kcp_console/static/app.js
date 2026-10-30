@@ -146,6 +146,31 @@ function parent(r) {
   return BASE ? { home: true, label: "Home" } : null;
 }
 
+// A product mark (aks, gke, eks, openshift, k8s) or the arrow icon, cloned from the page's template.
+export const markOf = (k) => $("marks").content.querySelector(`[data-mark="${k}"] svg`).cloneNode(true);
+
+// Where you are, in the top bar: Home / Kubernetes / <platform> / <cluster> / Edit. Every step but the
+// last is a link; Home (the unified console's) loads its page, the rest go through the router.
+function renderTrail(r) {
+  const steps = [];
+  if (BASE) steps.push(["Home", "/", true]);
+  steps.push(["Kubernetes", "/clusters"]);
+  if (r.cloud) steps.push([CLOUDS[r.cloud], `/clusters/${r.cloud}`]);
+  if (r.name) steps.push([r.name, clusterPath(r.name)]);
+  if (r.name && r.page === "configure") steps.push(["Edit", null]);
+  const parts = [];
+  steps.forEach(([label, path, outside], i) => {
+    if (i) parts.push(h("span", { class: "trail-sep", "aria-hidden": "true" }, "/"));
+    if (i === steps.length - 1) return parts.push(h("span", { "aria-current": "page" }, label));
+    parts.push(h("a", { href: outside ? path : url(path), onclick: outside ? null : (e) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      go(path);
+    } }, label));
+  });
+  $("trail").replaceChildren(...parts);
+}
+
 function backButton(r) {
   const b = $("nav-back");
   const hasHistory = (window.navigation?.currentEntry?.index ?? 0) > 0;
@@ -168,6 +193,7 @@ function show() {
     if (a.dataset.cloud === cloud) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
   backButton(route());
+  renderTrail(route());
   window.scrollTo(0, 0);
   state.emit("tab", r.page);
 }
@@ -189,7 +215,7 @@ function wireTabs() {
     });
   });
   // Inside the unified console: the section title and the switch to the serverless section.
-  for (const id of ["section-title", "section-switch", "brand-portal"]) $(id).hidden = !BASE;
+  for (const id of ["section-switch", "brand-portal"]) $(id).hidden = !BASE;
   $("brand-own").hidden = !!BASE;
 }
 
@@ -235,24 +261,12 @@ export async function refreshConfigs(select) {
   let want = select || state.config;
   try { want ||= localStorage.getItem("kcp-config"); } catch { /* ignore */ }
   if (!configs.some((c) => c.name === want)) want = configs.length ? configs[0].name : null;
-  const sel = $("config-select");
-  fill(sel, configs.length ? configs.map((c) => h("option", { value: c.name, selected: c.name === want }, c.cluster && c.cluster !== c.name ? `${c.name} · ${c.cluster}` : c.name))
-    : [h("option", { value: "" }, "no saved config")]);
-  $("config-pick").hidden = true;   // the Clusters page is the picker (it scales to a fleet)
   if (want !== state.config) {
     state.config = want;
     try { if (want) localStorage.setItem("kcp-config", want); } catch { /* ignore */ }
     if (select !== undefined || state.started) state.emit("config", want);
   }
 }
-
-$("config-select").addEventListener("change", (e) => {
-  state.config = e.target.value || null;
-  try { localStorage.setItem("kcp-config", state.config || ""); } catch { /* ignore */ }
-  state.emit("config", state.config);
-});
-
-
 
 wireTabs();
 window.addEventListener("hashchange", () => { const t = takeTokenFromHash(); if (t) { TOKEN = rememberToken(t); start(); } });

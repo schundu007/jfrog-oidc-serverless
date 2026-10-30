@@ -3,7 +3,7 @@
 // evidence and a fresh status read. The action is rebuilt from the server's run records, so a page
 // refresh or another page in between finds it where it was. The approval is the only click inside it.
 
-import { api, h, fill, state, selectTab, refreshConfigs, route, go, url, clusterPath, CLOUDS as CLOUD } from "./app.js";
+import { api, h, fill, state, selectTab, refreshConfigs, route, go, url, clusterPath, markOf, CLOUDS as CLOUD } from "./app.js";
 import { $, workflow, brief } from "./ui.js";
 
 const live = {};            // config name -> {loading, facts, preflight, error}
@@ -124,7 +124,7 @@ function fleetView() {
   const where = k === "gke" ? "project or location" : "subscription, resource group or region";
   return h("div", { class: "fleet" },
     h("header", { class: "cl-head" },
-      h("div", { class: "cl-title" }, h("h1", {}, label), n ? muted(`${n} cluster${n === 1 ? "" : "s"}`) : null),
+      h("div", { class: "cl-title" }, h("span", { class: "head-mark" }, markOf(k)), h("h1", {}, label), n ? muted(`${n} cluster${n === 1 ? "" : "s"}`) : null),
       h("div", { class: "cl-actions" },
         built ? h("button", { class: "ghost", disabled: fleetLoading, onclick: () => { fleet = null; render(); } }, "Refresh") : null,
         built && n ? h("button", { class: adding ? "secondary" : "primary", onclick: () => { adding = !adding; render(); } }, adding ? "Close" : "Add a cluster") : null)),
@@ -222,16 +222,14 @@ function clusterView(c) {
     ["Service account", pill(sa ? sa.exists && sa.annotation === "true" : undefined, "Allowed", sa?.exists ? "Not allowed" : "Missing")],
     ["Mapped user", map ? `${map.token_spec?.username || "—"}${ttl ? ` · ${Math.round(ttl / 60)} min tokens` : ""}` : muted("—")],
   ].filter(Boolean);
-  const facts = f.cluster || rel ? h("section", { class: "panel essentials" },
+  const facts = f.cluster || rel ? h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", {}, "Essentials")),
-    h("dl", { class: "ess" }, essentials.map(([k, v]) => h("div", {}, h("dt", {}, k), h("dd", {}, v))))) : null;
+    h("dl", { class: "essentials" }, essentials.map(([k, v]) => h("div", {}, h("dt", {}, k), h("dd", {}, v))))) : null;
   return h("div", { class: "cluster" },
-    h("nav", { class: "crumbs", "aria-label": "Breadcrumb" },
-      h("span", {}, "Clusters"), h("span", {}, "/"),
-      h("a", { href: url(`/clusters/${cloud()}`), onclick: (e) => { e.preventDefault(); openFleet(); } }, CLOUD[cloud()]), h("span", {}, "/"), h("span", {}, c.name)),
     h("header", { class: "cl-head" },
       h("div", {},
         h("div", { class: "cl-title" },
+          h("span", { class: "head-mark" }, markOf("k8s")),
           h("h1", {}, c.name),
           h("span", { class: `badge ${vcls}` }, vtext),
           c.cluster && c.cluster !== c.name ? muted(c.cluster) : null)),
@@ -257,7 +255,7 @@ const MARK = { running: "", pending: "", ok: "✓", done: "✓", pass: "✓", fa
 function checklist(items) {
   return h("ul", { class: "checks" }, h("li", { class: "head", "aria-hidden": "true" }, h("span", {}), h("span", {}, "Item"), h("span", {}, "Result")), items.map((x) => {
     const st = String(x.status === "done" ? "ok" : x.status || "").toLowerCase();
-    return h("li", { class: `st-${st}` }, h("span", { class: "mark", title: st }, MARK[st] || "•"),
+    return h("li", { class: `st-${st}` }, h("span", { class: "dot", title: st }, MARK[st] || "•"),
       h("span", { class: "t" }, x.title || x.id), h("span", { class: "d" }, brief(x.detail)));
   }));
 }
@@ -513,23 +511,22 @@ function foundTable(configs, cloud) {
   if (f.error) return h("p", { class: "error small" }, brief(f.error));
   const rows = f.clusters.filter((k) => !added.has(k.name.toLowerCase()));
   if (!rows.length) return muted(f.clusters.length ? `All ${src.short} clusters are added.` : `No ${src.short} clusters found.`);
-  const on = (b) => (b ? "on" : h("span", { class: "bad" }, "off"));
-  const cols = cloud === "gke"
-    ? ["Cluster", "Project", "Location", "Kubernetes", "Workload Identity", ""]
-    : ["Cluster", "Subscription", "Resource group", "Location", "Kubernetes", "OIDC · WI", ""];
-  return h("table", { class: "cfg-table" },
-    h("thead", {}, h("tr", {}, cols.map((t) => h("th", { scope: "col" }, t)))),
-    h("tbody", {}, rows.map((k) => h("tr", {},
-      h("td", {}, h("b", {}, k.name), k.power && k.power !== "Running" ? muted(` ${k.power}`) : null,
-        k.status && k.status !== "RUNNING" ? muted(` ${k.status.toLowerCase()}`) : null),
-      ...(cloud === "gke"
-        ? [h("td", {}, k.project_name && k.project_name !== k.project_id ? [k.project_name, h("div", { class: "sub" }, k.project_id)] : k.project_id),
-           h("td", {}, k.location), h("td", {}, k.version), h("td", {}, k.autopilot ? muted("Autopilot") : on(k.workload_identity))]
-        : [h("td", {}, k.subscription_name || k.subscription_id), h("td", {}, k.resource_group), h("td", {}, k.location), h("td", {}, k.version),
-           h("td", {}, on(k.oidc_issuer), " · ", on(k.workload_identity))]),
-      h("td", { class: "row-actions" }, k.autopilot
-        ? muted("not supported")
-        : h("button", { class: "primary small-btn", onclick: () => add(k, cloud) }, "Add"))))));
+  // One card per cluster: its mark, name, where it lives, what Set up will find, then Add.
+  const fact = (ok, text) => h("li", { class: ok ? "" : "bad" }, `${text} ${ok ? "on" : "off"}`);
+  return h("div", { class: "pick-grid" }, rows.map((k) => {
+    const where = cloud === "gke" ? [k.project_name || k.project_id, k.location] : [k.subscription_name || k.subscription_id, k.resource_group, k.location];
+    const state = (k.power && k.power !== "Running" && k.power) || (k.status && k.status !== "RUNNING" && k.status.toLowerCase());
+    return h("button", { type: "button", class: "pick-card", disabled: k.autopilot, onclick: () => add(k, cloud) },
+      h("span", { class: "pick-mark" }, markOf(cloud)),
+      h("b", {}, k.name),
+      h("span", { class: "pick-sub" }, where.filter(Boolean).join(" · ")),
+      h("ul", { class: "pick-list" },
+        h("li", {}, `Kubernetes ${k.version || "—"}`),
+        cloud === "gke" ? null : fact(k.oidc_issuer, "OIDC issuer"),
+        k.autopilot ? h("li", { class: "bad" }, "Autopilot: not supported") : fact(k.workload_identity, "Workload Identity"),
+        state ? h("li", { class: "bad" }, state) : null),
+      h("span", { class: "pick-go" }, k.autopilot ? "Not supported" : "Add", k.autopilot ? null : markOf("go")));
+  }));
 }
 
 async function loadFound(cloud) {
