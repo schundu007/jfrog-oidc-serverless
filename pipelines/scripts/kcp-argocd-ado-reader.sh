@@ -5,7 +5,7 @@
 # repo-server service account on the hub cluster (no client secret), and adds it to the ADO
 # organisation with Basic access and Reader on the project. Prints only the app (client) ID.
 #
-#   AZURE_CONFIG_DIR=~/.azure-personal bash pipelines/scripts/kcp-argocd-ado-reader.sh \
+#   bash pipelines/scripts/kcp-argocd-ado-reader.sh \
 #     <ado-tenant-id> <ado-org> <ado-project> <hub-oidc-issuer>
 set -euo pipefail
 

@@ -177,7 +177,7 @@ PYTHONPATH=client/src:rotator:. python -m console --no-browser
 
 ```bash
 PYTHONPATH=client/src:rotator:. python -m console --fixtures console/tests/fixtures   # no cloud access needed
-AZURE_CONFIG_DIR=$HOME/.azure-personal PYTHONPATH=client/src:rotator:. python -m console   # live, read-only
+PYTHONPATH=client/src:rotator:. python -m console   # live, read-only
 ```
 
 ## M4 Terraform generation, plan/apply gates, wire, Runs tab
@@ -535,3 +535,28 @@ Cloud Build and GitHub Actions options are removed for now:
     by a task (AzureCLI@2).
   - GCP `google.subject` is capped at 127 bytes, so it maps `sub.extract('/sc/{id}')`.
   - The AzureCLI@2 login needs a role on the identity (Reader on its RG).
+
+## Existing apps (2026-10-30)
+
+- Inventory lists every project (`gcloud projects list`) and subscription
+  (`az account list`) the login sees; the UI picks one. Each app is marked
+  onboarded when a saved config or a delivered workspace
+  (`terraform/workspaces/*/configs`) targets it. Disabled Cloud Run API and
+  other-tenant az logins are one clear line each.
+- Apps with no usable identity no longer dead-end in Discover:
+  - GCP on the default compute/App Engine account: the workspace creates
+    `jfrog-<name>` (`google_service_account.dedicated`) and Wire switches the app
+    to it in the same `gcloud run … update` (`--service-account`). The note lists
+    the old account's project roles; the new one starts with none.
+  - Azure with no managed identity: the workspace creates `id-<name>-jfrog`
+    (`azurerm_user_assigned_identity.dedicated`, in the app's RG and location) and
+    Wire assigns it first (additive), then uses it for env, Key Vault refs and
+    `keyVaultReferenceIdentity`.
+  - Mapping subject, audience assignee and secret reader come from the created
+    identity (`lookup(local.dedicated_subjects, …)`). Discover recognises the
+    identity on later runs, so it stays in the workspace.
+  `terraform validate` passes for both (CONSOLE_TF_VALIDATE=1).
+- Delivery preflight checks the pipeline's setup identity has a role in the
+  app's project / resource group (`pipeline_identity` in `pipelines/delivery.json`).
+- Live: `orders-legacy` (an existing Cloud Run job, own SA) discovers and
+  preflights green in delivery mode.
