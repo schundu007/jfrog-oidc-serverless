@@ -163,9 +163,14 @@ def terraform_lock(ws_dir: Path, timeout: float = 3600.0, on_wait=None) -> FileL
 # ---------------------------------------------------------------------- render
 
 
-def render(cfg: dict, root: Path, on_wait=None) -> dict:
-    """Add or update this config's target in its shared workspace and rewrite the files."""
-    return _update(cfg, Path(root), on_wait, remove=False)
+def render(cfg: dict, root: Path, on_wait=None, modules: str | None = None) -> dict:
+    """Add or update this config's target in its shared workspace and rewrite the files.
+
+    modules: where main.tf.json points its module sources. Default: this checkout's
+    terraform/modules (absolute). Delivery passes "../../modules" for a workspace
+    committed under terraform/workspaces/.
+    """
+    return _update(cfg, Path(root), on_wait, remove=False, modules=modules)
 
 
 def remove(cfg: dict, root: Path, on_wait=None) -> dict:
@@ -173,7 +178,7 @@ def remove(cfg: dict, root: Path, on_wait=None) -> dict:
     return _update(cfg, Path(root), on_wait, remove=True)
 
 
-def _update(cfg: dict, root: Path, on_wait, remove: bool) -> dict:
+def _update(cfg: dict, root: Path, on_wait, remove: bool, modules: str | None = None) -> dict:
     key = workspace_key(cfg)
     cloud = key.split(":", 1)[0]
     name = cfg.get("name")
@@ -199,7 +204,7 @@ def _update(cfg: dict, root: Path, on_wait, remove: bool) -> dict:
             state["targets"][name] = target
             _guards(root, key, state)
             _check_complete(state)
-        _write_workspace(ws, state)
+        _write_workspace(ws, state, modules)
     return {"key": key, "dir": str(ws), "targets": sorted(state["targets"]), "warnings": warnings}
 
 
@@ -425,12 +430,12 @@ def _backend(cfg: dict) -> dict:
 # ----------------------------------------------------------------------- files
 
 
-def _write_workspace(ws: Path, state: dict) -> None:
+def _write_workspace(ws: Path, state: dict, modules: str | None = None) -> None:
     ws.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(ws, 0o700)
     files = {
         "console.json": state,
-        "main.tf.json": _gcp_main() if state["cloud"] == "gcp" else _azure_main(),
+        "main.tf.json": _gcp_main(modules) if state["cloud"] == "gcp" else _azure_main(modules),
         "terraform.tfvars.json": _gcp_tfvars(state) if state["cloud"] == "gcp" else _azure_tfvars(state),
         "backend.tf.json": {"terraform": {"backend": state["shared"].get("state_backend") or {"local": {"path": "terraform.tfstate"}}}},
     }
@@ -563,7 +568,16 @@ def _adopt_import(cloud: str) -> list:
              "to": f"module.jfrog_oidc.platform_oidc_configuration.{cloud}[0]", "id": "${each.value}"}]
 
 
-def _gcp_main() -> dict:
+def _module_root(modules: str | None) -> str:
+    if modules is None:
+        return str(MODULES)
+    if modules not in ("../../modules",):   # a constant of this module, never operator input
+        raise TfgenError(f"unsupported module root {modules!r}")
+    return modules
+
+
+def _gcp_main(modules: str | None = None) -> dict:
+    mod = _module_root(modules)
     return {
         "import": _adopt_import("gcp"),
         "terraform": {"required_version": ">= 1.7",
@@ -586,13 +600,13 @@ def _gcp_main() -> dict:
         },
         "module": {
             "jfrog_oidc": {
-                "source": str(MODULES / "jfrog-oidc"),
+                "source": f"{mod}/jfrog-oidc",
                 "gcp": {"provider_name": "${var.jfrog_provider_name}", "audience": "${var.jfrog_audience}"},
                 "project_key": "${var.jfrog_project_key}",
                 "workloads": "${merge(var.workloads, local.pull_workloads)}",
             },
             "gcp_pull_path": {
-                "source": str(MODULES / "gcp-pull-path"),
+                "source": f"{mod}/gcp-pull-path",
                 "count": "${var.pull_path.enabled ? 1 : 0}",
                 "project_id": "${var.gcp_project_id}",
                 "region": "${var.gcp_region}",
@@ -620,7 +634,8 @@ def _gcp_main() -> dict:
     }
 
 
-def _azure_main() -> dict:
+def _azure_main(modules: str | None = None) -> dict:
+    mod = _module_root(modules)
     return {
         "import": _adopt_import("azure"),
         "terraform": {"required_version": ">= 1.7",
@@ -649,7 +664,7 @@ def _azure_main() -> dict:
         },
         "module": {
             "azure": {
-                "source": str(MODULES / "azure-identity-and-pull-path"),
+                "source": f"{mod}/azure-identity-and-pull-path",
                 "pull_path_enabled": "${var.pull_path.enabled}",
                 "name_prefix": "${var.name_prefix}",
                 "location": "${var.location}",
@@ -669,7 +684,7 @@ def _azure_main() -> dict:
                 "function_app_ids": "${var.function_app_ids}",
             },
             "jfrog_oidc": {
-                "source": str(MODULES / "jfrog-oidc"),
+                "source": f"{mod}/jfrog-oidc",
                 "azure": {"provider_name": "${var.jfrog_provider_name}", "tenant_id": "${module.azure.tenant_id}",
                           "audience_app_id": "${module.azure.audience_app_id}"},
                 "project_key": "${var.jfrog_project_key}",

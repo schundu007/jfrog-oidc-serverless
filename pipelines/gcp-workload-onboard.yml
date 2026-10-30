@@ -1,0 +1,38 @@
+# Applies the GCP workspaces the console proposes (terraform/workspaces/gcp_<scope>).
+# The console opens a pull request; merging it is the approval. For each
+# workspace changed by the merge: terraform plan and apply with the setup
+# connection, then wire every target with the console's Wire step.
+
+trigger:
+  branches:
+    include: [main]
+  paths:
+    include: [terraform/workspaces/gcp_*]
+pr: none
+
+variables:
+  - template: vars/test.yml
+
+pool:
+  vmImage: ubuntu-24.04
+
+jobs:
+  - job: onboard
+    timeoutInMinutes: 60
+    steps:
+      - checkout: self
+        fetchDepth: 2
+      - bash: pipelines/scripts/install-terraform.sh
+        displayName: Install Terraform $(TERRAFORM_VERSION)
+      - task: AzureCLI@2
+        displayName: Apply and wire (OIDC)
+        inputs:
+          azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
+          scriptType: bash
+          scriptLocation: scriptPath
+          scriptPath: pipelines/scripts/workspace-apply.sh
+          arguments: gcp
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
+          GCP_SETUP_SERVICE_ACCOUNT: $(GCP_SETUP_SERVICE_ACCOUNT)

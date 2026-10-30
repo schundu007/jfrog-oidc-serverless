@@ -1,18 +1,12 @@
-# Plan -> approval -> apply for a Terraform stack (terraform/stacks/<stack>).
+# Plan -> apply for terraform/stacks/azure-container-apps.
 # The setup service connection's OIDC token gives a JFrog admin token (mapping
-# ado-setup) for the run only, and GCP through WIF for gcp-* stacks; Azure stacks
-# use the connection's Azure login. The apply stage targets the
-# ADO environment "<stack>-<environment>", whose approval check gates the change;
-# it applies exactly the reviewed plan file.
+# ado-setup) for the run only, and the connection's Azure login. The apply stage targets the
+# ADO environment "azure-container-apps-<environment>" and applies exactly the reviewed plan file.
 
 trigger: none
 pr: none
 
 parameters:
-  - name: stack
-    type: string
-    default: gcp-cloud-run
-    values: [gcp-cloud-run, azure-container-apps]
   - name: environment
     type: string
     default: test
@@ -47,12 +41,10 @@ stages:
               scriptType: bash
               scriptLocation: scriptPath
               scriptPath: pipelines/scripts/terraform-stack.sh
-              arguments: plan ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
+              arguments: plan azure-container-apps ${{ parameters.environment }} $(PLAN_FILE)
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
               JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
-              ${{ if startsWith(parameters.stack, 'gcp-') }}:
-                GCP_SERVICE_ACCOUNT: $(GCP_SETUP_SERVICE_ACCOUNT)
           - publish: $(Pipeline.Workspace)/plan
             artifact: plan
             condition: and(succeeded(), eq(variables['tf.hasChanges'], 'true'))
@@ -63,7 +55,7 @@ stages:
     condition: and(succeeded(), eq(dependencies.plan.outputs['plan.tf.hasChanges'], 'true'))
     jobs:
       - deployment: apply
-        environment: ${{ parameters.stack }}-${{ parameters.environment }}
+        environment: azure-container-apps-${{ parameters.environment }}
         timeoutInMinutes: 60
         strategy:
           runOnce:
@@ -82,9 +74,7 @@ stages:
                     scriptType: bash
                     scriptLocation: scriptPath
                     scriptPath: pipelines/scripts/terraform-stack.sh
-                    arguments: apply ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
+                    arguments: apply azure-container-apps ${{ parameters.environment }} $(PLAN_FILE)
                   env:
                     SYSTEM_ACCESSTOKEN: $(System.AccessToken)
                     JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
-                    ${{ if startsWith(parameters.stack, 'gcp-') }}:
-                      GCP_SERVICE_ACCOUNT: $(GCP_SETUP_SERVICE_ACCOUNT)

@@ -13,11 +13,14 @@ import ipaddress
 import sys
 import threading
 import webbrowser
+from pathlib import Path
 
+from . import deliver
 from .server import ConsoleServer
 from .store import Store
 
 EXPOSE_FLAG = "--i-know-this-exposes-credentials"
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def check_bind(host: str, exposed_ok: bool):
@@ -49,6 +52,8 @@ def main(argv=None) -> int:
                       help="answer Preflight/Discover from recorded fixtures (a .json file or a directory); nothing runs")
     mode.add_argument("--record", metavar="DIR",
                       help="run Preflight/Discover for real and save redacted copies of every call to DIR")
+    parser.add_argument("--local-apply", action="store_true",
+                        help="plan, apply and wire from this machine instead of opening an Azure DevOps pull request")
     args = parser.parse_args(argv)
 
     if args.print_url:
@@ -63,8 +68,17 @@ def main(argv=None) -> int:
 
     try:
         store = Store()
+        # Runs propose an Azure DevOps pull request when pipelines/delivery.json exists
+        # (live mode); fixtures/record and --local-apply keep the local plan/apply/wire.
+        delivery = None
+        if not (args.local_apply or args.fixtures or args.record):
+            delivery = deliver.load_settings(REPO_ROOT / "pipelines" / "delivery.json")
         console = ConsoleServer(host=args.host, port=args.port, token=store.session_token(renew=args.new_token),
-                                store=store, fixtures=args.fixtures, record_dir=args.record)
+                                store=store, fixtures=args.fixtures, record_dir=args.record,
+                                delivery=delivery, repo_root=REPO_ROOT)
+    except deliver.DeliveryError as exc:
+        print(f"console: {exc}", file=sys.stderr)
+        return 2
     except (OSError, ValueError) as exc:
         print(f"console: cannot load fixtures: {exc}", file=sys.stderr)
         return 2

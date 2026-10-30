@@ -1,0 +1,82 @@
+# Plan -> apply for terraform/stacks/gcp-cloud-run.
+# The setup service connection's OIDC token gives a JFrog admin token (mapping
+# ado-setup) for the run only, and GCP through WIF. The apply stage targets the
+# ADO environment "gcp-cloud-run-<environment>" and applies exactly the reviewed plan file.
+
+trigger: none
+pr: none
+
+parameters:
+  - name: environment
+    type: string
+    default: test
+    values: [test]
+
+variables:
+  - template: vars/${{ parameters.environment }}.yml
+  - name: PLAN_FILE
+    value: $(Pipeline.Workspace)/plan/tfplan
+
+pool:
+  vmImage: ubuntu-24.04
+
+stages:
+  - stage: plan
+    displayName: Plan
+    jobs:
+      - job: plan
+        timeoutInMinutes: 30
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - bash: pipelines/scripts/install-terraform.sh
+            displayName: Install Terraform $(TERRAFORM_VERSION)
+          - bash: mkdir -p "$(Pipeline.Workspace)/plan"
+            displayName: Prepare
+          - task: AzureCLI@2
+            name: tf
+            displayName: terraform plan (OIDC)
+            inputs:
+              azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
+              scriptType: bash
+              scriptLocation: scriptPath
+              scriptPath: pipelines/scripts/terraform-stack.sh
+              arguments: plan gcp-cloud-run ${{ parameters.environment }} $(PLAN_FILE)
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+              JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
+              GCP_SERVICE_ACCOUNT: $(GCP_SETUP_SERVICE_ACCOUNT)
+          - publish: $(Pipeline.Workspace)/plan
+            artifact: plan
+            condition: and(succeeded(), eq(variables['tf.hasChanges'], 'true'))
+
+  - stage: apply
+    displayName: Apply
+    dependsOn: plan
+    condition: and(succeeded(), eq(dependencies.plan.outputs['plan.tf.hasChanges'], 'true'))
+    jobs:
+      - deployment: apply
+        environment: gcp-cloud-run-${{ parameters.environment }}
+        timeoutInMinutes: 60
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  fetchDepth: 1
+                - download: current
+                  artifact: plan
+                - bash: pipelines/scripts/install-terraform.sh
+                  displayName: Install Terraform $(TERRAFORM_VERSION)
+                - task: AzureCLI@2
+                  displayName: terraform apply (OIDC)
+                  inputs:
+                    azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
+                    scriptType: bash
+                    scriptLocation: scriptPath
+                    scriptPath: pipelines/scripts/terraform-stack.sh
+                    arguments: apply gcp-cloud-run ${{ parameters.environment }} $(PLAN_FILE)
+                  env:
+                    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+                    JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
+                    GCP_SERVICE_ACCOUNT: $(GCP_SETUP_SERVICE_ACCOUNT)

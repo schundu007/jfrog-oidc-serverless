@@ -1,4 +1,4 @@
-# Building the console with Claude Code
+# Development with Claude Code
 
 ## One-time setup
 

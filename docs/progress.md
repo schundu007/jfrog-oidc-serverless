@@ -502,7 +502,7 @@ Cloud Build and GitHub Actions options are removed for now:
 
   Validated, with a clean plan: 20 to add, 1 to import.
 - `pipelines/`:
-  - `stack-setup.yml`: plan, then the ADO environment `<stack>-<env>` approval,
+  - `gcp-stack-setup.yml` / `azure-stack-setup.yml` (one per cloud): plan, then the ADO environment `<stack>-<env>` approval,
     then apply of the reviewed plan file, with GCS remote state through
     `backend_override.tf`.
   - `gcp-build-deploy.yml`: the base image comes through JFrog, is pushed to AR,

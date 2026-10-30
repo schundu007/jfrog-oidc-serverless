@@ -22,8 +22,10 @@ it before starting any milestone. Record progress in `docs/progress.md`.
 - `apps/` — workload images and functions that use the client:
   `artifact-reader` (job for Cloud Run and Container Apps), `cloud-run-function`,
   `azure-function`.
-- `pipelines/` — Azure DevOps pipelines (the only CI/CD): `stack-setup.yml`
-  (Terraform plan, environment approval, apply) and `gcp-build-deploy.yml`. Every
+- `pipelines/` — Azure DevOps pipelines (the only CI/CD), separate per cloud:
+  `<cloud>-stack-setup.yml` (Terraform plan, apply), `<cloud>-build-deploy.yml`
+  and `<cloud>-workload-onboard.yml` (applies and wires the workspaces the
+  console proposes by pull request, `terraform/workspaces/<cloud>_*`). Every
   job authenticates with its service connection's OIDC token; settings per
   environment in `pipelines/vars/<env>.yml`.
 - `console/` — to be built, per the spec.

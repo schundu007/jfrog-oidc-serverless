@@ -26,15 +26,17 @@ import time
 import uuid
 from pathlib import Path
 
-from . import model, redact
+from . import deliver, model, redact
 from .steps import discover, preflight, tfgen
 from .steps import terraform as tf
 from .steps import wire as wiremod
 
-STEPS = ["preflight", "discover", "simulate", "plan", "apply", "wire", "first_rotation", "verify", "report"]
-DEFAULT_STEPS = STEPS[:6]
+STEPS = ["preflight", "discover", "simulate", "publish", "plan", "apply", "wire", "first_rotation", "verify", "report"]
+DEFAULT_STEPS = ["preflight", "discover", "simulate", "plan", "apply", "wire"]
+DELIVERY_STEPS = ["preflight", "discover", "simulate", "publish"]
+LOCAL_ONLY = {"plan", "apply", "wire"}
 LATER = {"first_rotation", "verify", "report"}
-TITLES = {"preflight": "Preflight", "discover": "Discover", "simulate": "Simulate", "plan": "Plan", "apply": "Apply",
+TITLES = {"preflight": "Preflight", "discover": "Discover", "simulate": "Simulate", "publish": "Pull request", "plan": "Plan", "apply": "Apply",
           "wire": "Wire target", "first_rotation": "First rotation", "verify": "Verify", "report": "Report"}
 MAX_RUNS_KEPT = 50
 EXPECTED_ERRORS = (ValueError, RuntimeError, TimeoutError, PermissionError, OSError)
@@ -61,7 +63,7 @@ def _now():
 
 
 class Run:
-    def __init__(self, cfg: dict, steps: list, root: Path):
+    def __init__(self, cfg: dict, steps: list, root: Path, hidden: dict | None = None):
         self.id = time.strftime("%Y%m%d-%H%M%S-", time.gmtime()) + uuid.uuid4().hex[:6]
         self.cfg = copy.deepcopy(cfg)
         self.name = cfg.get("name")
@@ -79,6 +81,8 @@ class Run:
         for s in LATER:
             self.steps[s].update(status="skipped", planned=True,
                                  note="arrives in M5 (first rotation, live probes, ready report)")
+        for s, note in (hidden or {}).items():
+            self.steps[s].update(status="skipped", planned=True, note=note)
         self.dir = root / "runs" / self.id
         self.dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._events_file = self.dir / "events.jsonl"
@@ -118,23 +122,35 @@ class Run:
 
 
 class RunManager:
-    def __init__(self, root, cloud_shell, tf_shell, env=None, simulate=None, store=None):
+    def __init__(self, root, cloud_shell, tf_shell, env=None, simulate=None, store=None, delivery=None, repo_root=None):
         self.root = Path(root)
         self.cloud_shell, self.tf_shell = cloud_shell, tf_shell
         self.env = os.environ if env is None else env
         self.simulate = simulate
         self.store = store
+        # With delivery settings (pipelines/delivery.json) a run proposes the change as an
+        # Azure DevOps pull request; the <cloud>-workload-onboard pipeline plans, applies and wires.
+        self.delivery = delivery
+        self.repo_root = Path(repo_root) if repo_root else None
         self.runs: dict = {}
         self.lock = threading.Lock()
         self.threads: list = []
 
     # -- API ---------------------------------------------------------------------------
 
+    def default_steps(self) -> list:
+        return list(DELIVERY_STEPS if self.delivery else DEFAULT_STEPS)
+
     def start(self, cfg: dict, steps=None) -> Run:
-        steps = list(steps or DEFAULT_STEPS)
+        steps = list(steps or self.default_steps())
         bad = [s for s in steps if s not in STEPS]
         if bad:
             raise RunError(400, "unknown_step", f"unknown step(s): {', '.join(map(str, bad))}")
+        if self.delivery and LOCAL_ONLY & set(steps):
+            raise RunError(400, "delivered_by_pipeline",
+                           "plan, apply and wire run in the <cloud>-workload-onboard pipeline; publish a pull request instead")
+        if not self.delivery and "publish" in steps:
+            raise RunError(400, "no_delivery", "publishing needs pipelines/delivery.json")
         if "apply" in steps and "plan" not in steps:
             raise RunError(400, "apply_needs_plan", "apply only runs a plan made in the same run; include 'plan'")
         errors = model.validate(cfg)["errors"]
@@ -144,7 +160,9 @@ class RunManager:
             busy = [r for r in self.runs.values() if r.name == cfg.get("name") and r.status in ("running", "waiting_approval")]
             if busy:
                 raise RunError(409, "run_active", f"run {busy[0].id} for {cfg.get('name')} is still active; finish or cancel it")
-            run = Run(cfg, steps, self.root)
+            hidden = ({s: "runs in the <cloud>-workload-onboard pipeline after the pull request merges" for s in LOCAL_ONLY}
+                      if self.delivery else {"publish": "local mode: no pipelines/delivery.json"})
+            run = Run(cfg, steps, self.root, hidden)
             self.runs[run.id] = run
             self._trim()
         t = threading.Thread(target=self._work, args=(run,), name=f"run-{run.id}", daemon=True)
@@ -329,6 +347,11 @@ class RunManager:
         if verdict.get("status") != "pass":
             # Spec §4: a failing simulation warns; it does not block the plan.
             run.set_step("simulate", note="the simulation found failing periods; review them before approving the plan")
+
+    def _step_publish(self, run, ctx):
+        res = deliver.publish(run.cfg, self._shell(run, ctx), self.repo_root, self.delivery, run.id, log=run.log)
+        self._evidence(run, "publish", result=res)
+
 
     def _step_plan(self, run, ctx):
         rendered = tfgen.render(run.cfg, self.root, on_wait=run.log)

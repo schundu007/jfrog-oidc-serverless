@@ -1,0 +1,13 @@
+{
+  "ado": {
+    "organization": "cdoazure",
+    "project": "cloudifyDevops",
+    "repository": "jfrog-oidc-serverless",
+    "target_branch": "main"
+  },
+  "environment": "test",
+  "state": {
+    "gcp": {"type": "gcs", "bucket": "csb-test-257615-tfstate"},
+    "azure": {"type": "azurerm", "resource_group_name": "ado-cicd-rg", "storage_account_name": "stcdoazuretfstate", "container_name": "tfstate"}
+  }
+}

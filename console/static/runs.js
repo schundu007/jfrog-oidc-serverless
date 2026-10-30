@@ -140,8 +140,8 @@ function renderDetail(step) {
   const parts = [h("h2", { text: step.title })];
   if (step.error) parts.push(h("p", { class: "error-box", text: step.error }));
   if (step.note) parts.push(h("p", { class: "muted small", text: step.note }));
-  const view = { preflight: viewPreflight, discover: viewDiscover, simulate: viewSimulate, plan: viewPlan,
-    apply: viewApply, wire: viewWire }[step.name];
+  const view = { preflight: viewPreflight, discover: viewDiscover, simulate: viewSimulate, publish: viewPublish,
+    plan: viewPlan, apply: viewApply, wire: viewWire }[step.name];
   if (view) parts.push(...view(step, ev));
   if (parts.length === 1) parts.push(h("p", { class: "muted", text: step.status === "pending" ? "Not started yet." : "No evidence." }));
   fill($("run-detail"), parts);
@@ -157,6 +157,17 @@ function kv(rows) {
   return h("table", { class: "facts" }, h("tbody", {}, rows.filter(([, v]) => v !== undefined && v !== null && v !== "")
     .map(([k, v]) => h("tr", {}, h("th", { scope: "row", text: k }),
       h("td", { class: "mono", text: typeof v === "object" ? JSON.stringify(v) : String(v) })))));
+}
+
+function viewPublish(step, ev) {
+  const r = ev.result;
+  if (!r) return [];
+  const pr = r.pull_request;
+  return [
+    pr ? h("p", {}, h("a", { href: pr.url, target: "_blank", rel: "noopener noreferrer", text: `Pull request #${pr.id}` }))
+      : outcome("No change", true),
+    kv([["Branch", r.branch], ["Workspace", r.workspace]]),
+  ];
 }
 
 function viewPreflight(step, ev) {

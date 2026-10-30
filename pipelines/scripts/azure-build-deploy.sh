@@ -12,7 +12,7 @@ az config set extension.use_dynamic_install=yes_without_prompt --only-show-error
 rg="rg-${WORKLOAD}"
 job="caj-${WORKLOAD}"
 acr=$(az acr list --resource-group "$rg" --query "[0].name" -o tsv)
-[ -n "$acr" ] || { echo "no container registry in ${rg}; run stack-setup for azure-container-apps first" >&2; exit 1; }
+[ -n "$acr" ] || { echo "no container registry in ${rg}; run azure-stack-setup first" >&2; exit 1; }
 registry=$(az acr show --name "$acr" --query loginServer -o tsv)
 image="${registry}/${WORKLOAD}:${BUILD_SOURCEVERSION:0:12}"
 

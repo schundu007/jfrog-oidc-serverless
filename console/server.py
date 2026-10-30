@@ -178,7 +178,7 @@ def _scenario_catalogue() -> dict:
 
 class ConsoleServer:
     def __init__(self, host: str = "127.0.0.1", port: int = 8765, token: str | None = None, log=sys.stderr,
-                 store: Store | None = None, fixtures=None, record_dir=None):
+                 store: Store | None = None, fixtures=None, record_dir=None, delivery=None, repo_root=None):
         self.host = host
         self.requested_port = port
         self.token = token or secrets.token_urlsafe(32)
@@ -191,8 +191,10 @@ class ConsoleServer:
         self.record_dir = Path(record_dir) if record_dir else None
         self.mode = "replay" if fixtures else "record" if record_dir else "live"
         self.cloud_lock = threading.Lock()
+        self.delivery = delivery
         self.runs = RunManager(self.store.root, cloud_shell=self._run_shell, tf_shell=self._tf_shell,
-                               env=self.step_env(), simulate=self.simulate_config, store=self.store)
+                               env=self.step_env(), simulate=self.simulate_config, store=self.store,
+                               delivery=delivery, repo_root=repo_root)
         self._catalogue = None
         self._httpd = None
         self.port = None
