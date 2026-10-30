@@ -126,6 +126,12 @@ class PublishTests(unittest.TestCase):
         push = next(c for c in sh.calls if c[0] == "git" and c[3] == "push")
         self.assertEqual(push[4:], ["--quiet", REPO_URL, "onboard/orders-01234567:refs/heads/main"])
 
+    def test_azure_state_uses_entra_auth(self):
+        from console.steps import tfgen as tg
+        c = model.default_config("azure_container_app", name="api")
+        c["state_backend"] = deliver._backend(DELIVERY, "azure", "azure_x")
+        self.assertEqual(tg._backend(c)["azurerm"]["use_azuread_auth"], True)
+
     def test_no_change_means_no_pull_request(self):
         res, sh = self.publish(gcp_cfg(), commit_rc=1)
         self.assertFalse(res["changed"])

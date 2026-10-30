@@ -424,6 +424,8 @@ def _backend(cfg: dict) -> dict:
     missing = [k for k, v in fields.items() if not v]
     if missing:
         raise TfgenError(f"state_backend ({t}) needs {', '.join(missing)}")
+    if t == "azurerm":
+        fields["use_azuread_auth"] = True   # state accounts allow Entra auth only, no account keys
     return {t: fields}
 
 
