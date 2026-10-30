@@ -48,6 +48,20 @@
       "runtime_enabled": true,
       "runtime_ttl": 3600,
       "subject": "cc8c69fe-0078-4263-b20f-9a3efbfd825e"
+    },
+    "fnaca-jfrog-demo": {
+      "dedicated_identity": null,
+      "function_app_id": null,
+      "identity_location": "West US 2",
+      "identity_resource_group": "rg-jfrog-types",
+      "identity_type": "system_assigned",
+      "kind": "azure_functions_aca",
+      "name": "fnaca-jfrog-demo",
+      "principal_id": "3923b11c-bf56-4a4d-b0c0-de116f91b814",
+      "pull_enabled": false,
+      "runtime_enabled": true,
+      "runtime_ttl": 3600,
+      "subject": "3923b11c-bf56-4a4d-b0c0-de116f91b814"
     }
   }
 }
