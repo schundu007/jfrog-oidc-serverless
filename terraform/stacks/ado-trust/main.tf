@@ -102,8 +102,9 @@ resource "google_iam_workload_identity_pool_provider" "ado" {
   workload_identity_pool_id          = google_iam_workload_identity_pool.ado.workload_identity_pool_id
   workload_identity_pool_provider_id = var.ado_org
   display_name                       = "ADO ${var.ado_org}"
-  attribute_mapping                  = { "google.subject" = "assertion.sub" }
-  attribute_condition                = "assertion.sub in [${join(", ", [for c in var.connections : "'${c.subject}'"])}]"
+  # google.subject is capped at 127 bytes; keep "<org-id>/<connection-id>".
+  attribute_mapping   = { "google.subject" = "assertion.sub.extract('/sc/{id}')" }
+  attribute_condition = "assertion.sub in [${join(", ", [for c in var.connections : "'${c.subject}'"])}]"
   oidc {
     issuer_uri        = local.issuer
     allowed_audiences = [var.ado_token_audience]
@@ -123,7 +124,7 @@ resource "google_service_account_iam_member" "ado_wif" {
 
   service_account_id = google_service_account.ado[each.key].name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principal://iam.googleapis.com/${local.pool}/subject/${each.value.subject}"
+  member             = "principal://iam.googleapis.com/${local.pool}/subject/${element(split("/sc/", each.value.subject), 1)}"
 }
 
 # build: push images, roll out the job image and run it. actAs on each workload's
