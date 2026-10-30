@@ -600,3 +600,16 @@ Lessons, now in code:
   deploy that carries over the wired identity and env) sit beside the job one.
   The build SA needs `roles/cloudfunctions.developer` and
   `roles/iam.serviceAccountUser` (in `ado-trust`, not yet applied).
+
+### System identities replaced by dedicated ones (2026-10-30)
+
+Discover now gives an Azure app that has only a system-assigned identity its own
+`id-<app>-jfrog` (it survives app re-creation, and probes can borrow it); the system one stays.
+Onboarded live for func-jfrog-prem-0e56, ca-jfrog-demo and fnaca-jfrog-demo: each exchanges as the
+new identity (token `azp` = its client ID; ca-jfrog-demo reads `hello.txt` every 5 min).
+
+Two bugs found on the way, both fixed:
+- Out-of-order onboarding runs: the run on an older commit applied last and destroyed a newer
+  commit's identity. `workspace-apply.sh` now leaves a workspace a newer commit changed to that run.
+- A dedicated identity re-created under the same resource ID stayed attached by its old client ID.
+  Wire now detaches and attaches it again when the attached client ID differs.
