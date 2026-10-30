@@ -86,6 +86,8 @@ class KcpServer:
         self.runs = RunManager(self.run_store, self.shell, env=self.env, sleep=sleep, poll_seconds=poll_seconds,
                                root=self.store.root)
         self.read_lock = threading.Lock()
+        self._reads = {}  # (name, with_preflight) -> the in-flight read other callers join
+        self._reads_lock = threading.Lock()
         self.sims = collections.OrderedDict()
         self.sims_lock = threading.Lock()
         self._httpd = None
@@ -122,10 +124,35 @@ class KcpServer:
         return {"clusters": sorted(out, key=lambda x: (x["configured"], x["name"]))}
 
     def discover(self, name: str, with_preflight: bool) -> dict:
-        cfg = self.config(name)
-        if not self.read_lock.acquire(timeout=1):
-            raise HttpError(409, "another Discover or Preflight is still running")
+        """One read per cluster at a time: a second request for the same cluster joins the read in
+        flight and gets its result; reads of other clusters wait their turn (one shell at a time)."""
+        key = (name, with_preflight)
+        with self._reads_lock:
+            job = self._reads.get(key)
+            owner = job is None
+            if owner:
+                job = self._reads[key] = {"done": threading.Event(), "out": None, "err": None}
+        if not owner:
+            job["done"].wait(timeout=600)
+            if job["err"] is not None:
+                raise job["err"]
+            if job["out"] is None:
+                raise HttpError(504, "the cluster read did not finish")
+            return job["out"]
         try:
+            job["out"] = self._discover(name, with_preflight)
+            return job["out"]
+        except Exception as exc:
+            job["err"] = exc
+            raise
+        finally:
+            with self._reads_lock:
+                self._reads.pop(key, None)
+            job["done"].set()
+
+    def _discover(self, name: str, with_preflight: bool) -> dict:
+        cfg = self.config(name)
+        with self.read_lock:
             sh = self.shell()
             kc = direct.paths(Path(self.store.root), name)["kubeconfig"] if self.mode == "live" else None
             # Rendered manifests and values can hold secret-looking strings; store and show them redacted.
@@ -139,8 +166,6 @@ class KcpServer:
                 out["fixture_misses"] = sh.misses
             self.status.update(name, patch)
             return out
-        finally:
-            self.read_lock.release()
 
     def evidence(self, name: str, extra_text: str = "") -> dict:
         cfg = self.config(name)

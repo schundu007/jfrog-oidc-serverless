@@ -17,6 +17,14 @@ Steps (AZURE.md section in brackets):
   helm        helm upgrade --install jfrog-credential-provider (Step 5)
   daemonset   the DaemonSet is ready on every labelled node (Verification)
   pull        a pod with imagePullSecrets: [] pulls the test image (Verification)
+
+The OIDC proof (verify, and the end of setup), every link read from the cluster or JFrog:
+  sa-check    the service account carries JFrogExchange="true"
+  trust       the JFrog provider's issuer is this cluster's issuer
+  map         the identity mapping maps this service account's subject to the mapped user
+  anon        the test image without credentials: 401 (else a pull proves nothing)
+  pull        the pull with no pull secret
+  who         JFrog's download stats: the image was last downloaded by the mapped user
 """
 
 from __future__ import annotations
@@ -30,13 +38,22 @@ from .jfrog import Jfrog
 
 CHART_REPO = "https://charts.jfrog.io"
 CHART = "jfrog-credential-provider"
-STEPS = ("cluster", "oidc", "kubeconfig", "sa", "provider", "mapping", "label", "helm", "daemonset", "pull")
-VERIFY_STEPS = ("cluster", "kubeconfig", "daemonset", "pull")
+STEPS = ("cluster", "oidc", "kubeconfig", "sa", "provider", "mapping", "label", "helm", "daemonset", "anon", "pull", "who")
+VERIFY_STEPS = ("cluster", "kubeconfig", "sa-check", "trust", "map", "daemonset", "anon", "pull", "who")
+PROOF_STEPS = ("cluster", "sa-check", "trust", "map", "anon", "pull", "who")
 TEARDOWN_STEPS = ("kubeconfig", "uninstall", "unlabel", "delete-mapping", "delete-provider")
 
 
 class StepError(RuntimeError):
     pass
+
+
+def _cause(event: str) -> str:
+    """The reason in a kubelet event, without image references or URLs."""
+    for k in ("401 Unauthorized", "403 Forbidden", "404 Not Found", "not found", "no basic auth credentials", "timeout"):
+        if k.lower() in event.lower():
+            return k
+    return "see the cluster's events"
 
 
 def paths(root: Path, name: str) -> dict:
@@ -100,6 +117,11 @@ def plan(cfg: dict, root: Path, which: str = "setup", dry_run: bool = True) -> l
                   *(["--dry-run=server"] if dry_run else [])]),
         "daemonset": ("DaemonSet ready on the labelled nodes", "read", ["kubectl", *kc, "get", "daemonset", "-n", k["namespace"], "-o", "json"]),
         "pull": ("Test pull without a pull secret", "change", ["kubectl", *kc, "apply", "-f", str(p["pod"]), *srv]),
+        "sa-check": ("Service account allowed to exchange", "read", ["kubectl", *kc, "get", "serviceaccount", k["service_account"], "-n", k["namespace"], "-o", "json"]),
+        "trust": ("JFrog trusts this cluster's issuer", "read", f"GET https://{host}/access/api/v1/oidc"),
+        "map": (f"Service account mapped to {j['mapped_user']}", "read", f"GET https://{host}/access/api/v1/oidc/{v['provider_name']}/identity_mappings"),
+        "anon": ("Image refused without credentials", "read", f"GET https://{host}/v2/... (no credentials)"),
+        "who": (f"JFrog saw the pull as {j['mapped_user']}", "read", f"GET https://{host}/artifactory/api/storage/...?stats"),
         "uninstall": ("Uninstall the credential provider", "change", ["helm", "uninstall", k["release"], "--namespace", k["namespace"],
                                                                   *(["--dry-run"] if dry_run else [])]),
         "unlabel": (f"Remove the label {v['node_affinity_label']}", "change", ["kubectl", *kc, "label", "nodes", "--all", f"{v['node_affinity_label']}-", *srv]),
@@ -133,7 +155,7 @@ def problems(cfg: dict, which: str = "setup") -> list:
 class Runner:
     """Runs a plan. log(text) gets one redacted line per event."""
 
-    def __init__(self, cfg, sh, root, env, log, dry_run=True, sleep=time.sleep, pull_timeout=180):
+    def __init__(self, cfg, sh, root, env, log, dry_run=True, sleep=time.sleep, pull_timeout=180, clock=time.time):
         self.cfg = _resolved(cfg)
         self.sh, self.env, self.log, self.dry, self.sleep = sh, env, log, dry_run, sleep
         self.p = paths(root, self.cfg["name"])
@@ -142,6 +164,7 @@ class Runner:
         self.jf = Jfrog(sh, self.cfg["jfrog"]["host"], env=env)
         self.facts = {}
         self.pull_timeout = pull_timeout
+        self.clock = clock
 
     def _run(self, argv, timeout=300, ok_rcs=(0,)):
         r = self.sh.run(argv, timeout=timeout, extra_env=self.kenv)
@@ -179,8 +202,8 @@ class Runner:
                           aad=bool(d.get("aadProfile")), version=d.get("kubernetesVersion", ""))
         if self.facts["issuer"]:
             self.cfg["cluster"]["oidc_issuer"] = self.facts["issuer"]
-        return "ok", (f"Kubernetes {self.facts['version']}; OIDC issuer {'on' if self.facts['oidc'] else 'off'}"
-                      f"{' (' + self.facts['issuer'] + ')' if self.facts['issuer'] else ''}; Workload Identity {'on' if self.facts['wi'] else 'off'}")
+        return "ok", (f"Kubernetes {self.facts['version']}; OIDC issuer {'on' if self.facts['oidc'] else 'off'}; "
+                      f"Workload Identity {'on' if self.facts['wi'] else 'off'}")
 
     def s_oidc(self):
         if self.facts.get("oidc"):
@@ -189,7 +212,7 @@ class Runner:
             return "skipped", "dry run: would enable it"
         self._run(["az", "aks", "update", *_az(self.cfg), "--enable-oidc-issuer"], timeout=1800)
         self.s_cluster()
-        return "done", f"enabled; issuer {self.facts.get('issuer')}"
+        return "done", "enabled"
 
     def s_kubeconfig(self):
         self._run(["az", "aks", "get-credentials", *_az(self.cfg), "--file", str(self.p["kubeconfig"]), "--overwrite-existing"], timeout=120)
@@ -199,7 +222,7 @@ class Runner:
                             timeout=60, extra_env=self.kenv)
             if not r.ok:
                 raise StepError("this cluster uses Entra ID auth: install kubelogin (brew install Azure/kubelogin/kubelogin)")
-        return "ok", f"kubeconfig at {self.p['kubeconfig'].name}"
+        return "ok", "ready"
 
     def _dry_flag(self):
         """--dry-run=server, or =client while the namespace does not exist yet: the API server cannot place an
@@ -213,10 +236,9 @@ class Runner:
         self.p["sa"].write_text(json.dumps(sa_manifest(self.cfg), indent=2))
         flag = self._dry_flag() if self.dry else None
         r = self._run(["kubectl", "apply", "-f", str(self.p["sa"]), *([flag] if flag else [])])
-        out = " ".join(r.stdout.split())[:300]
         if flag == "--dry-run=client":
-            out = f"namespace {self.cfg['k8s']['namespace']} is created on the real run; checked client-side: {out}"
-        return ("ok" if self.dry else "done"), out
+            return "ok", "valid; the namespace is created on the real run"
+        return ("ok" if self.dry else "done"), "valid" if self.dry else "ready"
 
     def _provider_state(self):
         r = self.jf.providers()
@@ -236,12 +258,12 @@ class Runner:
             raise StepError("no OIDC issuer yet (the cluster step reads it)")
         if not self.jf.token_present:
             if self.dry:
-                return "skipped", f"dry run: no JFrog token, so the provider was not read; would create {name} for {issuer}"
+                return "skipped", f"dry run: no JFrog token, so the provider was not read; would create {name}"
             raise StepError("no JFrog token: start the console with JFROG_ACCESS_TOKEN")
         have = self._provider_state().get(name)
         if have:
             if (have.get("issuer_url") or "").rstrip("/") != issuer.rstrip("/"):
-                raise StepError(f"{name} exists with issuer {have.get('issuer_url')}, not this cluster's {issuer}")
+                raise StepError(f"{name} trusts another cluster's issuer")
             return "ok", "exists with this cluster's issuer"
         if self.dry:
             return "skipped", "dry run: would create it"
@@ -255,23 +277,23 @@ class Runner:
         prov, name = cfg["values"]["provider_name"], cfg["jfrog"]["mapping_name"]
         if not self.jf.token_present:
             if self.dry:
-                return "skipped", f"dry run: no JFrog token; would map {model.subject(cfg)} → {cfg['jfrog']['mapped_user']}"
+                return "skipped", f"dry run: no JFrog token; would map {cfg['k8s']['service_account']} → {cfg['jfrog']['mapped_user']}"
             raise StepError("no JFrog token: start the console with JFROG_ACCESS_TOKEN")
         r = self.jf.mappings(prov)
         if r["ok"] and any(m.get("name") == name for m in (r["json"] or [])):
             return "ok", "exists"
         if self.dry:
-            return "skipped", f"dry run: would map {model.subject(cfg)} → {cfg['jfrog']['mapped_user']}"
+            return "skipped", f"dry run: would map {cfg['k8s']['service_account']} → {cfg['jfrog']['mapped_user']}"
         r = self.jf.create_mapping(prov, model.mapping_request(cfg))
         if not r["ok"]:
             raise StepError(f"create mapping: HTTP {r['status']} {redact.text(r['body'] or '')[:200]}")
-        return "done", f"{model.subject(cfg)} → {cfg['jfrog']['mapped_user']}"
+        return "done", f"{cfg['k8s']['service_account']} → {cfg['jfrog']['mapped_user']}"
 
     def s_label(self):
         lab = f"{self.cfg['values']['node_affinity_label']}=true"
         nodes = self.cfg["cluster"]["nodes"] or ["--all"]
         r = self._run(["kubectl", "label", "nodes", *nodes, lab, "--overwrite", *(["--dry-run=server"] if self.dry else [])])
-        return ("ok" if self.dry else "done"), f"{len(r.stdout.strip().splitlines())} node(s) labelled {lab}"
+        return ("ok" if self.dry else "done"), f"{len(r.stdout.strip().splitlines())} node(s)"
 
     def s_helm(self):
         self.p["values"].write_text(model.render_values(self.cfg))
@@ -292,7 +314,7 @@ class Runner:
                 st = ds[0].get("status", {})
                 want, ready = st.get("desiredNumberScheduled", 0), st.get("numberReady", 0)
                 if want and ready == want:
-                    return "ok", f"{ds[0]['metadata']['name']}: {ready}/{want} ready"
+                    return "ok", f"{ready}/{want} ready"
             self.sleep(10)
         raise StepError(f"DaemonSet not ready: {ready if ds else 0}/{want if ds else 0}")
 
@@ -304,6 +326,7 @@ class Runner:
             self._run(["kubectl", "apply", "-f", str(self.p["pod"]), flag])
             return "skipped", f"dry run: pod validated {'by the API server' if flag.endswith('server') else 'client-side'}"
         self._run(["kubectl", "delete", "pod", k["test_pod"], "-n", k["namespace"], "--ignore-not-found", "--wait=true"], timeout=120)
+        self.facts["pull_started"] = self.clock()
         self._run(["kubectl", "apply", "-f", str(self.p["pod"])])
         waited, phase, reason, uid = 0, "", "", ""
         while waited < self.pull_timeout:
@@ -322,8 +345,109 @@ class Runner:
                 and (not uid or (e.get("involvedObject") or {}).get("uid") in (None, uid))]
         self._run(["kubectl", "delete", "pod", k["test_pod"], "-n", k["namespace"], "--ignore-not-found", "--wait=false"])
         if phase in ("Running", "Succeeded"):
-            return "done", "pulled with imagePullSecrets: [] — " + (msgs[0] if msgs else phase)
-        raise StepError(f"pull failed ({reason or phase or 'timeout'}): {msgs[-1] if msgs else 'no event'}")
+            return "done", "pulled with no pull secret"
+        raise StepError(f"pull failed ({reason or phase or 'timeout'}){': ' + _cause(msgs[-1]) if msgs else ''}")
+
+    # -- the OIDC proof ------------------------------------------------------------
+
+    def _need_token(self, what):
+        if self.jf.token_present:
+            return None
+        if self.dry:
+            return "skipped", f"dry run: no JFrog token, so {what} was not read"
+        raise StepError("no JFrog token: start the console with JFROG_ACCESS_TOKEN")
+
+    def s_sa_check(self):
+        k = self.cfg["k8s"]
+        r = self.sh.run(["kubectl", "get", "serviceaccount", k["service_account"], "-n", k["namespace"], "-o", "json"],
+                        timeout=60, extra_env=self.kenv)
+        if r.rc != 0:
+            raise StepError(f"service account {k['namespace']}/{k['service_account']} not found: run Set up")
+        ann = ((r.json({}) or {}).get("metadata") or {}).get("annotations") or {}
+        if ann.get("JFrogExchange") != "true":
+            raise StepError(f"{k['service_account']} lacks the annotation JFrogExchange=\"true\": the provider will not exchange its token")
+        return "ok", "JFrogExchange: true"
+
+    def s_trust(self):
+        skip = self._need_token("the provider")
+        if skip:
+            return skip
+        name, issuer = self.cfg["values"]["provider_name"], self.cfg["cluster"]["oidc_issuer"]
+        have = self._provider_state().get(name)
+        if not have:
+            raise StepError(f"JFrog has no OIDC provider {name}: run Set up")
+        got = (have.get("issuer_url") or "").rstrip("/")
+        if got != (issuer or "").rstrip("/"):
+            raise StepError(f"{name} trusts another issuer, not this cluster's")
+        return "ok", f"{name} trusts this cluster"
+
+    def s_map(self):
+        skip = self._need_token("the mapping")
+        if skip:
+            return skip
+        cfg = self.cfg
+        prov, user, sub = cfg["values"]["provider_name"], cfg["jfrog"]["mapped_user"], model.subject(cfg)
+        r = self.jf.mappings(prov)
+        if not r["ok"]:
+            raise StepError(f"identity mappings of {prov}: HTTP {r['status']}")
+        for m in r["json"] or []:
+            claims, spec = m.get("claims") or {}, m.get("token_spec") or {}
+            if claims.get("sub") == sub:
+                if spec.get("username") != user:
+                    raise StepError(f"the mapping signs in as another user, not {user}")
+                ttl = spec.get("expires_in")
+                return "ok", f"{self.cfg['k8s']['service_account']} → {user}{f', {ttl // 60} min tokens' if isinstance(ttl, int) else ''}"
+        raise StepError(f"no identity mapping for {self.cfg['k8s']['service_account']}: run Set up")
+
+    def _image(self):
+        """host/<repo>/<path>:<tag> → (repo, path, tag); tag is None for a digest reference."""
+        ref = self.cfg["jfrog"]["test_image"]
+        rest = ref.split("/", 1)[1] if "/" in ref else ref
+        if "@" in rest:
+            return rest.split("/", 1)[0], rest.split("/", 1)[1].split("@")[0], None
+        name, _, tag = rest.rpartition(":")
+        repo, _, path = name.partition("/")
+        return repo, path, tag or "latest"
+
+    def s_anon(self):
+        repo, path, tag = self._image()
+        host = self.cfg["jfrog"]["test_image"].split("/", 1)[0]
+        r = self.jf._call("GET", f"/v2/{repo}/{path}/manifests/{tag or 'latest'}", host=host, auth=False)
+        if r["status"] == 401:
+            return "ok", "401 without credentials"
+        if r["ok"]:
+            return "warn", "anonymous access is on: a pull proves nothing"
+        return "warn", f"HTTP {r['status'] or r['error']} without credentials"
+
+    def s_who(self):
+        if self.dry:
+            return "skipped", "dry run: read after a real pull"
+        skip = self._need_token("the download stats")
+        if skip:
+            return skip
+        repo, path, tag = self._image()
+        user = self.cfg["jfrog"]["mapped_user"]
+        if tag is None:
+            return "skipped", "the test image is a digest; JFrog's stats are read by tag"
+        best = None
+        for key in (repo, f"{repo}-cache"):
+            for f in ("list.manifest.json", "manifest.json"):
+                r = self.jf._call("GET", f"/artifactory/api/storage/{key}/{path}/{tag}/{f}?stats")
+                d = r["json"] if r["ok"] and isinstance(r["json"], dict) else None
+                if d and d.get("lastDownloaded") and (not best or d["lastDownloaded"] > best["lastDownloaded"]):
+                    best = d
+        if not best:
+            raise StepError("JFrog has no download record for the test image")
+        by, at = best.get("lastDownloadedBy", ""), best["lastDownloaded"] / 1000
+        when = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(at))
+        if by != user:
+            raise StepError(f"last downloaded by another user, not {user}")
+        # A node that already holds the layers only re-checks the manifest (still with the exchanged
+        # token: anonymous gets 401), and JFrog counts downloads, not checks. The stats' clock is JFrog's.
+        started = self.facts.get("pull_started")
+        if started and at >= started - 120:
+            return "ok", f"downloaded by {user} at {when}"
+        return "ok", f"downloaded by {user} at {when} (image cached on the node)"
 
     def s_uninstall(self):
         k = self.cfg["k8s"]
@@ -333,7 +457,7 @@ class Runner:
     def s_unlabel(self):
         lab = self.cfg["values"]["node_affinity_label"]
         self._run(["kubectl", "label", "nodes", "--all", f"{lab}-", *(["--dry-run=server"] if self.dry else [])])
-        return ("ok" if self.dry else "done"), f"label {lab} removed"
+        return ("ok" if self.dry else "done"), "label removed"
 
     def s_delete_mapping(self):
         if self.dry:

@@ -234,3 +234,43 @@ class PageTokenTest(ServerTest):
             h = {"Sec-Fetch-Site": site} if site else {}
             r, raw = self.req("GET", "/", headers=h, token=False)
             self.assertEqual(meta in raw.decode(), has, site)
+
+
+class DiscoverRaceTest(unittest.TestCase):
+    """Two reads of one cluster at once (the page's refresh and a status read): both get the
+    result of one discover, neither gets 'still running'."""
+
+    def test_concurrent_reads_share_one_discover(self):
+        import threading
+        from unittest import mock
+        from kcp_console.checks import preflight as pf
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        srv = KcpServer(port=0, log=io.StringIO(), store=Store(Path(tmp.name)))
+        from kcp_console import model
+        srv.store.put("a", model.default_config() | {"name": "a"})
+        gate, calls = threading.Event(), []
+
+        def slow(cfg, sh, env=None, kubeconfig=None):
+            calls.append(1)
+            gate.wait(5)
+            return {"cluster": {"ok": True}}
+
+        out, errs = [], []
+        with mock.patch.object(pf, "discover", slow), mock.patch.object(pf, "preflight", lambda c, f: {"checks": []}):
+            def read():
+                try:
+                    out.append(srv.discover("a", True))
+                except Exception as exc:  # noqa: BLE001 - the test reports it
+                    errs.append(exc)
+            ts = [threading.Thread(target=read) for _ in range(3)]
+            for t in ts:
+                t.start()
+            import time
+            time.sleep(1.5)  # longer than the old 1 s lock timeout
+            gate.set()
+            for t in ts:
+                t.join(10)
+        self.assertEqual(errs, [])
+        self.assertEqual(len(out), 3)
+        self.assertEqual(len(calls), 1)

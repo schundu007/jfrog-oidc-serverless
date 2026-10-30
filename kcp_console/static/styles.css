@@ -433,3 +433,8 @@ ol.stages li.error::before { content: "✗ "; }
 ol.stages li.muted { color: var(--muted); }
 .approve-box { display: grid; gap: 12px; margin: 8px 0 12px; }
 .approve-box .approve { display: flex; gap: 10px; align-items: center; }
+
+/* OIDC proof on the cluster card */
+.cluster-card .proof { margin: 12px 0 16px; }
+.cluster-card .proof .toolbar { justify-content: flex-start; gap: 10px; margin-bottom: 6px; }
+.cluster-card .proof h3 { margin: 0; font-size: 15px; }

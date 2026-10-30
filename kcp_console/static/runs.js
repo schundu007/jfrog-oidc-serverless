@@ -1,7 +1,7 @@
 // Runs: every run, newest first; open one for its steps and events.
 
 import { api, h, fill, state } from "./app.js";
-import { $, table, pill, workflow } from "./ui.js";
+import { $, table, pill, workflow, brief } from "./ui.js";
 
 let selected = null;
 
@@ -34,8 +34,8 @@ async function show(id, el) {
   fill(el, h("section", { class: "summary" },
     h("div", { class: "toolbar" }, h("h2", {}, `${run.config} · ${label(run)} `, pill(run.status))),
     run.guards.length ? h("p", { class: "error small" }, run.guards.join(" ")) : null,
-    run.error ? h("p", { class: "error small" }, run.error) : null,
-    steps ? table(["", "step", "detail"], steps.map((s) => [pill(s.status), s.title || s.id, s.detail])) : null,
+    run.error ? h("p", { class: "error small" }, brief(run.error)) : null,
+    steps ? table(["", "step", "detail"], steps.map((s) => [pill(s.status === "done" ? "ok" : s.status), s.title || s.id, brief(s.detail)])) : null,
     h("details", {}, h("summary", { class: "small" }, "Log"),
-      h("ol", { class: "events small" }, (run.events || []).filter((e) => workflow(e.text)).map((e) => h("li", {}, h("span", { class: "mono muted" }, `${e.t.slice(11, 19)} `), e.text))))));
+      h("ol", { class: "events small" }, (run.events || []).filter((e) => workflow(e.text)).map((e) => h("li", {}, h("span", { class: "mono muted" }, `${e.t.slice(11, 19)} `), brief(e.text)))))));
 }

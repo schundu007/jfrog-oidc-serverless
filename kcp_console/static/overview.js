@@ -3,7 +3,7 @@
 // status read and, on a failure, the diagnosis. The approval is the only click inside a run.
 
 import { api, h, fill, state, selectTab, refreshConfigs } from "./app.js";
-import { $, pill, table, stream, workflow } from "./ui.js";
+import { $, pill, table, stream, workflow, brief } from "./ui.js";
 
 let aks = null;             // GET /api/aks
 const live = {};            // config name -> {loading, facts, preflight, error}
@@ -43,7 +43,7 @@ function savedTable(configs) {
 // Installed, not installed, or the first problem Preflight found.
 function stateText(s) {
   if (!s || s.loading) return muted(s ? "reading…" : "—");
-  if (s.error) return h("span", { class: "error small" }, s.error);
+  if (s.error) return h("span", { class: "error small" }, brief(s.error));
   const bad = (s.preflight?.checks || []).find((c) => c.status === "fail");
   if (bad) return h("span", { class: "pill fail" }, bad.title);
   return s.facts?.release ? h("span", { class: "pill pass" }, "installed") : muted("not installed");
@@ -58,11 +58,10 @@ function clusterCard(c) {
     ["Kubernetes", f.cluster?.kubernetes_version || "—"],
     ["OIDC issuer · Workload Identity", f.cluster ? `${f.cluster.oidc_enabled ? "on" : "off"} · ${f.cluster.workload_identity ? "on" : "off"}` : "—"],
     ["Helm release", rel ? `${rel.chart} · rev ${rel.revision} · ${rel.status}` : "not installed"],
-    ["DaemonSet", ds ? `${ds.namespace}/${ds.name}` : "—"],
+    ["DaemonSet", ds ? "installed" : "—"],
     ["Service account", f.service_account ? (f.service_account.exists ? `JFrogExchange: ${f.service_account.annotation ?? "missing"}` : "not created") : "—"],
-    ["Nodes", (f.nodes || []).join(", ") || "—"],
-    ["JFrog OIDC providers", (f.providers || []).map((p) => p.name).join(", ") || "—"],
-    ["Last pull test", s.pull ? h("span", {}, pill(s.pull.step.status === "done" ? "passed" : "failed"), ` ${when(s.pull.at)}`) : "—"],
+    ["Nodes", f.nodes ? String(f.nodes.length) : "—"],
+    ["JFrog OIDC provider", f.providers ? ((f.providers || []).some((p) => p.name === c.provider) ? "present" : "missing") : "—"],
   ];
   const problems = (s.preflight?.checks || []).filter((x) => x.status === "fail" || x.status === "warn");
   const busy = !!(flow && flow.running);
@@ -75,22 +74,45 @@ function clusterCard(c) {
         h("button", { class: "secondary", disabled: busy || !rel, onclick: () => start("teardown") }, "Tear down"),
         h("button", { class: "secondary", disabled: busy || !rel, onclick: () => start("verify") }, "Verify"),
         h("button", { class: "primary", disabled: busy, onclick: () => start("setup") }, rel ? "Set up again" : "Set up"))),
-    s.error ? h("p", { class: "error small" }, s.error) : null,
-    problems.length ? table(["", "check", "detail"], problems.map((x) => [pill(x.status), x.title, x.detail])) : null,
+    s.error ? h("p", { class: "error small" }, brief(s.error)) : null,
+    problems.length ? table(["", "check", "detail"], problems.map((x) => [pill(x.status), x.title, brief(x.detail)])) : null,
+    proofBlock(s.proof),
     table(["", ""], facts, "grid small facts"),
     flow ? flow.el : null);
 }
 
-async function readStatus(name) {
+// The OIDC proof: each link of the newest real Set up or Verify that checked it, cluster to JFrog.
+const PROOF = ["cluster", "sa-check", "trust", "map", "mapping", "provider", "anon", "pull", "who"];
+function latestProof(runs, name) {
+  const run = runs.find((x) => x.config === name && x.kind === "direct" && x.name !== "teardown"
+    && x.request.parameters.DryRun === false && ((x.result || {}).steps || []).some((st) => st.id === "pull"));
+  if (!run) return null;
+  const steps = run.result.steps.filter((st) => PROOF.includes(st.id)).sort((a, b) => PROOF.indexOf(a.id) - PROOF.indexOf(b.id));
+  const proven = run.status === "succeeded" && steps.some((st) => st.id === "who" && st.status === "ok")
+    && !steps.some((st) => st.status === "failed" || st.status === "warn");
+  return { at: run.created, steps, proven, complete: steps.some((st) => st.id === "who") };
+}
+
+function proofBlock(p) {
+  const head = (cls, text) => h("div", { class: "toolbar" }, h("h3", {}, "OIDC"), h("span", { class: `pill ${cls}` }, text));
+  if (!p) return h("div", { class: "proof" }, head("notrun", "not checked"));
+  const verdict = p.proven ? ["pass", `working · ${when(p.at)}`] : !p.complete ? ["notrun", "run Verify"] : ["fail", `not proven · ${when(p.at)}`];
+  return h("div", { class: "proof" }, head(...verdict),
+    table(["", "check", "result"], p.steps.map((st) => [pill(st.status === "done" ? "ok" : st.status), st.title || st.id, brief(st.detail)])));
+}
+
+// One read per cluster at a time: a second call while one is in flight joins it.
+const reading = {};
+function readStatus(name) {
+  return (reading[name] ||= doRead(name).finally(() => { delete reading[name]; }));
+}
+
+async function doRead(name) {
   live[name] = { ...(live[name] || {}), loading: true, error: "" };
   render();
   try {
     const [r, { runs }] = await Promise.all([api("/api/preflight", { method: "POST", body: { config: name } }), api("/api/runs")]);
-    // The newest real (not dry) run that reached the pull test.
-    const pull = runs.filter((x) => x.config === name && x.kind === "direct" && x.request.parameters.DryRun === false)
-      .map((x) => ({ at: x.created, step: ((x.result || {}).steps || []).find((st) => st.id === "pull") }))
-      .find((x) => x.step && x.step.status !== "skipped");
-    live[name] = { facts: r.facts, preflight: r.preflight, pull };
+    live[name] = { facts: r.facts, preflight: r.preflight, proof: latestProof(runs, name) };
   } catch (err) {
     live[name] = { error: err.message };
   }
@@ -157,7 +179,7 @@ async function execute(name, which, dryRun) {
 async function follow(id, log) {
   let out = { status: "unknown" };
   await stream(`/api/runs/${id}/events`, (kind, data) => {
-    if (kind === "event" && log && workflow(data.text)) log.append(h("li", {}, h("span", { class: "mono muted" }, data.t.slice(11, 19), " "), data.text));
+    if (kind === "event" && log && workflow(data.text)) log.append(h("li", {}, h("span", { class: "mono muted" }, data.t.slice(11, 19), " "), brief(data.text)));
     if (kind === "done") out = data;
   });
   return out;
@@ -173,7 +195,7 @@ function approval(el, run, dryResult) {
     const no = h("button", { class: "secondary" }, "Cancel");
     const box = h("div", { class: "approve-box" },
       table(["", "step", "dry run"], run.request.parameters.steps.map((s, i) => [String(i + 1), s.title,
-        dryById[s.id] ? h("span", {}, pill(dryById[s.id].status), " ", dryById[s.id].detail) : ""])),
+        dryById[s.id] ? h("span", {}, pill(dryById[s.id].status), " ", brief(dryById[s.id].detail)) : ""])),
       h("div", { class: "approve" }, run.needs_typed_cluster ? typed : null, go, no));
     el.append(box);
     no.onclick = () => { box.remove(); resolve(false); };
@@ -193,13 +215,13 @@ function approval(el, run, dryResult) {
 }
 
 function stepTable(result) {
-  return table(["", "step", "detail"], ((result || {}).steps || []).map((s) => [pill(s.status), s.title || s.id, s.detail]));
+  return table(["", "step", "detail"], ((result || {}).steps || []).map((s) => [pill(s.status === "done" ? "ok" : s.status), s.title || s.id, brief(s.detail)]));
 }
 
 // A failed stage: the step results, then the cause from the run evidence, then a fresh status.
 async function failed(el, li, text, run, name) {
   set(li, text, "error");
-  if (run && run.error) el.append(h("p", { class: "error small" }, run.error));
+  if (run && run.error) el.append(h("p", { class: "error small" }, brief(run.error)));
   if (run && run.result) el.append(stepTable(run.result));
   try {
     const d = await api("/api/diagnose", { method: "POST", body: { config: name, text: "" } });
@@ -216,7 +238,7 @@ function aksTable(configs) {
   const head = h("div", { class: "toolbar" }, h("h2", {}, "Add an AKS cluster"),
     h("div", { class: "tools" }, h("button", { class: "secondary", onclick: () => { aks = null; render(); } }, "Refresh")));
   if (!aks || aks.loading) return h("div", {}, head, muted("Reading az aks list…"));
-  if (aks.error) return h("div", {}, head, h("p", { class: "error small" }, aks.error));
+  if (aks.error) return h("div", {}, head, h("p", { class: "error small" }, brief(aks.error)));
   const rows = aks.clusters.filter((k) => !added.has(k.name.toLowerCase()));
   if (!rows.length) return null;
   return h("div", {}, head, h("table", { class: "cfg-table" },

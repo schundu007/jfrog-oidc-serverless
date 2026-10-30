@@ -3,6 +3,7 @@ flags, idempotent steps, the guards, and that no token reaches a log or the run 
 
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -18,7 +19,10 @@ ISSUER = model.SANDBOX_ISSUER
 class FakeShell:
     """Answers az/kubectl/helm and the Access API like a cluster with the provider not yet set up."""
 
-    def __init__(self, oidc=True, providers=None, mappings=None, pod_phase="Running", pod_reason="", ns_exists=True):
+    def __init__(self, oidc=True, providers=None, mappings=None, pod_phase="Running", pod_reason="", ns_exists=True,
+                 anonymous=False, downloaded_by=None):
+        self.anonymous = anonymous
+        self.downloaded_by = downloaded_by or model.default_config()["jfrog"]["mapped_user"]
         self.calls, self.http_calls = [], []
         self.ns_exists = ns_exists
         self.oidc, self.providers, self.mappings = oidc, providers or [], mappings or []
@@ -56,6 +60,8 @@ class FakeShell:
             out = json.dumps({"items": [{"reason": "Failed", "message": "old 403 Forbidden", "involvedObject": {"uid": "pod-uid-1"}},
                                         {"reason": "Pulled" if ok else "Failed", "involvedObject": {"uid": "pod-uid-2"},
                                          "message": "Successfully pulled image" if ok else "401 Unauthorized"}]})
+        elif argv[:3] == ["kubectl", "get", "serviceaccount"]:
+            out = json.dumps({"metadata": {"name": argv[3], "annotations": {"JFrogExchange": "true"}}})
         elif argv[:2] == ["kubectl", "apply"]:
             out = "serviceaccount/jfrog-provider-sa created\n"
         return Result(list(argv), 0, out, "", 0.0)
@@ -66,7 +72,26 @@ class FakeShell:
             return HttpResult(method, url, 200, json.dumps(self.providers))
         if method == "GET" and url.endswith("/identity_mappings"):
             return HttpResult(method, url, 200, json.dumps(self.mappings))
+        if method == "POST" and url.endswith("/access/api/v1/oidc"):
+            self.providers.append(json.loads(body))
+        elif method == "POST" and url.endswith("/identity_mappings"):
+            self.mappings.append(json.loads(body))
+        if method == "GET" and "/v2/" in url:
+            return HttpResult(method, url, 200 if self.anonymous else 401, "{}")
+        if method == "GET" and url.endswith("?stats"):
+            if "list.manifest.json" not in url:
+                return HttpResult(method, url, 404, "{}")
+            return HttpResult(method, url, 200, json.dumps({"downloadCount": 3, "lastDownloaded": int(time.time() * 1000),
+                                                            "lastDownloadedBy": self.downloaded_by}))
         return HttpResult(method, url, 201 if method == "POST" else 204, "{}")
+
+
+def set_up():
+    """The JFrog side as Set up leaves it: the provider for ISSUER and the mapping for the service account."""
+    c = model.merged(model.default_config())
+    c["cluster"]["oidc_issuer"] = ISSUER
+    return {"providers": [{"name": model.provider_name(c), "issuer_url": ISSUER, "provider_type": "Azure"}],
+            "mappings": [model.mapping_request(c)]}
 
 
 def cfg(**over):
@@ -145,14 +170,15 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(len(applies), 2)
         for c in applies:
             self.assertIn("--dry-run=client", c)
-        self.assertIn("namespace jfrog is created", next(r for r in res if r["id"] == "sa")["detail"])
+        self.assertIn("the namespace is created", next(r for r in res if r["id"] == "sa")["detail"])
 
     def test_dry_run_without_a_jfrog_token_still_checks_the_cluster(self):
         sh = FakeShell()
         rn = direct.Runner(cfg(), sh, self.root, {}, lambda line: None, dry_run=True, sleep=lambda s: None)
         res = rn.execute(direct.plan(cfg(), self.root, "setup", dry_run=True))
         self.assertFalse([r for r in res if r["status"] == "failed"], res)
-        self.assertEqual(sh.http_calls, [])
+        # Only the anonymous probe of the test image reaches JFrog, with no credentials.
+        self.assertEqual([c for c in sh.http_calls if c[2] or "/v2/" not in c[1]], [])
         for i in ("provider", "mapping"):
             self.assertIn("no JFrog token", next(r for r in res if r["id"] == i)["detail"])
         self.assertIn("helm", [c[0] for c in sh.calls])
@@ -166,8 +192,7 @@ class RunnerTest(unittest.TestCase):
 
     def test_pull_reports_this_pods_events_only(self):
         res = self.runner(FakeShell(), dry=False).execute([{"id": "pull", "title": "pull"}])
-        self.assertIn("Successfully pulled image", res[0]["detail"])
-        self.assertNotIn("old 403", res[0]["detail"])
+        self.assertEqual((res[0]["status"], res[0]["detail"]), ("done", "pulled with no pull secret"))
 
     def test_real_setup_creates_what_is_missing(self):
         sh = FakeShell(oidc=False)
@@ -180,7 +205,10 @@ class RunnerTest(unittest.TestCase):
         kc = str(self.root / "kube" / "sandbox-pilot.kubeconfig")
         kube = [e for c, e in zip(sh.calls, sh.env_seen) if c[0] in ("kubectl", "helm")]
         self.assertTrue(kube and all(e.get("KUBECONFIG") == kc for e in kube))
-        self.assertEqual(res[-1], {"id": "pull", "title": "Test pull without a pull secret", "status": "done", "detail": "pulled with imagePullSecrets: [] — Successfully pulled image"})
+        by = {r["id"]: r for r in res}
+        self.assertEqual(by["pull"], {"id": "pull", "title": "Test pull without a pull secret", "status": "done", "detail": "pulled with no pull secret"})
+        self.assertEqual(by["anon"]["status"], "ok")
+        self.assertEqual((res[-1]["id"], res[-1]["status"]), ("who", "ok"))
 
     def test_existing_provider_and_mapping_are_left_alone(self):
         sh = FakeShell(providers=[{"name": "aks-sandbox-oidc", "issuer_url": ISSUER}], mappings=[{"name": "aks-workload-identity-mapping"}])
@@ -197,7 +225,7 @@ class RunnerTest(unittest.TestCase):
         self.assertNotIn("helm", [c[0] for c in sh.calls])
 
     def test_failed_pull_reports_the_event(self):
-        sh = FakeShell(pod_phase="Pending", pod_reason="ErrImagePull")
+        sh = FakeShell(pod_phase="Pending", pod_reason="ErrImagePull", **set_up())
         res = self.runner(sh, dry=False).execute(direct.plan(cfg(), self.root, "verify", dry_run=False))
         self.assertEqual(res[-1]["status"], "failed")
         self.assertIn("ErrImagePull", res[-1]["detail"])
@@ -206,7 +234,8 @@ class RunnerTest(unittest.TestCase):
     def test_token_only_in_the_header(self):
         sh = FakeShell(oidc=False)
         self.runner(sh, dry=False).execute(direct.plan(cfg(), self.root, "setup", dry_run=False))
-        self.assertTrue(all(a == f"Bearer {TOKEN}" for _, _, a in sh.http_calls))
+        self.assertTrue(all(a == f"Bearer {TOKEN}" for _, u, a in sh.http_calls if "/v2/" not in u))
+        self.assertTrue(all(a == "" for _, u, a in sh.http_calls if "/v2/" in u))
         self.assertFalse([c for c in sh.calls if TOKEN in " ".join(c)])
         self.assertFalse([line for line in self.lines if TOKEN in line])
         for f in (self.root / "kube").iterdir():
@@ -255,10 +284,6 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(len(done["result"]["steps"]), len(direct.STEPS))
         stored = "".join(p.read_text() for p in root.rglob("*") if p.is_file())
         self.assertNotIn(TOKEN, stored)
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class ConflictShell(FakeShell):
@@ -316,3 +341,58 @@ class DiscoverStoreTest(unittest.TestCase):
         facts = {"manifest": "data:\n  token: eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJlc2lnbmF0dXJl\n"}
         st.update("sandbox-pilot", {"discover": redact.obj(facts)})
         self.assertNotIn("eyJhbGci", json.dumps(st.get("sandbox-pilot")))
+
+
+class ProofTest(unittest.TestCase):
+    """Verify proves the OIDC path link by link; each broken link names itself."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+
+    def verify(self, sh):
+        rn = direct.Runner(cfg(), sh, self.root, {"JFROG_ACCESS_TOKEN": TOKEN}, lambda line: None, dry_run=False, sleep=lambda s: None)
+        return {r["id"]: r for r in rn.execute(direct.plan(cfg(), self.root, "verify", dry_run=False))}
+
+    def test_every_link_holds(self):
+        by = self.verify(FakeShell(**set_up()))
+        self.assertEqual([i for i in direct.VERIFY_STEPS if by[i]["status"] not in ("ok", "done")], [])
+        self.assertIn("jfrog-provider-sa →", by["map"]["detail"])
+        self.assertIn("401", by["anon"]["detail"])
+        self.assertNotIn("cached", by["who"]["detail"])
+
+    def test_anonymous_access_is_a_warning(self):
+        by = self.verify(FakeShell(anonymous=True, **set_up()))
+        self.assertEqual(by["anon"]["status"], "warn")
+        self.assertIn("proves nothing", by["anon"]["detail"])
+
+    def test_pull_by_another_user_fails(self):
+        by = self.verify(FakeShell(downloaded_by="admin", **set_up()))
+        self.assertEqual(by["who"]["status"], "failed")
+        self.assertIn("not ", by["who"]["detail"])
+
+    def test_missing_mapping_stops_before_the_pull(self):
+        by = self.verify(FakeShell(providers=set_up()["providers"]))
+        self.assertEqual(by["map"]["status"], "failed")
+        self.assertNotIn("pull", by)
+
+    def test_cached_image_keeps_the_earlier_download(self):
+        sh = FakeShell(**set_up())
+        rn = direct.Runner(cfg(), sh, self.root, {"JFROG_ACCESS_TOKEN": TOKEN}, lambda line: None, dry_run=False,
+                           sleep=lambda s: None, clock=lambda: time.time() + 3600)
+        by = {r["id"]: r for r in rn.execute(direct.plan(cfg(), self.root, "verify", dry_run=False))}
+        self.assertEqual(by["who"]["status"], "ok")
+        self.assertIn("cached", by["who"]["detail"])
+
+    def test_results_name_no_issuer_image_or_ids(self):
+        by = self.verify(FakeShell(**set_up()))
+        text = " ".join(r["detail"] for r in by.values())
+        self.assertNotIn(ISSUER, text)
+        self.assertNotIn("https://", text)
+        self.assertNotIn(model.default_config()["jfrog"]["test_image"], text)
+
+    def test_proof_steps_are_in_verify(self):
+        self.assertTrue(set(direct.PROOF_STEPS) <= set(direct.VERIFY_STEPS))
+
+
+if __name__ == "__main__":
+    unittest.main()

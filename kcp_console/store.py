@@ -65,6 +65,7 @@ class Store:
                         "cluster": model.get_path(cfg, "cluster.name") or model.get_path(cfg, "template.ClusterName") or "",
                         "environment": model.get_path(cfg, "cluster.environment") or "",
                         "ado": bool(model.get_path(cfg, "ado.organization")),
+                        "provider": model.get_path(cfg, "jfrog.oidc_provider") or model.get_path(cfg, "values.provider_name") or "",
                         "updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(p.stat().st_mtime))})
         return out
 
