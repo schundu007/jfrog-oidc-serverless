@@ -515,3 +515,23 @@ Cloud Build and GitHub Actions options are removed for now:
   `gs://csb-test-257615-tfstate/gcp-cloud-run/test`, create the pipelines and
   environment in ADO, then run them. The workload rename replaces the live test
   SA, job and mapping on the first setup run.
+
+### GCP from Azure DevOps, verified live (2026-10-30)
+
+- `gcp-stack-setup` run 12 used setup connection OIDC. It got GCP through WIF
+  and a JFrog admin token through mapping `ado-setup`, then planned, waited for
+  the environment approval, and applied: SA, job and mapping `artifact-reader`
+  replaced the demo ones. State is in `gs://csb-test-257615-tfstate/gcp-cloud-run/test`.
+- `gcp-build-deploy` run 13 used build connection OIDC. JFrog user
+  `ado-cdoazure/ado-build`. The base image came from
+  `trial9hnw59.jfrog.io/docker-remote`, was pushed to AR, then `gcloud run jobs
+  update`/`execute`. The job logged "exchanged identity for a JFrog token valid
+  3599s" and read `demo-generic/hello.txt`.
+- Lessons, now in code:
+  - The token from `System.OidcRequestUri` has aud
+    `fb60f99c-7a34-4190-8149-302f77469936` (`ado_token_audience`), not
+    `api://AzureADTokenExchange`, and AzureCLI@2's `$idToken` is not it.
+  - The endpoint needs `api-version=7.1-preview.1` and the connection referenced
+    by a task (AzureCLI@2).
+  - GCP `google.subject` is capped at 127 bytes, so it maps `sub.extract('/sc/{id}')`.
+  - The AzureCLI@2 login needs a role on the identity (Reader on its RG).
