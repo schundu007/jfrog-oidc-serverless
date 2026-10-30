@@ -21,6 +21,7 @@ import time
 
 from .. import model
 from ..shell import Shell
+from .aws import AwsDiscover
 
 DEFAULT_COMPUTE_SA = re.compile(r"^\d+-compute@developer\.gserviceaccount\.com$")
 APPENGINE_SA = re.compile(r"^[a-z][a-z0-9-]*@appspot\.gserviceaccount\.com$")
@@ -55,7 +56,7 @@ def _prop(d: dict, key: str, default=None):
     return _dig(d, "properties", key, default=default)
 
 
-class Discover:
+class Discover(AwsDiscover):
     def __init__(self, cfg: dict, sh: Shell):
         self.cfg = cfg
         self.sh = sh
@@ -82,10 +83,8 @@ class Discover:
     def run(self) -> dict:
         if self.kind not in model.KINDS:
             self.error("unknown_kind", f"unknown target kind {self.kind!r}")
-        elif model.cloud_of(self.kind) == "gcp":
-            self.gcp()
         else:
-            self.azure()
+            getattr(self, model.cloud_of(self.kind))()
         return self.result()
 
     def result(self) -> dict:

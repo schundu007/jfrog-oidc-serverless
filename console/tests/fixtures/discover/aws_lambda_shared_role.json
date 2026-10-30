@@ -1,0 +1,67 @@
+[
+ {
+  "_comment": "doc-derived: shapes follow the AWS CLI v2 / API reference output; no live account recorded"
+ },
+ {
+  "argv": [
+   "aws",
+   "iam",
+   "get-outbound-web-identity-federation-info",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"IssuerIdentifier\": \"https://a1d2b0fd-1177-4468-9351-2feeeeeee723.tokens.sts.global.api.aws\", \"JwtVendingEnabled\": true}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "lambda",
+   "get-function-configuration",
+   "--function-name",
+   "billing",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"FunctionName\": \"billing\", \"FunctionArn\": \"arn:aws:lambda:us-east-1:123456789012:function:billing\", \"Runtime\": \"python3.13\", \"Role\": \"arn:aws:iam::123456789012:role/lambda-shared-exec\", \"PackageType\": \"Zip\", \"Environment\": {\"Variables\": {}}, \"VpcConfig\": {\"SubnetIds\": []}}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "lambda",
+   "list-functions",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json",
+   "--query",
+   "Functions[].Role"
+  ],
+  "rc": 0,
+  "stdout": "[\"arn:aws:iam::123456789012:role/lambda-shared-exec\", \"arn:aws:iam::123456789012:role/lambda-shared-exec\", \"arn:aws:iam::123456789012:role/orders-api-role\"]",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "iam",
+   "list-attached-role-policies",
+   "--role-name",
+   "lambda-shared-exec",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"AttachedPolicies\": [{\"PolicyName\": \"AWSLambdaBasicExecutionRole\", \"PolicyArn\": \"arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole\"}, {\"PolicyName\": \"orders-dynamodb\", \"PolicyArn\": \"arn:aws:iam::123456789012:policy/orders-dynamodb\"}]}",
+  "stderr": ""
+ }
+]

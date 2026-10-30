@@ -1,0 +1,35 @@
+[
+ {
+  "_comment": "doc-derived: shapes follow the AWS CLI v2 / API reference output; no live account recorded"
+ },
+ {
+  "argv": [
+   "aws",
+   "iam",
+   "get-outbound-web-identity-federation-info",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"IssuerIdentifier\": \"https://a1d2b0fd-1177-4468-9351-2feeeeeee723.tokens.sts.global.api.aws\", \"JwtVendingEnabled\": true}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "ecs",
+   "describe-task-definition",
+   "--task-definition",
+   "nightly-export",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"taskDefinition\": {\"taskDefinitionArn\": \"arn:aws:ecs:us-east-1:123456789012:task-definition/nightly-export:3\", \"family\": \"nightly-export\", \"revision\": 3, \"status\": \"ACTIVE\", \"executionRoleArn\": \"arn:aws:iam::123456789012:role/ecsTaskExecutionRole\", \"requiresCompatibilities\": [\"FARGATE\"], \"containerDefinitions\": [{\"name\": \"export\", \"image\": \"public.ecr.aws/x/export:2\", \"essential\": true}]}}",
+  "stderr": ""
+ }
+]

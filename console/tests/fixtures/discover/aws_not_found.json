@@ -1,0 +1,35 @@
+[
+ {
+  "_comment": "doc-derived: shapes follow the AWS CLI v2 / API reference output; no live account recorded"
+ },
+ {
+  "argv": [
+   "aws",
+   "iam",
+   "get-outbound-web-identity-federation-info",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"IssuerIdentifier\": \"https://a1d2b0fd-1177-4468-9351-2feeeeeee723.tokens.sts.global.api.aws\", \"JwtVendingEnabled\": true}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "lambda",
+   "get-function-configuration",
+   "--function-name",
+   "nope",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 254,
+  "stdout": "",
+  "stderr": "An error occurred (ResourceNotFoundException) when calling the GetFunctionConfiguration operation: Function not found: arn:aws:lambda:us-east-1:123456789012:function:nope"
+ }
+]

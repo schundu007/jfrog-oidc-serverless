@@ -217,7 +217,7 @@ class AwsStsSource:
     (https://<id>.tokens.sts.global.api.aws) and whose sub is the role ARN.
 
     The API is not served by the global STS endpoint: the regional one comes from
-    AWS_REGION / AWS_DEFAULT_REGION, or AWS_ENDPOINT_URL_STS (the SDKs' standard
+    JFROG_OIDC_AWS_REGION / AWS_REGION / AWS_DEFAULT_REGION, or AWS_ENDPOINT_URL_STS (the SDKs' standard
     override). The account must have outbound federation enabled
     (aws iam enable-outbound-web-identity-federation).
     """
@@ -230,7 +230,9 @@ class AwsStsSource:
     def __init__(self, region: Optional[str] = None, duration_seconds: int = 900,
                  timeout: float = DEFAULT_TIMEOUT, clock=time.time):
         env = os.environ
-        self._region = region or env.get("AWS_REGION") or env.get("AWS_DEFAULT_REGION") or ""
+        # JFROG_OIDC_AWS_REGION first: Lambda reserves AWS_REGION, and the console sets this one everywhere.
+        self._region = (region or env.get("JFROG_OIDC_AWS_REGION") or env.get("AWS_REGION")
+                        or env.get("AWS_DEFAULT_REGION") or "")
         self._endpoint = (env.get("AWS_ENDPOINT_URL_STS") or env.get("AWS_ENDPOINT_URL") or "").rstrip("/")
         if not self._region:
             raise IdentityError("AwsStsSource needs a region (AWS_REGION): GetWebIdentityToken is regional only")

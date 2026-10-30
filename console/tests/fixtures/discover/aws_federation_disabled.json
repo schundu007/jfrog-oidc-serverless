@@ -1,0 +1,19 @@
+[
+ {
+  "_comment": "doc-derived: shapes follow the AWS CLI v2 / API reference output; no live account recorded"
+ },
+ {
+  "argv": [
+   "aws",
+   "iam",
+   "get-outbound-web-identity-federation-info",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"JwtVendingEnabled\": false}",
+  "stderr": ""
+ }
+]
