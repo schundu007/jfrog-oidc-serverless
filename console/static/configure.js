@@ -41,7 +41,7 @@ function mergeDeep(base, over) {
 // so nothing on screen looks filled in when it isn't.
 function freshConfig(kind) {
   const cfg = clone(st.schema.defaults[kind]);
-  cfg.name = "new-app";
+  cfg.name = "";  // set from the picked workload or the Name typed below
   for (const f of cloud === "gcp" ? ["project", "name"] : ["subscription", "resource_group", "name"]) cfg.target[cloud][f] = "";
   cfg.jfrog.url = "";
   // What the logged-in account and the pipelines already use.
@@ -89,6 +89,11 @@ function readField(el) {
 function onFieldInput(ev) {
   const el = ev.target.closest("[data-path]");
   if (!el) return;
+  // The configuration name follows the workload name until it is edited on its own.
+  const nameEl = $("cfg-form").querySelector('[data-path="name"]');
+  if (el.dataset.path === `target.${cloud}.name` && (!st.cfg.name || st.cfg.name === st.cfg.target[cloud].name)) {
+    st.cfg.name = nameEl.value = readField(el);
+  }
   setPath(st.cfg, el.dataset.path, readField(el));
   if (el.dataset.path === "target.kind" || el.dataset.path === "pull_path.enabled") applyKindVisibility();
   markDirty(true);
