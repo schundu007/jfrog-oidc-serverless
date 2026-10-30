@@ -913,3 +913,6 @@ input:focus-visible, select:focus-visible { border-color: var(--ai-1); box-shado
 @media (prefers-reduced-motion: no-preference) {
   .pill.run-running, .pill.step-running { animation: shimmer 1.8s linear infinite; }
 }
+
+/* Shared gradients for the inlined service icons: rendered, never display:none (hidden gradients do not paint). */
+.mark-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
