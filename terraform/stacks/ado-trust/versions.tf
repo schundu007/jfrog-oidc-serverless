@@ -13,6 +13,10 @@ terraform {
       source  = "hashicorp/azurerm"
       version = ">= 4.23"
     }
+    azuread = {
+      source  = "hashicorp/azuread"
+      version = ">= 2.47"
+    }
   }
 }
 
@@ -29,5 +33,10 @@ provider "google" {
 
 provider "azurerm" {
   features {}
-  subscription_id = var.azure_subscription_id
+  subscription_id     = var.azure_subscription_id
+  storage_use_azuread = true
+}
+
+provider "azuread" {
+  tenant_id = var.azure_tenant_id
 }

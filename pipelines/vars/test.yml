@@ -17,5 +17,4 @@ variables:
   GCP_WIF_PROVIDER: projects/382389965689/locations/global/workloadIdentityPools/azure-devops/providers/cdoazure
   GCP_BUILD_SERVICE_ACCOUNT: ado-build@csb-test-257615.iam.gserviceaccount.com
   GCP_SETUP_SERVICE_ACCOUNT: ado-setup@csb-test-257615.iam.gserviceaccount.com
-  TF_STATE_BUCKET: csb-test-257615-tfstate
   IMAGE_REPOSITORY: platform

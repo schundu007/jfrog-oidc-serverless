@@ -7,7 +7,7 @@ trigger:
   branches:
     include: [main]
   paths:
-    include: [apps/artifact-reader, client/src, pipelines/gcp-build-deploy.yml, pipelines/scripts]
+    include: [apps/artifact-reader, client/src, pipelines/gcp-build-deploy.yml, pipelines/scripts/gcp-build-deploy.sh, pipelines/scripts/oidc-login.sh]
 
 pr: none
 

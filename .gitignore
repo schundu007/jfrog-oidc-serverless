@@ -32,4 +32,3 @@ terraform.tfvars
 .console/
 .kcp-console/
 tfplan
-backend_override.tf
