@@ -6,10 +6,13 @@
 # it out, so the job image is ignored here after creation.
 #
 #   apply 1 (deploy_job = false): resource group, ACR, Container Apps environment,
-#           the workload's managed identity, the Entra audience app, JFrog trust
-#           for Entra tokens and the workload's mapping.
+#           the workload's managed identity.
 #   then:   the build pipeline pushes apps/artifact-reader into ACR.
 #   apply 2 (deploy_job = true): the Container Apps job.
+#
+# The trust side (Entra audience app, JFrog integration and mapping) and the
+# job's JFROG_* settings belong to the console's workspace
+# (terraform/workspaces/azure_<subscription>, azure-workload-onboard).
 
 locals {
   # ACR names are global, 5-50 alphanumerics: derive one unless given.
@@ -81,39 +84,12 @@ resource "azurerm_role_assignment" "deployer_contributor" {
   principal_type       = "ServicePrincipal"
 }
 
-# Entra audience app (the runtime exchange needs it); no pull path.
-module "azure" {
-  source = "../../modules/azure-identity-and-pull-path"
-
-  name_prefix         = var.workload
-  location            = azurerm_resource_group.workload.location
-  resource_group_name = azurerm_resource_group.workload.name
-  jfrog_url           = var.jfrog_url
-  jfrog_provider_name = module.jfrog_oidc.azure_provider_name
-  pull_path_enabled   = false
-
-  audience_assignees = {
-    (var.workload) = azurerm_user_assigned_identity.workload.principal_id
-  }
-}
-
-module "jfrog_oidc" {
-  source = "../../modules/jfrog-oidc"
-
-  azure = {
-    provider_name   = var.jfrog_provider_name
-    tenant_id       = module.azure.tenant_id
-    audience_app_id = module.azure.audience_app_id
-  }
-
-  workloads = {
-    (var.workload) = {
-      cloud       = "azure"
-      subject     = azurerm_user_assigned_identity.workload.principal_id
-      groups      = [var.jfrog_reader_group]
-      expires_in  = 3600
-      description = "Container Apps job ${var.workload} (runtime read)"
-    }
+# Moved to the console's workspace: the integration stays in JFrog (that
+# workspace adopted it); the old audience app and mapping are destroyed.
+removed {
+  from = module.jfrog_oidc.platform_oidc_configuration.azure
+  lifecycle {
+    destroy = false
   }
 }
 
@@ -150,22 +126,6 @@ resource "azurerm_container_app_job" "workload" {
       memory = "0.5Gi"
 
       env {
-        name  = "JFROG_URL"
-        value = var.jfrog_url
-      }
-      env {
-        name  = "JFROG_OIDC_PROVIDER"
-        value = module.jfrog_oidc.azure_provider_name
-      }
-      env {
-        name  = "JFROG_OIDC_AUDIENCE"
-        value = module.azure.audience_uri
-      }
-      env {
-        name  = "JFROG_OIDC_SOURCE"
-        value = "azure"
-      }
-      env {
         name  = "AZURE_CLIENT_ID"
         value = azurerm_user_assigned_identity.workload.client_id
       }
@@ -177,9 +137,9 @@ resource "azurerm_container_app_job" "workload" {
   }
 
   lifecycle {
-    # The build pipeline owns the image tag.
-    ignore_changes = [template[0].container[0].image]
+    # The build pipeline owns the image tag; the console's wire step owns JFROG_*.
+    ignore_changes = [template[0].container[0].image, template[0].container[0].env]
   }
 
-  depends_on = [azurerm_role_assignment.workload_acr_pull, module.azure]
+  depends_on = [azurerm_role_assignment.workload_acr_pull]
 }

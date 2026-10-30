@@ -6,27 +6,20 @@
 # (pipelines/gcp-build-deploy.yml) pushes the image and rolls it out, so the job
 # image is ignored here after creation.
 #
-#   apply 1 (deploy_job = false): JFrog trust for Google tokens, the workload's
-#           mapping, the image repository, the service account.
+#   apply 1 (deploy_job = false): the image repository, the service account.
 #   then:   the build pipeline pushes apps/artifact-reader.
 #   apply 2 (deploy_job = true): the Cloud Run job.
+#
+# The JFrog integration and mapping, and the job's JFROG_* settings, belong to
+# the console's workspace (terraform/workspaces/gcp_<project>_<region>,
+# gcp-workload-onboard).
 
-module "jfrog_oidc" {
-  source = "../../modules/jfrog-oidc"
-
-  gcp = {
-    provider_name = var.jfrog_provider_name
-    audience      = var.jfrog_audience
-  }
-
-  workloads = {
-    (var.workload) = {
-      cloud       = "gcp"
-      subject     = google_service_account.workload.unique_id
-      groups      = [var.jfrog_reader_group]
-      expires_in  = 3600
-      description = "Cloud Run job ${var.workload} (runtime read)"
-    }
+# Moved to the console's workspace: the integration stays in JFrog (that
+# workspace adopted it); the stack's duplicate mapping is destroyed.
+removed {
+  from = module.jfrog_oidc.platform_oidc_configuration.gcp
+  lifecycle {
+    destroy = false
   }
 }
 
@@ -66,22 +59,6 @@ resource "google_cloud_run_v2_job" "workload" {
       containers {
         image = var.job_image
         env {
-          name  = "JFROG_URL"
-          value = var.jfrog_url
-        }
-        env {
-          name  = "JFROG_OIDC_PROVIDER"
-          value = module.jfrog_oidc.gcp_provider_name
-        }
-        env {
-          name  = "JFROG_OIDC_AUDIENCE"
-          value = module.jfrog_oidc.gcp_audience
-        }
-        env {
-          name  = "JFROG_OIDC_SOURCE"
-          value = "gcp"
-        }
-        env {
           name  = "JFROG_ARTIFACT_PATH"
           value = var.artifact_path
         }
@@ -90,8 +67,8 @@ resource "google_cloud_run_v2_job" "workload" {
   }
 
   lifecycle {
-    # The build pipeline owns the image tag.
-    ignore_changes = [template[0].template[0].containers[0].image]
+    # The build pipeline owns the image tag; the console's wire step owns JFROG_*.
+    ignore_changes = [template[0].template[0].containers[0].image, template[0].template[0].containers[0].env]
   }
 }
 
