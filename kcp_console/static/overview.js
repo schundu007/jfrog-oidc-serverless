@@ -5,6 +5,7 @@ import { api, h, fill, state, selectTab, refreshConfigs } from "./app.js";
 import { $, pill, pageHead, stepList } from "./ui.js";
 
 let aks = null;           // {clusters, error} from GET /api/aks, loaded once per page view
+let q = "";               // the search box, kept across re-renders
 
 export function initOverview() {
   state.on("config", render);
@@ -23,7 +24,7 @@ async function render() {
   let runs = [];
   try { runs = (await api("/api/runs")).runs; } catch { /* none */ }
   if (!aks) loadAks();
-  const rows = configs.map((c) => {
+  const rows = configs.filter((c) => match(c.name, c.cluster)).map((c) => {
     const rs = runs.filter((r) => r.config === c.name && real(r));
     const setup = rs.find((r) => (r.kind === "direct" && r.name === "setup") || r.name === "INSTALL_JFROG_PROVIDER");
     const pull = rs.find((r) => (r.kind === "direct" && stepOf(r, "pull")) || r.name === "CREATE_TEST_POD");
@@ -40,9 +41,10 @@ async function render() {
   const cur = configs.find((c) => c.name === state.config);
   fill(P,
     pageHead("Clusters", h("button", { class: "primary", onclick: () => state.emit("new-config") }, "New cluster")),
+    h("div", { class: "toolbar" }, h("h2", {}, "Saved"), h("div", { class: "tools" }, search())),
     h("table", { class: "cfg-table clickable" },
       h("thead", {}, h("tr", {}, ["Name", "AKS cluster", "Provider", "Pull test", "Updated", ""].map((t) => h("th", { scope: "col" }, t)))),
-      h("tbody", {}, rows.length ? rows : h("tr", {}, h("td", { colspan: "6", class: "muted" }, "None yet")))),
+      h("tbody", {}, rows.length ? rows : h("tr", {}, h("td", { colspan: "6", class: "empty" }, q ? "No match" : "None yet")))),
     cur ? await selected(cur) : null,
     aksTable());
 }
@@ -58,19 +60,29 @@ async function selected(c) {
 }
 
 function aksTable() {
-  const head = h("div", { class: "cfg-head" }, h("h2", {}, "AKS clusters"),
-    h("button", { class: "secondary", onclick: () => { aks = null; render(); } }, "Refresh"));
+  const head = h("div", { class: "toolbar" }, h("h2", {}, "AKS clusters"),
+    h("div", { class: "tools" }, h("button", { class: "secondary", onclick: () => { aks = null; render(); } }, "Refresh")));
   if (!aks || aks.loading) return h("div", {}, head, h("p", { class: "muted" }, "Loading…"));
   if (aks.error) return h("div", {}, head, h("p", { class: "error small" }, aks.error));
+  const shown = aks.clusters.filter((k) => match(k.name, k.resource_group));
   return h("div", {}, head, h("table", { class: "cfg-table" },
     h("thead", {}, h("tr", {}, ["Cluster", "Resource group", "Location", "Kubernetes", "OIDC issuer", "Workload Identity", ""].map((t) => h("th", { scope: "col" }, t)))),
-    h("tbody", {}, aks.clusters.length ? aks.clusters.map((k) => h("tr", {},
+    h("tbody", {}, shown.length ? shown.map((k) => h("tr", {},
       h("td", {}, h("b", {}, k.name), k.power && k.power !== "Running" ? h("span", { class: "muted small" }, ` ${k.power}`) : null),
       h("td", {}, k.resource_group), h("td", {}, k.location), h("td", {}, k.version),
       h("td", {}, onOff(!!k.oidc_issuer)), h("td", {}, onOff(k.workload_identity)),
       h("td", { class: "row-actions" }, k.configured ? h("span", { class: "muted small" }, "added")
         : h("button", { class: "primary small-btn", onclick: () => add(k) }, "Add"))))
-      : h("tr", {}, h("td", { colspan: "7", class: "muted" }, "None found")))));
+      : h("tr", {}, h("td", { colspan: "7", class: "empty" }, q ? "No match" : "None found")))));
+}
+
+const match = (...vals) => !q || vals.some((v) => (v || "").toLowerCase().includes(q));
+
+function search() {
+  const box = h("input", { type: "search", placeholder: "Search", "aria-label": "Search clusters", value: q });
+  box.addEventListener("input", () => { q = box.value.trim().toLowerCase(); render().then(() => {
+    const again = $("panel-overview").querySelector('input[type="search"]'); again.focus(); again.setSelectionRange(again.value.length, again.value.length); }); });
+  return box;
 }
 
 async function loadAks() {

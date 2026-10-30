@@ -1,7 +1,7 @@
 // Shared UI pieces: a renderer for runbook data, tables, the run control
 // (prepare → approve → queue → live events) and the event-stream reader.
 
-import { api, h, fill, rich, state } from "./app.js";
+import { api, h, fill, rich, state, selectTab } from "./app.js";
 
 export const $ = (id) => document.getElementById(id);
 
@@ -45,7 +45,8 @@ export function section(title, ...kids) {
 
 export function needConfig(el) {
   if (state.config) return false;
-  fill(el, h("p", { class: "callout warn" }, "No saved configuration yet. Create one on the Configure tab."));
+  fill(el, h("div", { class: "empty" }, h("p", {}, "No cluster selected"),
+    h("button", { class: "primary", onclick: () => selectTab("overview") }, "Clusters")));
   return true;
 }
 

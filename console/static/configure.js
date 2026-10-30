@@ -484,5 +484,7 @@ export async function initConfigure(deps) {
   writeForm();
   markDirty(false);
   scheduleValidate();
-  selectTab(st.saved.length ? "tab-configs" : "tab-configure");
+  // The path picks the tab; with none (or Configurations and nothing saved), land on the useful one.
+  const named = location.pathname.split("/")[2] || "";
+  if (!named || (named === "configs" && !st.saved.length)) selectTab(st.saved.length ? "tab-configs" : "tab-configure", "replace");
 }

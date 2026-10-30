@@ -147,7 +147,7 @@ function setupTabs() {
       // Hidden tabs (e.g. Configurations with nothing saved) are skipped.
       const shown = tabs.filter((x) => !x.hidden);
       const j = shown.indexOf(t);
-      const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+      const d = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 1, ArrowUp: -1 }[e.key];
       if (d) { e.preventDefault(); select(shown[(j + d + shown.length) % shown.length]); }
       if (e.key === "Home") { e.preventDefault(); select(shown[0]); }
       if (e.key === "End") { e.preventDefault(); select(shown[shown.length - 1]); }

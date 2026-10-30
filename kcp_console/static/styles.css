@@ -356,3 +356,64 @@ main h1 { font-size: 24px; font-weight: 600; margin: 0 0 4px; }
 .action-row .runpanel { order: 4; flex-basis: 100%; margin-top: 4px; }
 .summary .action-list, .card .action-list { border: 0; }
 .summary .action-row, .card .action-row { padding-left: 0; padding-right: 0; }
+
+/* JFrog Platform patterns in the Humana palette and type: a full-width header (brand, context, session),
+   the rail below it, a title row with actions on the right, tables with a shaded header and column rules,
+   status as colored text, steps as a stack of checklist cards. */
+:root { --top-h: 60px; --rail-on-fg: #9fd65a; }
+.shell { grid-template-columns: var(--rail-w) minmax(0, 1fr); grid-template-rows: var(--top-h) minmax(0, 1fr);
+  grid-template-areas: "top top" "rail main"; }
+.shell > .topbar { grid-area: top; position: sticky; top: 0; z-index: 4; height: var(--top-h); display: flex; align-items: center;
+  gap: 18px; padding: 0 24px 0 0; margin: 0; background: var(--rail); color: #fff; border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08); justify-content: flex-start; }
+.shell > .topbar .brand { width: var(--rail-w); flex: none; height: 100%; display: flex; align-items: center; gap: 10px;
+  padding-left: 22px; font-size: 16px; font-weight: 700; color: #fff; white-space: nowrap; border-right: 1px solid rgba(255, 255, 255, 0.12); }
+.shell > .topbar .logo { color: var(--brand); }
+.shell > .topbar .config-pick { display: flex; align-items: center; gap: 10px; }
+.shell > .topbar .config-pick[hidden] { display: none; }
+.shell > .topbar label { color: var(--rail-fg); }
+.shell > .topbar select { background: rgba(255, 255, 255, 0.08); color: #fff; border: 1px solid rgba(255, 255, 255, 0.2); }
+.shell > .topbar select option { color: #22261f; }
+.shell > .topbar .pill { margin-left: auto; color: #fff; border-color: rgba(255, 255, 255, 0.3); }
+.shell > .topbar :focus-visible { outline-color: #fff; }
+.shell > .sidenav { grid-area: rail; top: var(--top-h); height: calc(100vh - var(--top-h)); padding-top: 14px; }
+.shell > .sidenav > .brand { display: none; }
+.shell > .main-col { grid-area: main; }
+.sidenav .nav-item[aria-current="page"], .sidenav .nav-item[aria-selected="true"] { color: var(--rail-on-fg); box-shadow: none; }
+
+/* Title row: title left, actions right. */
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+.page-head h1 { margin: 0; }
+.page-head > :not(h1) { display: flex; gap: 10px; align-items: center; }
+
+/* Tables: shaded header with column rules, tall rows, the first column reads as the link. */
+.cfg-table thead th, table.grid th { background: var(--lane); border-right: 1px solid var(--border); padding: 12px 20px; }
+.cfg-table thead th:last-child, table.grid th:last-child { border-right: 0; }
+.cfg-table td { padding: 16px 20px; }
+.cfg-table.clickable tbody td:first-child b { color: var(--accent); }
+.cfg-table.clickable tbody tr:hover td:first-child b { text-decoration: underline; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 26px 0 10px; }
+.toolbar h2 { margin: 0; }
+.toolbar .tools { display: flex; gap: 10px; align-items: center; }
+.toolbar input[type="search"] { width: 240px; }
+.empty { text-align: center; color: var(--muted); padding: 36px 0; }
+
+/* Status reads as colored text, not a tag. */
+td .pill, .act-last .pill, .step-table .pill { border: 0; background: none; padding: 0; font-weight: 600; }
+
+/* Steps: a stack of checklist cards. */
+.action-list, .summary .action-list, .card .action-list { background: none; border: 0; display: flex; flex-direction: column; gap: 10px; }
+.action-row, .summary .action-row, .card .action-row { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 20px; box-shadow: 0 1px 2px rgba(16, 24, 8, 0.04); }
+.action-row:first-child { border-top: 1px solid var(--border); }
+
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; grid-template-areas: "top" "rail" "main"; }
+  .shell > .topbar { position: static; height: auto; min-height: var(--top-h); flex-wrap: wrap; padding: 8px 16px; }
+  .shell > .topbar .brand { width: auto; border: 0; padding: 0; }
+  .shell > .sidenav { position: static; height: auto; }
+}
+.shell > .topbar { box-shadow: none; }
+.toolbar input[type="search"] { font: inherit; font-size: 14px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--card); color: var(--fg); }
+.empty p { margin: 0 0 14px; font-size: 16px; }

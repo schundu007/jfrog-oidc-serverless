@@ -9,8 +9,16 @@
 </head>
 <body>
 <div class="shell">
-  <aside class="sidenav">
+  <header class="topbar">
     <div class="brand"><span class="logo" aria-hidden="true">◆</span><span>KCP Console</span></div>
+    <div class="config-pick" id="config-pick" hidden>
+      <label for="config-select" class="small">Cluster</label>
+      <select id="config-select"></select>
+      <button type="button" class="secondary small-btn" id="report-link" hidden>Report</button>
+    </div>
+    <span class="pill" id="mode-pill" hidden></span>
+  </header>
+  <aside class="sidenav">
     <nav id="sidenav" aria-label="Sections" hidden>
       <button type="button" class="nav-item" id="nav-overview"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg><span>Clusters</span></button>
       <button type="button" class="nav-item" id="nav-configure"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3"/><path d="M10 2v3M10 15v3M2 10h3M15 10h3M4.3 4.3l2.1 2.1M13.6 13.6l2.1 2.1M4.3 15.7l2.1-2.1M13.6 6.4l2.1-2.1"/></svg><span>Configure</span></button>
@@ -29,14 +37,6 @@
     </nav>
   </aside>
   <div class="main-col">
-    <header class="topbar">
-      <span class="pill" id="mode-pill" hidden></span>
-      <div class="config-pick" id="config-pick" hidden>
-        <label for="config-select" class="small muted">Cluster</label>
-        <select id="config-select"></select>
-        <button type="button" class="secondary small-btn" id="report-link" hidden>Report</button>
-      </div>
-    </header>
   <div id="auth-banner" class="banner error" role="alert" hidden>
     <p>Not signed in. Paste the console URL (it ends in #t=…). If the console was started in the background,
       get it with <code>python3 -m kcp_console --print-url</code>.</p>
@@ -59,6 +59,7 @@
     <section id="panel-rollback" hidden></section>
     <section id="panel-runs" hidden></section>
     <section id="panel-simulate" hidden>
+      <div class="cfg-head"><h1>Simulate</h1></div>
       <div class="sim-layout">
         <aside class="sim-side card">
           <label class="tfield" for="sim-pick"><span>Scenario</span><select id="sim-pick"></select></label>

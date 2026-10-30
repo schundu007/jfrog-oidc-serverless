@@ -474,3 +474,100 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 .cfg-table td.actions { white-space: nowrap; text-align: right; }
 .cfg-table td.actions > * + * { margin-left: 8px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Shell: the JFrog Platform layout (a dark side rail and top bar, white content, bordered cards), in the
+   green palette. Shared with kcp_console/static/styles.css: the two consoles are to merge into one. */
+:root { --rail: #16300a; --rail-fg: #c8d6bd; --rail-hover: rgba(255, 255, 255, 0.07); --rail-on: rgba(124, 199, 58, 0.18);
+  --bg: #f5f7f3; --rail-w: 224px; }
+@media (prefers-color-scheme: dark) { :root { --rail: #0d1a07; --bg: #121411; } }
+.shell { display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); min-height: 100vh; }
+.sidenav { background: var(--rail); color: var(--rail-fg); position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  display: flex; flex-direction: column; padding: 0 10px 16px; }
+.sidenav .brand { height: 56px; display: flex; align-items: center; gap: 10px; color: #fff; font-size: 16px; font-weight: 700;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08); margin: 0 -10px 10px; padding: 0 20px; }
+.sidenav .logo { color: var(--brand); }
+.sidenav nav, .sidenav nav.tabs { display: flex; flex-direction: column; gap: 2px; background: none; border: 0; padding: 0; position: static; }
+.sidenav .nav-item { display: flex; align-items: center; gap: 12px; width: 100%; font: inherit; font-size: 14px; text-align: left;
+  background: none; border: 0; border-radius: 6px; padding: 9px 12px; color: var(--rail-fg); cursor: pointer; text-decoration: none; }
+.sidenav .nav-item svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6;
+  stroke-linecap: round; stroke-linejoin: round; }
+.sidenav .nav-item:hover { background: var(--rail-hover); color: #fff; }
+.sidenav .nav-item[aria-selected="true"], .sidenav .nav-item[aria-current="page"] {
+  background: var(--rail-on); color: #fff; font-weight: 600; box-shadow: inset 3px 0 0 var(--brand); border: 0; }
+.sidenav .nav-item:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+.nav-group { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(200, 214, 189, 0.6);
+  padding: 18px 12px 6px; }
+.main-col { min-width: 0; display: flex; flex-direction: column; }
+.main-col > .topbar { position: sticky; top: 0; z-index: 3; height: 56px; display: flex; align-items: center; justify-content: flex-end;
+  gap: 14px; padding: 0 32px; background: var(--card); color: var(--fg); border: 0; border-bottom: 1px solid var(--border); box-shadow: none; }
+.main-col > main { width: 100%; max-width: 1440px; margin: 0; padding: 28px 32px 64px; }
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidenav { position: static; height: auto; padding-bottom: 8px; }
+  .sidenav nav, .sidenav nav.tabs { flex-direction: row; flex-wrap: wrap; }
+  .sidenav .nav-item { width: auto; }
+  .nav-group { display: none; }
+  .main-col > .topbar { padding: 0 16px; }
+  .main-col > main { padding: 20px 16px 48px; }
+}
+
+/* JFrog Platform patterns in the Humana palette and type: a full-width header (brand, context, session),
+   the rail below it, a title row with actions on the right, tables with a shaded header and column rules,
+   status as colored text, steps as a stack of checklist cards. */
+:root { --top-h: 60px; --rail-on-fg: #9fd65a; }
+.shell { grid-template-columns: var(--rail-w) minmax(0, 1fr); grid-template-rows: var(--top-h) minmax(0, 1fr);
+  grid-template-areas: "top top" "rail main"; }
+.shell > .topbar { grid-area: top; position: sticky; top: 0; z-index: 4; height: var(--top-h); display: flex; align-items: center;
+  gap: 18px; padding: 0 24px 0 0; margin: 0; background: var(--rail); color: #fff; border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08); justify-content: flex-start; }
+.shell > .topbar .brand { width: var(--rail-w); flex: none; height: 100%; display: flex; align-items: center; gap: 10px;
+  padding-left: 22px; font-size: 16px; font-weight: 700; color: #fff; white-space: nowrap; border-right: 1px solid rgba(255, 255, 255, 0.12); }
+.shell > .topbar .logo { color: var(--brand); }
+.shell > .topbar .config-pick { display: flex; align-items: center; gap: 10px; }
+.shell > .topbar .config-pick[hidden] { display: none; }
+.shell > .topbar label { color: var(--rail-fg); }
+.shell > .topbar select { background: rgba(255, 255, 255, 0.08); color: #fff; border: 1px solid rgba(255, 255, 255, 0.2); }
+.shell > .topbar select option { color: #22261f; }
+.shell > .topbar .pill { margin-left: auto; color: #fff; border-color: rgba(255, 255, 255, 0.3); }
+.shell > .topbar :focus-visible { outline-color: #fff; }
+.shell > .sidenav { grid-area: rail; top: var(--top-h); height: calc(100vh - var(--top-h)); padding-top: 14px; }
+.shell > .sidenav > .brand { display: none; }
+.shell > .main-col { grid-area: main; }
+.sidenav .nav-item[aria-current="page"], .sidenav .nav-item[aria-selected="true"] { color: var(--rail-on-fg); box-shadow: none; }
+
+/* Title row: title left, actions right. */
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+.page-head h1 { margin: 0; }
+.page-head > :not(h1) { display: flex; gap: 10px; align-items: center; }
+
+/* Tables: shaded header with column rules, tall rows, the first column reads as the link. */
+.cfg-table thead th, table.grid th { background: var(--lane); border-right: 1px solid var(--border); padding: 12px 20px; }
+.cfg-table thead th:last-child, table.grid th:last-child { border-right: 0; }
+.cfg-table td { padding: 16px 20px; }
+.cfg-table.clickable tbody td:first-child b { color: var(--accent); }
+.cfg-table.clickable tbody tr:hover td:first-child b { text-decoration: underline; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 26px 0 10px; }
+.toolbar h2 { margin: 0; }
+.toolbar .tools { display: flex; gap: 10px; align-items: center; }
+.toolbar input[type="search"] { width: 240px; }
+.empty { text-align: center; color: var(--muted); padding: 36px 0; }
+
+/* Status reads as colored text, not a tag. */
+td .pill, .act-last .pill, .step-table .pill { border: 0; background: none; padding: 0; font-weight: 600; }
+
+/* Steps: a stack of checklist cards. */
+.action-list, .summary .action-list, .card .action-list { background: none; border: 0; display: flex; flex-direction: column; gap: 10px; }
+.action-row, .summary .action-row, .card .action-row { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 20px; box-shadow: 0 1px 2px rgba(16, 24, 8, 0.04); }
+.action-row:first-child { border-top: 1px solid var(--border); }
+
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; grid-template-areas: "top" "rail" "main"; }
+  .shell > .topbar { position: static; height: auto; min-height: var(--top-h); flex-wrap: wrap; padding: 8px 16px; }
+  .shell > .topbar .brand { width: auto; border: 0; padding: 0; }
+  .shell > .sidenav { position: static; height: auto; }
+}
+.shell > .topbar { box-shadow: none; }
+.toolbar input[type="search"] { font: inherit; font-size: 14px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--card); color: var(--fg); }
+.empty p { margin: 0 0 14px; font-size: 16px; }
