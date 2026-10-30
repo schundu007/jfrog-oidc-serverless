@@ -81,11 +81,12 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.req("GET", "/static/app.js", token=False)[0].status, 200)
 
     def test_page_routes_serve_the_app(self):
-        for p in ("/clusters", "/configure", "/clusters/aks-prod-01"):
+        for p in ("/clusters", "/configure", "/clusters/aks-prod-01", "/clusters/aks", "/clusters/gke", "/clusters/eks",
+                  "/clusters/openshift", "/clusters/aks/aks-prod-01", "/clusters/gke/gke-a/edit"):
             r, raw = self.req("GET", p, token=False)
             self.assertEqual(r.status, 200, p)
             self.assertIn(b'<script type="module" src="/static/app.js">', raw, p)
-        for p in ("/operate/nope", "/docs", "/clusters/a/b", "/clusters/..%2f"):
+        for p in ("/operate/nope", "/docs", "/clusters/a/b", "/clusters/..%2f", "/clusters/aks/x/delete", "/clusters/aks/..%2f/edit"):
             self.assertEqual(self.req("GET", p, token=False)[0].status, 404, p)
 
     def test_fleet_lists_saved_clusters_without_live_calls(self):

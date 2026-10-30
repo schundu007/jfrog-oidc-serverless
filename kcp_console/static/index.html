@@ -19,7 +19,11 @@
   </header>
   <aside class="sidenav">
     <nav id="sidenav" aria-label="Sections" hidden>
-      <button type="button" class="nav-item" id="nav-overview"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg><span>Clusters</span></button>
+      <div class="nav-group">Clusters</div>
+      <a class="nav-item" href="/clusters/aks" data-cloud="aks"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15 9 3l8 12z"/></svg><span>Azure AKS</span></a>
+      <a class="nav-item" href="/clusters/gke" data-cloud="gke"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2 17 6v8l-7 4-7-4V6z"/></svg><span>Google GKE</span></a>
+      <a class="nav-item" href="/clusters/eks" data-cloud="eks"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14v12H3zM3 8h14"/></svg><span>AWS EKS</span></a>
+      <a class="nav-item" href="/clusters/openshift" data-cloud="openshift"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M5 13l10-6"/></svg><span>OpenShift</span></a>
     </nav>
   </aside>
   <div class="main-col">

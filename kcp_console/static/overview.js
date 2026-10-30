@@ -3,7 +3,7 @@
 // evidence and a fresh status read. The action is rebuilt from the server's run records, so a page
 // refresh or another page in between finds it where it was. The approval is the only click inside it.
 
-import { api, h, fill, state, selectTab, refreshConfigs } from "./app.js";
+import { api, h, fill, state, selectTab, refreshConfigs, route, go, clusterPath, CLOUDS as CLOUD } from "./app.js";
 import { $, workflow, brief } from "./ui.js";
 
 const live = {};            // config name -> {loading, facts, preflight, error}
@@ -32,8 +32,9 @@ export function initOverview() {
 const muted = (t) => h("span", { class: "muted" }, t);
 const when = (iso) => (iso || "").slice(0, 16).replace("T", " ");
 
-// Two views: the fleet at /clusters and one cluster at /clusters/<name>.
-const detailName = () => { const m = location.pathname.match(/^\/clusters\/([^/]+)$/); return m ? decodeURIComponent(m[1]) : null; };
+// Two views: one platform's clusters at /clusters/<cloud> and one cluster at /clusters/<cloud>/<name>.
+const detailName = () => route().name;
+const cloud = () => route().cloud || "aks";
 
 function render() {
   const P = $("panel-overview");
@@ -42,26 +43,20 @@ function render() {
   const c = (state.configs || []).find((x) => x.name === name);
   if (c && state.config !== name) { select(name); return; }
   fill(P, c ? clusterView(c)
-    : h("div", { class: "empty" }, h("p", {}, `No cluster named ${name}`), h("button", { class: "secondary", onclick: openFleet }, "All clusters")));
+    : h("div", { class: "empty" }, h("p", {}, `No cluster named ${name}`), h("button", { class: "secondary", onclick: openFleet }, `${CLOUD[cloud()]} clusters`)));
 }
 
 export function openCluster(name) {
-  history.pushState({}, "", `/clusters/${encodeURIComponent(name)}`);
-  window.scrollTo(0, 0);
-  select(name);
+  go(clusterPath(name));
 }
 
 function openFleet() {
-  history.pushState({}, "", `/clusters${query()}`);
-  window.scrollTo(0, 0);
-  render();
-  loadFleet();
+  go(`/clusters/${cloud()}${query()}`);
 }
 
 // ----------------------------------------------------------------------- the fleet
 
 const PAGE = 25;
-const CLOUD = { aks: "Azure AKS", eks: "AWS EKS", gke: "Google GKE", openshift: "OpenShift" };
 const STATE = {
   approval: ["warn", "Awaiting approval"], running: ["info", "Running…"], attention: ["fail", "Needs attention"], not_proven: ["fail", "OIDC not proven"],
   unverified: ["warn", "Not verified"], working: ["ok", "OIDC working"], not_installed: ["muted", "Not set up"], unread: ["muted", "Not read"],
@@ -70,19 +65,19 @@ const STATS = [["", "All clusters"], ["working", "OIDC working"], ["attention", 
   ["approval", "Awaiting approval"], ["not_installed", "Not set up"]];
 const ACTION = { prepared: "waiting for approval", queued: "starting", running: "running", succeeded: "done", failed: "failed",
   cancelled: "cancelled", interrupted: "interrupted", refused: "refused", error: "failed" };
-const F = { q: "", cloud: "", state: "", page: 1 };
+const F = { q: "", state: "", page: 1 };
 let fleet = null;
 let fleetLoading = false;
 let adding = false;
 
 function readQuery() {
   const u = new URLSearchParams(location.search);
-  Object.assign(F, { q: u.get("q") || "", cloud: u.get("cloud") || "", state: u.get("state") || "", page: Number(u.get("page")) || 1 });
+  Object.assign(F, { q: u.get("q") || "", state: u.get("state") || "", page: Number(u.get("page")) || 1 });
 }
 
 function query() {
   const u = new URLSearchParams();
-  for (const k of ["q", "cloud", "state"]) if (F[k]) u.set(k, F[k]);
+  for (const k of ["q", "state"]) if (F[k]) u.set(k, F[k]);
   if (F.page > 1) u.set("page", F.page);
   return u.toString() ? `?${u}` : "";
 }
@@ -90,7 +85,7 @@ function query() {
 // Filters live in the address, so a refresh or a shared link shows the same list.
 function setFilter(patch) {
   Object.assign(F, { page: 1 }, patch);
-  history.replaceState({}, "", `/clusters${query()}`);
+  history.replaceState({}, "", `/clusters/${cloud()}${query()}`);
 }
 
 async function loadFleet() {
@@ -112,65 +107,69 @@ function ago(iso) {
 
 function matches(r) {
   if (F.state && r.state !== F.state) return false;
-  if (F.cloud && r.cloud !== F.cloud) return false;
   const q = F.q.trim().toLowerCase();
   return !q || [r.name, r.cluster, r.location, r.subscription, r.resource_group].some((v) => (v || "").toLowerCase().includes(q));
 }
 
 function fleetView() {
   if (!fleet && !fleetLoading) loadFleet();
-  const d = fleet || { clusters: [], counts: {} };
-  const n = d.clusters.length;
-  const clouds = [...new Set(d.clusters.map((r) => r.cloud))];
+  const d = fleet || { clusters: [], platforms: {} };
+  const k = cloud(), label = CLOUD[k];
+  const built = (d.platforms || {})[k] !== false && !!SOURCES[k];
+  const mine = d.clusters.filter((r) => (r.cloud || "aks") === k);
+  const counts = {};
+  for (const r of mine) counts[r.state] = (counts[r.state] || 0) + 1;
+  const n = mine.length;
+  const where = k === "gke" ? "project or location" : "subscription, resource group or region";
   return h("div", { class: "fleet" },
     h("header", { class: "cl-head" },
-      h("div", { class: "cl-title" }, h("h1", {}, "Clusters"), n ? muted(`${n} across ${clouds.length} platform${clouds.length === 1 ? "" : "s"}`) : null),
+      h("div", { class: "cl-title" }, h("h1", {}, label), n ? muted(`${n} cluster${n === 1 ? "" : "s"}`) : null),
       h("div", { class: "cl-actions" },
-        h("button", { class: "ghost", disabled: fleetLoading, onclick: () => { fleet = null; render(); } }, "Refresh"),
-        h("button", { class: adding ? "secondary" : "primary", onclick: () => { adding = !adding; render(); } }, adding ? "Close" : "Add a cluster"))),
+        built ? h("button", { class: "ghost", disabled: fleetLoading, onclick: () => { fleet = null; render(); } }, "Refresh") : null,
+        built ? h("button", { class: adding ? "secondary" : "primary", onclick: () => { adding = !adding; render(); } }, adding ? "Close" : "Add a cluster") : null)),
     d.error ? h("div", { class: "callout fail" }, brief(d.error)) : null,
-    adding ? addPanel(state.configs || []) : null,
-    !fleet ? h("p", { class: "muted" }, "Loading…")
-      : !n && !adding ? h("div", { class: "empty" }, h("p", {}, "No clusters yet"), h("button", { class: "primary", onclick: () => { adding = true; render(); } }, "Add a cluster"))
+    !built ? h("div", { class: "empty" }, h("p", {}, `${label} is not supported yet`)) : null,
+    built && adding ? addPanel(state.configs || [], k) : null,
+    !built ? null
+      : !fleet ? h("p", { class: "muted" }, "Loading…")
+      : !n && !adding ? h("div", { class: "empty" }, h("p", {}, `No ${label} clusters yet`), h("button", { class: "primary", onclick: () => { adding = true; render(); } }, "Add a cluster"))
       : n ? [
-        h("div", { class: "stats" }, STATS.map(([k, label]) => h("button", {
-          class: `stat${F.state === k ? " on" : ""}${k ? ` s-${k}` : ""}`, "aria-pressed": F.state === k ? "true" : "false",
-          onclick: () => { setFilter({ state: F.state === k ? "" : k }); render(); },
-        }, h("b", {}, String(k ? d.counts[k] || 0 : n)), h("span", {}, label)))),
+        h("div", { class: "stats" }, STATS.map(([s, text]) => h("button", {
+          class: `stat${F.state === s ? " on" : ""}${s ? ` s-${s}` : ""}`, "aria-pressed": F.state === s ? "true" : "false",
+          onclick: () => { setFilter({ state: F.state === s ? "" : s }); render(); },
+        }, h("b", {}, String(s ? counts[s] || 0 : n)), h("span", {}, text)))),
         h("div", { class: "fleet-bar" },
-          h("input", { type: "search", class: "search", placeholder: "Search by name, subscription, resource group or region", value: F.q, "aria-label": "Search clusters",
-            oninput: (e) => { setFilter({ q: e.target.value }); fillTable(); } }),
-          h("select", { "aria-label": "Platform", onchange: (e) => { setFilter({ cloud: e.target.value }); fillTable(); } },
-            h("option", { value: "" }, "All platforms"),
-            Object.entries(CLOUD).map(([k, label]) => h("option", { value: k, selected: F.cloud === k, disabled: !(d.platforms || {})[k] && !clouds.includes(k) },
-              (d.platforms || {})[k] ? label : `${label} (coming)`)))),
-        h("div", { id: "fleet-table" }, fleetTable(d.clusters)),
+          h("input", { type: "search", class: "search", placeholder: `Search by name, ${where}`, value: F.q, "aria-label": "Search clusters",
+            oninput: (e) => { setFilter({ q: e.target.value }); fillTable(); } })),
+        h("div", { id: "fleet-table" }, fleetTable(mine)),
       ] : null);
 }
 
 function fillTable() {
   const el = $("fleet-table");
-  if (el && fleet) fill(el, fleetTable(fleet.clusters));
+  if (el && fleet) fill(el, fleetTable(fleet.clusters.filter((r) => (r.cloud || "aks") === cloud())));
 }
 
 function fleetTable(all) {
   const rows = all.filter(matches);
+  const gke = cloud() === "gke";
   if (!rows.length) return h("div", { class: "empty slim" }, h("p", {}, "No clusters match"),
-    h("button", { class: "ghost", onclick: () => { setFilter({ q: "", cloud: "", state: "" }); render(); } }, "Clear filters"));
+    h("button", { class: "ghost", onclick: () => { setFilter({ q: "", state: "" }); render(); } }, "Clear filters"));
   const pages = Math.ceil(rows.length / PAGE);
   F.page = Math.min(Math.max(1, F.page), pages);
   const first = (F.page - 1) * PAGE;
-  const go = (p) => { F.page = p; history.replaceState({}, "", `/clusters${query()}`); fillTable(); };
+  const go = (p) => { F.page = p; history.replaceState({}, "", `/clusters/${cloud()}${query()}`); fillTable(); };
   return [
     h("table", { class: "fleet-table" },
-      h("thead", {}, h("tr", {}, ["Cluster", "Subscription", "Resource group", "Status", "Credential provider", "Last verified", "Last action"].map((t) => h("th", { scope: "col" }, t)))),
+      h("thead", {}, h("tr", {}, (gke ? ["Cluster", "Project", "Status", "Credential provider", "Last verified", "Last action"]
+        : ["Cluster", "Subscription", "Resource group", "Status", "Credential provider", "Last verified", "Last action"]).map((t) => h("th", { scope: "col" }, t)))),
       h("tbody", {}, rows.slice(first, first + PAGE).map((r) => {
         const [cls, text] = STATE[r.state] || ["muted", r.state];
         const a = r.action;
         return h("tr", { tabindex: "0", onclick: () => openCluster(r.name), onkeydown: (e) => { if (e.key === "Enter") openCluster(r.name); } },
-          h("td", {}, h("div", { class: "nm" }, r.name), h("div", { class: "sub" }, [CLOUD[r.cloud] || r.cloud, r.cluster !== r.name ? r.cluster : "", r.location].filter(Boolean).join(" · "))),
+          h("td", {}, h("div", { class: "nm" }, r.name), h("div", { class: "sub" }, [r.cluster !== r.name ? r.cluster : "", r.location].filter(Boolean).join(" · "))),
           h("td", { class: "wrap" }, r.subscription || muted("—")),
-          h("td", { class: "wrap" }, r.resource_group || muted("—")),
+          gke ? null : h("td", { class: "wrap" }, r.resource_group || muted("—")),
           h("td", {}, h("span", { class: `badge ${cls}` }, text), r.problem ? h("div", { class: "sub" }, brief(r.problem)) : null),
           h("td", {}, r.chart ? h("div", {}, `v${r.chart}`) : muted("—"), r.ready ? h("div", { class: "sub" }, `${r.ready} nodes ready`) : null),
           h("td", {}, r.verified_at ? ago(r.verified_at) : muted("never")),
@@ -228,7 +227,8 @@ function clusterView(c) {
     h("dl", { class: "ess" }, essentials.map(([k, v]) => h("div", {}, h("dt", {}, k), h("dd", {}, v))))) : null;
   return h("div", { class: "cluster" },
     h("nav", { class: "crumbs", "aria-label": "Breadcrumb" },
-      h("a", { href: "/clusters", onclick: (e) => { e.preventDefault(); openFleet(); } }, "Clusters"), h("span", {}, "/"), h("span", {}, c.name)),
+      h("span", {}, "Clusters"), h("span", {}, "/"),
+      h("a", { href: `/clusters/${cloud()}`, onclick: (e) => { e.preventDefault(); openFleet(); } }, CLOUD[cloud()]), h("span", {}, "/"), h("span", {}, c.name)),
     h("header", { class: "cl-head" },
       h("div", {},
         h("div", { class: "cl-title" },
@@ -499,13 +499,9 @@ function causeEl(name, run) {
 // Existing clusters the operator's logins can see, per cloud: every subscription (az) or project (gcloud).
 const SOURCES = { aks: { api: "/api/aks", short: "AKS" }, gke: { api: "/api/gke", short: "GKE" } };
 const found = {};           // cloud -> {clusters, loading, error}
-let addCloud = "aks";
 
-function addPanel(configs) {
-  const tabs = h("div", { class: "seg", role: "tablist" }, Object.keys(SOURCES).map((k) =>
-    h("button", { role: "tab", "aria-selected": String(addCloud === k), class: addCloud === k ? "on" : "",
-      onclick: () => { addCloud = k; render(); } }, CLOUD[k])));
-  return panel("Add a cluster", tabs, foundTable(configs, addCloud));
+function addPanel(configs, cloud) {
+  return panel(`Add a ${SOURCES[cloud].short} cluster`, null, foundTable(configs, cloud));
 }
 
 function foundTable(configs, cloud) {
@@ -569,8 +565,8 @@ async function add(k, cloud) {
   delete found[cloud];
   adding = false;
   fleet = null;
-  openCluster(name);
-  if (!cfg.jfrog.host) selectTab("configure");
+  await refreshConfigs(name);
+  if (!cfg.jfrog.host) selectTab("configure"); else openCluster(name);
 }
 
 async function select(name) {

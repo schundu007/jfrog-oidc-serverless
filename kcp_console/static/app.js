@@ -90,35 +90,65 @@ function showAuth() {
 
 // ----------------------------------------------------------------- pages
 
-// One page, a side menu, and a URL per section: /clusters, /configure, /install … /simulate. The server
-// serves index.html for all of them, so a reload or a shared link opens the same section.
+// One URL per page, each cloud kept apart:
+//   /clusters/<cloud>              that platform's clusters (aks, gke, eks, openshift)
+//   /clusters/<cloud>/<name>       one cluster
+//   /clusters/<cloud>/<name>/edit  its configuration
+// /clusters, /clusters/<name> and /configure are older links; they move to the paths above. The server
+// serves index.html for all of them, so a reload or a shared link opens the same page.
+export const CLOUDS = { aks: "Azure AKS", gke: "Google GKE", eks: "AWS EKS", openshift: "OpenShift" };
 const PAGES = ["overview", "configure"];
-const pathOf = (p) => (p === "overview" ? "/clusters" : `/${p}`);
 
-function fromPath(path) {
-  const parts = path.replace(/\/+$/, "").split("/").slice(1);
-  const name = parts[0] === "operate" ? parts[1] : parts[0];   // old /operate/<page> links
-  return PAGES.includes(name) ? name : "overview";
+export const cloudOf = (name) => (state.configs.find((c) => c.name === name) || {}).platform || "aks";
+export const clusterPath = (name, edit = false) => `/clusters/${cloudOf(name)}/${encodeURIComponent(name)}${edit ? "/edit" : ""}`;
+
+// {cloud, name, page} from the address; moved: an older link to rewrite.
+export function route(path = location.pathname) {
+  const p = path.replace(/\/+$/, "").split("/").slice(1).map(decodeURIComponent);
+  if (p[0] === "configure") return { cloud: cloudOf(state.config), name: state.config, page: "configure", moved: true };
+  if (p[0] !== "clusters") return { cloud: null, name: null, page: "overview", moved: true };
+  if (p[1] && !CLOUDS[p[1]]) return { cloud: cloudOf(p[1]), name: p[1], page: "overview", moved: true };
+  return { cloud: p[1] || null, name: p[2] || null, page: p[3] === "edit" ? "configure" : "overview", moved: !p[1] };
 }
 
-export function selectTab(name, { history: how = "push" } = {}) {
-  if (!PAGES.includes(name)) name = "overview";
-  for (const p of PAGES) {
-    $(`panel-${p}`).hidden = p !== name;
-  }
-  // Configure is reached from a cluster's Edit; the menu keeps Clusters marked.
-  $("nav-overview").setAttribute("aria-current", "page");
-  const path = pathOf(name);
-  // A deep link inside a page (/clusters/<name>, /clusters?state=…) stays as it is unless the menu was clicked.
-  const inside = location.pathname === path || location.pathname.startsWith(`${path}/`);
-  if (how !== "none" && !(inside && how === "replace") && !(location.pathname === path && !location.search))
-    history[how === "replace" ? "replaceState" : "pushState"]({}, "", path);
+// The first platform that has clusters, for /clusters.
+const homeCloud = () => Object.keys(CLOUDS).find((k) => state.configs.some((c) => (c.platform || "aks") === k)) || "aks";
+
+function canonical(r) {
+  const cloud = r.cloud || homeCloud();
+  if (!r.name) return `/clusters/${cloud}`;
+  return `/clusters/${cloud}/${encodeURIComponent(r.name)}${r.page === "configure" ? "/edit" : ""}`;
+}
+
+// Go to a path inside the console without a reload.
+export function go(path, { replace = false } = {}) {
+  if (path !== location.pathname + location.search) history[replace ? "replaceState" : "pushState"]({}, "", path);
+  show();
+}
+
+function show() {
+  const r = route();
+  if (r.moved) history.replaceState({}, "", canonical(r) + (r.name ? "" : location.search));
+  const cloud = route().cloud;
+  for (const p of PAGES) $(`panel-${p}`).hidden = p !== r.page;
+  document.querySelectorAll("#sidenav [data-cloud]").forEach((a) => {
+    if (a.dataset.cloud === cloud) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+  });
   window.scrollTo(0, 0);
-  state.emit("tab", name);
+  state.emit("tab", r.page);
+}
+
+// Open a page for the selected cluster: "configure" is its Edit page, "overview" its own page.
+export function selectTab(name) {
+  go(state.config ? clusterPath(state.config, name === "configure") : `/clusters/${route().cloud || homeCloud()}`);
 }
 
 function wireTabs() {
-  $("nav-overview").addEventListener("click", () => selectTab("overview"));
+  document.querySelectorAll("#sidenav [data-cloud]").forEach((a) => a.addEventListener("click", (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    go(a.getAttribute("href"));
+  }));
 }
 
 $("auth-form").addEventListener("submit", (e) => {
@@ -153,8 +183,8 @@ async function start() {
     try { init(); } catch (e) { console.error(e); }
   }
   state.emit("config", state.config);
-  selectTab(fromPath(location.pathname), { history: "replace" });
-  window.addEventListener("popstate", () => selectTab(fromPath(location.pathname), { history: "none" }));
+  show();
+  window.addEventListener("popstate", show);
 }
 
 export async function refreshConfigs(select) {

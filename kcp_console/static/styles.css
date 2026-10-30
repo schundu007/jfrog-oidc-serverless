@@ -541,3 +541,5 @@ ol.stages li.muted { color: var(--muted); }
 ul.checks li.head { font-size: 12px; font-weight: 600; color: var(--muted); padding: 0 0 6px; border-top: 0; }
 ul.checks li.head + li { border-top: 1px solid var(--border); }
 ul.checks li { padding: 8px 0; }
+/* Sidebar items are links (one URL per platform). */
+a.nav-item { text-decoration: none; }

@@ -1,7 +1,7 @@
 // Configure: one cluster's settings. Validation is live (POST /api/values); Save goes back to Clusters,
 // where Set up runs. Nothing here changes the cluster or JFrog.
 
-import { api, h, fill, state, refreshConfigs, selectTab } from "./app.js";
+import { api, h, fill, state, refreshConfigs, route, go, clusterPath } from "./app.js";
 import { $ } from "./ui.js";
 
 const P = () => $("panel-configure");
@@ -41,7 +41,8 @@ const ADVANCED = ["values.match_images", "values.download_url", "values.azure_ap
 
 export function initConfigure() {
   state.on("config", load);
-  state.on("new-config", () => { cfg = structuredClone(blank); selectTab("configure"); render(); });
+  // /clusters/<cloud>/<name>/edit opened directly: edit that cluster, not the last one selected.
+  state.on("tab", (tab) => { const n = route().name; if (tab === "configure" && n && n !== state.config) refreshConfigs(n); });
 }
 
 async function load(name) {
@@ -126,8 +127,7 @@ function validateSoon(ms = 300) {
 
 // Back to the cluster's own page (or the fleet).
 function back(name) {
-  history.pushState({}, "", name ? `/clusters/${encodeURIComponent(name)}` : "/clusters");
-  selectTab("overview", { history: "none" });
+  go(name ? clusterPath(name) : `/clusters/${route().cloud || "aks"}`);
 }
 
 function msg(text, cls = "small") { const m = $("cfg-msg"); if (m) { m.textContent = text; m.className = cls; } }
