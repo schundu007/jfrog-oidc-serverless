@@ -38,6 +38,40 @@ class DefaultsTests(unittest.TestCase):
         self.assertFalse(model.default_config("azure_functions_flex")["pull_path"]["enabled"])
 
 
+class AwsOpenShiftModelTests(unittest.TestCase):
+    def test_defaults_are_runtime_only(self):
+        for kind in ("aws_lambda", "aws_ecs_task", "aws_app_runner", "openshift_knative_service"):
+            cfg = model.default_config(kind, name="orders")
+            self.assertFalse(cfg["pull_path"]["enabled"], kind)
+            self.assertEqual(model.validate(cfg)["errors"], [], kind)
+            self.assertEqual(model.dedicated_identity_name(cfg), "jfrog-orders")
+
+    def test_pull_path_refused(self):
+        cfg = model.default_config("aws_lambda", name="orders")
+        cfg["pull_path"]["enabled"] = True
+        errs = model.validate(cfg)["errors"]
+        self.assertIn("no_pull_path", codes(errs))
+        self.assertIn("ECR pull-through", next(e["message"] for e in errs if e["code"] == "no_pull_path"))
+
+    def test_aws_fields(self):
+        cfg = model.default_config("aws_ecs_task", name="orders")
+        cfg["target"]["aws"].update(account="12345", region="Mars")
+        self.assertTrue({"aws_account", "aws_region"} <= codes(model.validate(cfg)["errors"]))
+        cfg["target"]["aws"]["account"] = ""
+        self.assertIn("target.aws.account", {e["path"] for e in model.validate(cfg)["errors"]})
+
+    def test_openshift_fields(self):
+        cfg = model.default_config("openshift_knative_service", name="orders")
+        cfg["target"]["openshift"].update(cluster="Bad_Cluster", namespace="")
+        errs = model.validate(cfg)["errors"]
+        self.assertIn("cluster_name", codes(errs))
+        self.assertIn("target.openshift.namespace", {e["path"] for e in errs})
+
+    def test_long_name_role(self):
+        cfg = model.default_config("aws_lambda", name="a" * 63)
+        self.assertLessEqual(len(model.dedicated_identity_name(cfg)), 64)
+
+
 class ValidateTests(unittest.TestCase):
     def cfg(self, kind="azure_container_app", **dotted):
         cfg = model.default_config(kind, name="orders-prod")
@@ -46,7 +80,7 @@ class ValidateTests(unittest.TestCase):
         return cfg
 
     def test_errors(self):
-        res = model.validate(self.cfg(**{"jfrog__url": "http://acme.jfrog.io", "target__kind": "aws_lambda"}))
+        res = model.validate(self.cfg(**{"jfrog__url": "http://acme.jfrog.io", "target__kind": "oci_functions"}))
         self.assertIn("jfrog_url_https", codes(res["errors"]))
         self.assertIn("unknown_kind", codes(res["errors"]))
         res = model.validate(self.cfg(**{"name": "Bad Name!", "pull_path__rotation_cron": "nope"}))
