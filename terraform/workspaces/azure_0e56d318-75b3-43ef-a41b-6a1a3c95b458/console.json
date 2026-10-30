@@ -1,0 +1,35 @@
+{
+  "cloud": "azure",
+  "key": "azure:0e56d318-75b3-43ef-a41b-6a1a3c95b458",
+  "shared": {
+    "adopt_integration": false,
+    "integration_name": "azure-entra",
+    "jfrog_url": "https://trial9hnw59.jfrog.io",
+    "location": "West US 2",
+    "name_prefix": "jfrog",
+    "project_key": null,
+    "reader_group": "serverless-readers",
+    "resource_group_name": "rg-artifact-reader",
+    "state_backend": {
+      "azurerm": {
+        "container_name": "tfstate",
+        "key": "workspaces/azure_0e56d318-75b3-43ef-a41b-6a1a3c95b458.tfstate",
+        "resource_group_name": "ado-cicd-rg",
+        "storage_account_name": "stcdoazuretfstate"
+      }
+    }
+  },
+  "targets": {
+    "caj-artifact-reader": {
+      "function_app_id": null,
+      "identity_type": "user_assigned",
+      "kind": "azure_container_app_job",
+      "name": "caj-artifact-reader",
+      "principal_id": "cc8c69fe-0078-4263-b20f-9a3efbfd825e",
+      "pull_enabled": false,
+      "runtime_enabled": true,
+      "runtime_ttl": 3600,
+      "subject": "cc8c69fe-0078-4263-b20f-9a3efbfd825e"
+    }
+  }
+}
