@@ -61,7 +61,8 @@ async function openRun(id) {
     return note(e.message, "error");
   }
   render();
-  if (!LIVE.has(rs.snap.status)) return;
+  // Live runs stream as they go; a finished run's stream replays its log, then ends.
+  const wasLive = LIVE.has(rs.snap.status);
   const ctl = new AbortController();
   rs.abort = ctl;
   streamEvents(`/api/runs/${id}/events`, (kind, data) => {
@@ -69,7 +70,7 @@ async function openRun(id) {
     if (kind === "snapshot" || kind === "done") {
       rs.snap = data;
       render();
-      if (kind === "done") refreshList();
+      if (kind === "done" && wasLive) refreshList();
       return;
     }
     if (data.kind === "log") {
