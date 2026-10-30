@@ -86,6 +86,46 @@ class Run:
         self.dir = root / "runs" / self.id
         self.dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._events_file = self.dir / "events.jsonl"
+        # Name and kind only: enough to list the run again if the console restarts before it ends.
+        meta = self.dir / "config.json"
+        meta.write_text(json.dumps({"name": self.name, "target": {"kind": model.get_path(cfg, "target.kind")}}) + "\n")
+        os.chmod(meta, 0o600)
+
+    @classmethod
+    def restore(cls, d: Path) -> "Run | None":
+        """A run of an earlier console process, read back from its folder (None when unreadable).
+        A finished run comes from run.json; one cut off by a restart is rebuilt from its step
+        events and ends as cancelled, since its worker thread is gone."""
+        try:
+            lines = (d / "events.jsonl").read_text().splitlines() if (d / "events.jsonl").exists() else []
+            events = [json.loads(line) for line in lines if line.strip()]
+            snap = json.loads((d / "run.json").read_text()) if (d / "run.json").exists() else None
+            meta = json.loads((d / "config.json").read_text()) if (d / "config.json").exists() else {}
+        except (OSError, ValueError):
+            return None
+        if not isinstance(snap, (dict, type(None))) or (snap is None and not events):
+            return None
+        run = cls.__new__(cls)
+        run.id, run.dir, run._events_file = d.name, d, d / "events.jsonl"
+        run.cond, run.events, run.cancelled, run.waiting, run.current = threading.Condition(), events, False, None, None
+        run.steps = {s: {"name": s, "title": TITLES[s], "status": "skipped", "started": None, "finished": None, "evidence": {},
+                         "error": None, "approval": None, "note": None, "planned": False} for s in STEPS}
+        if snap:
+            run.name, kind, run.status, run.created = snap.get("name"), snap.get("kind"), snap.get("status"), snap.get("created")
+            for st in snap.get("steps") or []:
+                if st.get("name") in run.steps:
+                    run.steps[st["name"]] = st
+        else:
+            run.name, kind, run.status = meta.get("name"), model.get_path(meta, "target.kind"), "cancelled"
+            run.created = events[0].get("t")
+            for ev in events:
+                if ev.get("kind") == "step" and ev.get("name") in run.steps:
+                    run.steps[ev["name"]].update(status=ev.get("status"), error=ev.get("error"), note=ev.get("note"))
+            for st in run.steps.values():
+                if st["status"] in ("running", "needs_approval", "pending"):
+                    st.update(status="cancelled", note=f"the console restarted while this step was {st['status'].replace('_', ' ')}")
+        run.cfg = {"name": run.name, "target": {"kind": kind}}
+        return run
 
     # -- events ------------------------------------------------------------------------
 
@@ -132,9 +172,15 @@ class RunManager:
         # Azure DevOps pull request; the <cloud>-workload-onboard pipeline plans, applies and wires.
         self.delivery = delivery
         self.repo_root = Path(repo_root) if repo_root else None
-        self.runs: dict = {}
+        self.runs: dict = self._load()
         self.lock = threading.Lock()
         self.threads: list = []
+
+    def _load(self) -> dict:
+        """The runs saved under <root>/runs, oldest first, so the list survives a restart."""
+        folders = sorted(p for p in (self.root / "runs").glob("*") if p.is_dir()) if (self.root / "runs").is_dir() else []
+        runs = (Run.restore(p) for p in folders[-MAX_RUNS_KEPT:])
+        return {r.id: r for r in runs if r is not None}
 
     # -- API ---------------------------------------------------------------------------
 

@@ -179,3 +179,49 @@ class PreflightGateTests(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RestoreTests(Base):
+    """Runs survive a console restart: the list and each run's steps and log come back from disk."""
+
+    def fresh(self):
+        mgr = RunManager(self.root, cloud_shell=None, tf_shell=None, env={})
+        self.addCleanup(mgr.shutdown)
+        return mgr
+
+    def test_finished_run_comes_back(self):
+        run = self.mgr.start(cfg(), steps=["plan", "apply", "wire"])
+        snap = self.wait(run, "waiting_approval")
+        self.mgr.cancel(run.id)
+        before = self.wait(run, "cancelled")
+        mgr = self.fresh()
+        self.assertEqual([r["id"] for r in mgr.list()], [run.id])
+        back = mgr.get(run.id)
+        self.assertEqual(back.summary(), run.summary())
+        self.assertEqual(back.snapshot()["steps"], before["steps"])
+        self.assertEqual(len(back.events), len(run.events))
+        self.assertIsNone(back.waiting)
+        del snap
+
+    def test_run_cut_off_by_a_restart_is_cancelled(self):
+        d = self.root / "runs" / "20261030-120000-abcdef"
+        d.mkdir(parents=True)
+        lines = [{"seq": 0, "t": "2026-10-30T12:00:00Z", "kind": "step", "step": "plan", "name": "plan", "status": "running", "error": None, "note": None},
+                 {"seq": 1, "t": "2026-10-30T12:00:01Z", "kind": "log", "step": "plan", "line": "terraform plan → exit 0 (1.0s)"},
+                 {"seq": 2, "t": "2026-10-30T12:00:02Z", "kind": "step", "step": "plan", "name": "plan", "status": "succeeded", "error": None, "note": None},
+                 {"seq": 3, "t": "2026-10-30T12:00:02Z", "kind": "step", "step": "apply", "name": "apply", "status": "needs_approval", "error": None, "note": None}]
+        (d / "events.jsonl").write_text("".join(json.dumps(e) + "\n" for e in lines))
+        (d / "config.json").write_text(json.dumps({"name": "orders", "target": {"kind": "gcp_run_service"}}))
+        back = self.fresh().get(d.name)
+        snap = back.snapshot()
+        self.assertEqual((snap["status"], snap["name"], snap["kind"], snap["created"]),
+                         ("cancelled", "orders", "gcp_run_service", "2026-10-30T12:00:00Z"))
+        self.assertEqual(self.step(snap, "plan")["status"], "succeeded")
+        self.assertEqual(self.step(snap, "apply")["status"], "cancelled")
+        self.assertIn("restarted", self.step(snap, "apply")["note"])
+
+    def test_unreadable_run_folder_is_skipped(self):
+        (self.root / "runs" / "junk").mkdir(parents=True)
+        (self.root / "runs" / "20261030-130000-badbad").mkdir(parents=True)
+        (self.root / "runs" / "20261030-130000-badbad" / "run.json").write_text("{not json")
+        self.assertEqual(self.fresh().list(), [])
