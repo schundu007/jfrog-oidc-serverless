@@ -16,7 +16,7 @@ const F = {
     "Google service account the provider's Kubernetes service account acts as, through Workload Identity. Blank: Set up creates jfrog-kcp@<project>."],
   "cluster.subscription_id": ["Subscription ID", "00000000-0000-0000-0000-000000000000", "Azure subscription that holds the cluster."],
   "cluster.resource_group": ["Resource group", "rg-aks-prod", "Resource group of the AKS cluster."],
-  "jfrog.host": ["JFrog host", "yourcompany.jfrog.io", "Your JFrog Platform host, without https://. Nodes pull images as <host>/<repository>/<image>."],
+  "jfrog.host": ["JFrog host", "yourcompany.jfrog.io", "Your JFrog Platform host name only, no scheme. Nodes pull images as <host>/<repository>/<image>."],
   "jfrog.test_repo": ["Docker repository", "docker-remote", "Docker repository the test pull reads from, e.g. a remote that proxies Docker Hub."],
   "jfrog.test_image": ["Test image", "yourcompany.jfrog.io/docker-remote/library/busybox:1.36",
     "Image a test pod pulls to prove a node got a JFrog token with no pull secret."],
