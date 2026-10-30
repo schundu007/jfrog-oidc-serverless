@@ -665,7 +665,7 @@ input:focus-visible, select:focus-visible { border-color: var(--ai-1); box-shado
   --ok-fg: #4e8416;   --ok-bg: #eef6e6;   --ok-line: #5ba908;
   --info-fg: #4e8416; --info-bg: #eef6e6; --info-line: #5ba908;
   --warn-fg: #333333; --warn-bg: #eeeeee; --warn-line: #999999;
-  --bad-fg: #ffffff;  --bad-bg: #333333;  --bad-line: #333333;
+  --bad-fg: #333333;  --bad-bg: #eeeeee;  --bad-line: #333333;
   --neutral-fg: #666666; --neutral-bg: #f7f7f7; --neutral-line: #dddddd;
   --ok: #5ba908; --cached: #999999; --unavail: #999999; --fail: #333333; --exposure: rgba(0, 0, 0, 0.18);
   --token: #4e8416; --hold: #5ba908; --alert: #666666; --fault: #333333; --fault-band: rgba(0, 0, 0, 0.05); --lane: #f7f7f7;
@@ -689,6 +689,9 @@ body::before { background: radial-gradient(45% 40% at 85% 5%, rgba(91, 169, 8, 0
 button.primary, .primary-cmd { background: #4e8416; color: #ffffff; }
 button.primary:hover:not(:disabled), .primary-cmd:hover:not(:disabled) { background: #5ba908; color: #ffffff; }
 .pill.bad::before, .pill.warn::before { background: currentColor; }
+/* Failures: dark grey, bold text on light backgrounds; the status pills are filled dark grey with white text. */
+.error, .danger-text, .mismatch, .field-msg.error, .status-error, .st-failed .st-status, button.link.danger, tr.ev-bad td { font-weight: 600; }
+.pill.bad, .pill.run-failed, .pill.run-cancelled, .pill.v-fail, .pill.step-failed, .pill.step-cancelled, .badge.fail { color: #ffffff; background: #333333; border-color: #333333; }
 /* KCP's own accents on the Humana palette. */
 .fleet-table tbody tr:hover td { background: #f7f7f7; }
 input:focus-visible, select:focus-visible { border-color: #5ba908; box-shadow: 0 0 0 4px rgba(91, 169, 8, 0.2); }

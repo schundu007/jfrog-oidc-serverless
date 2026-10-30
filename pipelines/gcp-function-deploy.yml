@@ -4,6 +4,7 @@
 # Trust: terraform/stacks/ado-trust. Infrastructure: pipelines/gcp-stack-setup.yml.
 
 trigger:
+  batch: true   # pushes during a run wait for it, so CI runs never deploy the function at once
   branches:
     include: [main]
   paths:

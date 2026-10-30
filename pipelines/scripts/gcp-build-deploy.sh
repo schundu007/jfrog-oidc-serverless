@@ -59,8 +59,23 @@ print("@".join(e["name"] + "=" + e["value"] for e in env if e["name"].startswith
     [ -n "$env" ] && args+=("--update-env-vars=^@^$env")
     # No --[no-]allow-unauthenticated: either flag rewrites the invoker policy
     # (run.services.setIamPolicy); a redeploy keeps the function's existing one.
-    gcloud functions deploy "$WORKLOAD" --gen2 --runtime python312 --source "$src" --entry-point handler \
-      --trigger-http "${loc[@]}" "${args[@]}" --quiet
+    # A manual run and a CI run on the same commit deploy at once: the second gets 409
+    # "unable to queue the operation" while the first is in flight. Wait and retry that only.
+    for attempt in 1 2 3 4 5 6; do
+      if out=$(gcloud functions deploy "$WORKLOAD" --gen2 --runtime python312 --source "$src" --entry-point handler \
+        --trigger-http "${loc[@]}" "${args[@]}" --quiet 2>&1); then
+        echo "$out"
+        break
+      fi
+      echo "$out" >&2
+      case "$out" in
+        *"unable to queue the operation"*|*"status=[409]"*)
+          [ "$attempt" -lt 6 ] || exit 1
+          echo "another deploy of $WORKLOAD is in progress; retry $attempt of 5 in 30s" >&2
+          sleep 30 ;;
+        *) exit 1 ;;
+      esac
+    done
     echo "deployed $WORKLOAD from ${BUILD_SOURCEVERSION:0:12}"
     ;;
   *) echo "unknown KIND: $KIND (job, service or function)" >&2; exit 2 ;;
