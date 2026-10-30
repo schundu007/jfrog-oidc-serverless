@@ -27,7 +27,9 @@ OUT = {
     ("az", "account", "show"): json.dumps({"id": SUB, "name": "nonprod"}),
     ("az", "account", "list"): json.dumps([{"id": SUB, "name": "nonprod", "state": "Enabled"},
                                            {"id": SUB2, "name": "legacy", "state": "Enabled"},
-                                           {"id": "x", "name": "off", "state": "Disabled"}]),
+                                           {"id": "x", "name": "off", "state": "Disabled"},
+                                           {"id": "t-1", "tenantId": "t-1", "name": "N/A(tenant level account)",
+                                            "state": "Enabled"}]),
     ("az", "containerapp", "list"): json.dumps([
         {"name": "api", "resourceGroup": "rg-api", "location": "West US 2", "kind": None},
         {"name": "fn", "resourceGroup": "rg-fn", "location": "West US 2", "kind": "functionapp"}]),

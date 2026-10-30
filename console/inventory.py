@@ -98,7 +98,9 @@ def _azure_scopes(sh: Shell, errors: list) -> list:
         errors.append(f"az account list: {res.error_text(200)}")
         return []
     return sorted(({"id": a.get("id", ""), "name": a.get("name") or a.get("id", "")}
-                   for a in res.json() or [] if a.get("id") and a.get("state", "Enabled") == "Enabled"),
+                   for a in res.json() or [] if a.get("id") and a.get("state", "Enabled") == "Enabled"
+                   # A tenant with no subscriptions lists as one whose id is the tenant id.
+                   and a.get("id") != a.get("tenantId")),
                   key=lambda a: a["name"].lower())
 
 

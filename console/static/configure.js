@@ -412,8 +412,11 @@ async function loadInventory(scope = "") {
   const current = cloud === "gcp" ? st.inv.defaults.project : st.inv.defaults.subscription;
   $("cfg-scope-label").textContent = cloud === "gcp" ? "Project" : "Subscription";
   const scopes = st.inv.scopes?.length ? st.inv.scopes : current ? [{ id: current, name: current }] : [];
-  fill($("cfg-scope"), scopes.map((s) => h("option", { value: s.id, selected: s.id === current,
-    text: s.name && s.name !== s.id ? `${s.name} · ${s.id}` : s.id })));
+  // Names only: the ID shows in the Project ID / Subscription ID field below. A repeated name keeps its ID.
+  const seen = {};
+  scopes.forEach((s) => { seen[s.name] = (seen[s.name] || 0) + 1; });
+  fill($("cfg-scope"), scopes.map((s) => h("option", { value: s.id, selected: s.id === current, title: s.id,
+    text: !s.name || s.name === s.id ? s.id : seen[s.name] > 1 ? `${s.name} (${s.id})` : s.name })));
   if (!st.current && !st.dirty) {
     st.cfg = freshConfig(st.cfg.target.kind);
     writeForm();
