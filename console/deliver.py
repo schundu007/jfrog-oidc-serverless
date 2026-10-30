@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -33,7 +34,9 @@ from .steps import wire as wiremod
 
 ADO_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798"   # Azure DevOps
 REQUIRED = {"ado": ("organization", "project", "repository")}
-STATE_FIELDS = {"gcs": ("bucket",), "azurerm": ("resource_group_name", "storage_account_name", "container_name")}
+STATE_FIELDS = {"gcs": ("bucket",), "azurerm": ("resource_group_name", "storage_account_name", "container_name"),
+                "s3": ("bucket", "region"), "kubernetes": ("namespace",)}
+STATE_TYPES = {"gcp": "gcs", "azure": "azurerm", "aws": "s3", "openshift": "kubernetes"}
 WORKSPACE_FILES = ("backend.tf.json", "console.json", "main.tf.json", "terraform.tfvars.json")
 
 
@@ -52,20 +55,28 @@ def load_settings(path) -> dict | None:
         if missing:
             raise DeliveryError(f"{path.name}: {section} needs {', '.join(missing)}")
     if not data.get("state"):
-        raise DeliveryError(f"{path.name}: state needs a backend per cloud (gcp: gcs, azure: azurerm)")
+        raise DeliveryError(f"{path.name}: state needs a backend per cloud "
+                            f"({', '.join(f'{c}: {t}' for c, t in STATE_TYPES.items())})")
     return data
 
 
 def _backend(settings: dict, cloud: str, ws_name: str) -> dict:
     b = dict((settings.get("state") or {}).get(cloud) or {})
     t = b.get("type")
-    if t not in STATE_FIELDS:
-        raise DeliveryError(f"delivery state for {cloud} must be remote (gcs or azurerm), not {t!r}")
+    if t != STATE_TYPES.get(cloud):
+        raise DeliveryError(f"delivery state for {cloud} must be remote ({STATE_TYPES.get(cloud, 'unknown cloud')}), "
+                            f"not {t!r}")
     missing = [k for k in STATE_FIELDS[t] if not b.get(k)]
     if missing:
         raise DeliveryError(f"delivery state for {cloud} needs {', '.join(missing)}")
     if t == "gcs":
         return {"type": t, "bucket": b["bucket"], "prefix": f"workspaces/{ws_name}"}
+    if t == "s3":
+        return {"type": t, "bucket": b["bucket"], "region": b["region"], "key": f"workspaces/{ws_name}.tfstate"}
+    if t == "kubernetes":
+        # Secret tfstate-default-<suffix>: a DNS label, so no underscores.
+        return {"type": t, "namespace": b["namespace"], "secret_suffix": ws_name.lower().replace("_", "-")[:50],
+                **({"config_context": b["config_context"]} if b.get("config_context") else {})}
     return {"type": t, **{k: b[k] for k in STATE_FIELDS[t]}, "key": f"workspaces/{ws_name}.tfstate"}
 
 
@@ -160,12 +171,25 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
         git("branch", "-D", branch)
 
 
-def wire_workspace(ws_dir, sh: Shell, outputs: dict, wire_cls=wiremod.Wire, log=None) -> list:
+def pipeline_target(cfg: dict, env) -> dict:
+    """The pipeline's own login replaces the operator's local one: an AWS profile from the
+    console's machine does not exist on the agent (the role comes from AWS_ROLE_ARN), and
+    the agent's kubeconfig may name the cluster's context differently (KUBE_CONTEXT)."""
+    cfg = copy.deepcopy(cfg)
+    t = cfg.get("target") or {}
+    if "aws" in t and env.get("AWS_ROLE_ARN"):
+        t["aws"]["profile"] = ""
+    if "openshift" in t and env.get("KUBE_CONTEXT"):
+        t["openshift"]["context"] = env["KUBE_CONTEXT"]
+    return cfg
+
+
+def wire_workspace(ws_dir, sh: Shell, outputs: dict, wire_cls=wiremod.Wire, log=None, env=None) -> list:
     """Wire every config in <ws>/configs. The merged PR is the approval of these diffs."""
     log = log or (lambda _l: None)
     results = []
     for p in sorted((Path(ws_dir) / "configs").glob("*.json")):
-        cfg = json.loads(p.read_text())
+        cfg = pipeline_target(json.loads(p.read_text()), env or {})
         w = wire_cls(cfg, sh, outputs)
         plan = w.plan()
         if plan["noop"]:
@@ -193,7 +217,7 @@ def main(argv=None) -> int:
     def say(line):
         print(redact.text(line), flush=True)
     try:
-        res = wire_workspace(args.workspace, Shell(mode="live", log=say), outputs, log=say)
+        res = wire_workspace(args.workspace, Shell(mode="live", log=say), outputs, log=say, env=os.environ)
     except (DeliveryError, wiremod.WireError, wiremod.WireRefused) as exc:
         say(f"wire failed: {exc}")
         return 1

@@ -621,3 +621,38 @@ jfrog-svc-demo; `gcp-function-deploy` (run 50) redeployed jfrog-fn-demo from sou
 console's wiring and pass `/healthz/jfrog` as their dedicated SAs. The build SA needed
 `roles/cloudfunctions.developer` and `roles/iam.serviceAccountUser` (granted, as in ado-trust); the
 function redeploy leaves out `--no-allow-unauthenticated`, which would need `run.services.setIamPolicy`.
+
+### AWS and Knative targets (2026-10-30, simulation and fixtures only)
+
+New clouds in the Serverless console, runtime path only (spec §11, §12): sidebar items
+**AWS** (`/aws`) and **OpenShift** (`/openshift`).
+
+- AWS: `aws_lambda`, `aws_ecs_task`, `aws_app_runner`. Client `AwsStsSource` (STS
+  `GetWebIdentityToken`, own SigV4 checked against three published AWS vectors).
+  Preflight fails with `aws iam enable-outbound-web-identity-federation --region <r>` when
+  federation is off (the live account's `FeatureDisabled` is the recorded fixture). Discover
+  refuses shared/default roles and proposes `jfrog-<name>`. Wire: Lambda
+  `update-function-configuration`, ECS new task-definition revision + `update-service`, App
+  Runner `update-service`; whole-environment values are resolved at apply time and never
+  reach the plan or logs. Module `terraform/modules/aws-identity`; workspaces
+  `aws_<account>` with S3 state.
+- Knative (`openshift_knative_service`): projected SA token (audience `jfrog-k8s`) read by
+  the file source, `kubectl patch ksvc --type merge` after a diff, dedicated `jfrog-<name>`
+  SA when the service runs as `default`; issuer must be public. Workspaces
+  `openshift_<cluster>` with Kubernetes Secret state. Works with any kubectl context.
+- Pull path: none on either (ECR pull-through cannot use JFrog; `no_pull_path`). Images come
+  in at build time (`aws-build-deploy`).
+- Simulator: AWS emulator (container credentials, SigV4-verifying STS, federation switch) and
+  a kubelet-like token writer; fault `federation_disabled`; 7 new scenarios.
+- Pipelines: `aws-workload-onboard`, `aws-build-deploy`, `openshift-workload-onboard`;
+  `oidc-login.sh` does AssumeRoleWithWebIdentity when `AWS_ROLE_ARN` is set;
+  `ado-trust/aws.tf` (off until `aws_account_id`). Not registered, not run.
+- App: `apps/aws-lambda` (`/healthz/jfrog`); ECS reuses `artifact-reader`, App Runner
+  `cloud-run-service`.
+
+Tests: client 49, rotator 8, console 360 (9 skipped), scenarios 20/20.
+
+Live proof still needs: federation enabled on 365506438424; a non-root IAM/SSO login with
+Lambda list rights; `ado-trust` applied with `aws_account_id`; a deployed workload per kind;
+the JFrog admin token for the integration. Knative: a cluster with Knative Serving and a
+public service-account issuer.

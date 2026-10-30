@@ -1,0 +1,19 @@
+{
+  "name": "aws-role-recreated",
+  "description": "At 05:00 the ECS task role is deleted and recreated with the same name. The sub (role ARN) is unchanged, so the mapping still matches.",
+  "target_kind": "aws_ecs_task",
+  "duration": "24h",
+  "clock_start": "2026-01-01T00:00:00Z",
+  "seed": 1,
+  "config_overrides": {},
+  "load": {},
+  "faults": [
+    {
+      "type": "identity_recreated",
+      "start": "05:00"
+    }
+  ],
+  "expect": {
+    "verdict": "pass"
+  }
+}

@@ -1,0 +1,56 @@
+# Applies the Knative workspaces the console proposes (terraform/workspaces/openshift_<cluster>):
+# OpenShift Serverless or any Kubernetes cluster with Knative Serving.
+# Merging the console's pull request is the approval. Per changed workspace:
+# terraform plan and apply (dedicated service accounts, JFrog trust), then the
+# console's Wire step (kubectl patch ksvc).
+#
+# Cluster access: a Kubernetes service connection (KUBE_SERVICE_CONNECTION, kubeconfig
+# or service-account type) logged in by Kubernetes@1, which sets KUBECONFIG for
+# the later steps. JFrog admin comes from the setup connection's OIDC token.
+# Simulation only so far: no live cluster has run this (CLAUDE.md).
+
+trigger:
+  branches:
+    include: [main]
+  paths:
+    include: [terraform/workspaces/openshift_*]
+pr: none
+
+parameters:
+  - name: workspace
+    displayName: Workspace to re-apply (empty = those changed by the last commit)
+    type: string
+    default: ' '
+
+variables:
+  - template: vars/test.yml
+
+pool:
+  vmImage: ubuntu-24.04
+
+jobs:
+  - job: onboard
+    timeoutInMinutes: 60
+    steps:
+      - checkout: self
+        fetchDepth: 2
+      - bash: pipelines/scripts/install-terraform.sh
+        displayName: Install Terraform $(TERRAFORM_VERSION)
+      - task: Kubernetes@1
+        displayName: Cluster login
+        inputs:
+          connectionType: Kubernetes Service Connection
+          kubernetesServiceEndpoint: ${{ variables.KUBE_SERVICE_CONNECTION }}
+          command: login
+      - task: AzureCLI@2
+        displayName: Apply and wire (OIDC)
+        inputs:
+          azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
+          scriptType: bash
+          scriptLocation: scriptPath
+          scriptPath: pipelines/scripts/workspace-apply.sh
+          arguments: openshift ${{ parameters.workspace }}
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
+          KUBE_CONTEXT: $(KUBE_CONTEXT)

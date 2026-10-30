@@ -1,0 +1,86 @@
+[
+ {
+  "_comment": "doc-derived: shapes follow the AWS CLI v2 / API reference output; no live account recorded"
+ },
+ {
+  "argv": [
+   "terraform",
+   "version",
+   "-json"
+  ],
+  "rc": 0,
+  "stdout": "{\"terraform_version\": \"1.9.8\", \"platform\": \"darwin_arm64\"}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "--version"
+  ],
+  "rc": 0,
+  "stdout": "aws-cli/2.31.0 Python/3.13.7 Darwin/25.5.0 exe/arm64\n",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "sts",
+   "get-caller-identity",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"UserId\": \"AROAEXAMPLE:operator\", \"Account\": \"123456789012\", \"Arn\": \"arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_AdministratorAccess_0123/operator\"}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "iam",
+   "list-account-aliases",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"AccountAliases\": [\"acme-sandbox\"]}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "iam",
+   "get-outbound-web-identity-federation-info",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"IssuerIdentifier\": \"https://a1d2b0fd-1177-4468-9351-2feeeeeee723.tokens.sts.global.api.aws\", \"JwtVendingEnabled\": true}",
+  "stderr": ""
+ },
+ {
+  "http": "GET https://a1d2b0fd-1177-4468-9351-2feeeeeee723.tokens.sts.global.api.aws/.well-known/openid-configuration",
+  "status": 200,
+  "body": "{\"issuer\": \"https://a1d2b0fd-1177-4468-9351-2feeeeeee723.tokens.sts.global.api.aws\", \"jwks_uri\": \"https://a1d2b0fd-1177-4468-9351-2feeeeeee723.tokens.sts.global.api.aws/.well-known/jwks.json\"}"
+ },
+ {
+  "http": "GET https://acme.jfrog.io/access/api/v1/system/ping",
+  "status": 200,
+  "body": "OK"
+ },
+ {
+  "http": "GET https://acme.jfrog.io/access/api/v1/oidc",
+  "status": 200,
+  "body": "[]"
+ },
+ {
+  "http": "GET https://acme.jfrog.io/access/api/v2/groups/serverless-readers",
+  "status": 200,
+  "body": "{\"name\": \"serverless-readers\"}"
+ }
+]

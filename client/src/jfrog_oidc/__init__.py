@@ -9,7 +9,9 @@ Environment:
     JFROG_OIDC_PROVIDER   JFrog OIDC integration name
     JFROG_OIDC_AUDIENCE   GCP: integration audience (e.g. jfrog-gcp)
                           Azure: api://<audience-app-client-id>
-    JFROG_OIDC_SOURCE     auto (default) | gcp | azure | ado | file
+    JFROG_OIDC_SOURCE     auto (default) | gcp | azure | aws | ado | file
+                          AWS: audience is the JFrog integration audience; the
+                          region comes from AWS_REGION (STS regional endpoint)
     AZURE_CLIENT_ID       user-assigned managed identity client ID (Azure)
     JFROG_OIDC_ADO_SERVICE_CONNECTION_ID  Azure DevOps: service connection the
                           pipeline's token is issued for (plus SYSTEM_ACCESSTOKEN)
@@ -20,6 +22,7 @@ from .artifactory import basic_auth_url, download, get_json
 from .errors import ExchangeError, IdentityError, JFrogOidcError
 from .exchange import JFrogToken, JFrogTokenProvider
 from .sources import (
+    AwsStsSource,
     AzureDevOpsSource,
     AzureManagedIdentitySource,
     FileTokenSource,
@@ -33,6 +36,7 @@ __all__ = [
     "GcpMetadataSource",
     "AzureManagedIdentitySource",
     "AzureDevOpsSource",
+    "AwsStsSource",
     "FileTokenSource",
     "detect_source",
     "download",

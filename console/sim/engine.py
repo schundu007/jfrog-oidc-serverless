@@ -38,7 +38,9 @@ import math
 import os
 import random
 import secrets
+import shutil
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -46,9 +48,11 @@ from pathlib import Path
 
 from .. import model, redact
 from .clock import VirtualClock
+from .emulators.aws import AwsEmulator
 from .emulators.azure import AzureEmulator
 from .emulators.gcp import GOOGLE_ISSUER, GcpEmulator
 from .emulators.jfrog import SERVICES, JFrogEmulator
+from .emulators.k8s import K8sEmulator
 from .emulators.platforms import ArPlatform, FlexPlatform, KvPlatform
 from .emulators.server import EmulatorServer
 
@@ -57,6 +61,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 PLACEHOLDER = "bootstrap-placeholder"   # what Terraform writes as version 1
 GCP_AUDIENCE = "jfrog-gcp"
+AWS_AUDIENCE = "jfrog-aws"        # tfgen.AWS_AUDIENCE
+K8S_AUDIENCE = "jfrog-k8s"        # tfgen.K8S_AUDIENCE
 TENANT = "72f988bf-0000-4000-8000-000000000001"
 APP_ID = "5d1c2b3a-0000-4000-8000-00000000a0d1"
 RUNTIME_ID = {"client": "c0ffee00-0000-4000-8000-000000000011", "principal": "0b1d0000-0000-4000-8000-000000000011"}
@@ -73,7 +79,11 @@ _ENV_KEYS = (
     "MSI_ENDPOINT", "AZURE_CLIENT_ID", "AZURE_FEDERATED_TOKEN_FILE", "K_SERVICE", "CLOUD_RUN_JOB", "FUNCTION_TARGET",
     "ROTATOR_TARGET", "GCP_SECRET", "AR_REPOSITORIES", "AR_UPDATE_MASK", "KEEP_VERSIONS", "MIN_TTL_SECONDS",
     "DRY_RUN", "KEY_VAULT_URI", "KEY_VAULT_SECRET", "FUNCTION_APP_IDS", "SECRET_MANAGER_API",
-    "ARTIFACT_REGISTRY_API", "ARM_API", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy",
+    "ARTIFACT_REGISTRY_API", "ARM_API", "JFROG_OIDC_AWS_REGION", "AWS_REGION", "AWS_DEFAULT_REGION",
+    "AWS_ENDPOINT_URL", "AWS_ENDPOINT_URL_STS", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+    "AWS_LAMBDA_FUNCTION_NAME", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+    "AWS_CONTAINER_AUTHORIZATION_TOKEN", "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE", "AWS_PROFILE",
+    "AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy",
     "all_proxy", "NO_PROXY", "no_proxy",
 )
 
@@ -144,7 +154,8 @@ class Simulation:
         self.end = self.start + scenario["duration_s"]
         self.rng = random.Random(scenario["seed"])
         self.on_event = on_event
-        self.pull_enabled = bool(self.cfg["pull_path"].get("enabled")) and self.kind != "azure_functions_flex"
+        self.pull_enabled = (bool(self.cfg["pull_path"].get("enabled")) and self.kind != "azure_functions_flex"
+                             and self.cloud in model.PULL_CLOUDS)
         self.cron = model.Cron(self.cfg["pull_path"]["rotation_cron"]) if self.pull_enabled else None
 
         self.events: list = []
@@ -195,16 +206,21 @@ class Simulation:
     def _build(self):
         cfg, kind = self.cfg, self.kind
         sim = cfg.get("sim", {})
-        g_key, a_key = secrets.token_bytes(16), secrets.token_bytes(16)
+        g_key, a_key, w_key, k_key = (secrets.token_bytes(16) for _ in range(4))
         first = self.cron.previous(self.start) if self.pull_enabled else self.start
         self.clock = VirtualClock(min(first, self.start))
         self.gcp = GcpEmulator(self.clock, g_key)
         self.azure = AzureEmulator(self.clock, a_key, TENANT)
+        self.aws = AwsEmulator(self.clock, w_key, region=cfg["target"].get("aws", {}).get("region") or "us-east-1")
+        self._tmp = tempfile.mkdtemp(prefix="jfrog-sim-")
+        self.k8s = K8sEmulator(self.clock, k_key, os.path.join(self._tmp, "token"))
         self.jfrog = JFrogEmulator(self.clock, trust={GOOGLE_ISSUER: g_key, self.azure.v2_issuer: a_key,
-                                                      self.azure.v1_issuer: a_key})
-        self.server = EmulatorServer({"/jfrog": self.jfrog, "/gcp": self.gcp, "/azure": self.azure})
+                                                      self.azure.v1_issuer: a_key, self.aws.issuer: w_key,
+                                                      self.k8s.issuer: k_key})
+        self.server = EmulatorServer({"/jfrog": self.jfrog, "/gcp": self.gcp, "/azure": self.azure, "/aws": self.aws})
         base = self.server.start()
         host = self.server.host
+        self.aws.host = host
         self.jfrog_url = f"{base}/jfrog"
 
         name = cfg["name"]
@@ -224,6 +240,10 @@ class Simulation:
             runtime_claims, pull_claims = {"sub": "100000000000000000001"}, {"sub": "100000000000000000002"}
             self.runtime_env = {**common, "JFROG_OIDC_AUDIENCE": sim.get("runtime_audience", GCP_AUDIENCE),
                                 "JFROG_OIDC_SOURCE": "gcp", "GCE_METADATA_HOST": f"{host}/gcp/md/runtime"}
+        elif self.cloud == "aws":
+            runtime_claims, pull_claims = self._build_aws(cfg, common, sim, base), {}
+        elif self.cloud == "openshift":
+            runtime_claims, pull_claims = self._build_openshift(cfg, common, sim), {}
         else:
             version = int(sim.get("access_token_version", 2))
             self.azure.set_app(APP_ID, version=version, role_gate=bool(sim.get("app_role_gate", False)),
@@ -247,7 +267,9 @@ class Simulation:
                                    pp["ttl_seconds"], [group])
         min_ttl = str(int(pp.get("min_ttl_seconds", 1800)))
 
-        if self.cloud == "gcp":
+        if self.cloud not in model.PULL_CLOUDS:
+            self.platform = None    # runtime path only: images come from the cloud's own registry
+        elif self.cloud == "gcp":
             self.secret = "jfrog-upstream"
             self.gcp.add_secret(self.secret, PLACEHOLDER)
             repo = next(iter(pp.get("gcp_repositories") or {"jfrog-docker": {}}))
@@ -289,6 +311,38 @@ class Simulation:
         self._windows = [{"type": f["type"], "params": f["params"], "start": self.start + f["start_s"],
                           "end": self.start + f["end_s"] if f["end_s"] is not None else self.end + 1}
                          for f in self.sc["faults"]]
+
+    def _build_aws(self, cfg: dict, common: dict, sim: dict, base: str) -> dict:
+        """Lambda gets its role's keys as env vars; ECS tasks and App Runner read the
+        container credentials endpoint (FULL_URI + authorization token)."""
+        role = cfg["target"].get("discovered", {}).get("dedicated_identity") or f"{cfg['name']}-role"
+        integ = cfg["jfrog"]["integration_names"]["aws"]
+        self.jfrog.add_integration(integ, self.aws.issuer, AWS_AUDIENCE)
+        keys = self.aws.add_workload("runtime", role)
+        env = {**common, "JFROG_OIDC_AUDIENCE": sim.get("runtime_audience", AWS_AUDIENCE), "JFROG_OIDC_SOURCE": "aws",
+               "JFROG_OIDC_AWS_REGION": self.aws.region, "AWS_ENDPOINT_URL_STS": f"{base}/aws/sts"}
+        if self.kind == "aws_lambda":
+            env.update(AWS_LAMBDA_FUNCTION_NAME=cfg["name"], AWS_REGION=self.aws.region,
+                       AWS_ACCESS_KEY_ID=keys["AccessKeyId"], AWS_SECRET_ACCESS_KEY=keys["SecretAccessKey"],
+                       AWS_SESSION_TOKEN=keys["Token"])
+        else:
+            env.update(AWS_CONTAINER_CREDENTIALS_FULL_URI=f"{base}/aws/creds/runtime",
+                       AWS_CONTAINER_AUTHORIZATION_TOKEN=self.aws.workloads["runtime"]["auth"])
+        self.runtime_env = env
+        return {"sub": self.aws.workloads["runtime"]["role"]}
+
+    def _build_openshift(self, cfg: dict, common: dict, sim: dict) -> dict:
+        """The projected service-account token file, refreshed by the emulated kubelet."""
+        t = cfg["target"]["openshift"]
+        ns = t.get("namespace") or "default"
+        sa = cfg["target"].get("discovered", {}).get("dedicated_identity") or f"{cfg['name']}-sa"
+        integ = cfg["jfrog"]["integration_names"]["openshift"]
+        self.jfrog.add_integration(integ, self.k8s.issuer, K8S_AUDIENCE)
+        # The projected volume's audience is what the token carries; the env var is not used by the file source.
+        self.k8s.project(ns, sa, sim.get("runtime_audience", K8S_AUDIENCE), 3600)
+        self.runtime_env = {**common, "JFROG_OIDC_AUDIENCE": K8S_AUDIENCE, "JFROG_OIDC_SOURCE": "file",
+                            "JFROG_OIDC_TOKEN_FILE": self.k8s.path}
+        return {"sub": f"system:serviceaccount:{ns}:{sa}"}
 
     # ------------------------------------------------------------- secrets
 
@@ -385,6 +439,8 @@ class Simulation:
         self._new_instance(t)
 
     def _requests(self, t: float, n: int) -> None:
+        if self.cloud == "openshift":
+            self.k8s.tick()
         mark = len(self._capture.messages)
         status, reason = None, ""
         instance = self.rng.choice(self.instances)[1]
@@ -431,8 +487,14 @@ class Simulation:
             self.jfrog.set_down((params.get("services") or SERVICES) if opening else ())
         elif ftype == "rotator_down":
             (self.gcp if self.cloud == "gcp" else self.azure).set_identity_down("rotator", opening)
+        elif ftype == "federation_disabled":
+            self.aws.federation_enabled = not opening
         elif ftype in ("sa_recreated", "identity_recreated") and opening:
-            if self.cloud == "gcp":
+            if self.cloud == "aws":
+                self.aws.recreate_role("runtime")         # same ARN: the sub mapping still matches
+            elif self.cloud == "openshift":
+                self.k8s.recreate_service_account()       # same name: the sub mapping still matches
+            elif self.cloud == "gcp":
                 self.gcp.recreate_account("runtime", "100000000000000000099")
             else:
                 self.azure.workloads["runtime"]["identities"][RUNTIME_ID["client"]] = "0b1d0000-0000-4000-8000-000000000099"
@@ -491,6 +553,8 @@ class Simulation:
             finally:
                 if getattr(self, "server", None):
                     self.server.stop()
+                if getattr(self, "_tmp", None):
+                    shutil.rmtree(self._tmp, ignore_errors=True)
                 logger.removeHandler(self._capture)
                 logger.setLevel(saved[0])
                 logger.propagate = saved[1]
@@ -639,6 +703,11 @@ class Simulation:
         text = " ".join(chain) + " " + rot_errors
         pp = self.cfg["pull_path"]
         math_ = model.ttl_math(self.cfg) if self.pull_enabled else {}
+        if "OutboundWebIdentityFederationDisabled" in text:
+            region = self.cfg["target"].get("aws", {}).get("region") or "<region>"
+            return ("Outbound identity federation is disabled for the AWS account, so STS GetWebIdentityToken refuses "
+                    "every call and the runtime cannot get a JWT. Run once per account: "
+                    f"aws iam enable-outbound-web-identity-federation --region {region}")
         if "MIN_TTL_SECONDS" in text:
             return (f"The pull mapping issues {pp['ttl_seconds']}s tokens but the rotator requires "
                     f"MIN_TTL_SECONDS={pp.get('min_ttl_seconds', 1800)}: every rotation is refused, so the platform keeps "

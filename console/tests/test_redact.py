@@ -104,6 +104,38 @@ class RedactStructureTests(unittest.TestCase):
         self.assertEqual(redact.argv(["docker", "login", "--password-stdin", "h"])[3], "h")
 
 
+class RedactAwsTests(unittest.TestCase):
+    SECRET = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"
+
+    def test_credentials_json_and_ini(self):
+        blob = json.dumps({"AccessKeyId": "ASIAEXAMPLE", "SecretAccessKey": self.SECRET, "Token": "IQoJb3JpZ2luX2VjEXAMPLE"})
+        out = redact.text(blob)
+        self.assertNotIn(self.SECRET, out)
+        self.assertNotIn("IQoJb3JpZ2luX2VjEXAMPLE", out)
+        self.assertNotIn(self.SECRET, redact.text(f"aws_secret_access_key = {self.SECRET}"))
+        self.assertEqual(redact.obj({"SecretAccessKey": self.SECRET})["SecretAccessKey"], "[REDACTED]")
+
+    def test_signed_request_values(self):
+        out = redact.text("https://b.s3.amazonaws.com/k?X-Amz-Credential=AKIA%2F&X-Amz-Signature=abcdef0123&X-Amz-Security-Token=FQoG")
+        for v in ("abcdef0123", "FQoG", "AKIA%2F"):
+            self.assertNotIn(v, out)
+        self.assertNotIn("FwoGZX", redact.text("X-Amz-Security-Token: FwoGZXIvYXdzEXAMPLE"))
+        self.assertNotIn("SIG", redact.text("<WebIdentityToken>SIG</WebIdentityToken>"))
+
+    def test_wire_apply_log_shows_placeholder_not_the_environment(self):
+        """AWS Wire sends the whole Lambda environment back; the run log shows only the placeholder."""
+        from console.shell import Shell
+        lines = []
+        sh = Shell(mode="replay", fixtures=[{"argv": ["aws", "lambda", "update-function-configuration",
+                                                       "--environment", '{"Variables":{"DB_PASSWORD":"hunter2"}}']}],
+                   log=lines.append)
+        sh.run(["aws", "lambda", "update-function-configuration", "--environment", '{"Variables":{"DB_PASSWORD":"hunter2"}}'],
+               shown=["aws", "lambda", "update-function-configuration", "--environment", "@resolve:lambda-environment"])
+        self.assertEqual(sh.misses, [])
+        self.assertNotIn("hunter2", "\n".join(lines))
+        self.assertIn("@resolve:lambda-environment", lines[0])
+
+
 class RunLogPathTests(unittest.TestCase):
     """M4 log paths: run events (SSE), runs/<id>/events.jsonl and the run.json snapshot."""
 

@@ -132,6 +132,29 @@ class PublishTests(unittest.TestCase):
         c["state_backend"] = deliver._backend(DELIVERY, "azure", "azure_x")
         self.assertEqual(tg._backend(c)["azurerm"]["use_azuread_auth"], True)
 
+    def test_aws_and_openshift_state(self):
+        from console.steps import tfgen as tg
+        d = {**DELIVERY, "state": {"aws": {"type": "s3", "bucket": "acme-tfstate", "region": "us-east-1"},
+                                   "openshift": {"type": "kubernetes", "namespace": "terraform", "config_context": "ci"}}}
+        c = model.default_config("aws_lambda", name="api")
+        c["state_backend"] = deliver._backend(d, "aws", "aws_123456789012")
+        self.assertEqual(tg._backend(c), {"s3": {"bucket": "acme-tfstate", "key": "workspaces/aws_123456789012.tfstate",
+                                                 "region": "us-east-1", "use_lockfile": True}})
+        c = model.default_config("openshift_knative_service", name="api")
+        c["state_backend"] = deliver._backend(d, "openshift", "openshift_lab")
+        self.assertEqual(tg._backend(c), {"kubernetes": {"secret_suffix": "openshift-lab", "namespace": "terraform",
+                                                         "config_context": "ci"}})
+        with self.assertRaises(deliver.DeliveryError):      # the wrong backend type for the cloud
+            deliver._backend({"state": {"aws": {"type": "gcs", "bucket": "x"}}}, "aws", "aws_1")
+
+    def test_pipeline_login_replaces_local_profile_and_context(self):
+        c = model.default_config("aws_lambda", name="api")
+        c["target"]["aws"]["profile"] = "schundu"
+        self.assertEqual(deliver.pipeline_target(c, {"AWS_ROLE_ARN": "arn:aws:iam::1:role/ado-setup"})["target"]["aws"]["profile"], "")
+        self.assertEqual(deliver.pipeline_target(c, {})["target"]["aws"]["profile"], "schundu")
+        k = model.default_config("openshift_knative_service", name="api")
+        self.assertEqual(deliver.pipeline_target(k, {"KUBE_CONTEXT": "ci"})["target"]["openshift"]["context"], "ci")
+
     def test_no_change_means_no_pull_request(self):
         res, sh = self.publish(gcp_cfg(), commit_rc=1)
         self.assertFalse(res["changed"])

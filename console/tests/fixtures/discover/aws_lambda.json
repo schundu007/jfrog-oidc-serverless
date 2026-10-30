@@ -1,0 +1,67 @@
+[
+ {
+  "_comment": "doc-derived: shapes follow the AWS CLI v2 / API reference output; no live account recorded"
+ },
+ {
+  "argv": [
+   "aws",
+   "iam",
+   "get-outbound-web-identity-federation-info",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"IssuerIdentifier\": \"https://a1d2b0fd-1177-4468-9351-2feeeeeee723.tokens.sts.global.api.aws\", \"JwtVendingEnabled\": true}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "lambda",
+   "get-function-configuration",
+   "--function-name",
+   "orders-api",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"FunctionName\": \"orders-api\", \"FunctionArn\": \"arn:aws:lambda:us-east-1:123456789012:function:orders-api\", \"Runtime\": \"python3.13\", \"Role\": \"arn:aws:iam::123456789012:role/orders-api-role\", \"PackageType\": \"Zip\", \"Environment\": {\"Variables\": {\"DB_PASSWORD\": \"not-for-the-console\", \"STAGE\": \"test\"}}, \"VpcConfig\": {\"SubnetIds\": []}}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "lambda",
+   "list-functions",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json",
+   "--query",
+   "Functions[].Role"
+  ],
+  "rc": 0,
+  "stdout": "[\"arn:aws:iam::123456789012:role/orders-api-role\", \"arn:aws:iam::123456789012:role/lambda-shared-exec\"]",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "iam",
+   "get-role",
+   "--role-name",
+   "orders-api-role",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"Role\": {\"Path\": \"/\", \"RoleName\": \"orders-api-role\", \"RoleId\": \"AROAEXAMPLEROLEID0001\", \"Arn\": \"arn:aws:iam::123456789012:role/orders-api-role\", \"CreateDate\": \"2026-01-01T00:00:00Z\"}}",
+  "stderr": ""
+ }
+]

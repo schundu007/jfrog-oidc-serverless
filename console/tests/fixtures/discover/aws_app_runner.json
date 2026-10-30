@@ -1,0 +1,65 @@
+[
+ {
+  "_comment": "doc-derived: shapes follow the AWS CLI v2 / API reference output; no live account recorded"
+ },
+ {
+  "argv": [
+   "aws",
+   "iam",
+   "get-outbound-web-identity-federation-info",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"IssuerIdentifier\": \"https://a1d2b0fd-1177-4468-9351-2feeeeeee723.tokens.sts.global.api.aws\", \"JwtVendingEnabled\": true}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "apprunner",
+   "list-services",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"ServiceSummaryList\": [{\"ServiceName\": \"orders-web\", \"ServiceId\": \"8fe1e10304f84fd2b0df550fe98a71fa\", \"ServiceArn\": \"arn:aws:apprunner:us-east-1:123456789012:service/orders-web/8fe1e10304f84fd2b0df550fe98a71fa\", \"Status\": \"RUNNING\"}]}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "apprunner",
+   "describe-service",
+   "--service-arn",
+   "arn:aws:apprunner:us-east-1:123456789012:service/orders-web/8fe1e10304f84fd2b0df550fe98a71fa",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"Service\": {\"ServiceName\": \"orders-web\", \"ServiceUrl\": \"abcdefgh.us-east-1.awsapprunner.com\", \"SourceConfiguration\": {\"ImageRepository\": {\"ImageIdentifier\": \"123456789012.dkr.ecr.us-east-1.amazonaws.com/web:1\", \"ImageRepositoryType\": \"ECR\", \"ImageConfiguration\": {\"Port\": \"8080\"}}, \"AutoDeploymentsEnabled\": false, \"AuthenticationConfiguration\": {\"AccessRoleArn\": \"arn:aws:iam::123456789012:role/apprunner-ecr-access\"}}, \"InstanceConfiguration\": {\"Cpu\": \"1024\", \"Memory\": \"2048\", \"InstanceRoleArn\": \"arn:aws:iam::123456789012:role/orders-web-instance\"}}}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "iam",
+   "get-role",
+   "--role-name",
+   "orders-web-instance",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"Role\": {\"Path\": \"/\", \"RoleName\": \"orders-web-instance\", \"RoleId\": \"AROAEXAMPLEROLEID0001\", \"Arn\": \"arn:aws:iam::123456789012:role/orders-web-instance\", \"CreateDate\": \"2026-01-01T00:00:00Z\"}}",
+  "stderr": ""
+ }
+]

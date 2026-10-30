@@ -18,3 +18,15 @@ variables:
   GCP_BUILD_SERVICE_ACCOUNT: ado-build@csb-test-257615.iam.gserviceaccount.com
   GCP_SETUP_SERVICE_ACCOUNT: ado-setup@csb-test-257615.iam.gserviceaccount.com
   IMAGE_REPOSITORY: platform
+
+  # AWS: roles from terraform/stacks/ado-trust/aws.tf (not applied yet for this account).
+  AWS_ACCOUNT_ID: "365506438424"
+  AWS_REGION: us-east-1
+  AWS_SETUP_ROLE_ARN: arn:aws:iam::365506438424:role/ado-setup
+  AWS_BUILD_ROLE_ARN: arn:aws:iam::365506438424:role/ado-build
+  AWS_ECR_REPOSITORY: platform
+
+  # Knative (OpenShift Serverless or any Knative cluster): a Kubernetes service connection.
+  # No cluster in the test environment yet; the names are what the pipeline expects.
+  KUBE_SERVICE_CONNECTION: knative-cluster
+  KUBE_CONTEXT: ""

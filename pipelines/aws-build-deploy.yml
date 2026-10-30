@@ -1,0 +1,58 @@
+# Build -> push -> deploy for AWS workloads, all with the build connection's OIDC token
+# (AssumeRoleWithWebIdentity as ado-build; no stored keys):
+#   lambda      zip apps/aws-lambda with the client, update-function-code, invoke /healthz/jfrog
+#   ecs         artifact-reader image (base through JFrog), push to ECR, new task-definition
+#               revision with that image, update the service when there is one
+#   apprunner   cloud-run-service image (serves /healthz/jfrog), push to ECR, start-deployment
+# The image path brings images in at build time (JFrog -> ECR): ECR pull-through
+# cache cannot use JFrog as an upstream. Trust: terraform/stacks/ado-trust/aws.tf.
+
+trigger: none
+pr: none
+
+parameters:
+  - name: environment
+    type: string
+    default: test
+    values: [test]
+  - name: target
+    displayName: Workload type
+    type: string
+    default: lambda
+    values: [lambda, ecs, apprunner]
+  - name: workload
+    displayName: Function, ECS task family or App Runner service name
+    type: string
+  - name: cluster
+    displayName: ECS cluster (ecs only; empty = register the revision only)
+    type: string
+    default: ' '
+
+variables:
+  - template: vars/${{ parameters.environment }}.yml
+  - name: BASE_IMAGE
+    value: library/python:3.12-slim
+
+pool:
+  vmImage: ubuntu-24.04
+
+jobs:
+  - job: build_deploy
+    displayName: Build, push, deploy
+    timeoutInMinutes: 30
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - task: AzureCLI@2
+        displayName: Build, push, deploy (OIDC)
+        inputs:
+          azureSubscription: ${{ variables.BUILD_SERVICE_CONNECTION }}
+          scriptType: bash
+          scriptLocation: scriptPath
+          scriptPath: pipelines/scripts/aws-build-deploy.sh
+          arguments: ${{ parameters.target }} ${{ parameters.workload }} ${{ parameters.cluster }}
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(BUILD_SERVICE_CONNECTION_ID)
+          AWS_ROLE_ARN: $(AWS_BUILD_ROLE_ARN)
+          AWS_REGION: $(AWS_REGION)

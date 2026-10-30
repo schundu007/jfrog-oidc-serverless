@@ -18,6 +18,8 @@ import urllib.parse
 
 from .. import model
 from ..shell import Shell
+from .aws import AwsPreflight
+from .openshift import OpenShiftPreflight
 
 TF_MIN = (1, 6)
 PROD_NAME = re.compile(r"(^|[-_. ])(prod|prd|production|live)([-_. ]|$)", re.I)
@@ -79,7 +81,7 @@ def _version_tuple(text: str):
     return tuple(int(n) for n in nums[:3]) if nums else None
 
 
-class Preflight:
+class Preflight(AwsPreflight, OpenShiftPreflight):
     def __init__(self, cfg: dict, sh: Shell, env=None, delivery=False, repo_root=None):
         self.cfg = cfg
         self.repo_root = repo_root
@@ -107,10 +109,7 @@ class Preflight:
         # Delivery: the pipeline applies with its own identity; only what Discover needs is checked here.
         if not self.delivery:
             self.terraform()
-        if self.cloud == "gcp":
-            self.gcp()
-        else:
-            self.azure()
+        getattr(self, self.cloud)()
         self.jfrog()
         self._pipeline_code()
         return self.result()
@@ -423,6 +422,10 @@ class Preflight:
         """The iss this target's tokens carry, or None when it is not known yet."""
         if self.cloud == "gcp":
             return "https://accounts.google.com"
+        if self.cloud == "aws":
+            return self.facts.get("aws_issuer")
+        if self.cloud == "openshift":
+            return self.facts.get("k8s_issuer")
         tenant = self.facts.get("azure_tenant")
         return f"https://login.microsoftonline.com/{tenant}/v2.0" if tenant else None
 

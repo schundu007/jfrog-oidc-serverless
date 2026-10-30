@@ -21,7 +21,7 @@ const localPath = () => (BASE && location.pathname.startsWith(BASE) ? location.p
 
 // Google Cloud and Azure are separate pages (/gcp, /azure; ?cloud= still works); nothing on one
 // shows the other. Each tab has its own path: /<cloud>/configs|configure|runs|simulate.
-const CLOUDS = { gcp: "Google Cloud", azure: "Azure" };
+const CLOUDS = { gcp: "Google Cloud", azure: "Azure", aws: "AWS", openshift: "OpenShift" };
 const CLOUD = [localPath().split("/")[1], new URLSearchParams(location.search).get("cloud")]
   .find((c) => Object.hasOwn(CLOUDS, c)) || null;
 const ofCloud = (kind) => !!kind && String(kind).startsWith(`${CLOUD}_`);
@@ -251,13 +251,17 @@ const FAULT_LABELS = {
   identity_recreated: "App identity recreated", sa_recreated: "Service account recreated",
   arm_refresh_forbidden: "Key Vault refresh forbidden", mapping_revoked: "JFrog mapping removed",
   integration_misconfigured: "JFrog trust has the wrong issuer",
+  federation_disabled: "AWS outbound federation off",
 };
-const CLOUD_ONLY_FAULTS = { arm_refresh_forbidden: "azure", sa_recreated: "gcp" };
+const CLOUD_ONLY_FAULTS = { arm_refresh_forbidden: ["azure"], sa_recreated: ["gcp"], rotator_down: ["gcp", "azure"],
+  federation_disabled: ["aws"] };
 const faultLabel = (t) => FAULT_LABELS[t] || t.replaceAll("_", " ");
 const KIND_LABELS = {
   gcp_run_service: "Cloud Run service", gcp_run_job: "Cloud Run job", gcp_run_function: "Cloud Run function",
   azure_container_app: "Container App", azure_functions_aca: "Functions on Container Apps",
   azure_functions_premium: "Functions Premium", azure_functions_flex: "Functions Flex Consumption",
+  aws_lambda: "Lambda function", aws_ecs_task: "ECS task", aws_app_runner: "App Runner service",
+  openshift_knative_service: "Knative service",
 };
 const scenarioLabel = (s) => {
   const words = s.name.replaceAll("-", " ");
@@ -636,7 +640,7 @@ function wire() {
   const sel = $("scenario");
   sel.replaceChildren(...state.catalogue.scenarios.map((s) =>
     h("option", { value: s.name, text: scenarioLabel(s) })));
-  for (const [t, only] of Object.entries(CLOUD_ONLY_FAULTS)) if (only !== CLOUD) delete state.catalogue.fault_types[t];
+  for (const [t, only] of Object.entries(CLOUD_ONLY_FAULTS)) if (!only.includes(CLOUD)) delete state.catalogue.fault_types[t];
   $("add-fault-type").replaceChildren(...Object.entries(state.catalogue.fault_types).map(([t, d]) => h("option", { value: t, text: faultLabel(t), title: d })));
   sel.addEventListener("change", () => selectScenario(sel.value));
   $("add-fault").addEventListener("click", () => $("faults").append(faultRow({ type: $("add-fault-type").value })));

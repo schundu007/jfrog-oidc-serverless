@@ -25,7 +25,13 @@ from .shell import Shell
 
 DEFAULT_REGION = "us-central1"
 SCOPE_RE = {"gcp": re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$"),
-            "azure": re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)}
+            "azure": re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I),
+            "aws": re.compile(r"^[A-Za-z0-9_.@+-]{1,64}$"),                  # an AWS CLI profile
+            "openshift": re.compile(r"^[A-Za-z0-9_.:/@+-]{1,253}$")}         # a kube context
+# The defaults field that names the listed scope.
+SCOPE_KEY = {"gcp": "project", "azure": "subscription", "aws": "profile", "openshift": "context"}
+AWS_DEFAULT_REGION = "us-east-1"
+ECS_FAMILY_CAP = 50
 LOCATION = "cloud.googleapis.com/location"
 
 
@@ -170,18 +176,112 @@ def azure(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, list
     return {"subscription": sub, "subscription_name": acct.get("name", "")}, out
 
 
+def _aws_scopes(sh: Shell, errors: list) -> list:
+    res = sh.run(["aws", "configure", "list-profiles"], timeout=30)
+    if not res.ok:
+        errors.append(f"aws configure list-profiles: {res.error_text(200)}")
+        return []
+    return [{"id": p, "name": p} for p in sorted({ln.strip() for ln in res.stdout.splitlines() if ln.strip()})
+            if SCOPE_RE["aws"].match(p)]
+
+
+def aws(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, list]:
+    """Lambda functions, ECS services (and task families no service runs) and App Runner services
+    of one profile's account, in the profile's default region."""
+    prof = ["--profile", scope] if scope else []
+    region = _value(sh, ["aws", "configure", "get", "region", *prof]) or AWS_DEFAULT_REGION
+    o = ["--region", region, *prof, "--output", "json"]
+    res = sh.run(["aws", "sts", "get-caller-identity", *o], timeout=60)
+    account = ((res.json() or {}) if res.ok else {}).get("Account", "")
+    defaults = {"profile": scope or "", "account": account, "region": region}
+    out: list = []
+    if not account:
+        errors.append(f"aws is not logged in{f' for profile {scope}' if scope else ''}: {_first_error(res, 160)} "
+                      f"(aws sso login{f' --profile {scope}' if scope else ''})")
+        return defaults, out
+    base = {"account": account, "region": region, "profile": scope or "", "cluster": "", "supported": True}
+
+    def listing(argv, what):
+        r = sh.run([*argv, *o], timeout=120)
+        if not r.ok:
+            errors.append(f"{what}: {_first_error(r)}")
+            return None
+        return r.json()
+
+    for name in listing(["aws", "lambda", "list-functions", "--query", "Functions[].FunctionName"], "lambda list-functions") or []:
+        out.append({**base, "kind": "aws_lambda", "name": name})
+    served = set()
+    for arn in (listing(["aws", "ecs", "list-clusters"], "ecs list-clusters") or {}).get("clusterArns") or []:
+        cluster = arn.rsplit("/", 1)[-1]
+        for sarn in (listing(["aws", "ecs", "list-services", "--cluster", cluster], "ecs list-services") or {}).get("serviceArns") or []:
+            name = sarn.rsplit("/", 1)[-1]
+            served.add(name)
+            out.append({**base, "kind": "aws_ecs_task", "name": name, "cluster": cluster})
+    fams = (listing(["aws", "ecs", "list-task-definition-families", "--status", "ACTIVE"], "ecs list-task-definition-families")
+            or {}).get("families") or []
+    for fam in [f for f in fams if f not in served][:ECS_FAMILY_CAP]:
+        out.append({**base, "kind": "aws_ecs_task", "name": fam})
+    for s in (listing(["aws", "apprunner", "list-services"], "apprunner list-services") or {}).get("ServiceSummaryList") or []:
+        out.append({**base, "kind": "aws_app_runner", "name": s.get("ServiceName", "")})
+    return defaults, out
+
+
+def _k8s_scopes(sh: Shell, errors: list) -> list:
+    res = sh.run(["kubectl", "config", "get-contexts", "-o", "name"], timeout=30)
+    if not res.ok:
+        errors.append(f"kubectl config get-contexts: {res.error_text(200)}")
+        return []
+    return [{"id": c, "name": c} for c in sorted({ln.strip() for ln in res.stdout.splitlines() if ln.strip()})
+            if SCOPE_RE["openshift"].match(c)]
+
+
+def cluster_slug(context: str) -> str:
+    """A workspace-safe short name from a kube context (OpenShift contexts look like ns/api-host:6443/user)."""
+    host = context.split("/")[1] if context.count("/") >= 2 else context
+    host = re.sub(r"^api[-.]", "", host.split(":")[0])
+    slug = re.sub(r"[^a-z0-9-]+", "-", host.lower()).strip("-")[:32].strip("-")
+    return slug if len(slug) >= 2 and slug[0].isalpha() else f"k8s-{slug}"[:32].strip("-")
+
+
+def openshift(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, list]:
+    """Knative services (ksvc) in every namespace of one kube context."""
+    ctx = scope or _value(sh, ["kubectl", "config", "current-context"])
+    if not ctx:
+        errors.append("kubectl has no current context (kubectl config use-context <name>)")
+        return {"context": ""}, []
+    defaults = {"context": ctx, "cluster": cluster_slug(ctx)}
+    res = sh.run(["kubectl", "get", "ksvc", "--all-namespaces", "-o", "json", "--context", ctx], timeout=120)
+    if not res.ok:
+        text = res.error_text(2000)
+        errors.append("Knative Serving is not installed on this cluster (no ksvc resource)"
+                      if "the server doesn't have a resource type" in text else f"kubectl get ksvc: {_first_error(res)}")
+        return defaults, []
+    out = []
+    for item in (res.json() or {}).get("items") or []:
+        md = item.get("metadata") or {}
+        out.append({"kind": "openshift_knative_service", "name": md.get("name", ""), "namespace": md.get("namespace", ""),
+                    "context": ctx, "cluster": defaults["cluster"], "region": md.get("namespace", ""),
+                    "supported": True})
+    return defaults, out
+
+
 def _key(cloud: str, t: dict) -> tuple:
     if cloud == "gcp":
         return (t.get("project"), t.get("region"), t.get("name"))
+    if cloud == "aws":
+        return (t.get("account"), t.get("region"), t.get("name"))
+    if cloud == "openshift":
+        return (t.get("context"), t.get("namespace"), t.get("name"))
     return (str(t.get("subscription") or "").lower(), str(t.get("resource_group") or "").lower(), t.get("name"))
 
 
 def onboarded_keys(cloud: str, configs) -> set:
     """Targets the given configs (dicts) already cover."""
+    from .model import KINDS
     keys = set()
     for cfg in configs:
         kind = (cfg.get("target") or {}).get("kind") or ""
-        if kind.startswith("azure") == (cloud == "azure"):
+        if KINDS.get(kind, {}).get("cloud") == cloud:
             keys.add(_key(cloud, (cfg.get("target") or {}).get(cloud) or {}))
     return keys
 
@@ -203,11 +303,14 @@ def fetch(cloud: str, sh: Shell, scope: str | None = None) -> dict:
     """The live listing: the slow part (minutes across many projects), cacheable."""
     errors: list = []
     if scope and not SCOPE_RE[cloud].match(scope):
+        what = {"gcp": "project ID", "azure": "subscription ID", "aws": "AWS CLI profile", "openshift": "kube context"}
         return {"cloud": cloud, "defaults": {}, "scopes": [], "workloads": [],
-                "errors": [f"not a {'project ID' if cloud == 'gcp' else 'subscription ID'}: {scope!r}"]}
-    scopes = (_gcp_scopes if cloud == "gcp" else _azure_scopes)(sh, errors)
-    defaults, workloads = (gcp if cloud == "gcp" else azure)(sh, errors, scope)
-    scopes = _with_workloads(cloud, sh, scopes, defaults.get("project" if cloud == "gcp" else "subscription") or "")
+                "errors": [f"not a {what[cloud]}: {scope!r}"]}
+    scopes = {"gcp": _gcp_scopes, "azure": _azure_scopes, "aws": _aws_scopes, "openshift": _k8s_scopes}[cloud](sh, errors)
+    defaults, workloads = {"gcp": gcp, "azure": azure, "aws": aws, "openshift": openshift}[cloud](sh, errors, scope)
+    if cloud in ("gcp", "azure"):
+        # Profiles and contexts each need their own login: listing them all would prompt or fail per scope.
+        scopes = _with_workloads(cloud, sh, scopes, defaults.get(SCOPE_KEY[cloud]) or "")
     return {"cloud": cloud, "defaults": defaults, "scopes": scopes, "workloads": workloads, "errors": errors,
             "fetched_at": int(time.time())}
 
@@ -247,7 +350,7 @@ class Cache:
     def put(self, cloud: str, scope: str | None, raw: dict) -> None:
         if raw.get("errors"):
             return
-        resolved = (raw.get("defaults") or {}).get("project" if cloud == "gcp" else "subscription") or ""
+        resolved = (raw.get("defaults") or {}).get(SCOPE_KEY[cloud]) or ""
         with self._lock:
             for s in {scope or "", resolved}:
                 self._data[f"{cloud}:{s}"] = copy.deepcopy(raw)

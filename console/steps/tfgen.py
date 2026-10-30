@@ -36,7 +36,8 @@ PROJECT_RE = re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
 REGION_RE = re.compile(r"^[a-z]+-[a-z]+[0-9]+$")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 ARM_ID_RE = re.compile(r"^/subscriptions/[0-9a-f-]{36}/resourceGroups/[\w.()-]+/providers/[\w./()-]+$", re.I)
-PREFIX_RE = {"gcp": re.compile(r"^[a-z][a-z0-9-]{1,13}$"), "azure": re.compile(r"^[a-z][a-z0-9-]{1,17}$")}
+PREFIX_RE = {"gcp": re.compile(r"^[a-z][a-z0-9-]{1,13}$"), "azure": re.compile(r"^[a-z][a-z0-9-]{1,17}$"),
+             "aws": re.compile(r"^[a-z][a-z0-9-]{1,17}$"), "openshift": re.compile(r"^[a-z][a-z0-9-]{1,17}$")}
 REPO_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
 REPO_FORMATS = {"DOCKER", "NPM", "PYTHON", "MAVEN"}
 
@@ -46,7 +47,14 @@ PROVIDERS = {
     "azurerm": {"source": "hashicorp/azurerm", "version": ">= 4.23"},
     "azuread": {"source": "hashicorp/azuread", "version": ">= 2.47"},
     "random": {"source": "hashicorp/random", "version": ">= 3.5"},
+    "aws": {"source": "hashicorp/aws", "version": ">= 6.26"},
+    "kubernetes": {"source": "hashicorp/kubernetes", "version": ">= 2.30"},
 }
+AWS_AUDIENCE = "jfrog-aws"
+K8S_AUDIENCE = "jfrog-k8s"
+ISSUER_RE = re.compile(r"^https://[A-Za-z0-9.-]+(:\d+)?(/[A-Za-z0-9._~/-]*)?$")
+ROLE_ARN_RE = re.compile(r"^arn:aws[\w-]*:iam::\d{12}:role/[\w+=,.@/-]{1,512}$")
+K8S_SUBJECT_RE = re.compile(r"^system:serviceaccount:[a-z0-9-]{1,63}:[a-z0-9.-]{1,253}$")
 
 WORKLOADS_TYPE = ("map(object({cloud = string, subject = string, username = optional(string), groups = list(string), "
                   "expires_in = number, description = string}))")
@@ -145,6 +153,18 @@ def workspace_key(cfg: dict) -> str:
         if not REGION_RE.match(region or ""):
             raise TfgenError(f"target.gcp.region {region!r} is not a valid region")
         return f"gcp:{project}:{region}"
+    if model.cloud_of(kind) == "aws":
+        # One workspace per account: the issuer, the JFrog integration and IAM are account-wide.
+        acct = str(model.get_path(cfg, "target.aws.account", "") or "")
+        if not model.ACCOUNT_RE.match(acct):
+            raise TfgenError(f"target.aws.account {acct!r} is not an AWS account ID")
+        return f"aws:{acct}"
+    if model.cloud_of(kind) == "openshift":
+        # One workspace per cluster: one service-account issuer, one JFrog integration.
+        cluster = str(model.get_path(cfg, "target.openshift.cluster", "") or "")
+        if not model.CLUSTER_RE.match(cluster):
+            raise TfgenError(f"target.openshift.cluster {cluster!r}: lowercase letters, digits and dashes")
+        return f"openshift:{cluster}"
     sub = model.get_path(cfg, "target.azure.subscription", "")
     if not UUID_RE.match(sub or ""):
         raise TfgenError(f"target.azure.subscription {sub!r} is not a subscription ID")
@@ -190,7 +210,8 @@ def _update(cfg: dict, root: Path, on_wait, remove: bool, modules: str | None = 
         errors = model.validate(cfg)["errors"]
         if errors:
             raise TfgenError("; ".join(f"{e['path']}: {e['message']}" for e in errors))
-        shared, target, warnings = (_gcp_entry if cloud == "gcp" else _azure_entry)(cfg)
+        shared, target, warnings = {"gcp": _gcp_entry, "azure": _azure_entry, "aws": _aws_entry,
+                                    "openshift": _openshift_entry}[cloud](cfg)
 
     ws = workspace_dir(root, key)
     # Global lock: the guards read every workspace. Then the workspace lock, so
@@ -227,7 +248,7 @@ def _merge_shared(state: dict, shared: dict, target: dict) -> None:
     for k, v in shared.items():
         if k == "pull":
             continue
-        if k in ("resource_group_name", "location"):      # where the rotator lives: first target wins
+        if k in ("resource_group_name", "location", "aws_region", "kube_context"):   # first target wins
             cur.setdefault(k, v)
             continue
         if others and k in cur and cur[k] != v:
@@ -296,7 +317,11 @@ def _mapping_names(state: dict) -> set:
 
 def _pull_mapping_name(key: str) -> str:
     parts = key.split(":")
-    return f"gcp-{parts[1]}-{parts[2]}-pull" if parts[0] == "gcp" else f"azure-{parts[1][:8]}-pull"
+    if parts[0] == "gcp":
+        return f"gcp-{parts[1]}-{parts[2]}-pull"
+    if parts[0] == "azure":
+        return f"azure-{parts[1][:8]}-pull"
+    return f"{parts[0]}-{parts[1]}-pull"      # never created: AWS and OpenShift have no pull path
 
 
 # ------------------------------------------------------------ per-cloud entries
@@ -417,11 +442,43 @@ def _azure_entry(cfg: dict):
     return shared, target, []
 
 
+def _issuer(d: dict, what: str) -> str:
+    iss = str(d.get("issuer") or "").rstrip("/")
+    if not ISSUER_RE.match(iss):
+        raise TfgenError(f"the {what} issuer is unknown or not an https URL ({iss!r}): run Discover again")
+    return iss
+
+
+def _aws_entry(cfg: dict):
+    d, shared, target = _common(cfg, "aws")
+    if target["pull_enabled"]:
+        raise TfgenError("pull_path.enabled: AWS targets have no console pull path (runtime exchange only)")
+    if target["subject"] and not ROLE_ARN_RE.match(target["subject"]):
+        raise TfgenError(f"mapping subject {target['subject']!r} is not an IAM role ARN: run Discover again")
+    a = model.get_path(cfg, "target.aws") or {}
+    shared.update(issuer=_issuer(d, "AWS outbound federation"), aws_region=a.get("region"))
+    target.update(role_name=None if target["dedicated_identity"] else target["subject"].rsplit("/", 1)[-1])
+    return shared, target, []
+
+
+def _openshift_entry(cfg: dict):
+    d, shared, target = _common(cfg, "openshift")
+    if target["pull_enabled"]:
+        raise TfgenError("pull_path.enabled: Knative targets have no console pull path (runtime exchange only)")
+    if target["subject"] and not K8S_SUBJECT_RE.match(target["subject"]):
+        raise TfgenError(f"mapping subject {target['subject']!r} is not system:serviceaccount:<ns>:<name>")
+    o = model.get_path(cfg, "target.openshift") or {}
+    shared.update(issuer=_issuer(d, "cluster service-account"), kube_context=o.get("context"))
+    target.update(namespace=o.get("namespace"))
+    return shared, target, []
+
+
 def _backend(cfg: dict) -> dict:
     b = model.get_path(cfg, "state_backend") or {"type": "local"}
     t = b.get("type", "local")
     allowed = {"local": (), "gcs": ("bucket", "prefix"),
-               "azurerm": ("resource_group_name", "storage_account_name", "container_name", "key")}
+               "azurerm": ("resource_group_name", "storage_account_name", "container_name", "key"),
+               "s3": ("bucket", "key", "region"), "kubernetes": ("secret_suffix",)}
     if t not in allowed:
         raise TfgenError(f"state_backend.type must be one of {sorted(allowed)}")
     if t == "local":
@@ -432,6 +489,10 @@ def _backend(cfg: dict) -> dict:
         raise TfgenError(f"state_backend ({t}) needs {', '.join(missing)}")
     if t == "azurerm":
         fields["use_azuread_auth"] = True   # state accounts allow Entra auth only, no account keys
+    if t == "s3":
+        fields["use_lockfile"] = True       # S3-native state locking, no DynamoDB table
+    if t == "kubernetes":                   # state in a Secret (with a Lease lock) in the cluster itself
+        fields.update({k: b[k] for k in ("namespace", "config_context") if b.get(k)})
     return {t: fields}
 
 
@@ -441,10 +502,12 @@ def _backend(cfg: dict) -> dict:
 def _write_workspace(ws: Path, state: dict, modules: str | None = None) -> None:
     ws.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(ws, 0o700)
+    main = {"gcp": _gcp_main, "azure": _azure_main, "aws": _aws_main, "openshift": _openshift_main}[state["cloud"]]
+    tfvars = {"gcp": _gcp_tfvars, "azure": _azure_tfvars, "aws": _aws_tfvars, "openshift": _openshift_tfvars}[state["cloud"]]
     files = {
         "console.json": state,
-        "main.tf.json": _gcp_main(modules) if state["cloud"] == "gcp" else _azure_main(modules),
-        "terraform.tfvars.json": _gcp_tfvars(state) if state["cloud"] == "gcp" else _azure_tfvars(state),
+        "main.tf.json": main(modules),
+        "terraform.tfvars.json": tfvars(state),
         "backend.tf.json": {"terraform": {"backend": state["shared"].get("state_backend") or {"local": {"path": "terraform.tfstate"}}}},
     }
     for name, data in files.items():
@@ -541,6 +604,33 @@ def _azure_tfvars(state: dict) -> dict:
         "dedicated_identities": {n: {"name": t["dedicated_identity"], "resource_group_name": t["identity_resource_group"],
                                      "location": t["identity_location"]}
                                  for n, t in sorted(targets.items()) if t.get("dedicated_identity")},
+    }
+
+
+def _aws_tfvars(state: dict) -> dict:
+    s, targets = state["shared"], state["targets"]
+    return {
+        **_common_tfvars(state, "aws"),
+        "aws_account_id": state["key"].split(":", 1)[1],
+        "aws_region": s["aws_region"],
+        "jfrog_issuer": s["issuer"],
+        "jfrog_audience": AWS_AUDIENCE,
+        "existing_roles": {n: t["role_name"] for n, t in sorted(targets.items())
+                           if t["runtime_enabled"] and t.get("role_name")},
+        "dedicated_roles": {n: {"name": t["dedicated_identity"], "kind": t["kind"]}
+                            for n, t in sorted(targets.items()) if t.get("dedicated_identity")},
+    }
+
+
+def _openshift_tfvars(state: dict) -> dict:
+    s, targets = state["shared"], state["targets"]
+    return {
+        **_common_tfvars(state, "openshift"),
+        "kube_context": s.get("kube_context") or None,
+        "jfrog_issuer": s["issuer"],
+        "jfrog_audience": K8S_AUDIENCE,
+        "dedicated_service_accounts": {n: {"name": t["dedicated_identity"], "namespace": t["namespace"]}
+                                       for n, t in sorted(targets.items()) if t.get("dedicated_identity")},
     }
 
 
@@ -751,5 +841,110 @@ def _azure_main(modules: str | None = None) -> dict:
             "first_run_command": {"value": "${module.azure.first_run_command}"},
             "dedicated_identities": {"value": "${{ for n, i in azurerm_user_assigned_identity.dedicated : "
                                               "n => { id = i.id, client_id = i.client_id, principal_id = i.principal_id } }}"},
+        },
+    }
+
+
+def _aws_main(modules: str | None = None) -> dict:
+    mod = _module_root(modules)
+    return {
+        "import": _adopt_import("aws"),
+        "terraform": {"required_version": ">= 1.7",
+                      "required_providers": {k: PROVIDERS[k] for k in ("platform", "aws")}},
+        "variable": {
+            **_common_variables(),
+            "aws_account_id": _var("string"),
+            "aws_region": _var("string"),
+            "jfrog_issuer": _var("string", description="The account's outbound federation issuer"),
+            "jfrog_audience": _var("string"),
+            "existing_roles": _var("map(string)", {}, "<config> => the role the workload already runs as"),
+            "dedicated_roles": _var("map(object({name = string, kind = string}))", {},
+                                    "Workloads with no role of their own (or a shared one): <config> => new role"),
+        },
+        # allowed_account_ids: a plan with credentials for another account fails before it reads anything.
+        "provider": {
+            "platform": {"url": "${var.jfrog_url}"},
+            "aws": {"region": "${var.aws_region}", "allowed_account_ids": ["${var.aws_account_id}"]},
+        },
+        "locals": {
+            "pull_workloads": {},
+            "dedicated_subjects": "${module.aws_identity.dedicated_role_arns}",
+            "runtime_workloads": RUNTIME_WORKLOADS,
+        },
+        "module": {
+            "aws_identity": {
+                "source": f"{mod}/aws-identity",
+                "audience": "${var.jfrog_audience}",
+                "name_prefix": "${var.name_prefix}",
+                "existing_roles": "${var.existing_roles}",
+                "dedicated_roles": "${var.dedicated_roles}",
+            },
+            "jfrog_oidc": {
+                "source": f"{mod}/jfrog-oidc",
+                "aws": {"provider_name": "${var.jfrog_provider_name}", "issuer": "${var.jfrog_issuer}",
+                        "audience": "${var.jfrog_audience}"},
+                "project_key": "${var.jfrog_project_key}",
+                "workloads": "${local.runtime_workloads}",
+            },
+        },
+        "output": {
+            "jfrog_provider_name": {"value": "${module.jfrog_oidc.aws_provider_name}"},
+            "jfrog_audience": {"value": "${module.jfrog_oidc.aws_audience}"},
+            "mapping_names": {"value": "${keys(local.runtime_workloads)}"},
+            "dedicated_roles": {"value": "${module.aws_identity.dedicated_role_arns}"},
+        },
+    }
+
+
+def _openshift_main(modules: str | None = None) -> dict:
+    mod = _module_root(modules)
+    return {
+        "import": _adopt_import("openshift"),
+        "terraform": {"required_version": ">= 1.7",
+                      "required_providers": {k: PROVIDERS[k] for k in ("platform", "kubernetes")}},
+        "variable": {
+            **_common_variables(),
+            "kube_context": _var("string", None, "kube context; null = the kubeconfig's current context"),
+            "kubeconfig_path": _var("string", "~/.kube/config"),
+            "jfrog_issuer": _var("string", description="The cluster's service-account issuer"),
+            "jfrog_audience": _var("string"),
+            "dedicated_service_accounts": _var("map(object({name = string, namespace = string}))", {},
+                                               "Knative services on the namespace's default SA: <config> => new SA"),
+        },
+        "provider": {
+            "platform": {"url": "${var.jfrog_url}"},
+            "kubernetes": {"config_path": "${var.kubeconfig_path}", "config_context": "${var.kube_context}"},
+        },
+        "resource": {
+            "kubernetes_service_account_v1": {
+                "dedicated": {
+                    "for_each": "${var.dedicated_service_accounts}",
+                    "metadata": {"name": "${each.value.name}", "namespace": "${each.value.namespace}",
+                                 "labels": {"app.kubernetes.io/managed-by": "jfrog-oidc-console"},
+                                 "annotations": {"jfrog-oidc/workload": "${each.key}"}},
+                },
+            },
+        },
+        "locals": {
+            "pull_workloads": {},
+            "dedicated_subjects": ("${{ for n, sa in kubernetes_service_account_v1.dedicated : n => "
+                                   "\"system:serviceaccount:${sa.metadata[0].namespace}:${sa.metadata[0].name}\" }}"),
+            "runtime_workloads": RUNTIME_WORKLOADS,
+        },
+        "module": {
+            "jfrog_oidc": {
+                "source": f"{mod}/jfrog-oidc",
+                "openshift": {"provider_name": "${var.jfrog_provider_name}", "issuer": "${var.jfrog_issuer}",
+                              "audience": "${var.jfrog_audience}"},
+                "project_key": "${var.jfrog_project_key}",
+                "workloads": "${local.runtime_workloads}",
+            },
+        },
+        "output": {
+            "jfrog_provider_name": {"value": "${module.jfrog_oidc.openshift_provider_name}"},
+            "jfrog_audience": {"value": "${module.jfrog_oidc.openshift_audience}"},
+            "mapping_names": {"value": "${keys(local.runtime_workloads)}"},
+            "dedicated_service_accounts": {"value": "${{ for n, sa in kubernetes_service_account_v1.dedicated : "
+                                                    "n => sa.metadata[0].name }}"},
         },
     }

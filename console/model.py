@@ -19,7 +19,43 @@ KINDS = {
     "azure_functions_aca": {"cloud": "azure", "label": "Functions on Container Apps"},
     "azure_functions_premium": {"cloud": "azure", "label": "Functions Premium/Dedicated"},
     "azure_functions_flex": {"cloud": "azure", "label": "Functions Flex Consumption"},
+    "aws_lambda": {"cloud": "aws", "label": "Lambda function"},
+    "aws_ecs_task": {"cloud": "aws", "label": "ECS Fargate task/service"},
+    "aws_app_runner": {"cloud": "aws", "label": "App Runner service"},
+    "openshift_knative_service": {"cloud": "openshift", "label": "Knative service"},
 }
+
+# Where each cloud's target lives in the config, and the fields that identify it.
+TARGET_FIELDS = {
+    "gcp": ("project", "region", "name"),
+    "azure": ("subscription", "resource_group", "name"),
+    # profile (optional): the AWS CLI profile for the account; cluster (optional): ECS only,
+    # empty for a standalone task definition family.
+    "aws": ("account", "region", "name"),
+    # context: the kube context; cluster: a short name for the cluster (it names the workspace).
+    "openshift": ("context", "cluster", "namespace", "name"),
+}
+EMPTY_TARGET = {
+    "gcp": {"project": "", "region": "", "name": ""},
+    "azure": {"subscription": "", "resource_group": "", "name": "", "environment_id": "", "key_vault_id": "",
+              "identity_type": "user_assigned"},
+    "aws": {"account": "", "region": "", "name": "", "profile": "", "cluster": ""},
+    "openshift": {"context": "", "cluster": "", "namespace": "", "name": ""},
+}
+SAMPLE_TARGET = {
+    "gcp": {"project": "my-project", "region": "us-central1"},
+    "azure": {"subscription": "00000000-0000-0000-0000-000000000000", "resource_group": "rg-apps"},
+    "aws": {"account": "123456789012", "region": "us-east-1"},
+    "openshift": {"context": "default", "cluster": "my-cluster", "namespace": "default"},
+}
+# Clouds with a console-managed image pull path (rotator). AWS and OpenShift run the runtime path only.
+PULL_CLOUDS = ("gcp", "azure")
+# Default integration names. Each AWS account and each cluster is its own issuer, so Discover
+# turns the defaults into aws-<account> / openshift-<cluster>.
+DEFAULT_INTEGRATIONS = {"gcp": "gcp-cloudrun", "azure": "azure-entra", "aws": "aws-sts", "openshift": "openshift-knative"}
+ACCOUNT_RE = re.compile(r"^\d{12}$")
+AWS_REGION_RE = re.compile(r"^[a-z]{2}(-gov)?-[a-z]+-\d$")
+CLUSTER_RE = re.compile(r"^[a-z][a-z0-9-]{0,30}[a-z0-9]$")
 
 ACA_PICKUP_LAG = 30 * 60          # Container Apps refreshes KV-backed secrets within ~30 min
 PREMIUM_NO_REFRESH_LAG = 24 * 3600  # App Service caches KV references for 24 h
@@ -84,11 +120,16 @@ def dedicated_identity_name(cfg: dict) -> str:
 
     GCP: a service account ID (6-30 chars, starts with a letter): jfrog-<name>.
     Azure: a user-assigned identity name (CAF prefix): id-<name>-jfrog.
+    AWS: an IAM role name (max 64): jfrog-<name>.
+    OpenShift / Knative: a service account in the app's namespace: jfrog-<name>.
     Discover also uses it to recognise an identity the console created earlier.
     """
     name = str(cfg.get("name") or "")
-    if cloud_of(get_path(cfg, "target.kind")) == "gcp":
+    cloud = cloud_of(get_path(cfg, "target.kind"))
+    if cloud == "gcp":
         return f"jfrog-{name[:24]}".rstrip("-")
+    if cloud in ("aws", "openshift"):
+        return f"jfrog-{name[:57]}".rstrip("-")
     return f"id-{name}-jfrog"
 
 
@@ -108,22 +149,18 @@ def default_config(kind: str, name: str = "new-target") -> dict:
             "docker_host": "",            # override; empty = <server>-<docker_repo>.<domain>
             "reader_group": "serverless-readers",
             "project_key": None,
-            "integration_names": {"gcp": "gcp-cloudrun", "azure": "azure-entra"},
+            "integration_names": dict(DEFAULT_INTEGRATIONS),
             # Set by preflight when the integration already exists for the same issuer.
             "adopt_integration": False,
         },
         "target": {
             "kind": kind,
-            "gcp": {"project": "my-project", "region": "us-central1", "name": name} if cloud == "gcp"
-            else {"project": "", "region": "", "name": ""},
-            "azure": {"subscription": "00000000-0000-0000-0000-000000000000", "resource_group": "rg-apps",
-                      "name": name, "environment_id": "", "key_vault_id": "", "identity_type": "user_assigned"}
-            if cloud == "azure" else {"subscription": "", "resource_group": "", "name": "", "environment_id": "",
-                                      "key_vault_id": "", "identity_type": "user_assigned"},
+            **copy.deepcopy(EMPTY_TARGET),
+            cloud: {**EMPTY_TARGET[cloud], **SAMPLE_TARGET[cloud], "name": name},
         },
         "runtime": {"enabled": True, "ttl_seconds": 3600, "username": f"svc-{cloud}-{short}"},
         "pull_path": {
-            "enabled": kind != "azure_functions_flex",
+            "enabled": kind != "azure_functions_flex" and cloud in PULL_CLOUDS,
             "ttl_seconds": 14400,
             "rotation_cron": "23 * * * *",
             "min_ttl_seconds": 1800,   # rotate.py and module default
@@ -317,12 +354,25 @@ def validate(cfg: dict) -> dict:
         err("target.kind", "unknown_kind", f"unknown target kind {kind!r}")
         return {"errors": errors, "warnings": warnings, "ttl_math": {}}
     cloud = cloud_of(kind)
-    required = ("project", "region", "name") if cloud == "gcp" else ("subscription", "resource_group", "name")
-    for f in required:
+    for f in TARGET_FIELDS[cloud]:
         if not get_path(cfg, f"target.{cloud}.{f}"):
             err(f"target.{cloud}.{f}", "required", f"{f} is required for {KINDS[kind]['label']}")
     if not get_path(cfg, f"jfrog.integration_names.{cloud}"):
         err(f"jfrog.integration_names.{cloud}", "required", "integration name is required")
+    if cloud == "aws":
+        acct, region = str(get_path(cfg, "target.aws.account") or ""), str(get_path(cfg, "target.aws.region") or "")
+        if acct and not ACCOUNT_RE.match(acct):
+            err("target.aws.account", "aws_account", "AWS account ID is 12 digits")
+        if region and not AWS_REGION_RE.match(region):
+            err("target.aws.region", "aws_region", "not an AWS region, e.g. us-east-1")
+    if cloud == "openshift":
+        cl = str(get_path(cfg, "target.openshift.cluster") or "")
+        if cl and not CLUSTER_RE.match(cl):
+            err("target.openshift.cluster", "cluster_name",
+                "cluster short name: lowercase letters, digits and dashes (2-32); it names the workspace")
+        ns = str(get_path(cfg, "target.openshift.namespace") or "")
+        if ns and not NAME_RE.match(ns):
+            err("target.openshift.namespace", "namespace", "not a Kubernetes namespace name")
 
     rt = get_path(cfg, "runtime", {}) or {}
     if rt.get("enabled", True):
@@ -341,7 +391,13 @@ def validate(cfg: dict) -> dict:
 
     pp = get_path(cfg, "pull_path", {}) or {}
     math = {}
-    if pp.get("enabled"):
+    if pp.get("enabled") and cloud not in PULL_CLOUDS:
+        err("pull_path.enabled", "no_pull_path",
+            f"the image pull path is not available for {KINDS[kind]['label']}: "
+            + ("ECR pull-through cache does not accept JFrog as an upstream, so mirror images into ECR at build time"
+               if cloud == "aws" else "use the cluster's own image pull secret")
+            + "; the runtime token exchange works without it")
+    elif pp.get("enabled"):
         if kind == "azure_functions_flex":
             warn("pull_path.enabled", "flex_no_pull", "Flex Consumption runs code packages and never pulls images; the pull path is not needed")
         ttl = int(pp.get("ttl_seconds") or 0)
@@ -379,4 +435,6 @@ def schema() -> dict:
         "kinds": {k: {"cloud": v["cloud"], "label": v["label"]} for k, v in KINDS.items()},
         "defaults": {k: default_config(k) for k in KINDS},
         "pickup_lag_seconds": {"gcp": 0, "aca": ACA_PICKUP_LAG, "premium_no_refresh": PREMIUM_NO_REFRESH_LAG},
+        "target_fields": {c: list(f) for c, f in TARGET_FIELDS.items()},
+        "pull_clouds": list(PULL_CLOUDS),
     }

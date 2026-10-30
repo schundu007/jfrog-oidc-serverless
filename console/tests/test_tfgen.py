@@ -406,11 +406,11 @@ class TerraformValidateTests(Base):
         shutil.rmtree(d)
 
     def test_every_kind(self):
+        from console.tests.test_tfgen_aws_openshift import aws_cfg, openshift_cfg
+        make = {"gcp": gcp_cfg, "azure": azure_cfg, "aws": aws_cfg, "openshift": openshift_cfg}
         for kind in model.KINDS:
             with self.subTest(kind=kind):
-                cfg = gcp_cfg(kind, name="t-" + kind.replace("_", "-")) if kind.startswith("gcp") \
-                    else azure_cfg(kind, name="t-" + kind.replace("_", "-"))
-                self.validate(cfg)
+                self.validate(make[model.cloud_of(kind)](kind, name="t-" + kind.replace("_", "-")))
 
     def test_dedicated_identities(self):
         g = gcp_cfg(subject=None)

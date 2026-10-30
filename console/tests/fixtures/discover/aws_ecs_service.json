@@ -1,0 +1,69 @@
+[
+ {
+  "_comment": "doc-derived: shapes follow the AWS CLI v2 / API reference output; no live account recorded"
+ },
+ {
+  "argv": [
+   "aws",
+   "iam",
+   "get-outbound-web-identity-federation-info",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"IssuerIdentifier\": \"https://a1d2b0fd-1177-4468-9351-2feeeeeee723.tokens.sts.global.api.aws\", \"JwtVendingEnabled\": true}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "ecs",
+   "describe-services",
+   "--cluster",
+   "apps",
+   "--services",
+   "orders-svc",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"services\": [{\"serviceName\": \"orders-svc\", \"serviceArn\": \"arn:aws:ecs:us-east-1:123456789012:service/apps/orders-svc\", \"status\": \"ACTIVE\", \"launchType\": \"FARGATE\", \"taskDefinition\": \"arn:aws:ecs:us-east-1:123456789012:task-definition/orders-svc:7\"}], \"failures\": []}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "ecs",
+   "describe-task-definition",
+   "--task-definition",
+   "arn:aws:ecs:us-east-1:123456789012:task-definition/orders-svc:7",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"taskDefinition\": {\"taskDefinitionArn\": \"arn:aws:ecs:us-east-1:123456789012:task-definition/orders-svc:7\", \"family\": \"orders-svc\", \"revision\": 7, \"status\": \"ACTIVE\", \"taskRoleArn\": \"arn:aws:iam::123456789012:role/orders-svc-task\", \"executionRoleArn\": \"arn:aws:iam::123456789012:role/ecsTaskExecutionRole\", \"networkMode\": \"awsvpc\", \"requiresCompatibilities\": [\"FARGATE\"], \"cpu\": \"256\", \"memory\": \"512\", \"containerDefinitions\": [{\"name\": \"app\", \"image\": \"123456789012.dkr.ecr.us-east-1.amazonaws.com/orders:1\", \"essential\": true, \"environment\": [{\"name\": \"STAGE\", \"value\": \"test\"}]}]}}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "iam",
+   "get-role",
+   "--role-name",
+   "orders-svc-task",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"Role\": {\"Path\": \"/\", \"RoleName\": \"orders-svc-task\", \"RoleId\": \"AROAEXAMPLEROLEID0001\", \"Arn\": \"arn:aws:iam::123456789012:role/orders-svc-task\", \"CreateDate\": \"2026-01-01T00:00:00Z\"}}",
+  "stderr": ""
+ }
+]

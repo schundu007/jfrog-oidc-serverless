@@ -11,6 +11,8 @@ const KIND_LABELS = {
   gcp_run_service: "Cloud Run service", gcp_run_job: "Cloud Run job", gcp_run_function: "Cloud Run function",
   azure_container_app: "Container App", azure_functions_aca: "Functions on Container Apps",
   azure_functions_premium: "Functions Premium/Dedicated", azure_functions_flex: "Functions Flex Consumption",
+  aws_lambda: "Lambda function", aws_ecs_task: "ECS task", aws_app_runner: "App Runner service",
+  openshift_knative_service: "Knative service",
 };
 const rs = { runs: [], id: null, snap: null, selected: null, abort: null, log: [], refetch: null, userPicked: false };
 

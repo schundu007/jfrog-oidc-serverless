@@ -1,0 +1,14 @@
+{
+  "name": "happy-aws-lambda",
+  "description": "Lambda function, no faults, 24 h: role keys from the environment, SigV4-signed GetWebIdentityToken, exchange.",
+  "target_kind": "aws_lambda",
+  "duration": "24h",
+  "clock_start": "2026-01-01T00:00:00Z",
+  "seed": 1,
+  "config_overrides": {},
+  "load": {},
+  "faults": [],
+  "expect": {
+    "verdict": "pass"
+  }
+}
