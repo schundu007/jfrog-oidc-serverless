@@ -1,6 +1,6 @@
 [
  {
-  "_comment": "doc-derived: shapes follow the AWS CLI v2 / API reference output; no live account recorded"
+  "_comment": "recorded live 2026-10-30 against a test account (aws-cli/2.34.55); account ID replaced"
  },
  {
   "argv": [
@@ -12,8 +12,8 @@
    "--output",
    "json"
   ],
-  "rc": 0,
-  "stdout": "{\"JwtVendingEnabled\": false}",
-  "stderr": ""
+  "rc": 254,
+  "stdout": "",
+  "stderr": "\naws: [ERROR]: An error occurred (FeatureDisabled) when calling the GetOutboundWebIdentityFederationInfo operation: Outbound identity federation is disabled for account 123456789012\n"
  }
 ]

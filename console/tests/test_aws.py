@@ -118,6 +118,19 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(c["status"], "fail")
         self.assertEqual(c["fix"], "Run once per account: aws iam enable-outbound-web-identity-federation --region us-east-1")
 
+    def test_recorded_feature_disabled(self):
+        """Recorded live on a test account: FeatureDisabled, exit 254, root login."""
+        sh = Shell.replay(FX / "preflight" / "aws_federation_disabled.json")
+        res = preflight.run(cfg("aws_lambda", "orders-api"), sh, env={"JFROG_ACCESS_TOKEN": "t" * 20})
+        checks = {c["id"]: c for c in res["checks"]}
+        self.assertEqual(checks["aws_federation"]["status"], "fail")
+        self.assertIn("FeatureDisabled", checks["aws_federation"]["detail"])
+        self.assertEqual(checks["aws_federation"]["fix"],
+                         "Run once per account: aws iam enable-outbound-web-identity-federation --region us-east-1")
+        self.assertEqual(checks["aws_login"]["status"], "warn")       # root user
+        self.assertNotIn("aws_permissions", checks)                   # simulation skipped for root
+        self.assertEqual(res["status"], "fail")
+
     def test_denied_actions_warn(self):
         denied = {"EvaluationResults": [{"EvalActionName": "iam:CreateRole", "EvalDecision": "implicitDeny"}]}
         res, _ = self.run_pf([{"argv": self.SIM, "stdout": json.dumps(denied)}])

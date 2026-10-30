@@ -1,0 +1,56 @@
+[
+ {
+  "_comment": "recorded live 2026-10-30 against a test account (aws-cli/2.34.55); account ID replaced. The login was the account root user."
+ },
+ {
+  "argv": [
+   "aws",
+   "--version"
+  ],
+  "rc": 0,
+  "stdout": "aws-cli/2.34.55 Python/3.14.7 Darwin/25.5.0 source/arm64\n",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "sts",
+   "get-caller-identity",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"UserId\": \"123456789012\", \"Account\": \"123456789012\", \"Arn\": \"arn:aws:iam::123456789012:root\"}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "iam",
+   "list-account-aliases",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"AccountAliases\": []}",
+  "stderr": ""
+ },
+ {
+  "argv": [
+   "aws",
+   "iam",
+   "get-outbound-web-identity-federation-info",
+   "--region",
+   "us-east-1",
+   "--output",
+   "json"
+  ],
+  "rc": 254,
+  "stdout": "",
+  "stderr": "\naws: [ERROR]: An error occurred (FeatureDisabled) when calling the GetOutboundWebIdentityFederationInfo operation: Outbound identity federation is disabled for account 123456789012\n"
+ }
+]

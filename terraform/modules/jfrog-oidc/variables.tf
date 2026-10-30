@@ -28,6 +28,46 @@ variable "azure" {
   default = null
 }
 
+variable "aws" {
+  description = <<-EOT
+    Trust JWTs from STS GetWebIdentityToken (IAM outbound identity federation).
+    issuer is the account's issuer (aws iam get-outbound-web-identity-federation-info:
+    https://<id>.tokens.sts.global.api.aws); audience is what workloads request
+    (JFROG_OIDC_AUDIENCE). Set to null to skip.
+  EOT
+  type = object({
+    provider_name = string
+    issuer        = string
+    audience      = optional(string, "jfrog-aws")
+  })
+  default = null
+
+  validation {
+    condition     = var.aws == null || can(regex("^https://[^/]+$", var.aws.issuer))
+    error_message = "aws.issuer must be the bare https issuer URL, with no path or trailing slash."
+  }
+}
+
+variable "openshift" {
+  description = <<-EOT
+    Trust projected service-account tokens from one Kubernetes cluster (OpenShift
+    Serverless or any cluster with Knative). issuer is the cluster's
+    service-account issuer; its /.well-known/openid-configuration and JWKS must be
+    reachable from JFrog. Set to null to skip.
+  EOT
+  type = object({
+    provider_name = string
+    issuer        = string
+    audience      = optional(string, "jfrog-k8s")
+  })
+  default = null
+
+  validation {
+    condition     = var.openshift == null || startswith(var.openshift.issuer, "https://")
+    error_message = "openshift.issuer must be an https URL that JFrog can reach."
+  }
+}
+
 variable "project_key" {
   description = "Optional JFrog project key for the integrations. Mappings ignore it (per provider docs); scope access through groups."
   type        = string
@@ -38,9 +78,11 @@ variable "workloads" {
   description = <<-EOT
     One identity mapping per workload identity. Key = mapping name.
 
-    cloud       "gcp" or "azure".
+    cloud       "gcp", "azure", "aws" or "openshift".
     subject     GCP: the service account's unique_id (numeric, matches the sub claim).
                 Azure: the managed identity's principal (object) ID (matches oid).
+                AWS: the IAM role ARN (matches sub).
+                OpenShift/Knative: system:serviceaccount:<namespace>:<name> (matches sub).
     username    Optional. Only set it on image-pull (rotator) mappings, where the
                 platform needs a fixed registry username. JFrog adds
                 applied-permissions/user and that user's Auto Join groups to the
@@ -63,8 +105,8 @@ variable "workloads" {
   }))
 
   validation {
-    condition     = alltrue([for w in values(var.workloads) : contains(["gcp", "azure"], w.cloud)])
-    error_message = "Each workload's cloud must be \"gcp\" or \"azure\"."
+    condition     = alltrue([for w in values(var.workloads) : contains(["gcp", "azure", "aws", "openshift"], w.cloud)])
+    error_message = "Each workload's cloud must be \"gcp\", \"azure\", \"aws\" or \"openshift\"."
   }
 
   validation {

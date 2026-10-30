@@ -95,7 +95,13 @@ class AwsPreflight:
             return self.add("aws_login", "aws logged in", "fail",
                             f"the credentials are for account {who['Account']}, not {account}",
                             "Pick the profile for this account (target.aws.profile) or fix the account ID.")
-        self.add("aws_login", "aws logged in", "ok", f"{who.get('Arn')} in {region}")
+        root = str(who.get("Arn", "")).endswith(":root")
+        if root:
+            self.add("aws_login", "aws logged in", "warn", f"{who.get('Arn')} is the account root user",
+                     "Use an IAM Identity Center (SSO) or IAM role login; root works but cannot be checked "
+                     "with policy simulation and should not run day-to-day changes.")
+        else:
+            self.add("aws_login", "aws logged in", "ok", f"{who.get('Arn')} in {region}")
 
         res = self.sh.run(["aws", "iam", "list-account-aliases", *o], timeout=60)
         aliases = (res.json() or {}).get("AccountAliases") or [] if res.ok else []
@@ -104,7 +110,7 @@ class AwsPreflight:
                      "Prove the setup on a non-prod account first.")
 
         self._aws_federation(o)
-        if self.delivery:
+        if self.delivery or root:       # root is allowed everything; simulation refuses root ARNs
             return
         self._aws_permissions(o, who.get("Arn", ""))
 
@@ -117,9 +123,11 @@ class AwsPreflight:
             return self.add("aws_federation", title, "fail", "no permission to read the federation status",
                             "Grant iam:GetOutboundWebIdentityFederationInfo, then Preflight again.")
         if not info.get("JwtVendingEnabled") or not info.get("IssuerIdentifier"):
+            # Disabled accounts answer FeatureDisabled (exit 254), seen live on aws-cli 2.34.
+            why = "FeatureDisabled" if "FeatureDisabled" in res.error_text(2000) else res.error_text(160)
             return self.add("aws_federation", title, "fail",
                             "not enabled in this account: STS cannot issue the JWT JFrog trusts"
-                            + (f" ({res.error_text(160)})" if not res.ok else ""),
+                            + (f" ({why})" if not res.ok else ""),
                             f"Run once per account: {fix}")
         self.facts["aws_issuer"] = info["IssuerIdentifier"].rstrip("/")
         self.add("aws_federation", title, "ok", f"issuer {self.facts['aws_issuer']}")

@@ -10,11 +10,19 @@ locals {
 
   # Claims every token must carry. JFrog only validates claims listed here, so
   # pin issuer-specific identity (sub/oid), tenant and audience explicitly.
+  # AWS: sub is the IAM role ARN (STS GetWebIdentityToken). Kubernetes: sub is
+  # system:serviceaccount:<namespace>:<name>. Both pin aud to the integration's audience.
   claims = {
     for name, w in var.workloads : name => (
       w.cloud == "gcp" ? {
         sub = w.subject
         aud = var.gcp.audience
+        } : w.cloud == "aws" ? {
+        sub = w.subject
+        aud = try(var.aws.audience, null)
+        } : w.cloud == "openshift" ? {
+        sub = w.subject
+        aud = try(var.openshift.audience, null)
         } : {
         oid = w.subject
         tid = var.azure.tenant_id
@@ -24,9 +32,33 @@ locals {
   }
 
   provider_for = {
-    gcp   = var.gcp == null ? null : var.gcp.provider_name
-    azure = var.azure == null ? null : var.azure.provider_name
+    gcp       = var.gcp == null ? null : var.gcp.provider_name
+    azure     = var.azure == null ? null : var.azure.provider_name
+    aws       = var.aws == null ? null : var.aws.provider_name
+    openshift = var.openshift == null ? null : var.openshift.provider_name
   }
+}
+
+resource "platform_oidc_configuration" "aws" {
+  count = var.aws == null ? 0 : 1
+
+  name          = var.aws.provider_name
+  description   = "STS GetWebIdentityToken JWTs (IAM outbound identity federation) from Lambda, ECS and App Runner"
+  issuer_url    = var.aws.issuer
+  provider_type = "generic"
+  audience      = var.aws.audience
+  project_key   = var.project_key
+}
+
+resource "platform_oidc_configuration" "openshift" {
+  count = var.openshift == null ? 0 : 1
+
+  name          = var.openshift.provider_name
+  description   = "Projected service-account tokens from Knative services (OpenShift Serverless or any Knative cluster)"
+  issuer_url    = var.openshift.issuer
+  provider_type = "generic"
+  audience      = var.openshift.audience
+  project_key   = var.project_key
 }
 
 resource "platform_oidc_configuration" "gcp" {
@@ -71,6 +103,8 @@ resource "platform_oidc_identity_mapping" "workload" {
   depends_on = [
     platform_oidc_configuration.gcp,
     platform_oidc_configuration.azure,
+    platform_oidc_configuration.aws,
+    platform_oidc_configuration.openshift,
   ]
 
   lifecycle {
