@@ -178,7 +178,7 @@ function viewPreflight(step, ev) {
   if (!r) return [];
   return [h("ul", { class: "checklist" }, r.checks.map((c) => h("li", { class: `chk chk-${c.status}` },
     h("span", { class: "chk-icon", text: { ok: "✓", warn: "!", fail: "✗", skip: "–" }[c.status] || "?" }),
-    h("div", {}, h("b", { text: c.title }), h("div", { class: "small mono", text: c.detail || "" }),
+    h("div", {}, h("b", { text: c.title }), c.status !== "ok" && c.detail ? h("div", { class: "small mono", text: c.detail }) : null,
       c.fix && c.status !== "ok" ? h("div", { class: "fix small", text: c.fix }) : null))))];
 }
 
@@ -193,7 +193,7 @@ function viewDiscover(step, ev) {
   for (const w of [...(r.errors || []), ...(r.warnings || [])]) {
     out.push(h("p", { class: "small" }, h("b", { text: w.message }), w.fix ? h("span", { class: "fix", text: ` — ${w.fix}` }) : null));
   }
-  out.push(kv(Object.entries(r.facts || {})));
+  if (!out.length) out.push(outcome("Identity found", true));
   return out;
 }
 

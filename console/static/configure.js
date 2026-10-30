@@ -348,19 +348,6 @@ function modeNote(res) {
 
 // ----------------------------------------------------------------- discover
 
-const FACT_LABELS = {
-  mapping_subject: "Mapping subject (sub)", service_account: "Service account",
-  service_account_unique_id: "SA uniqueId", principal_id: "Principal (object) ID", client_id: "Client ID",
-  identity_type: "Identity type", identity_resource_id: "Identity resource", image: "Image", url: "URL",
-  environment_id: "Container Apps environment", plan_sku: "Plan SKU", location: "Location",
-  key_vault_reference_identity: "KV reference identity", build_service_account: "Build SA",
-};
-
-function factRows(facts) {
-  return Object.keys(FACT_LABELS).filter((k) => facts[k] !== undefined && facts[k] !== null && facts[k] !== "")
-    .map((k) => h("tr", {}, h("th", { scope: "row", text: FACT_LABELS[k] }), h("td", { class: "mono", text: String(facts[k]) })));
-}
-
 async function runDiscover() {
   await busy("Discovering identity… read-only gcloud/az calls, about 30 s", async () => {
     const res = await api("/api/discover", { method: "POST", body: { config: st.cfg } });
@@ -392,10 +379,7 @@ function renderDiscovered() {
     return;
   }
   const stale = d.kind && d.kind !== st.cfg.target.kind;
-  fill(box, 
-    h("p", { class: `small ${stale ? "warn-text" : "muted"}`,
-      text: stale ? "Workload type changed since discovery. Run Discover identity again." : "Discovered identity" }),
-    h("table", { class: "facts" }, h("tbody", {}, factRows(d))));
+  fill(box, stale ? h("p", { class: "small warn-text", text: "Run Discover identity again." }) : null);
 }
 
 // ----------------------------------------------------------------- preflight
@@ -414,7 +398,7 @@ async function runPreflight() {
       modeNote(res),
       h("ul", { class: "checklist" }, res.checks.map((c) => h("li", { class: `chk chk-${c.status}` },
         h("span", { class: "chk-icon", "aria-label": c.status, text: icon[c.status] || "?" }),
-        h("div", {}, h("b", { text: c.title }), c.detail ? h("div", { class: "small mono", text: c.detail }) : null,
+        h("div", {}, h("b", { text: c.title }), c.detail && c.status !== "ok" ? h("div", { class: "small mono", text: c.detail }) : null,
           c.fix && c.status !== "ok" ? h("div", { class: "fix small", text: `Fix: ${c.fix}` }) : null)))));
     status(res.status === "fail" ? "Preflight failed: see the checks" : "Preflight passed",
       res.status === "fail" ? "error" : "ok");
