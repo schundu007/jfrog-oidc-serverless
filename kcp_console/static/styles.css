@@ -436,6 +436,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .badge.ok { background: var(--ok-soft); color: var(--ok); }
 .badge.warn { background: var(--warn-soft); color: var(--warn); }
 .badge.fail { background: var(--fail-soft); color: var(--fail); }
+.badge.info { background: rgba(77, 111, 191, 0.1); color: var(--info); }
 
 .cl-facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; margin: 10px 0 0; font-size: 14px; color: var(--muted); }
 .cl-facts dt { font-weight: 600; }

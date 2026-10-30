@@ -3,6 +3,7 @@ No live calls, so a fleet of hundreds of clusters lists at once; a cluster is re
 
 state, most urgent first:
   approval       a real run waits for its approval
+  running        a real run is under way: its result replaces the last proof when it ends
   attention      the last read found a failing check
   not_proven     installed, and the newest real Set up or Verify did not prove OIDC
   unverified     installed, never proven
@@ -16,7 +17,7 @@ from __future__ import annotations
 from . import model
 
 PROOF = ("cluster", "sa-check", "trust", "map", "mapping", "provider", "anon", "pull", "who")
-ORDER = ("approval", "attention", "not_proven", "unverified", "working", "not_installed", "unread")
+ORDER = ("approval", "running", "attention", "not_proven", "unverified", "working", "not_installed", "unread")
 
 
 def _real(r):
@@ -49,6 +50,8 @@ def row(c: dict, st: dict, runs: list) -> dict:
     act = next((r for r in mine if r.get("kind") == "direct" and r.get("name") in ("setup", "verify", "teardown")), None)
     if act and _real(act) and act.get("status") == "prepared":
         state = "approval"
+    elif act and _real(act) and act.get("status") in ("queued", "running"):
+        state = "running"
     elif d is None:
         state = "unread"
     elif bad:

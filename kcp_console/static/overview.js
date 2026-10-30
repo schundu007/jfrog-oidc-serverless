@@ -64,7 +64,7 @@ function openFleet() {
 const PAGE = 25;
 const CLOUD = { aks: "Azure AKS", eks: "AWS EKS", gke: "Google GKE", openshift: "OpenShift" };
 const STATE = {
-  approval: ["warn", "Awaiting approval"], attention: ["fail", "Needs attention"], not_proven: ["fail", "OIDC not proven"],
+  approval: ["warn", "Awaiting approval"], running: ["info", "Running…"], attention: ["fail", "Needs attention"], not_proven: ["fail", "OIDC not proven"],
   unverified: ["warn", "Not verified"], working: ["ok", "OIDC working"], not_installed: ["muted", "Not set up"], unread: ["muted", "Not read"],
 };
 const STATS = [["", "All clusters"], ["working", "OIDC working"], ["attention", "Needs attention"], ["not_proven", "Not proven"],
@@ -185,7 +185,9 @@ function fleetTable(all) {
 }
 
 // One status for the header badge: [class, text].
-function verdict(s) {
+// While a run is open its result is not known yet: the badge says so instead of showing the last proof.
+function verdict(s, a, busy) {
+  if (busy && a) return a.real?.status === "prepared" ? ["warn", "Awaiting approval"] : ["info", `${TITLES[a.which]} running…`];
   if (!s || s.loading) return ["muted", s ? "Reading…" : "Not read"];
   if (s.error) return ["fail", "Unreachable"];
   if ((s.preflight?.checks || []).some((c) => c.status === "fail")) return ["fail", "Needs attention"];
@@ -199,7 +201,7 @@ function clusterView(c) {
   const f = s.facts || {};
   const rel = f.release;
   const busy = isBusy(c.name);
-  const [vcls, vtext] = verdict(s);
+  const [vcls, vtext] = verdict(s, acts[c.name], busy);
   const problems = (s.preflight?.checks || []).filter((x) => x.status === "fail" || x.status === "warn");
   const sa = f.service_account;
   // Facts as two muted lines under the title; only what fails turns red.
@@ -231,7 +233,7 @@ function clusterView(c) {
     s.error ? h("div", { class: "callout fail" }, brief(s.error)) : null,
     problems.length ? panel("Problems", null, checklist(problems)) : null,
     actionEl(c.name),
-    proofBlock(s.proof));
+    busy ? null : proofBlock(s.proof));
 }
 
 // Items joined by a middle dot, skipping empty ones.

@@ -40,6 +40,12 @@ class RowTest(unittest.TestCase):
         failed = [run("verify", "n", False, "failed", "2026-10-30T09:00:00Z", [{"id": "pull", "status": "done"}, {"id": "who", "status": "failed"}])]
         self.assertEqual(fleet.row({"name": "n"}, inst, failed)["state"], "not_proven")
 
+    def test_open_run_hides_the_last_proof(self):
+        inst = {"discover": {"release": {"chart": "x-1"}}}
+        runs = [run("verify", "n", False, "running", "2026-10-30T10:00:00Z"),
+                run("setup", "n", False, "succeeded", "2026-10-30T09:00:00Z", PROOF_OK)]
+        self.assertEqual(fleet.row({"name": "n"}, inst, runs)["state"], "running")
+
     def test_pending_approval_wins(self):
         inst = {"discover": {"release": {"chart": "x-1"}}}
         runs = [run("setup", "n", False, "prepared", "2026-10-30T10:00:00Z"),
