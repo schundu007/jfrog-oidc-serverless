@@ -57,8 +57,10 @@ print("@".join(e["name"] + "=" + e["value"] for e in env if e["name"].startswith
     args=()
     [ -n "$sa" ] && args+=(--service-account "$sa")
     [ -n "$env" ] && args+=("--update-env-vars=^@^$env")
+    # No --[no-]allow-unauthenticated: either flag rewrites the invoker policy
+    # (run.services.setIamPolicy); a redeploy keeps the function's existing one.
     gcloud functions deploy "$WORKLOAD" --gen2 --runtime python312 --source "$src" --entry-point handler \
-      --trigger-http --no-allow-unauthenticated "${loc[@]}" "${args[@]}" --quiet
+      --trigger-http "${loc[@]}" "${args[@]}" --quiet
     echo "deployed $WORKLOAD from ${BUILD_SOURCEVERSION:0:12}"
     ;;
   *) echo "unknown KIND: $KIND (job, service or function)" >&2; exit 2 ;;
