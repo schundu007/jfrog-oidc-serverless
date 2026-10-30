@@ -25,6 +25,7 @@ OUT = {
         {"projectId": "legacy-apps-5678", "name": "Legacy", "lifecycleState": "ACTIVE"},
         {"projectId": "gone-0000", "lifecycleState": "DELETE_REQUESTED"}]),
     ("az", "account", "show"): json.dumps({"id": SUB, "name": "nonprod"}),
+    ("az", "resource", "list"): "2",
     ("az", "account", "list"): json.dumps([{"id": SUB, "name": "nonprod", "state": "Enabled"},
                                            {"id": SUB2, "name": "legacy", "state": "Enabled"},
                                            {"id": "x", "name": "off", "state": "Disabled"},
@@ -102,6 +103,21 @@ class InventoryTests(unittest.TestCase):
         res = inventory.run("azure", sh, self.repo, scope=SUB2)
         self.assertEqual([s["name"] for s in res["scopes"]], ["legacy", "nonprod"])
         self.assertIn(["az", "account", "show", "--subscription", SUB2, "-o", "json"], sh.calls)
+
+    def test_scopes_without_workloads_are_hidden_unless_picked(self):
+        class Empty(Fake):
+            def _replay_cmd(self, argv):
+                if "legacy-apps-5678" in argv and argv[:2] == ["gcloud", "run"]:
+                    self.calls.append(list(argv))
+                    return Result(argv, 0, "[]", "", 0.0)
+                if argv[:3] == ["az", "resource", "list"] and SUB2 in argv:
+                    self.calls.append(list(argv))
+                    return Result(argv, 0, "0", "", 0.0)
+                return super()._replay_cmd(argv)
+        self.assertEqual([p["id"] for p in inventory.run("gcp", Empty(), self.repo)["scopes"]], ["demo-nonprod-1234"])
+        picked = inventory.run("gcp", Empty(), self.repo, scope="legacy-apps-5678")["scopes"]
+        self.assertEqual([p["id"] for p in picked], ["demo-nonprod-1234", "legacy-apps-5678"])
+        self.assertEqual([s["name"] for s in inventory.run("azure", Empty(), self.repo)["scopes"]], ["nonprod"])
 
     def test_bad_scope_is_refused_before_any_command(self):
         sh = Fake()

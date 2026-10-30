@@ -18,6 +18,7 @@ import json
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .shell import Shell
@@ -64,6 +65,33 @@ def _gcp_scopes(sh: Shell, errors: list) -> list:
     return sorted(({"id": p.get("projectId", ""), "name": p.get("name") or p.get("projectId", "")}
                    for p in res.json() or [] if p.get("projectId") and p.get("lifecycleState", "ACTIVE") == "ACTIVE"),
                   key=lambda p: p["id"])
+
+
+# Only projects / subscriptions with something to onboard are listed (the picked one always is).
+AZURE_WORKLOADS = ("[?type=='Microsoft.App/containerApps' || type=='Microsoft.App/jobs' || "
+                   "(type=='Microsoft.Web/sites' && contains(kind, 'functionapp'))] | length(@)")
+
+
+def _gcp_has_workloads(sh: Shell, project: str) -> bool:
+    for what in ("services", "jobs"):
+        res = sh.run(["gcloud", "run", what, "list", "--project", project, "--format=json"], timeout=90)
+        if res.ok and res.json():
+            return True
+    return False
+
+
+def _azure_has_workloads(sh: Shell, sub: str) -> bool:
+    res = sh.run(["az", "resource", "list", "--subscription", sub, "--query", AZURE_WORKLOADS, "-o", "json"],
+                 timeout=90)
+    return res.ok and bool(res.json())
+
+
+def _with_workloads(cloud: str, sh: Shell, scopes: list, keep: str) -> list:
+    has = _gcp_has_workloads if cloud == "gcp" else _azure_has_workloads
+    others = [s for s in scopes if s["id"] != keep]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        found = dict(zip((s["id"] for s in others), pool.map(lambda s: has(sh, s["id"]), others)))
+    return [s for s in scopes if s["id"] == keep or found.get(s["id"])]
 
 
 def gcp(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, list]:
@@ -179,6 +207,7 @@ def fetch(cloud: str, sh: Shell, scope: str | None = None) -> dict:
                 "errors": [f"not a {'project ID' if cloud == 'gcp' else 'subscription ID'}: {scope!r}"]}
     scopes = (_gcp_scopes if cloud == "gcp" else _azure_scopes)(sh, errors)
     defaults, workloads = (gcp if cloud == "gcp" else azure)(sh, errors, scope)
+    scopes = _with_workloads(cloud, sh, scopes, defaults.get("project" if cloud == "gcp" else "subscription") or "")
     return {"cloud": cloud, "defaults": defaults, "scopes": scopes, "workloads": workloads, "errors": errors,
             "fetched_at": int(time.time())}
 
