@@ -36,7 +36,7 @@ DEFAULT_STEPS = ["preflight", "discover", "simulate", "plan", "apply", "wire"]
 DELIVERY_STEPS = ["preflight", "discover", "simulate", "publish"]
 LOCAL_ONLY = {"plan", "apply", "wire"}
 LATER = {"first_rotation", "verify", "report"}
-TITLES = {"preflight": "Preflight", "discover": "Discover", "simulate": "Simulate", "publish": "Pull request", "plan": "Plan", "apply": "Apply",
+TITLES = {"preflight": "Preflight", "discover": "Discover", "simulate": "Simulate", "publish": "Deliver", "plan": "Plan", "apply": "Apply",
           "wire": "Wire target", "first_rotation": "First rotation", "verify": "Verify", "report": "Report"}
 MAX_RUNS_KEPT = 50
 EXPECTED_ERRORS = (ValueError, RuntimeError, TimeoutError, PermissionError, OSError)
@@ -148,7 +148,7 @@ class RunManager:
             raise RunError(400, "unknown_step", f"unknown step(s): {', '.join(map(str, bad))}")
         if self.delivery and LOCAL_ONLY & set(steps):
             raise RunError(400, "delivered_by_pipeline",
-                           "plan, apply and wire run in the <cloud>-workload-onboard pipeline; publish a pull request instead")
+                           "plan, apply and wire run in the <cloud>-workload-onboard pipeline; deliver instead")
         if not self.delivery and "publish" in steps:
             raise RunError(400, "no_delivery", "publishing needs pipelines/delivery.json")
         if "apply" in steps and "plan" not in steps:

@@ -163,10 +163,13 @@ function viewPublish(step, ev) {
   const r = ev.result;
   if (!r) return [];
   const pr = r.pull_request;
+  const link = (url, text) => h("p", {}, h("a", { href: url, target: "_blank", rel: "noopener noreferrer", text }));
   return [
-    pr ? h("p", {}, h("a", { href: pr.url, target: "_blank", rel: "noopener noreferrer", text: `Pull request #${pr.id}` }))
+    pr ? link(pr.url, `Pull request #${pr.id}`)
+      : r.pipeline ? link(r.pipeline.url, `Pushed to ${r.branch}: ${r.pipeline.name}`)
       : outcome("No change", true),
-    kv([["Branch", r.branch], ["Workspace", r.workspace]]),
+    kv([["Branch", r.branch], ["Commit", r.commit ? r.commit.slice(0, 12) : null], ["Workspace", r.workspace]]
+      .filter(([, v]) => v)),
   ];
 }
 

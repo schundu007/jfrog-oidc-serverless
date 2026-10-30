@@ -114,6 +114,18 @@ class PublishTests(unittest.TestCase):
                          {"gcs": {"bucket": "acme-tfstate", "prefix": "workspaces/gcp_demo-nonprod-1234_us-central1"}})
         self.assertEqual(seen["config"]["name"], "orders")
 
+    def test_direct_merge_pushes_to_main_without_a_pull_request(self):
+        sh = FakeGit(self.lines.append)
+        res = deliver.publish(gcp_cfg(), sh, self.repo, {**DELIVERY, "merge": "direct"}, "0123456789abcdef",
+                              log=self.lines.append)
+        self.assertEqual(sh.misses, [])
+        self.assertIsNone(res["pull_request"])
+        self.assertEqual(res["branch"], "main")
+        self.assertEqual(res["pipeline"]["name"], "gcp-workload-onboard")
+        self.assertNotIn("POST", self.verbs(sh))
+        push = next(c for c in sh.calls if c[0] == "git" and c[3] == "push")
+        self.assertEqual(push[4:], ["--quiet", REPO_URL, "onboard/orders-01234567:refs/heads/main"])
+
     def test_no_change_means_no_pull_request(self):
         res, sh = self.publish(gcp_cfg(), commit_rc=1)
         self.assertFalse(res["changed"])

@@ -5,6 +5,7 @@
     "repository": "jfrog-oidc-serverless",
     "target_branch": "main"
   },
+  "merge": "direct",
   "environment": "test",
   "state": {
     "gcp": {"type": "gcs", "bucket": "csb-test-257615-tfstate"},

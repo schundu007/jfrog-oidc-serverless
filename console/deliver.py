@@ -1,11 +1,12 @@
 """Delivery through Azure DevOps: the console proposes, the pipeline applies.
 
-publish()        renders this config's shared workspace into a branch of the ADO
-                 repo (terraform/workspaces/<scope>/, module sources relative,
-                 remote state from pipelines/delivery.json), commits, pushes and
-                 opens a pull request. Reviewing and merging the PR is the
-                 approval; pipelines/<cloud>-workload-onboard.yml then plans, applies
-                 and wires.
+publish()        renders this config's shared workspace into the ADO repo
+                 (terraform/workspaces/<scope>/, module sources relative, remote
+                 state from pipelines/delivery.json) and commits it. With
+                 "merge": "direct" it pushes to the target branch; otherwise it
+                 pushes a branch and opens a pull request, and merging it is the
+                 approval. pipelines/<cloud>-workload-onboard.yml then plans,
+                 applies and wires.
 wire_workspace() runs in that pipeline after apply: it wires every target of
                  the workspace with the console's own Wire step, approving
                  exactly the diff it computed (the merged PR is the approval).
@@ -89,7 +90,9 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
     org_url = f"https://dev.azure.com/{ado['organization']}"
     repo_url = f"{org_url}/{ado['project']}/_git/{ado['repository']}"
     base = ado.get("target_branch") or "main"
+    direct = settings.get("merge") == "direct"
     branch = f"onboard/{cfg['name']}-{run_id[:8]}"
+    pipeline_url = f"{org_url}/{ado['project']}/_build"
     repo = str(Path(repo_root))
     wt = Path(repo_root) / ".console" / "delivery" / run_id
 
@@ -129,6 +132,12 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
             return {"changed": False, "branch": None, "workspace": out["workspace"], "pull_request": None}
         must(git("commit", "--quiet", "-m", f"Onboard {cfg['name']} ({cfg['target']['kind']}) via the console",
                  cwd=wt), "git commit")
+        if direct:
+            must(git("push", "--quiet", repo_url, f"{branch}:refs/heads/{base}", cwd=wt, auth=True), f"git push to {base}")
+            commit = git("rev-parse", "HEAD", cwd=wt).stdout.strip()
+            log(f"pushed {commit[:12]} to {base}: {cloud}-workload-onboard applies it")
+            return {"changed": True, "branch": base, "workspace": out["workspace"], "commit": commit,
+                    "pipeline": {"name": f"{cloud}-workload-onboard", "url": pipeline_url}, "pull_request": None}
         must(git("push", "--quiet", repo_url, f"{branch}:refs/heads/{branch}", cwd=wt, auth=True), "git push")
         body = {"sourceRefName": f"refs/heads/{branch}", "targetRefName": f"refs/heads/{base}",
                 "title": f"Onboard {cfg['name']} to JFrog OIDC",
