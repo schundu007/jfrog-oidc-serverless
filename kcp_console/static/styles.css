@@ -10,25 +10,25 @@
 
   /* brand: JFrog green for marks, a deeper green for text and buttons (WCAG AA) */
   --brand: #40be46;
-  --accent: #15803d;          /* 5.0:1 on white */
-  --accent-hover: #166534;
+  --accent: #1f8a3a;          /* 5.0:1 on white */
+  --accent-hover: #18702e;
   --on-accent: #ffffff;
-  --accent-soft: #ecfdf3;
-  --accent-ring: rgba(34, 197, 94, 0.32);
+  --accent-soft: #eaf7ec;
+  --accent-ring: rgba(64, 190, 70, 0.35);
 
   /* shell: light rail and top bar */
-  --rail: #ffffff;
-  --rail-2: #ffffff;
-  --rail-fg: #475467;
-  --rail-fg-strong: #101828;
-  --rail-hover: #f2f4f7;
-  --rail-on: #ecfdf3;
-  --rail-on-fg: #15803d;
-  --rail-line: #eaecf0;
-  --rail-group: #98a2b3;
+  --rail: #243352;
+  --rail-2: #1c2843;
+  --rail-fg: #dfe5f0;
+  --rail-fg-strong: #ffffff;
+  --rail-hover: rgba(255, 255, 255, 0.06);
+  --rail-on: #19233b;
+  --rail-on-fg: #4cc552;
+  --rail-line: rgba(255, 255, 255, 0.1);
+  --rail-group: #8e9bb6;
 
   /* surfaces and text */
-  --bg: #f8f9fb;
+  --bg: #f4f6f9;
   --surface: #ffffff;
   --surface-2: #f9fafb;        /* table headers, tiles */
   --surface-3: #f2f4f7;        /* code, log */
@@ -85,15 +85,6 @@
     --on-accent: #052e16;
     --accent-soft: rgba(74, 222, 128, 0.12);
     --accent-ring: rgba(74, 222, 128, 0.35);
-    --rail: #0f141a;
-    --rail-2: #0f141a;
-    --rail-fg: #a6b0bf;
-    --rail-fg-strong: #f2f4f7;
-    --rail-hover: rgba(255, 255, 255, 0.05);
-    --rail-on: rgba(74, 222, 128, 0.12);
-    --rail-on-fg: #4ade80;
-    --rail-line: #1f2732;
-    --rail-group: #667085;
     --bg: #0a0d12;
     --surface: #11161d;
     --surface-2: #151b23;
@@ -167,75 +158,82 @@ code, .mono { font-family: var(--mono); font-size: 0.93em; }
   grid-template-areas: "top top" "rail main";
 }
 
-/* Top bar: brand, Back, then where you are (Home / Serverless / Google Cloud / Runs). */
+/* Top bar: dark navy, like the JFrog Platform. Back and the breadcrumb sit at the top of the page. */
 .topbar {
   grid-area: top; position: sticky; top: 0; z-index: 10;
   display: flex; align-items: center; gap: var(--s-3); height: var(--top-h);
-  padding: 0 var(--s-5) 0 0; background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: saturate(1.4) blur(10px); color: var(--fg); border-bottom: 1px solid var(--border);
+  padding: 0 var(--s-5) 0 0; background: var(--rail-2); color: var(--rail-fg-strong); border-bottom: 1px solid var(--rail-line);
 }
 .brand {
   width: var(--rail-w); flex: none; height: 100%; display: flex; align-items: center; gap: 10px;
-  padding-left: 20px; font-size: 15px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap;
-  border-right: 1px solid var(--border);
+  padding-left: 20px; font-size: 15px; font-weight: 600; letter-spacing: 0; white-space: nowrap;
+  border-right: 1px solid var(--rail-line);
 }
-a.brand { color: var(--fg); text-decoration: none; }
-a.brand:hover { color: var(--fg); }
-.logo { width: 24px; height: 24px; fill: var(--brand); flex: none; }
-.logo .logo-in { fill: var(--surface); }
+a.brand, a.brand:hover { color: var(--rail-fg-strong); text-decoration: none; }
+.logo { width: 26px; height: 26px; fill: var(--brand); flex: none; }
+.logo .logo-in { fill: var(--rail-2); }
+.topbar .pill { margin-left: auto; }
+.topbar :focus-visible { outline-color: #fff; }
+
+.page-top { display: flex; align-items: center; gap: var(--s-3); margin-bottom: var(--s-4); min-height: 32px; }
 .topbar-back {
-  display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 12px 0 8px; margin-left: var(--s-2);
-  font: inherit; font-size: var(--t-sm); font-weight: 500; color: var(--fg-2); background: var(--surface);
-  border: 1px solid var(--border-strong); border-radius: var(--r-md); cursor: pointer; box-shadow: var(--shadow-1);
-  transition: background-color 120ms, color 120ms; }
-.topbar-back:hover { background: var(--surface-3); color: var(--fg); }
+  display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0;
+  color: var(--fg-2); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  cursor: pointer; transition: background-color 120ms, color 120ms; }
+.topbar-back span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.topbar-back:hover { color: var(--accent); border-color: var(--accent); }
 .topbar-back .ico { width: 16px; height: 16px; }
 .topbar-back[hidden] { display: none; }
-.trail { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--t-md); color: var(--fg-3); }
-.trail a { color: var(--fg-3); text-decoration: none; white-space: nowrap; }
-.trail a:hover { color: var(--fg); }
+.trail { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: var(--t-lg); color: var(--fg-2); }
+.trail a { color: var(--fg-2); text-decoration: none; white-space: nowrap; }
+.trail a:hover { color: var(--accent); }
 .trail [aria-current="page"] { color: var(--fg); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.trail-sep { color: var(--border-strong); }
-.topbar .pill { margin-left: auto; }
+.trail-sep { font-size: 0; }
+.trail-sep::before { content: ""; display: inline-block; width: 7px; height: 7px; border-right: 1.5px solid var(--fg-3);
+  border-top: 1.5px solid var(--fg-3); transform: rotate(45deg); margin: 0 4px 1px 0; }
 
 /* Icons: UI icons are strokes in currentColor; product marks (.mark) carry their own colors. */
 .ico { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75;
   stroke-linecap: round; stroke-linejoin: round; }
 svg.mark { width: 20px; height: 20px; flex: none; fill: none; stroke: none; }
 .mark .cut { stroke: var(--surface); }
+.sidenav .mark .cut { stroke: var(--rail); }
+.subnav .mark .cut, .nav-item[aria-current="page"] .mark .cut { stroke: var(--rail-on); }
 
 .sidenav {
   grid-area: rail; position: sticky; top: var(--top-h); align-self: start;
   height: calc(100vh - var(--top-h)); overflow-y: auto;
-  background: var(--rail); color: var(--rail-fg); padding: var(--s-3) var(--s-3) var(--s-4);
-  border-right: 1px solid var(--rail-line); display: flex; flex-direction: column;
+  background: var(--rail); color: var(--rail-fg); padding: var(--s-3) 0 var(--s-4);
+  display: flex; flex-direction: column;
 }
-.sidenav nav { display: flex; flex-direction: column; gap: 2px; }
+.sidenav nav { display: flex; flex-direction: column; }
 .nav-group {
   font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--rail-group); padding: var(--s-4) var(--s-3) 6px;
+  color: var(--rail-group); padding: var(--s-4) var(--s-5) 6px;
 }
 .sidenav nav:first-child .nav-group:first-child { padding-top: var(--s-2); }
 .nav-item {
-  position: relative; display: flex; align-items: center; gap: var(--s-3); width: 100%; min-height: 38px;
-  font: inherit; font-size: var(--t-md); font-weight: 500; text-align: left; text-decoration: none; cursor: pointer;
-  background: none; border: 0; border-radius: var(--r-md); padding: 8px var(--s-3); color: var(--rail-fg);
+  position: relative; display: flex; align-items: center; gap: var(--s-3); width: 100%; min-height: 44px;
+  font: inherit; font-size: var(--t-md); font-weight: 400; text-align: left; text-decoration: none; cursor: pointer;
+  background: none; border: 0; border-radius: 0; padding: 10px var(--s-5); color: var(--rail-fg);
   transition: background-color 120ms, color 120ms;
 }
-.nav-item > svg:not(.mark) { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75;
+.nav-item > svg:not(.mark) { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6;
   stroke-linecap: round; stroke-linejoin: round; }
 .nav-item > span { flex: 1; min-width: 0; }
 .nav-item:hover { background: var(--rail-hover); color: var(--rail-fg-strong); }
-.nav-item[aria-selected="true"], .nav-item[aria-current="page"] {
-  background: var(--rail-on); color: var(--rail-on-fg); font-weight: 600; }
-.nav-item[aria-selected="true"]::before, .nav-item[aria-current="page"]::before {
-  content: ""; position: absolute; left: -12px; top: 9px; bottom: 9px; width: 3px; border-radius: 0 3px 3px 0; background: var(--brand); }
-.nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.sidenav .section-switch { margin-top: auto; padding-top: var(--s-3); border-top: 1px solid var(--rail-line); }
-.section-switch .nav-item { border: 1px solid var(--border); background: var(--surface-2); }
-.section-switch .nav-item:hover { border-color: var(--border-strong); }
-.section-switch .nav-item > .ico { width: 16px; height: 16px; color: var(--fg-3); }
-.section-switch[hidden] { display: none; }
+.nav-item[aria-current="page"] { color: var(--rail-fg-strong); font-weight: 600; background: var(--rail-on); }
+.nav-item[aria-selected="true"] { color: var(--rail-on-fg); font-weight: 500; }
+.nav-item:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+/* The open cloud and its pages form one darker band; the open page is green. */
+.subnav { background: var(--rail-on); padding: 0 0 var(--s-2); }
+.subnav .nav-item { min-height: 40px; padding: 8px var(--s-5) 8px 56px; font-size: var(--t-md); }
+.subnav .nav-item > svg:not(.mark) { display: none; }
+.subnav .nav-item:hover { background: rgba(255, 255, 255, 0.04); }
+.k8s-nav { margin-top: var(--s-2); border-top: 1px solid var(--rail-line); padding-top: var(--s-2); }
+.saved { margin-bottom: var(--s-5); }
+.saved-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s-3); }
+.saved-head h2 { font-size: var(--t-lg); }
 
 .main-col { grid-area: main; min-width: 0; display: flex; flex-direction: column; }
 main { width: 100%; max-width: 1440px; padding: var(--s-6) var(--s-7) var(--s-8); }
@@ -245,7 +243,6 @@ main { width: 100%; max-width: 1440px; padding: var(--s-6) var(--s-7) var(--s-8)
 .banner.error { background: var(--bad-bg); border: 1px solid var(--bad-line); color: var(--fg); }
 .auth-form { display: flex; gap: var(--s-2); margin-top: var(--s-3); flex-wrap: wrap; }
 .auth-form input { flex: 1; min-width: 240px; font-family: var(--mono); }
-
 
 /* ================================================================== controls */
 
@@ -477,3 +474,145 @@ input.typed { width: 220px; }
   .fleet-table td { border-bottom: 0; padding: var(--s-2) 14px; }
   .fleet-table tbody tr { border-bottom: 1px solid var(--border); }
 }
+
+/* ================================================================== glass */
+/* Glass and AI accents over the shared shell: an aurora behind everything, frosted surfaces, gradient
+   accents. Text sits on surfaces at least 72% opaque; white text only on the dark gradient stops. */
+
+:root {
+  --ai-1: #7c5cff; --ai-2: #22d3ee; --ai-3: #4cc552;
+  --ai-grad: linear-gradient(120deg, var(--ai-1), var(--ai-2) 55%, var(--ai-3));
+  --ai-grad-deep: linear-gradient(120deg, #6d28d9, #4f46e5 50%, #0f766e);
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-strong: rgba(255, 255, 255, 0.86);
+  --card-solid: #ffffff;
+  --glass-tile: rgba(255, 255, 255, 0.55);
+  --glass-line: rgba(255, 255, 255, 0.75);
+  --glass-edge: rgba(36, 51, 82, 0.10);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 10px 36px -14px rgba(36, 51, 82, 0.28);
+  --glass-blur: blur(18px) saturate(170%);
+  --glow: 0 8px 24px -8px rgba(124, 92, 255, 0.55);
+  --r-glass: 16px;
+  /* Humanist sans: installed fonts only, no download. */
+  --font: Seravek, "Gill Sans Nova", Ubuntu, Calibri, "DejaVu Sans", source-sans-pro, sans-serif;
+}
+h1, h2, h3 { letter-spacing: 0; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --glass: rgba(20, 26, 40, 0.72); --glass-strong: rgba(24, 30, 46, 0.86); --card-solid: #171d2b; --glass-tile: rgba(255, 255, 255, 0.04);
+    --glass-line: rgba(255, 255, 255, 0.09); --glass-edge: rgba(255, 255, 255, 0.06);
+    --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 40px -16px rgba(0, 0, 0, 0.7);
+  }
+}
+
+/* Aurora: three soft blooms that drift slowly behind the page. */
+body { background: var(--bg); }
+body::before {
+  content: ""; position: fixed; inset: -20%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(40% 35% at 82% 8%, rgba(124, 92, 255, 0.22), transparent 70%),
+    radial-gradient(38% 34% at 12% 92%, rgba(34, 211, 238, 0.20), transparent 70%),
+    radial-gradient(30% 30% at 58% 55%, rgba(76, 197, 82, 0.12), transparent 70%);
+  filter: blur(30px);
+}
+.shell { position: relative; isolation: isolate; }
+@media (prefers-reduced-motion: no-preference) {
+  body::before { animation: aurora 26s ease-in-out infinite alternate; }
+}
+@keyframes aurora {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-3%, 2%, 0) scale(1.05); }
+  100% { transform: translate3d(2%, -2%, 0) scale(1.02); }
+}
+
+/* Shell: navy glass. The open item carries a gradient edge and a soft glow. */
+.topbar { background: rgba(28, 40, 67, 0.96); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
+.sidenav { background: linear-gradient(180deg, rgba(36, 51, 82, 0.97), rgba(28, 40, 67, 0.97)); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
+.logo { filter: drop-shadow(0 0 8px rgba(76, 197, 82, 0.55)); }
+.nav-item { border-radius: 10px; margin: 1px var(--s-2); width: calc(100% - 2 * var(--s-2)); padding-left: 12px; }
+.nav-item[aria-current="page"] {
+  background: linear-gradient(90deg, rgba(124, 92, 255, 0.28), rgba(34, 211, 238, 0.10) 70%, transparent);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.nav-item[aria-current="page"]::before {
+  content: ""; position: absolute; left: -8px; top: 8px; bottom: 8px; width: 3px; border-radius: 3px;
+  background: var(--ai-grad); box-shadow: 0 0 10px rgba(34, 211, 238, 0.7);
+}
+.subnav { background: transparent; }
+/* The open platform while one of its clusters is open: named, not highlighted. */
+.nav-item[aria-current="true"] { color: var(--rail-fg-strong); font-weight: 600; background: none; }
+.subnav .nav-item { padding-left: 44px; }
+
+/* Frosted surfaces. Tiles inside a panel are lighter and unblurred (one blur layer is enough). */
+.panel, details.panel, .stat, .pick-card, .fleet-table, .empty, .approve-box,
+.cfg-form > .tgrid, .cfg-form .block, .cfg-form .advanced {
+  background: var(--glass); border: 1px solid var(--glass-line); border-radius: var(--r-glass);
+  box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+}
+.fleet-table { border-collapse: separate; border-spacing: 0; overflow: hidden; }
+.fleet-table th { background: var(--glass-strong); }
+.fleet-table tbody tr:hover td { background: rgba(124, 92, 255, 0.06); }
+.essentials > div, ul.checks { background: var(--glass-tile); border-color: var(--glass-edge); border-radius: 12px; }
+.empty { border-style: solid; }
+
+/* Gradient ring on hover: the card's border becomes the AI gradient. */
+.stat, .pick-card { transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease; }
+.stat:hover, .stat.on, .pick-card:hover:not(:disabled) {
+  border-color: transparent;
+  background: linear-gradient(var(--card-solid), var(--card-solid)) padding-box, var(--ai-grad) border-box;
+  box-shadow: var(--glass-shadow), var(--glow);
+}
+.stat:hover, .pick-card:hover:not(:disabled) { transform: translateY(-2px); }
+
+/* Titles: gradient ink from the dark stops, so it stays readable on light glass. */
+.cl-title h1, .cfg-head h1 {
+  background: var(--ai-grad-deep); -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .cl-title h1, :root:not([data-theme="light"]) .cfg-head h1 {
+    background-image: linear-gradient(120deg, #c4b5fd, #67e8f9 55%, #86efac);
+  }
+}
+
+/* The page mark sits in a glass orb with a slowly turning gradient halo. */
+.head-mark { position: relative; background: var(--glass-strong); border: 1px solid var(--glass-line); border-radius: 14px; }
+.head-mark::before {
+  content: ""; position: absolute; inset: -3px; z-index: -1; border-radius: 16px;
+  background: conic-gradient(from 0deg, var(--ai-1), var(--ai-2), var(--ai-3), var(--ai-1)); filter: blur(6px); opacity: 0.55;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .head-mark::before { animation: orb 8s linear infinite; }
+}
+@keyframes orb { to { transform: rotate(1turn); } }
+
+/* Actions: the primary button is the deep gradient with a glow; the rest are glass. */
+button.primary {
+  background: var(--ai-grad-deep); background-size: 160% 100%; border: 0; color: #fff; box-shadow: var(--glow);
+  transition: background-position 300ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+button.primary:hover:not(:disabled) { background: var(--ai-grad-deep); background-size: 160% 100%; background-position: 100% 0; transform: translateY(-1px); }
+button.secondary, .topbar-back { background: var(--glass-strong); border-color: var(--glass-edge); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
+input[type="text"], input[type="search"], input[type="password"], select { background: var(--glass-strong); border-color: var(--glass-edge); }
+input:focus-visible, select:focus-visible { border-color: var(--ai-1); box-shadow: 0 0 0 4px rgba(124, 92, 255, 0.18); outline: none; }
+.fleet-bar .search { border-radius: 999px; padding-left: var(--s-4); }
+
+/* Pills: soft glass chips; anything running shimmers. */
+.badge, .pill { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.badge.info, .st-running .t {
+  background-image: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%);
+  background-size: 220% 100%; background-repeat: no-repeat;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .badge.info, .st-running .t { animation: shimmer 1.8s linear infinite; }
+}
+@keyframes shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+
+/* Tiles: mark large and centred, name, count, status, stacked in a column. */
+.pick-card { flex-direction: column; align-items: center; text-align: center; gap: var(--s-2); padding: var(--s-5) var(--s-4); }
+.pick-mark { width: 64px; height: 64px; border-radius: 18px; background: var(--glass-strong); border: 1px solid var(--glass-edge); }
+.pick-mark svg.mark { width: 40px; height: 40px; }
+.pick-list { align-items: center; }
+.pick-go { margin: var(--s-2) 0 0; }
+
+/* Scrollbars that match the glass. */
+* { scrollbar-width: thin; scrollbar-color: rgba(124, 92, 255, 0.35) transparent; }

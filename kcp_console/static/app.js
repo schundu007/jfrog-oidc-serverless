@@ -90,6 +90,7 @@ export function rich(text) {
 function showAuth() {
   $("auth-banner").hidden = false;
   $("sidenav").hidden = true;
+  $("k8s-sub").hidden = true;
   document.querySelectorAll("[role=tabpanel]").forEach((p) => { p.hidden = true; });
 }
 
@@ -149,26 +150,40 @@ function parent(r) {
 // A product mark (aks, gke, eks, openshift, k8s) or the arrow icon, cloned from the page's template.
 export const markOf = (k) => $("marks").content.querySelector(`[data-mark="${k}"] svg`).cloneNode(true);
 
-// Where you are, in the top bar: Home / Kubernetes / <platform> / <cluster> / Edit. Every step but the
-// last is a link; Home (the unified console's) loads its page, the rest go through the router.
+// Where you are, at the top of the page: Kubernetes > <platform> > <cluster> > Edit. Names come from the
+// path (route()), never from the selected tab, which can change mid-transition.
 function renderTrail(r) {
-  const steps = [];
-  if (BASE) steps.push(["Home", "/", true]);
-  steps.push(["Kubernetes", "/clusters"]);
+  const steps = [["Kubernetes", null]];
   if (r.cloud) steps.push([CLOUDS[r.cloud], `/clusters/${r.cloud}`]);
   if (r.name) steps.push([r.name, clusterPath(r.name)]);
   if (r.name && r.page === "configure") steps.push(["Edit", null]);
   const parts = [];
-  steps.forEach(([label, path, outside], i) => {
+  steps.forEach(([label, path], i) => {
     if (i) parts.push(h("span", { class: "trail-sep", "aria-hidden": "true" }, "/"));
-    if (i === steps.length - 1) return parts.push(h("span", { "aria-current": "page" }, label));
-    parts.push(h("a", { href: outside ? path : url(path), onclick: outside ? null : (e) => {
+    if (i === steps.length - 1 || !path) return parts.push(h("span", { "aria-current": i === steps.length - 1 ? "page" : null }, label));
+    parts.push(h("a", { href: url(path), onclick: (e) => {
       if (e.metaKey || e.ctrlKey || e.shiftKey) return;
       e.preventDefault();
       go(path);
     } }, label));
   });
   $("trail").replaceChildren(...parts);
+}
+
+// The open platform's clusters, as a band under it in the sidebar.
+function renderBand(r) {
+  const band = $("k8s-sub");
+  const item = r.cloud && document.querySelector(`#sidenav [data-cloud="${r.cloud}"]`);
+  const mine = state.configs.filter((c) => (c.platform || "aks") === r.cloud);
+  band.hidden = !item || !mine.length;
+  if (band.hidden) return;
+  item.after(band);
+  fill(band, mine.map((c) => h("a", { class: "nav-item", href: url(clusterPath(c.name)),
+    "aria-current": c.name === r.name ? "page" : null, onclick: (e) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      go(clusterPath(c.name));
+    } }, h("span", {}, c.name))));
 }
 
 function backButton(r) {
@@ -190,10 +205,11 @@ function show() {
   const cloud = route().cloud;
   for (const p of PAGES) $(`panel-${p}`).hidden = p !== r.page;
   document.querySelectorAll("#sidenav [data-cloud]").forEach((a) => {
-    if (a.dataset.cloud === cloud) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    if (a.dataset.cloud === cloud) a.setAttribute("aria-current", r.name ? "true" : "page"); else a.removeAttribute("aria-current");
   });
   backButton(route());
   renderTrail(route());
+  renderBand(route());
   window.scrollTo(0, 0);
   state.emit("tab", r.page);
 }
@@ -214,9 +230,11 @@ function wireTabs() {
       go(path);
     });
   });
-  // Inside the unified console: the section title and the switch to the serverless section.
-  for (const id of ["section-switch", "brand-portal"]) $(id).hidden = !BASE;
+  // Inside the unified console: its brand, Home and the Serverless clouds in the same sidebar.
+  for (const el of document.querySelectorAll("[data-portal]")) el.hidden = !BASE;
+  $("brand-portal").hidden = !BASE;
   $("brand-own").hidden = !!BASE;
+  $("sidenav").classList.toggle("k8s-nav", !!BASE);
 }
 
 $("auth-form").addEventListener("submit", (e) => {
