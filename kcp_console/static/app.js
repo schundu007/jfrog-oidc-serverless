@@ -129,7 +129,34 @@ function canonical(r) {
 // Go to a path inside the console without a reload.
 export function go(path, { replace = false } = {}) {
   if (url(path) !== location.pathname + location.search) history[replace ? "replaceState" : "pushState"]({}, "", url(path));
-  show();
+  transition(show);
+}
+
+// Swap views with a short cross-fade where the browser can (never on reduced motion).
+function transition(update) {
+  if (!document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) return update();
+  const t = document.startViewTransition(update);
+  for (const p of [t.ready, t.finished, t.updateCallbackDone]) p.catch(() => {});
+}
+
+// One level up: cluster edit → cluster → its platform's list → (inside the unified console) Home.
+function parent(r) {
+  if (r.name && r.page === "configure") return { path: clusterPath(r.name), label: r.name };
+  if (r.name) return { path: `/clusters/${r.cloud}`, label: CLOUDS[r.cloud] };
+  return BASE ? { home: true, label: "Home" } : null;
+}
+
+function backButton(r) {
+  const b = $("nav-back");
+  const hasHistory = (window.navigation?.currentEntry?.index ?? 0) > 0;
+  const up = parent(r);
+  b.hidden = !hasHistory && !up;
+  b.title = hasHistory || !up ? "Back" : `Back to ${up.label}`;
+  b.onclick = () => {
+    if (hasHistory) history.back();
+    else if (up?.home) location.assign("/");
+    else if (up) go(up.path);
+  };
 }
 
 function show() {
@@ -140,6 +167,7 @@ function show() {
   document.querySelectorAll("#sidenav [data-cloud]").forEach((a) => {
     if (a.dataset.cloud === cloud) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
+  backButton(route());
   window.scrollTo(0, 0);
   state.emit("tab", r.page);
 }
@@ -198,7 +226,7 @@ async function start() {
   }
   state.emit("config", state.config);
   show();
-  window.addEventListener("popstate", show);
+  window.addEventListener("popstate", () => transition(show));
 }
 
 export async function refreshConfigs(select) {

@@ -317,3 +317,18 @@ input.typed { width: 220px; }
 .nav-item.section-switch { margin-top: var(--s4); border-top: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0; padding-top: var(--s3); }
 .logo-hex { width: 20px; height: 20px; flex: none; fill: var(--brand); }
 .logo-hex .logo-in { fill: var(--rail); }
+
+/* Navigation: the brand goes Home; Back goes back (or one level up). */
+a.brand { text-decoration: none; }
+.back { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 var(--s3) 0 var(--s2); font: inherit; font-size: var(--fs-sm);
+  color: var(--rail-fg); background: none; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: var(--r-sm); cursor: pointer; }
+.back svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.back:hover { color: #fff; background: var(--rail-hover); }
+
+/* Page changes cross-fade; the top bar and rail stay put (same names as the serverless section). */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+  .topbar { view-transition-name: topbar; }
+  .sidenav { view-transition-name: sidenav; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 160ms; }
+}

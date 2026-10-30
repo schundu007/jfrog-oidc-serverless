@@ -85,7 +85,7 @@ class ServerTest(unittest.TestCase):
                   "/clusters/openshift", "/clusters/aks/aks-prod-01", "/clusters/gke/gke-a/edit"):
             r, raw = self.req("GET", p, token=False)
             self.assertEqual(r.status, 200, p)
-            self.assertIn(b'<script type="module" src="/static/app.js">', raw, p)
+            self.assertIn(b'<script type="module" src="/static/app.js" blocking="render">', raw, p)
         for p in ("/operate/nope", "/docs", "/clusters/a/b", "/clusters/..%2f", "/clusters/aks/x/delete", "/clusters/aks/..%2f/edit"):
             self.assertEqual(self.req("GET", p, token=False)[0].status, 404, p)
 
