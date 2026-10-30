@@ -152,6 +152,15 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(pod["spec"]["serviceAccountName"], "jfrog-provider-sa")
 
 
+class CauseTest(unittest.TestCase):
+    def test_token_fetch_401_names_the_cached_credentials(self):
+        ev = 'Failed to pull image: failed to fetch oauth token: unexpected status from GET request to https://x/token: 401 Unauthorized'
+        self.assertEqual(direct._cause(ev), "registry token request got 401: cached or expired credentials")
+
+    def test_plain_401_stays_short(self):
+        self.assertEqual(direct._cause("pull access denied: 401 Unauthorized"), "401 Unauthorized")
+
+
 class RunnerTest(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
@@ -212,6 +221,8 @@ class RunnerTest(unittest.TestCase):
         res = self.runner(sh, dry=False).execute(direct.plan(cfg(), self.root, "setup", dry_run=False))
         self.assertEqual([r for r in res if r["status"] == "failed"], [])
         self.assertIn(["az", "aks", "update"], [c[:3] for c in sh.calls])
+        # The provider pods restart after the upgrade, so nodes pick up the new config and kubelet drops cached tokens.
+        self.assertIn(["kubectl", "rollout", "restart"], [c[:3] for c in sh.calls])
         posts = [u for m, u, _ in sh.http_calls if m == "POST"]
         self.assertEqual(posts, ["https://example.jfrog.io/access/api/v1/oidc",
                                  "https://example.jfrog.io/access/api/v1/oidc/aks-sandbox-oidc/identity_mappings"])

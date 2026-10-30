@@ -31,7 +31,7 @@ def discover(cfg: dict, shell, env=None, kubeconfig=None) -> dict:
         oidc = d.get("oidcIssuerProfile") or {}
         out["cluster"] = {"oidc_enabled": bool(oidc.get("enabled")), "issuer": oidc.get("issuerUrl"),
                           "workload_identity": bool(((d.get("securityProfile") or {}).get("workloadIdentity") or {}).get("enabled")),
-                          "kubernetes_version": d.get("kubernetesVersion")}
+                          "kubernetes_version": d.get("kubernetesVersion"), "location": d.get("location", "")}
     else:
         out["cluster"] = {"error": aks.error_text()}
     out["reads"].append({"what": "az aks show", "ok": aks.ok})

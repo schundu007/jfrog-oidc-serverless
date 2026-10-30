@@ -17,21 +17,169 @@ let timer = null;
 const TITLES = { setup: "Set up", verify: "Verify", teardown: "Tear down" };
 
 export function initOverview() {
-  state.on("config", (name) => { render(); if (name && !live[name]) readStatus(name); else if (name) refreshAction(name); });
-  state.on("tab", (tab) => { if (tab === "overview" && state.config) refreshAction(state.config); });
+  state.on("config", (name) => { render(); if (!detailName()) return; if (name && !live[name]) readStatus(name); else if (name) refreshAction(name); });
+  state.on("tab", (tab) => {
+    if (tab !== "overview") return;
+    readQuery();
+    render();
+    if (!detailName()) loadFleet();
+    else if (state.config) refreshAction(state.config);
+  });
+  readQuery();
   render();
-  if (state.config) readStatus(state.config);
+  if (detailName() && state.config) readStatus(state.config);
 }
 
 const muted = (t) => h("span", { class: "muted" }, t);
 const when = (iso) => (iso || "").slice(0, 16).replace("T", " ");
 
+// Two views: the fleet at /clusters and one cluster at /clusters/<name>.
+const detailName = () => { const m = location.pathname.match(/^\/clusters\/([^/]+)$/); return m ? decodeURIComponent(m[1]) : null; };
+
 function render() {
   const P = $("panel-overview");
-  const configs = state.configs || [];
-  if (!aks) loadAks();
-  const cur = configs.find((c) => c.name === state.config);
-  fill(P, cur ? clusterView(cur) : h("h1", {}, "Clusters"), aksTable(configs));
+  const name = detailName();
+  if (!name) return fill(P, fleetView());
+  const c = (state.configs || []).find((x) => x.name === name);
+  if (c && state.config !== name) { select(name); return; }
+  fill(P, c ? clusterView(c)
+    : h("div", { class: "empty" }, h("p", {}, `No cluster named ${name}`), h("button", { class: "secondary", onclick: openFleet }, "All clusters")));
+}
+
+export function openCluster(name) {
+  history.pushState({}, "", `/clusters/${encodeURIComponent(name)}`);
+  window.scrollTo(0, 0);
+  select(name);
+}
+
+function openFleet() {
+  history.pushState({}, "", `/clusters${query()}`);
+  window.scrollTo(0, 0);
+  render();
+  loadFleet();
+}
+
+// ----------------------------------------------------------------------- the fleet
+
+const PAGE = 25;
+const CLOUD = { aks: "Azure AKS", eks: "AWS EKS", gke: "Google GKE", openshift: "OpenShift" };
+const STATE = {
+  approval: ["warn", "Awaiting approval"], attention: ["fail", "Needs attention"], not_proven: ["fail", "OIDC not proven"],
+  unverified: ["warn", "Not verified"], working: ["ok", "OIDC working"], not_installed: ["muted", "Not set up"], unread: ["muted", "Not read"],
+};
+const STATS = [["", "All clusters"], ["working", "OIDC working"], ["attention", "Needs attention"], ["not_proven", "Not proven"],
+  ["approval", "Awaiting approval"], ["not_installed", "Not set up"]];
+const ACTION = { prepared: "waiting for approval", queued: "starting", running: "running", succeeded: "done", failed: "failed",
+  cancelled: "cancelled", interrupted: "interrupted", refused: "refused", error: "failed" };
+const F = { q: "", cloud: "", state: "", page: 1 };
+let fleet = null;
+let fleetLoading = false;
+let adding = false;
+
+function readQuery() {
+  const u = new URLSearchParams(location.search);
+  Object.assign(F, { q: u.get("q") || "", cloud: u.get("cloud") || "", state: u.get("state") || "", page: Number(u.get("page")) || 1 });
+}
+
+function query() {
+  const u = new URLSearchParams();
+  for (const k of ["q", "cloud", "state"]) if (F[k]) u.set(k, F[k]);
+  if (F.page > 1) u.set("page", F.page);
+  return u.toString() ? `?${u}` : "";
+}
+
+// Filters live in the address, so a refresh or a shared link shows the same list.
+function setFilter(patch) {
+  Object.assign(F, { page: 1 }, patch);
+  history.replaceState({}, "", `/clusters${query()}`);
+}
+
+async function loadFleet() {
+  if (fleetLoading) return;
+  fleetLoading = true;
+  try { fleet = await api("/api/fleet"); } catch (err) { fleet = { clusters: [], counts: {}, error: err.message }; }
+  fleetLoading = false;
+  if (!detailName() && !$("panel-overview").hidden) render();
+}
+
+function ago(iso) {
+  if (!iso) return "";
+  const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m} min ago`;
+  if (m < 48 * 60) return `${Math.round(m / 60)} h ago`;
+  return `${Math.round(m / 1440)} d ago`;
+}
+
+function matches(r) {
+  if (F.state && r.state !== F.state) return false;
+  if (F.cloud && r.cloud !== F.cloud) return false;
+  const q = F.q.trim().toLowerCase();
+  return !q || [r.name, r.cluster, r.location].some((v) => (v || "").toLowerCase().includes(q));
+}
+
+function fleetView() {
+  if (!fleet && !fleetLoading) loadFleet();
+  const d = fleet || { clusters: [], counts: {} };
+  const n = d.clusters.length;
+  const clouds = [...new Set(d.clusters.map((r) => r.cloud))];
+  return h("div", { class: "fleet" },
+    h("header", { class: "cl-head" },
+      h("div", { class: "cl-title" }, h("h1", {}, "Clusters"), n ? muted(`${n} across ${clouds.length} platform${clouds.length === 1 ? "" : "s"}`) : null),
+      h("div", { class: "cl-actions" },
+        h("button", { class: "ghost", disabled: fleetLoading, onclick: () => { fleet = null; render(); } }, "Refresh"),
+        h("button", { class: adding ? "secondary" : "primary", onclick: () => { adding = !adding; render(); } }, adding ? "Close" : "Add a cluster"))),
+    d.error ? h("div", { class: "callout fail" }, brief(d.error)) : null,
+    adding ? panel("Add a cluster", muted("from az aks list"), aksTable(state.configs || [])) : null,
+    !fleet ? h("p", { class: "muted" }, "Loading…")
+      : !n && !adding ? h("div", { class: "empty" }, h("p", {}, "No clusters yet"), h("button", { class: "primary", onclick: () => { adding = true; render(); } }, "Add a cluster"))
+      : n ? [
+        h("div", { class: "stats" }, STATS.map(([k, label]) => h("button", {
+          class: `stat${F.state === k ? " on" : ""}${k ? ` s-${k}` : ""}`, "aria-pressed": F.state === k ? "true" : "false",
+          onclick: () => { setFilter({ state: F.state === k ? "" : k }); render(); },
+        }, h("b", {}, String(k ? d.counts[k] || 0 : n)), h("span", {}, label)))),
+        h("div", { class: "fleet-bar" },
+          h("input", { type: "search", class: "search", placeholder: "Search by name, cluster or region", value: F.q, "aria-label": "Search clusters",
+            oninput: (e) => { setFilter({ q: e.target.value }); fillTable(); } }),
+          h("select", { "aria-label": "Platform", onchange: (e) => { setFilter({ cloud: e.target.value }); fillTable(); } },
+            h("option", { value: "" }, "All platforms"),
+            Object.entries(CLOUD).map(([k, label]) => h("option", { value: k, selected: F.cloud === k, disabled: !(d.platforms || {})[k] && !clouds.includes(k) },
+              (d.platforms || {})[k] ? label : `${label} (coming)`)))),
+        h("div", { id: "fleet-table" }, fleetTable(d.clusters)),
+      ] : null);
+}
+
+function fillTable() {
+  const el = $("fleet-table");
+  if (el && fleet) fill(el, fleetTable(fleet.clusters));
+}
+
+function fleetTable(all) {
+  const rows = all.filter(matches);
+  if (!rows.length) return h("div", { class: "empty slim" }, h("p", {}, "No clusters match"),
+    h("button", { class: "ghost", onclick: () => { setFilter({ q: "", cloud: "", state: "" }); render(); } }, "Clear filters"));
+  const pages = Math.ceil(rows.length / PAGE);
+  F.page = Math.min(Math.max(1, F.page), pages);
+  const first = (F.page - 1) * PAGE;
+  const go = (p) => { F.page = p; history.replaceState({}, "", `/clusters${query()}`); fillTable(); };
+  return [
+    h("table", { class: "fleet-table" },
+      h("thead", {}, h("tr", {}, ["Cluster", "Status", "Credential provider", "Last verified", "Last action"].map((t) => h("th", { scope: "col" }, t)))),
+      h("tbody", {}, rows.slice(first, first + PAGE).map((r) => {
+        const [cls, text] = STATE[r.state] || ["muted", r.state];
+        const a = r.action;
+        return h("tr", { tabindex: "0", onclick: () => openCluster(r.name), onkeydown: (e) => { if (e.key === "Enter") openCluster(r.name); } },
+          h("td", {}, h("div", { class: "nm" }, r.name), h("div", { class: "sub" }, [CLOUD[r.cloud] || r.cloud, r.cluster !== r.name ? r.cluster : "", r.location].filter(Boolean).join(" · "))),
+          h("td", {}, h("span", { class: `badge ${cls}` }, text), r.problem ? h("div", { class: "sub" }, brief(r.problem)) : null),
+          h("td", {}, r.chart ? h("div", {}, `v${r.chart}`) : muted("—"), r.ready ? h("div", { class: "sub" }, `${r.ready} nodes ready`) : null),
+          h("td", {}, r.verified_at ? ago(r.verified_at) : muted("never")),
+          h("td", {}, a ? [h("div", {}, `${TITLES[a.which] || a.which}${a.dry ? " · dry run" : ""}`), h("div", { class: "sub" }, `${ACTION[a.status] || a.status} · ${ago(a.at)}`)] : muted("—")));
+      }))),
+    pages > 1 ? h("div", { class: "pager" },
+      muted(`${first + 1}–${Math.min(first + PAGE, rows.length)} of ${rows.length}`),
+      h("button", { class: "ghost", disabled: F.page <= 1, onclick: () => go(F.page - 1) }, "Previous"),
+      h("button", { class: "ghost", disabled: F.page >= pages, onclick: () => go(F.page + 1) }, "Next")) : null,
+  ];
 }
 
 // One status for the header badge: [class, text].
@@ -61,6 +209,8 @@ function clusterView(c) {
     ["JFrog provider", f.providers ? (f.providers.some((p) => p.name === c.provider) ? "Present" : "Missing") : "—"],
   ];
   return h("div", { class: "cluster" },
+    h("nav", { class: "crumbs", "aria-label": "Breadcrumb" },
+      h("a", { href: "/clusters", onclick: (e) => { e.preventDefault(); openFleet(); } }, "Clusters"), h("span", {}, "/"), h("span", {}, c.name)),
     h("header", { class: "cl-head" },
       h("div", { class: "cl-title" },
         h("h1", {}, c.name),
@@ -319,13 +469,12 @@ function causeEl(name, run) {
 
 function aksTable(configs) {
   const added = new Set(configs.map((c) => (c.cluster || "").toLowerCase()));
-  const head = h("div", { class: "toolbar" }, h("h2", {}, "Add a cluster"),
-    h("div", { class: "tools" }, h("button", { class: "secondary", onclick: () => { aks = null; render(); } }, "Refresh")));
-  if (!aks || aks.loading) return h("div", {}, head, muted("Reading az aks list…"));
-  if (aks.error) return h("div", {}, head, h("p", { class: "error small" }, brief(aks.error)));
+  if (!aks) { loadAks(); return muted("Reading the clusters your az login can see…"); }
+  if (aks.loading) return muted("Reading the clusters your az login can see…");
+  if (aks.error) return h("p", { class: "error small" }, brief(aks.error));
   const rows = aks.clusters.filter((k) => !added.has(k.name.toLowerCase()));
-  if (!rows.length) return null;
-  return h("div", {}, head, h("table", { class: "cfg-table" },
+  if (!rows.length) return muted("Every AKS cluster your az login can see is already added.");
+  return h("div", {}, h("table", { class: "cfg-table" },
     h("thead", {}, h("tr", {}, ["Cluster", "Resource group", "Location", "Kubernetes", "OIDC · WI", ""].map((t) => h("th", { scope: "col" }, t)))),
     h("tbody", {}, rows.map((k) => h("tr", {},
       h("td", {}, h("b", {}, k.name), k.power && k.power !== "Running" ? muted(` ${k.power}`) : null),
@@ -358,7 +507,9 @@ async function add(k) {
   cfg.jfrog.mapping_name = `${name}-mapping`.slice(0, 63);
   await api(`/api/configs/${encodeURIComponent(name)}`, { method: "PUT", body: { config: cfg } });
   aks = null;
-  await select(name);
+  adding = false;
+  fleet = null;
+  openCluster(name);
   if (!cfg.jfrog.host) selectTab("configure");
 }
 

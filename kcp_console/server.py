@@ -27,7 +27,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import diagnose as diag, direct, knowledge, logic, model, redact, report
+from . import diagnose as diag, direct, fleet, knowledge, logic, model, redact, report
 from .checks import artifactory as art_checks, hygiene, preflight as pf, verify as vchecks
 from .jfrog import Jfrog
 from .runner import RunError, RunManager, bundle as run_bundle, pod_from_log
@@ -39,6 +39,7 @@ from .store import RUN_ID_RE, RunStore, StatusStore, Store, StoreError
 STATIC_DIR = Path(__file__).parent / "static"
 # Page URLs: each section has its own path (old /operate/<page> links still work); all serve index.html.
 PAGE_ROUTES = {"/", "/clusters", "/configure"}
+CLUSTER_PAGE_RE = re.compile(r"^/clusters/[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")   # one cluster's page
 MAX_BODY = 1024 * 1024
 MAX_DRAIN = 8 * 1024 * 1024
 MAX_SIMS_KEPT = 20
@@ -105,6 +106,18 @@ class KcpServer:
     def config(self, name: str) -> dict:
         return model.merged(self.store.get(name))
 
+    def fleet(self) -> dict:
+        """Every saved cluster from its last read and its runs: no live calls (fleet.py)."""
+        configs = self.store.list()
+        statuses = {}
+        for c in configs:
+            try:
+                statuses[c["name"]] = self.status.get(c["name"])
+            except Exception:  # noqa: BLE001 - one unreadable status file must not hide the fleet
+                statuses[c["name"]] = {}
+        rows = fleet.rows(configs, statuses, self.runs.list())
+        return {"clusters": rows, "counts": fleet.counts(rows), "platforms": fleet.platforms()}
+
     def aks_clusters(self) -> dict:
         """The AKS clusters the operator's az login can see (read-only), marked when a config already uses one."""
         r = self.shell().run(["az", "aks", "list", "-o", "json"], timeout=90)
@@ -158,7 +171,7 @@ class KcpServer:
             # Rendered manifests and values can hold secret-looking strings; store and show them redacted.
             facts = redact.obj(pf.discover(cfg, sh, env=self.env, kubeconfig=kc))
             out = {"facts": facts, "mode": self.mode}
-            patch = {"discover": facts}
+            patch = {"discover": facts, "discover_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
             if with_preflight:
                 out["preflight"] = pf.preflight(cfg, facts)
                 patch["preflight"] = out["preflight"]
@@ -412,7 +425,7 @@ def _make_handler(console: KcpServer):
             if path == "/favicon.ico":
                 self._headers(204, "text/plain", 0)
                 return
-            name = "index.html" if path.rstrip("/") in PAGE_ROUTES or path == "/" else path[len("/static/"):] if path.startswith("/static/") else None
+            name = "index.html" if path.rstrip("/") in PAGE_ROUTES or path == "/" or CLUSTER_PAGE_RE.match(path) else path[len("/static/"):] if path.startswith("/static/") else None
             if name not in console.static_files:
                 raise HttpError(404, "not found")
             data = (STATIC_DIR / name).read_bytes()
@@ -454,6 +467,8 @@ def _make_handler(console: KcpServer):
                                         "issues": model.validate(cfg), "template_issues": model.validate_template(cfg),
                                         "provider_request": model.provider_request(cfg), "mapping_request": model.mapping_request(cfg),
                                         "test_pod": model.test_pod_yaml(cfg), "provider_name": model.provider_name(cfg)})
+            if method == "GET" and parts == ["fleet"]:
+                return self._json(200, console.fleet())
             if method == "GET" and parts == ["aks"]:
                 return self._json(200, console.aks_clusters())
             if method == "POST" and parts in (["discover"], ["preflight"]):

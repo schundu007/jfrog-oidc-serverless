@@ -89,8 +89,8 @@ function render() {
     h("div", { class: "cfg-head" }, h("div", {}, h("h1", {}, saved ? cfg.name : "New cluster")),
       h("div", { class: "head-actions" },
         saved ? h("button", { class: "link danger", onclick: remove }, "Delete") : null,
-        h("button", { class: "secondary", onclick: () => selectTab("overview") }, "Cancel"),
-        h("button", { class: "primary", onclick: async () => { if (await save()) selectTab("overview"); } }, "Save"))),
+        h("button", { class: "secondary", onclick: () => back(saved ? cfg.name : null) }, "Cancel"),
+        h("button", { class: "primary", onclick: async () => { if (await save()) back(cfg.name); } }, "Save"))),
     h("p", { class: "small", id: "cfg-msg" }),
     h("div", { class: "cfg-form" },
       h("div", { class: "tgrid" }, field("name", "Name", "aks-prod-eastus-01")),
@@ -117,6 +117,12 @@ function validateSoon(ms = 300) {
   }, ms);
 }
 
+// Back to the cluster's own page (or the fleet).
+function back(name) {
+  history.pushState({}, "", name ? `/clusters/${encodeURIComponent(name)}` : "/clusters");
+  selectTab("overview", { history: "none" });
+}
+
 function msg(text, cls = "small") { const m = $("cfg-msg"); if (m) { m.textContent = text; m.className = cls; } }
 
 async function save() {
@@ -138,5 +144,5 @@ async function remove() {
   await api(`/api/configs/${encodeURIComponent(name)}`, { method: "DELETE" });
   await refreshConfigs(null);
   state.emit("config", state.config);
-  selectTab("overview");
+  back(null);
 }

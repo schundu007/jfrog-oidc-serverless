@@ -81,12 +81,18 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.req("GET", "/static/app.js", token=False)[0].status, 200)
 
     def test_page_routes_serve_the_app(self):
-        for p in ("/clusters", "/configure"):
+        for p in ("/clusters", "/configure", "/clusters/aks-prod-01"):
             r, raw = self.req("GET", p, token=False)
             self.assertEqual(r.status, 200, p)
             self.assertIn(b'<script type="module" src="/static/app.js">', raw, p)
-        for p in ("/operate/nope", "/docs", "/clusters/x"):
+        for p in ("/operate/nope", "/docs", "/clusters/a/b", "/clusters/..%2f"):
             self.assertEqual(self.req("GET", p, token=False)[0].status, 404, p)
+
+    def test_fleet_lists_saved_clusters_without_live_calls(self):
+        status, body = self.jget("/api/fleet")
+        self.assertEqual(status, 200)
+        self.assertEqual(set(body), {"clusters", "counts", "platforms"})
+        self.assertEqual(body["counts"]["all"], len(body["clusters"]))
 
     def test_json_only_and_size_cap(self):
         c = http.client.HTTPConnection("127.0.0.1", self.srv.port, timeout=10)

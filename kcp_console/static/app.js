@@ -105,16 +105,20 @@ export function selectTab(name, { history: how = "push" } = {}) {
   if (!PAGES.includes(name)) name = "overview";
   for (const p of PAGES) {
     $(`panel-${p}`).hidden = p !== name;
-    $(`nav-${p}`).setAttribute("aria-current", p === name ? "page" : "false");
   }
+  // Configure is reached from a cluster's Edit; the menu keeps Clusters marked.
+  $("nav-overview").setAttribute("aria-current", "page");
   const path = pathOf(name);
-  if (how !== "none" && location.pathname !== path) history[how === "replace" ? "replaceState" : "pushState"]({}, "", path);
+  // A deep link inside a page (/clusters/<name>, /clusters?state=…) stays as it is unless the menu was clicked.
+  const inside = location.pathname === path || location.pathname.startsWith(`${path}/`);
+  if (how !== "none" && !(inside && how === "replace") && !(location.pathname === path && !location.search))
+    history[how === "replace" ? "replaceState" : "pushState"]({}, "", path);
   window.scrollTo(0, 0);
   state.emit("tab", name);
 }
 
 function wireTabs() {
-  for (const p of PAGES) $(`nav-${p}`).addEventListener("click", () => selectTab(p));
+  $("nav-overview").addEventListener("click", () => selectTab("overview"));
 }
 
 $("auth-form").addEventListener("submit", (e) => {
@@ -160,9 +164,9 @@ export async function refreshConfigs(select) {
   try { want ||= localStorage.getItem("kcp-config"); } catch { /* ignore */ }
   if (!configs.some((c) => c.name === want)) want = configs.length ? configs[0].name : null;
   const sel = $("config-select");
-  fill(sel, configs.length ? configs.map((c) => h("option", { value: c.name, selected: c.name === want }, `${c.name} · ${c.cluster}`))
+  fill(sel, configs.length ? configs.map((c) => h("option", { value: c.name, selected: c.name === want }, c.cluster && c.cluster !== c.name ? `${c.name} · ${c.cluster}` : c.name))
     : [h("option", { value: "" }, "no saved config")]);
-  $("config-pick").hidden = false;
+  $("config-pick").hidden = true;   // the Clusters page is the picker (it scales to a fleet)
   if (want !== state.config) {
     state.config = want;
     try { if (want) localStorage.setItem("kcp-config", want); } catch { /* ignore */ }

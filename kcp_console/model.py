@@ -47,7 +47,7 @@ def default_config(name: str = "sandbox-pilot") -> dict:
                   "promote_source_repo": "containers-docker-local"},
         "values": {"artifactory_url": "example.jfrog.io",
                    "match_images": ["example-aks-sandbox-test-docker-local.jfrog.io"],
-                   "default_cache_duration": "5h", "provider_name": "aks-sandbox-oidc",
+                   "default_cache_duration": "30m", "provider_name": "aks-sandbox-oidc",
                    "azure_app_audience": "api://AzureADTokenExchange", "token_attributes_enabled": True,
                    "download_url": ("https://example.jfrog.io/artifactory/aks-sandbox-generic-local/"
                                     "jfrog-credential-provider/1.4.0/jfrog-credential-provider-linux"),
@@ -232,11 +232,13 @@ def validate(cfg: dict, providers: list = None) -> list:
     if cache is None:
         out.append(_issue("error", "values.default_cache_duration", "a Go duration such as 30m or 5h"))
     else:
-        if cache > int(j["expires_in"]):
-            out.append(_issue("warning", "values.default_cache_duration",
-                              f"{v['default_cache_duration']} is longer than the mapping's expires_in "
-                              f"({j['expires_in']}s). The pilot ran this way and pulled fine; whether kubelet can "
-                              f"hand containerd an expired token inside the window is unverified (open item)"))
+        if cache >= int(j["expires_in"]):
+            # Seen on a real cluster: kubelet kept handing out the cached JFrog token after it expired,
+            # and every pull got 401 at the registry's token endpoint until the cache ran out.
+            out.append(_issue("error", "values.default_cache_duration",
+                              f"{v['default_cache_duration']} outlives the JFrog token ({int(j['expires_in']) // 60} min): "
+                              f"kubelet reuses the expired token and pulls fail with 401. Use at most half, e.g. "
+                              f"{max(1, int(j['expires_in']) // 120)}m"))
         if cache > CACHE_WARN_SECONDS:
             out.append(_issue("warning", "values.default_cache_duration",
                               f"{v['default_cache_duration']} is over 30m (the template default). The pilot's 5h was "

@@ -50,6 +50,8 @@ class StepError(RuntimeError):
 
 def _cause(event: str) -> str:
     """The reason in a kubelet event, without image references or URLs."""
+    if "oauth token" in event.lower() and "401" in event:
+        return "registry token request got 401: cached or expired credentials"
     for k in ("401 Unauthorized", "403 Forbidden", "404 Not Found", "not found", "no basic auth credentials", "timeout"):
         if k.lower() in event.lower():
             return k
@@ -302,7 +304,16 @@ class Runner:
         self._run(["helm", "upgrade", "--install", k["release"], CHART, "--repo", CHART_REPO, "--version", v["chart_version"],
                    "--namespace", k["namespace"], "--create-namespace", "-f", str(self.p["values"]),
                    *(["--dry-run=server"] if self.dry else [])], timeout=600)
-        return ("ok" if self.dry else "done"), f"{CHART} {v['chart_version']} {'rendered and validated by the API server' if self.dry else 'installed'}"
+        if self.dry:
+            return "ok", f"{CHART} {v['chart_version']} rendered and validated by the API server"
+        # An upgrade with the same pod template leaves the old pods in place, so the nodes keep the old
+        # provider config and kubelet keeps its cached tokens. Restart them, as the runbook's install does.
+        d = self._run(["kubectl", "get", "daemonset", "-n", k["namespace"], "-o", "json"]).json({}) or {}
+        names = [x["metadata"]["name"] for x in d.get("items", []) if "jfrog" in x["metadata"]["name"]]
+        for n in names:
+            self._run(["kubectl", "rollout", "restart", f"daemonset/{n}", "-n", k["namespace"]])
+            self._run(["kubectl", "rollout", "status", f"daemonset/{n}", "-n", k["namespace"], "--timeout=300s"], timeout=320)
+        return "done", f"{CHART} {v['chart_version']} installed; provider pods restarted"
 
     def s_daemonset(self):
         if self.dry:

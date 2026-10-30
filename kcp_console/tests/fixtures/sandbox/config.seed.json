@@ -48,7 +48,7 @@
     "match_images": [
       "example-aks-sandbox-test-docker-local.jfrog.io"
     ],
-    "default_cache_duration": "5h",
+    "default_cache_duration": "30m",
     "provider_name": "aks-sandbox-oidc",
     "azure_app_audience": "api://AzureADTokenExchange",
     "token_attributes_enabled": true,

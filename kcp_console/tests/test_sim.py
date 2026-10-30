@@ -10,7 +10,9 @@ from kcp_console.tests import runbook_strings as rs
 
 class ModelTest(unittest.TestCase):
     def test_default_values_render_the_pilot_file(self):
-        self.assertEqual(model.render_values(model.default_config()), rs.VALUES_SANDBOX)
+        cfg = model.default_config()
+        cfg["values"]["default_cache_duration"] = "5h"   # the pilot's setting; the default is now 30m (cache < token life)
+        self.assertEqual(model.render_values(cfg), rs.VALUES_SANDBOX)
 
     def test_defaults_validate(self):
         self.assertEqual(model.errors(model.validate(model.default_config())), [])
