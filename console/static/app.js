@@ -529,6 +529,50 @@ function applyCloud() {
   state.selectTab(want && want.getAttribute("role") === "tab" ? want.id : "tab-configure", "replace");
 }
 
+// Help: a circled "?" after a heading or field label; its explanation pops up on hover or keyboard
+// focus. Clicking it never toggles the checkbox or collapses the step it sits in.
+let tips = 0;
+function help(text) {
+  const id = `tip-${++tips}`;
+  return h("span", { class: "help", tabindex: "0", role: "button", "aria-label": "What is this?", "aria-describedby": id,
+    onclick: (e) => { e.preventDefault(); e.stopPropagation(); } },
+  "?", h("span", { class: "tip", role: "tooltip", id, "aria-hidden": "true" }, text));
+}
+const HELP = {
+  "#step-app > h2": "The serverless workload that gets JFrog tokens. Pick it from the list or fill the fields.",
+  "#cfg-scope": "The project or subscription to list workloads from.",
+  "#cfg-workload": "An existing workload. Choosing one fills the fields below and finds its identity.",
+  '[data-path="target.kind"]': "How the workload runs. It decides which Terraform module and wiring the pipeline uses.",
+  '[data-path="name"]': "The name this configuration is saved under. Defaults to the workload's name.",
+  '[data-path="target.gcp.project"]': "The Google Cloud project that hosts the workload.",
+  '[data-path="target.gcp.region"]': "The region the workload runs in, for example us-central1.",
+  '[data-path="target.gcp.name"]': "The Cloud Run service, job or function name.",
+  '[data-path="target.azure.subscription"]': "The Azure subscription that holds the workload.",
+  '[data-path="target.azure.resource_group"]': "The resource group the workload is in.",
+  '[data-path="target.azure.name"]': "The Container App or Function App name.",
+  "#step-jfrog > h2": "The JFrog instance that trusts the workload's identity and issues its short-lived tokens.",
+  '[data-path="jfrog.url"]': "Your JFrog Platform address, for example yourcompany.jfrog.io.",
+  '[data-path="jfrog.reader_group"]': "The JFrog group the issued tokens belong to. It decides what the workload can read.",
+  "#step-needs > h2": "How the workload gets JFrog tokens. Turn on one or both.",
+  '[data-path="pull_path.enabled"]': "The platform pulls the container image from JFrog. A rotator keeps a short-lived pull token in Secret Manager or Key Vault and points the registry at it.",
+  '[data-path="runtime.enabled"]': "The running code swaps its cloud identity for a JFrog token whenever it needs one, for example to download packages. Nothing is stored.",
+  '[data-path="jfrog.docker_repo"]': "The JFrog Docker repository the images are pulled from.",
+  '[data-path="pull_path.rotator_image"]': "The rotator job's image in Artifact Registry or ACR, pinned by digest.",
+  '[data-path="target.azure.key_vault_id"]': "The Key Vault that holds the rotated pull token. The app reads it by reference.",
+  "#scenario": "A recorded situation to rehearse, such as a token expiring or JFrog being down.",
+  "#duration": "How much simulated time to run. The clock is simulated, so a day takes seconds.",
+  "#seed": "Makes the random parts repeatable: the same seed gives the same run.",
+};
+function setupHelp() {
+  for (const [sel, text] of Object.entries(HELP)) {
+    const el = document.querySelector(sel);
+    if (!el) continue;
+    const target = el.matches("h2") ? el
+      : el.closest("label.choice")?.querySelector("b") || el.closest("label")?.querySelector(":scope > span");
+    if (target && !target.querySelector(".help")) target.append(help(text));
+  }
+}
+
 // Collapse and expand. Each form step's heading toggles its body; the open cloud in the sidebar
 // toggles its pages instead of reloading. Both carry aria-expanded and work from the keyboard.
 function setupCollapsibles() {
@@ -563,6 +607,7 @@ async function boot() {
   setupTabs();
   setupBack();
   applyCloud();
+  setupHelp();
   setupCollapsibles();
   renderTrail();
   $("legend").replaceChildren(...LEGEND.map(([cls, label]) => h("span", { class: "lg" }, h("i", { class: `sw ${cls}` }), label)));

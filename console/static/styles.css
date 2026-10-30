@@ -971,3 +971,33 @@ details[open] > summary::before { transform: rotate(45deg) translate(-2px, -2px)
   .sidenav .subnav .nav-item { padding-left: 12px; }
   .nav-group, .cloud-switch .nav-item[aria-expanded]::after { display: none; }
 }
+
+/* ================================================================== help */
+/* A circled "?" after a label or heading; its explanation pops up on hover or keyboard focus. */
+.help {
+  position: relative; display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 6px;
+  vertical-align: 1px; border: 1.5px solid currentColor; border-radius: 50%; color: var(--fg-3); opacity: 0.8;
+  font: 700 10px/1 var(--font); letter-spacing: 0; text-transform: none; cursor: help; user-select: none;
+  transition: color 120ms, box-shadow 120ms, opacity 120ms;
+}
+.help:hover, .help:focus-visible { color: var(--ai-1); opacity: 1; outline: none; box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.18); }
+.tip {
+  position: absolute; left: 50%; bottom: calc(100% + 10px); z-index: 40; width: max-content; max-width: 280px;
+  padding: 10px 12px; border-radius: 12px; color: var(--fg); background: var(--card-solid);
+  border: 1px solid var(--glass-edge); box-shadow: 0 14px 34px -12px rgba(36, 51, 82, 0.4), 0 0 0 1px rgba(124, 92, 255, 0.12);
+  font: 400 var(--t-sm)/1.45 var(--font); letter-spacing: 0; text-transform: none; text-align: left; white-space: normal;
+  opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, 4px);
+  transition: opacity 140ms ease, transform 140ms ease, visibility 0s linear 140ms;
+}
+.tip::after {
+  content: ""; position: absolute; top: 100%; left: 50%; margin-left: -6px;
+  border: 6px solid transparent; border-top-color: var(--card-solid);
+}
+.help:hover .tip, .help:focus-visible .tip, .help:focus .tip,
+.stat[data-tip]:hover::after, .stat[data-tip]:focus-visible::after {
+  opacity: 1; visibility: visible; transform: translate(-50%, 0); transition-delay: 0s;
+}
+/* Panels clip nothing, so a popup near a panel's top edge stays whole. */
+.panel, details.panel, .cfg-form .block, .essentials > div { overflow: visible; }
+.rail-step, .step-body, .card, .side-box { overflow: visible; }
+.rail-step > h2 .help { font-size: 10px; }
