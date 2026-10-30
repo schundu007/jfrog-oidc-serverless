@@ -17,6 +17,7 @@
   },
   "targets": {
     "artifact-reader": {
+      "dedicated_identity": null,
       "kind": "gcp_run_job",
       "name": "artifact-reader",
       "pull_enabled": false,
