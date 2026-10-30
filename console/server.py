@@ -191,6 +191,8 @@ class ConsoleServer:
         self.record_dir = Path(record_dir) if record_dir else None
         self.mode = "replay" if fixtures else "record" if record_dir else "live"
         self.cloud_lock = threading.Lock()
+        # Live listings take minutes: kept on disk. Replayed fixtures stay in memory.
+        self.inventory_cache = inventory.Cache(self.store.root / "inventory.json" if self.mode != "replay" else None)
         self.delivery = delivery
         self.runs = RunManager(self.store.root, cloud_shell=self._run_shell, tf_shell=self._tf_shell,
                                env=self.step_env(), simulate=self.simulate_config, store=self.store,
@@ -420,7 +422,8 @@ def _make_handler(console: ConsoleServer):
             if parts and parts[0] == "configs":
                 return self._configs(method, parts[1:])
             if method == "GET" and len(parts) == 2 and parts[0] == "inventory" and parts[1] in ("gcp", "azure"):
-                return self._inventory(parts[1], (self._query().get("scope") or [None])[0])
+                q = self._query()
+                return self._inventory(parts[1], (q.get("scope") or [None])[0], (q.get("refresh") or [""])[0] == "1")
             if method == "POST" and parts in (["preflight"], ["discover"]):
                 return self._cloud_step(parts[0], self._config_from_body())
             if parts and parts[0] == "runs":
@@ -472,22 +475,25 @@ def _make_handler(console: ConsoleServer):
                 raise HttpError(400, str(exc)) from None
             raise HttpError(405, "method not allowed")
 
-        def _inventory(self, cloud: str, scope):
-            if not console.cloud_lock.acquire(timeout=30):
-                raise HttpError(409, "another cloud operation is still running")
-            try:
-                sh = console.shell()
-                saved = []
-                for c in console.store.list():
-                    try:
-                        saved.append(console.store.get(c["name"]))
-                    except (FileNotFoundError, StoreError, ValueError):
-                        continue
-                result = inventory.run(cloud, sh, console.repo_root, scope=scope, configs=saved)
-                console.save_recording(sh, "inventory")
-                return self._json(200, result)
-            finally:
-                console.cloud_lock.release()
+        def _inventory(self, cloud: str, scope, refresh: bool):
+            raw = None if refresh else console.inventory_cache.get(cloud, scope)
+            if raw is None:
+                if not console.cloud_lock.acquire(timeout=30):
+                    raise HttpError(409, "another cloud operation is still running")
+                try:
+                    sh = console.shell()
+                    raw = inventory.fetch(cloud, sh, scope)
+                    console.save_recording(sh, "inventory")
+                finally:
+                    console.cloud_lock.release()
+                console.inventory_cache.put(cloud, scope, raw)
+            saved = []
+            for c in console.store.list():
+                try:
+                    saved.append(console.store.get(c["name"]))
+                except (FileNotFoundError, StoreError, ValueError):
+                    continue
+            return self._json(200, inventory.annotate(cloud, raw, console.repo_root, configs=saved))
 
         def _cloud_step(self, step: str, cfg: dict):
             # One cloud operation at a time: they share CLI logins and caches.

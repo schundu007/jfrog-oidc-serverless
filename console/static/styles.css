@@ -463,6 +463,7 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 .cfg-head h1 { font-size: 26px; font-weight: 600; margin: 0; }
 .cfg-head p { margin: 6px 0 0; }
 .cfg-crumb { margin: 0 0 2px; }
+.inv-refresh.link { padding: 0 0 0 8px; font-size: 12px; color: var(--accent); }
 .cfg-crumb button.link { padding: 0; font-size: 14px; color: var(--accent); }
 .cfg-table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border);
   border-radius: 10px; overflow: hidden; }

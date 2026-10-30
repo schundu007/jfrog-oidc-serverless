@@ -147,6 +147,34 @@ class InventoryTests(unittest.TestCase):
         res = inventory.run("gcp", Disabled(), self.repo)
         self.assertEqual(res["errors"], ["Cloud Run is not enabled in demo-nonprod-1234: nothing to onboard there"])
 
+    def test_cache_persists_and_skips_the_cloud(self):
+        path = self.repo / "inventory.json"
+        raw = inventory.fetch("gcp", Fake(), "")
+        inventory.Cache(path).put("gcp", "", raw)
+        cache = inventory.Cache(path)
+        hit = cache.get("gcp", "")
+        self.assertEqual([w["name"] for w in hit["workloads"]], [w["name"] for w in raw["workloads"]])
+        # The CLI default is also the scope it resolved to.
+        self.assertIsNotNone(cache.get("gcp", "demo-nonprod-1234"))
+        self.assertIsNone(cache.get("gcp", "legacy-apps-5678"))
+        self.assertIsNone(cache.get("azure", ""))
+        self.assertIn("fetched_at", hit)
+
+    def test_cache_skips_results_with_errors(self):
+        path = self.repo / "inventory.json"
+        inventory.Cache(path).put("gcp", "", inventory.fetch("gcp", Fake(fail={("gcloud", "run", "jobs", "list")}), ""))
+        self.assertIsNone(inventory.Cache(path).get("gcp", ""))
+
+    def test_cached_workloads_are_marked_onboarded_fresh(self):
+        raw = inventory.fetch("gcp", Fake(), "")
+        saved = {"target": {"kind": "gcp_run_job", "gcp": {"project": "demo-nonprod-1234", "region": "us-central1",
+                                                           "name": "nightly"}}}
+        before = inventory.annotate("gcp", raw, self.repo)
+        after = inventory.annotate("gcp", raw, self.repo, configs=[saved])
+        self.assertFalse(any(w["onboarded"] for w in before["workloads"]))
+        self.assertEqual([w["name"] for w in after["workloads"] if w["onboarded"]], ["nightly"])
+        self.assertEqual(after["defaults"]["jfrog_url"], "https://acme.jfrog.io")
+
     def test_only_read_commands(self):
         sh = Fake()
         inventory.run("gcp", sh, self.repo)

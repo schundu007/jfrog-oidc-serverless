@@ -399,15 +399,19 @@ async function runPreflight() {
 
 // ----------------------------------------------------------------- inventory
 
-async function loadInventory(scope = "") {
+async function loadInventory(scope = "", refresh = false) {
   const sel = $("cfg-workload");
   fill(sel, h("option", { value: "", text: "Loading workloads…" }));
+  const q = new URLSearchParams({ ...(scope && { scope }), ...(refresh && { refresh: "1" }) }).toString();
   try {
-    st.inv = await api(`/api/inventory/${cloud}${scope ? `?scope=${encodeURIComponent(scope)}` : ""}`);
+    st.inv = await api(`/api/inventory/${cloud}${q ? `?${q}` : ""}`);
   } catch (e) {
     fill(sel, h("option", { value: "", text: `Could not list workloads: ${e.message}` }));
     return;
   }
+  // Listings are cached server side; the time says how old this one is.
+  $("cfg-inv-refresh").title = st.inv.fetched_at
+    ? `Listed ${new Date(st.inv.fetched_at * 1000).toLocaleString()} · fetch again` : "Fetch again";
   // Every project / subscription the login can see: existing apps live in any of them.
   const current = cloud === "gcp" ? st.inv.defaults.project : st.inv.defaults.subscription;
   $("cfg-scope-label").textContent = cloud === "gcp" ? "Project" : "Subscription";
@@ -473,6 +477,7 @@ export async function initConfigure(deps) {
   $("cfg-discover-btn").addEventListener("click", runDiscover);
   $("cfg-workload").addEventListener("change", pickWorkload);
   $("cfg-scope").addEventListener("change", () => loadInventory($("cfg-scope").value));
+  $("cfg-inv-refresh").addEventListener("click", (e) => { e.preventDefault(); loadInventory($("cfg-scope").value, true); });
   $("cfg-preflight-btn").addEventListener("click", runPreflight);
   $("cfg-run-btn").addEventListener("click", async () => {
     st.showAll = true;

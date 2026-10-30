@@ -13,8 +13,11 @@ saved config or a delivered workspace (terraform/workspaces/*/configs) already t
 
 from __future__ import annotations
 
+import copy
 import json
 import re
+import threading
+import time
 from pathlib import Path
 
 from .shell import Shell
@@ -168,16 +171,63 @@ def delivered_configs(repo_root) -> list:
     return out
 
 
-def run(cloud: str, sh: Shell, repo_root=None, scope: str | None = None, configs=()) -> dict:
+def fetch(cloud: str, sh: Shell, scope: str | None = None) -> dict:
+    """The live listing: the slow part (minutes across many projects), cacheable."""
     errors: list = []
     if scope and not SCOPE_RE[cloud].match(scope):
         return {"cloud": cloud, "defaults": {}, "scopes": [], "workloads": [],
                 "errors": [f"not a {'project ID' if cloud == 'gcp' else 'subscription ID'}: {scope!r}"]}
     scopes = (_gcp_scopes if cloud == "gcp" else _azure_scopes)(sh, errors)
     defaults, workloads = (gcp if cloud == "gcp" else azure)(sh, errors, scope)
-    defaults["jfrog_url"] = _jfrog_url(repo_root)
+    return {"cloud": cloud, "defaults": defaults, "scopes": scopes, "workloads": workloads, "errors": errors,
+            "fetched_at": int(time.time())}
+
+
+def annotate(cloud: str, raw: dict, repo_root=None, configs=()) -> dict:
+    """A fetched listing plus what is local and changes often: the JFrog URL and onboarded marks."""
+    out = copy.deepcopy(raw)
+    out["defaults"]["jfrog_url"] = _jfrog_url(repo_root)
     done = onboarded_keys(cloud, [*configs, *delivered_configs(repo_root)])
-    for w in workloads:
+    for w in out["workloads"]:
         w["onboarded"] = _key(cloud, w) in done
-    workloads.sort(key=lambda w: (not w["supported"], w["onboarded"], w["kind"], w["name"]))
-    return {"cloud": cloud, "defaults": defaults, "scopes": scopes, "workloads": workloads, "errors": errors}
+    out["workloads"].sort(key=lambda w: (not w["supported"], w["onboarded"], w["kind"], w["name"]))
+    return out
+
+
+def run(cloud: str, sh: Shell, repo_root=None, scope: str | None = None, configs=()) -> dict:
+    return annotate(cloud, fetch(cloud, sh, scope), repo_root, configs)
+
+
+class Cache:
+    """Fetched listings by cloud and scope, kept in .console/inventory.json (IDs and names, no secrets)
+    so a page load or a restart doesn't wait on the clouds. Refresh replaces an entry."""
+
+    def __init__(self, path=None):
+        self.path = Path(path) if path else None
+        self._lock = threading.Lock()
+        try:
+            self._data = json.loads(self.path.read_text()) if self.path else {}
+        except (OSError, ValueError):
+            self._data = {}
+
+    def get(self, cloud: str, scope: str | None) -> dict | None:
+        with self._lock:
+            hit = self._data.get(f"{cloud}:{scope or ''}")
+            return copy.deepcopy(hit) if hit else None
+
+    def put(self, cloud: str, scope: str | None, raw: dict) -> None:
+        if raw.get("errors"):
+            return
+        resolved = (raw.get("defaults") or {}).get("project" if cloud == "gcp" else "subscription") or ""
+        with self._lock:
+            for s in {scope or "", resolved}:
+                self._data[f"{cloud}:{s}"] = copy.deepcopy(raw)
+            if not self.path:
+                return
+            try:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                tmp = self.path.with_suffix(".tmp")
+                tmp.write_text(json.dumps(self._data))
+                tmp.replace(self.path)
+            except OSError:
+                pass
