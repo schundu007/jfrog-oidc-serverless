@@ -1,0 +1,10 @@
+{
+  "terraform": {
+    "backend": {
+      "gcs": {
+        "bucket": "csb-test-257615-tfstate",
+        "prefix": "workspaces/gcp_csb-test-257615_us-central1"
+      }
+    }
+  }
+}
