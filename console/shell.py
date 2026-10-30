@@ -47,6 +47,12 @@ ENV_ALLOW = {
     "GOOGLE_APPLICATION_CREDENTIALS", "CLOUDSDK_CONFIG", "CLOUDSDK_CORE_PROJECT", "CLOUDSDK_PYTHON",
     "AZURE_CONFIG_DIR", "AZURE_EXTENSION_DIR", "AZURE_CORE_ONLY_SHOW_ERRORS",
     "TF_CLI_CONFIG_FILE", "TF_PLUGIN_CACHE_DIR", "SYSTEMROOT", "COMSPEC", "PATHEXT",
+    # AWS: profiles and files, and web identity (a pipeline's OIDC token file + role). Raw keys
+    # (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_SESSION_TOKEN) are not passed: use a profile.
+    "AWS_PROFILE", "AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE", "AWS_REGION", "AWS_DEFAULT_REGION",
+    "AWS_ROLE_ARN", "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_ROLE_SESSION_NAME", "AWS_CA_BUNDLE", "AWS_PAGER",
+    # Kubernetes / OpenShift
+    "KUBECONFIG", "KUBE_CONFIG_PATH",
 }
 ENV_ALLOW_PREFIXES = ("LC_",)
 REDACTED_OUTPUT = "[REDACTED: sensitive output not recorded]"
@@ -125,19 +131,23 @@ class Shell:
 
     # -- commands ----------------------------------------------------------------
 
-    def run(self, argv: list, timeout: float = 60.0, sensitive: bool = False, extra_env: dict | None = None) -> Result:
+    def run(self, argv: list, timeout: float = 60.0, sensitive: bool = False, extra_env: dict | None = None,
+            shown: list | None = None) -> Result:
+        """shown: what to log and record instead of argv, for an argv that carries values nobody may see
+        (e.g. a whole Lambda environment sent back with one managed change)."""
         if not isinstance(argv, (list, tuple)) or not argv or not all(isinstance(a, str) for a in argv):
             raise TypeError("argv must be a non-empty list of strings")
         argv = list(argv)
+        logged = list(shown) if shown else argv
         if self.mode == "replay":
             res = self._replay_cmd(argv)
         else:
             res = self._exec(argv, timeout, extra_env)
             if self.mode == "record":
-                self.recorded.append({"argv": [Path(argv[0]).name, *redact.argv(argv[1:])], "rc": res.rc,
+                self.recorded.append({"argv": [Path(logged[0]).name, *redact.argv(logged[1:])], "rc": res.rc,
                                       "stdout": REDACTED_OUTPUT if sensitive else redact.text(res.stdout),
                                       "stderr": redact.text(res.stderr)})
-        self._log(f"$ {' '.join(redact.argv(argv))} → exit {res.rc} ({res.seconds:.1f}s)")
+        self._log(f"$ {' '.join(redact.argv(logged))} → exit {res.rc} ({res.seconds:.1f}s)")
         return res
 
     def _exec(self, argv, timeout, extra_env) -> Result:

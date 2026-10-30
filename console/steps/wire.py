@@ -362,7 +362,8 @@ class Wire(AwsWire):
             raise WireRefused("target_changed", "the target changed since the diff was shown; review the new diff")
         ran = []
         for argv in fresh["commands"]:
-            res = self.sh.run(self._resolve(argv), timeout=600, sensitive=True)
+            # The filled argv may carry the app's other settings: log the placeholder form only.
+            res = self.sh.run(self._resolve(argv), timeout=600, sensitive=True, shown=argv)
             self._aws_cache = {}
             if not res.ok:
                 raise WireError(f"{' '.join(argv[:4])} failed after {len(ran)} of {len(fresh['commands'])} "

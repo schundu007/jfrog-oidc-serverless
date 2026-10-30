@@ -39,7 +39,8 @@ from .store import Store, StoreError
 
 STATIC_DIR = Path(__file__).parent / "static"
 # Page URLs: /gcp and /azure, and each tab under them; all serve index.html.
-PAGE_ROUTES = {"/gcp", "/azure"} | {f"/{c}/{t}" for c in ("gcp", "azure") for t in ("configs", "configure", "runs", "simulate")}
+CLOUDS = ("gcp", "azure", "aws", "openshift")
+PAGE_ROUTES = {f"/{c}" for c in CLOUDS} | {f"/{c}/{t}" for c in CLOUDS for t in ("configs", "configure", "runs", "simulate")}
 # Replay mode never runs the real terraform: plans and applies go to this fake,
 # which writes nothing outside the workspace and touches no provider.
 FAKE_TERRAFORM = Path(__file__).parent / "tests" / "fixtures" / "fake_terraform"
@@ -433,7 +434,7 @@ def _make_handler(console: ConsoleServer):
                 return self._json(200, console.session_info())
             if parts and parts[0] == "configs":
                 return self._configs(method, parts[1:])
-            if method == "GET" and len(parts) == 2 and parts[0] == "inventory" and parts[1] in ("gcp", "azure"):
+            if method == "GET" and len(parts) == 2 and parts[0] == "inventory" and parts[1] in CLOUDS:
                 q = self._query()
                 return self._inventory(parts[1], (q.get("scope") or [None])[0], (q.get("refresh") or [""])[0] == "1")
             if method == "POST" and parts == ["preflight"] and (self._query().get("stream") or [""])[0] == "1":

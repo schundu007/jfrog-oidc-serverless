@@ -19,6 +19,8 @@ SECRET_KEYS = {
     "access_token", "subject_token", "id_token", "refresh_token", "token", "password",
     "value", "identity_header", "x-identity-header", "jfrog_access_token", "authorization",
     "client_secret", "function_key", "key",
+    # AWS credentials and STS answers (container credentials endpoint, get-caller-identity never has these)
+    "secretaccesskey", "sessiontoken", "webidentitytoken", "aws_secret_access_key", "aws_session_token",
 }
 
 _PATTERNS = [
@@ -45,6 +47,12 @@ _PATTERNS = [
     # secret-bearing headers written as "Name: value"
     (re.compile(r"(?i)\b((?:x-functions-key|x-identity-header|x-console-token|x-jfrog-art-api)[\"']?\s*[:=]\s*[\"']?)"
                 r"[^\s,'\"}]+"), r"\1" + MASK),
+    # AWS: secret keys / session tokens in JSON or ini form, presigned and signed-request values
+    (re.compile(r'(?i)("(?:SecretAccessKey|SessionToken|WebIdentityToken|Token)"\s*:\s*")[^"]*(")'), r"\1" + MASK + r"\2"),
+    (re.compile(r"(?i)\b(aws_secret_access_key|aws_session_token)(\s*[=:]\s*)\S+"), r"\1\2" + MASK),
+    (re.compile(r"(?i)([?&](?:X-Amz-Signature|X-Amz-Security-Token|X-Amz-Credential)=)[^&#\s\"']+"), r"\1" + MASK),
+    (re.compile(r"(?i)\b(x-amz-security-token[\"']?\s*[:=]\s*[\"']?)[^\s,'\"}]+"), r"\1" + MASK),
+    (re.compile(r"(<(?:WebIdentityToken|SessionToken|SecretAccessKey)>)[^<]*(</)"), r"\1" + MASK + r"\2"),
     # "secret_field": "value" inside serialised JSON
     (re.compile(r'("(?:access_token|subject_token|id_token|refresh_token|password|value|token|client_secret)"\s*:\s*")[^"]*(")'),
      r"\1" + MASK + r"\2"),
