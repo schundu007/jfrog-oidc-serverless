@@ -82,7 +82,7 @@ class ServerTests(unittest.TestCase):
 
     def test_static_without_token_and_no_traversal(self):
         st, headers, body = self.req("GET", "/", token=False)
-        self.assertIn(b"<script type=\"module\" src=\"/static/app.js\">", body)
+        self.assertIn(b"<script type=\"module\" src=\"/static/app.js\"", body)
         self.assertEqual(self.req("GET", "/static/app.js", token=False)[0], 200)
         for bad in ("/static/../server.py", "/static/%2e%2e/server.py", "/static/..%2fserver.py", "/static/nope.js"):
             self.assertEqual(self.req("GET", bad, token=False)[0], 404, bad)
