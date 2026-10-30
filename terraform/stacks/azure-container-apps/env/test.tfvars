@@ -6,3 +6,5 @@ workload              = "artifact-reader"
 deployer_principal_id = "88c8ad8e-e5a6-42ee-bc66-d29fec03cefb"
 artifact_path         = "demo-generic/hello.txt"
 tags                  = { owner = "platform", managed-by = "terraform" }
+deploy_job            = true
+job_image             = "artifact-reader:27399e3c4909"
