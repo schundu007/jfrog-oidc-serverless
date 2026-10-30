@@ -21,6 +21,20 @@
     }
   },
   "targets": {
+    "ca-jfrog-demo": {
+      "dedicated_identity": null,
+      "function_app_id": null,
+      "identity_location": "West US 2",
+      "identity_resource_group": "rg-jfrog-types",
+      "identity_type": "system_assigned",
+      "kind": "azure_container_app",
+      "name": "ca-jfrog-demo",
+      "principal_id": "318106ba-58f5-47c1-8d91-2b62f42153a8",
+      "pull_enabled": false,
+      "runtime_enabled": true,
+      "runtime_ttl": 3600,
+      "subject": "318106ba-58f5-47c1-8d91-2b62f42153a8"
+    },
     "caj-artifact-reader": {
       "dedicated_identity": null,
       "function_app_id": null,
@@ -34,6 +48,48 @@
       "runtime_enabled": true,
       "runtime_ttl": 3600,
       "subject": "cc8c69fe-0078-4263-b20f-9a3efbfd825e"
+    },
+    "fnaca-jfrog-demo": {
+      "dedicated_identity": null,
+      "function_app_id": null,
+      "identity_location": "West US 2",
+      "identity_resource_group": "rg-jfrog-types",
+      "identity_type": "system_assigned",
+      "kind": "azure_functions_aca",
+      "name": "fnaca-jfrog-demo",
+      "principal_id": "3923b11c-bf56-4a4d-b0c0-de116f91b814",
+      "pull_enabled": false,
+      "runtime_enabled": true,
+      "runtime_ttl": 3600,
+      "subject": "3923b11c-bf56-4a4d-b0c0-de116f91b814"
+    },
+    "func-jfrog-flex-0e56": {
+      "dedicated_identity": "id-func-jfrog-flex-0e56-jfrog",
+      "function_app_id": null,
+      "identity_location": "West US 2",
+      "identity_resource_group": "rg-jfrog-types",
+      "identity_type": "user_assigned",
+      "kind": "azure_functions_flex",
+      "name": "func-jfrog-flex-0e56",
+      "principal_id": "",
+      "pull_enabled": false,
+      "runtime_enabled": true,
+      "runtime_ttl": 3600,
+      "subject": ""
+    },
+    "func-jfrog-prem-0e56": {
+      "dedicated_identity": null,
+      "function_app_id": null,
+      "identity_location": "West US 2",
+      "identity_resource_group": "rg-jfrog-types",
+      "identity_type": "system_assigned",
+      "kind": "azure_functions_premium",
+      "name": "func-jfrog-prem-0e56",
+      "principal_id": "1e388033-c986-413c-ba9a-4bba9bbc50fa",
+      "pull_enabled": false,
+      "runtime_enabled": true,
+      "runtime_ttl": 3600,
+      "subject": "1e388033-c986-413c-ba9a-4bba9bbc50fa"
     }
   }
 }
