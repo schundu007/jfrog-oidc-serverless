@@ -491,6 +491,8 @@ def _backend(cfg: dict) -> dict:
         fields["use_azuread_auth"] = True   # state accounts allow Entra auth only, no account keys
     if t == "s3":
         fields["use_lockfile"] = True       # S3-native state locking, no DynamoDB table
+    if t == "kubernetes":                   # state in a Secret (with a Lease lock) in the cluster itself
+        fields.update({k: b[k] for k in ("namespace", "config_context") if b.get(k)})
     return {t: fields}
 
 
