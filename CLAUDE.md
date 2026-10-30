@@ -103,7 +103,7 @@ code when real providers or APIs disagree:
 
 Verified in M4 by `terraform validate` (azurerm 5.12.0): the
 `azurerm_function_app_flex_consumption` argument names. Verified by `terraform validate`
-(Terraform 1.15.5, jfrog/platform 2.2.11, google 8.9.0, azurerm 5.12.0) on both
+(Terraform 1.15.5 then 1.17.1, jfrog/platform 2.2.11, google 8.9.0, azurerm 5.12.0) on both
 stacks: the `jfrog-oidc` module validations from the AKS pilot lessons. Verified live: the AR
 PATCH `updateMask` (gcloud sends the same mask).
 

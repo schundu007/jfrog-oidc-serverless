@@ -6,7 +6,7 @@ variables:
   SETUP_SERVICE_CONNECTION: jfrog-oidc-setup-v2
   BUILD_SERVICE_CONNECTION_ID: 00d00a9a-4216-46c9-bfb7-718d75d629d8 # jfrog-oidc-wif
   SETUP_SERVICE_CONNECTION_ID: ebe9d5e5-c476-4ede-9a9f-053f91c5319b # jfrog-oidc-setup-v2
-  TERRAFORM_VERSION: 1.15.5
+  TERRAFORM_VERSION: 1.17.1
 
   JFROG_URL: https://trial9hnw59.jfrog.io
   JFROG_OIDC_PROVIDER: ado-cdoazure
