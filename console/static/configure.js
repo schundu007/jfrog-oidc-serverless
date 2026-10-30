@@ -142,27 +142,12 @@ function renderSummary() {
   renderEssentials(c, d, found);
 }
 
-// Label/value pairs for the side panel, read from the form's configuration.
+// The side panel shows only what the form doesn't: the identity Discover found.
 function renderEssentials(c, d, found) {
-  const t = c.target?.[cloud] || {};
-  const dash = (v) => (v === undefined || v === null || v === "" ? "—" : String(v));
   const identity = d?.service_account || d?.principal_id || d?.client_id || "";
-  const paths = [c.runtime?.enabled ? "Runtime" : null, c.pull_path?.enabled ? "Image pull" : null].filter(Boolean);
-  const rows = [
-    ["Workload type", kindLabel(c.target?.kind)],
-    ...(cloud === "gcp"
-      ? [["Project", t.project], ["Region", t.region]]
-      : [["Subscription", t.subscription], ["Resource group", t.resource_group]]),
-    ["Workload", t.name],
-    ["Identity", identity ? h("span", { class: "with-icon" }, statusIcon(found ? "ok" : "warn"), h("span", { class: "mono", text: identity }))
-      : h("span", { class: "with-icon muted" }, statusIcon("skip"), "not discovered")],
-    ["JFrog", c.jfrog?.url],
-    ["Reader group", c.jfrog?.reader_group],
-    ["Token paths", paths.length ? h("span", { class: "chips-inline" }, paths.map((p) => h("span", { class: "pill info", text: p })))
-      : h("span", { class: "muted", text: "none" })],
-  ];
-  fill($("cfg-essentials"), rows.flatMap(([k, v]) => [h("dt", { text: k }),
-    h("dd", {}, v instanceof Node ? v : dash(v))]));
+  fill($("cfg-essentials"), h("dt", { text: "Identity" }), h("dd", {},
+    identity ? h("span", { class: "with-icon" }, statusIcon(found ? "ok" : "warn"), h("span", { class: "mono", text: identity }))
+      : h("span", { class: "with-icon muted" }, statusIcon("skip"), "not discovered")));
 }
 
 const STATUS_GLYPH = { ok: "✓", warn: "!", fail: "✕", error: "✕", warning: "!", skip: "–" };

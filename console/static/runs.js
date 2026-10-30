@@ -123,13 +123,12 @@ function render() {
       h("span", { class: `pill run-${snap.status}`, text: snap.status.replaceAll("_", " ") }),
       LIVE.has(snap.status) ? h("button", { type: "button", class: "secondary danger small-btn", onclick: cancel, text: "Cancel run" }) : null),
     h("dl", { class: "essentials" },
-      h("dt", { text: "Configuration" }), h("dd", { text: snap.name }),
       h("dt", { text: "Run ID" }), h("dd", { class: "mono", text: snap.id }),
       h("dt", { text: "Workload type" }), h("dd", { text: KIND_LABELS[snap.kind] || snap.kind }),
       h("dt", { text: "Started" }), h("dd", { text: (snap.created || "").replace("T", " ").replace("Z", " UTC") }),
       h("dt", { text: "Steps" }), h("dd", {}, h("span", { class: "meter", role: "img", "aria-label": `${done} of ${shown.length} steps succeeded` },
         shown.map((s) => h("i", { class: `meter-seg st-${s.status}` }))), ` ${done} / ${shown.length}`)));
-  note(snap.status === "waiting_approval" ? "Waiting for your approval." : LIVE.has(snap.status) ? "Running…" : "", LIVE.has(snap.status) ? "busy" : "");
+  note("", "");  // the run's status is the pill on its card
 
   // Steps that aren't built yet (planned) are left out rather than shown as skipped.
   fill($("run-steps"), shown.map((s, i) => h("li", {},
