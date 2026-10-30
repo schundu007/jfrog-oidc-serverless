@@ -182,34 +182,34 @@
             <span>Scenario</span>
             <select id="scenario" required></select>
           </label>
-          <p id="scenario-desc" class="muted small" hidden></p>
           <p id="scenario-meta" class="small"></p>
 
-          <fieldset>
-            <legend>Overrides</legend>
-            <div id="overrides" class="grid2"></div>
-          </fieldset>
+          <label class="field"><span>Duration</span>
+            <select id="duration"><option>6h</option><option>12h</option><option selected>24h</option><option>48h</option></select>
+          </label>
 
-          <fieldset>
-            <legend>Faults</legend>
-            <div id="faults" class="faults"></div>
-            <div class="row">
-              <select id="add-fault-type" aria-label="Fault type to add"></select>
-              <button type="button" id="add-fault" class="secondary">Add fault</button>
-            </div>
-          </fieldset>
+          <details class="advanced" id="sim-advanced">
+            <summary>Advanced</summary>
+            <fieldset>
+              <legend>Overrides</legend>
+              <div id="overrides" class="grid2"></div>
+            </fieldset>
 
-          <fieldset>
-            <legend>Load</legend>
-            <div id="load"></div>
-          </fieldset>
+            <fieldset>
+              <legend>Faults</legend>
+              <div id="faults" class="faults"></div>
+              <div class="row">
+                <select id="add-fault-type" aria-label="Fault type to add"></select>
+                <button type="button" id="add-fault" class="secondary">Add fault</button>
+              </div>
+            </fieldset>
 
-          <div class="grid2">
-            <label class="field"><span>Duration</span>
-              <select id="duration"><option>6h</option><option>12h</option><option selected>24h</option><option>48h</option></select>
-            </label>
+            <fieldset>
+              <legend>Load</legend>
+              <div id="load"></div>
+            </fieldset>
             <label class="field"><span>Seed</span><input id="seed" type="number" min="0" step="1" value="1"></label>
-          </div>
+          </details>
 
           <div class="row">
             <button id="run" type="submit" class="primary">Run simulation</button>
@@ -222,7 +222,7 @@
           <p id="form-error" class="error small" role="alert" hidden></p>
         </form>
 
-        <div class="results">
+        <div class="results" id="sim-results" hidden>
           <section id="verdict" class="card verdict" aria-live="polite">
           </section>
           <section class="card">
@@ -232,9 +232,10 @@
             </div>
             <div id="timeline" class="timeline"></div>
           </section>
-          <section class="card">
+          <details class="card events-box" id="events-box">
+            <summary><h2 id="ev-title">Events</h2></summary>
             <div class="card-head">
-              <h2>Events</h2>
+              <span></span>
               <div class="row">
                 <select id="ev-type" aria-label="Filter by event kind"><option value="">All kinds</option></select>
                 <input id="ev-search" type="search" placeholder="Filter text" aria-label="Filter events by text">
@@ -247,7 +248,7 @@
               </table>
             </div>
             <p id="ev-count" class="small muted"></p>
-          </section>
+          </details>
         </div>
       </div>
     </section>

@@ -571,3 +571,9 @@ td .pill, .act-last .pill, .step-table .pill { border: 0; background: none; padd
 .toolbar input[type="search"] { font: inherit; font-size: 14px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
   background: var(--card); color: var(--fg); }
 .empty p { margin: 0 0 14px; font-size: 16px; }
+
+.events-box > summary { cursor: pointer; list-style: none; }
+.events-box > summary::-webkit-details-marker { display: none; }
+.events-box > summary h2 { display: inline; }
+.events-box > summary::before { content: "▸ "; }
+.events-box[open] > summary::before { content: "▾ "; }

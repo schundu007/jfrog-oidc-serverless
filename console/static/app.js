@@ -251,11 +251,9 @@ function renderLoad(s) {
 function selectScenario(name) {
   const s = scenarioByName(name);
   state.scenario = s;
-  $("scenario-desc").textContent = s.description || "";
   const exp = (s.expect && s.expect.verdict) || "—";
-  $("scenario-meta").replaceChildren(
-    h("span", { class: "tag", text: KIND_LABELS[s.target_kind] || s.target_kind }), ", expected result ",
-    h("span", { class: `badge ${exp}`, text: exp }));
+  $("scenario").title = s.description || "";
+  $("scenario-meta").replaceChildren(h("span", { class: `badge ${exp}`, text: `expect ${exp}` }));
   renderOverrides(s);
   renderFaults(s);
   renderLoad(s);
@@ -348,31 +346,27 @@ function renderVerdict(r) {
   const box = $("verdict");
   box.className = `card verdict v-${r.verdict}`;
   const failCls = (n) => (n > 0 ? "bad" : "");
-  fill(box, 
+  fill(box,
     h("div", { class: "verdict-head" },
       h("span", { class: `badge big ${r.verdict}`, text: r.verdict.toUpperCase() }),
       h("div", {},
         h("h2", { text: r.scenario }),
-        h("p", { class: "muted small" }, `${r.target_label} · ${Math.round(r.duration_s / 3600)} h from ${r.start} · seed ${r.seed}`,
+        h("p", { class: "muted small" }, `${Math.round(r.duration_s / 3600)} h · seed ${r.seed}`,
           expected ? h("span", { class: expected === r.verdict ? "match" : "mismatch",
-            text: expected === r.verdict ? ` · matches expectation (${expected})` : ` · expected ${expected}` }) : null))),
+            text: expected === r.verdict ? " · as expected" : ` · expected ${expected}` }) : null))),
     h("div", { class: "stats" },
-      stat("rotations ok / failed", `${s.rotations_ok} / ${s.rotations_failed}`, failCls(s.rotations_failed)),
-      stat("pulls ok / cached / failed", `${s.pulls_ok} / ${s.pulls_cached} / ${s.pulls_failed}`, failCls(s.pulls_failed)),
-      stat("requests ok / cached", `${s.requests_ok} / ${s.requests_ok_cached}`),
-      stat("requests unavailable / failed", `${s.requests_unavailable} / ${s.requests_failed}`, failCls(s.requests_failed + s.requests_unavailable)),
-      stat("unusable-credential exposure", `${Math.round(s.exposure_s / 60)} min`, failCls(s.exposure_s)),
-      stat("alert first fired", s.alert_first_fired_s == null ? "—" : hhmm(s.alert_first_fired_s))),
-    r.chain && r.chain.length ? h("div", {}, h("h3", { text: "Causal chain" }), h("ol", { class: "chain" }, r.chain.map((c) => h("li", { text: c })))) : null,
+      stat("Rotations ok / failed", `${s.rotations_ok} / ${s.rotations_failed}`, failCls(s.rotations_failed)),
+      stat("Pulls ok / cached / failed", `${s.pulls_ok} / ${s.pulls_cached} / ${s.pulls_failed}`, failCls(s.pulls_failed)),
+      stat("Requests ok / failed", `${s.requests_ok + s.requests_ok_cached} / ${s.requests_failed + s.requests_unavailable}`,
+        failCls(s.requests_failed + s.requests_unavailable)),
+      stat("Exposure", `${Math.round(s.exposure_s / 60)} min`, failCls(s.exposure_s)),
+      stat("Alert", s.alert_first_fired_s == null ? "—" : hhmm(s.alert_first_fired_s)),
+      m.pull_ttl_seconds ? stat("Pull TTL / min safe", `${m.pull_ttl_seconds} / ${m.min_safe_ttl_seconds} s`,
+        m.pull_ttl_seconds < m.min_safe_ttl_seconds ? "bad" : "") : null,
+      m.pull_ttl_seconds ? stat("Missed rotations survived", String(m.survives_missed_rotations)) : null),
     r.root_cause ? h("div", { class: "root-cause" }, h("h3", { text: "Root cause" }), h("p", { text: r.root_cause })) : null,
-    m.pull_ttl_seconds ? h("div", { class: "ttl-math" }, h("h3", { text: "TTL math" }),
-      h("p", { class: "small" },
-        `Pull TTL ${m.pull_ttl_seconds} s, rotation every ${m.rotation_interval_seconds} s, pickup lag ${m.pickup_lag_seconds || 0} s → ` +
-        `survives ${m.survives_missed_rotations} missed rotation(s). Minimum safe TTL ${m.min_safe_ttl_seconds} s (2 × interval + lag). ` +
-        (m.alert_lead_seconds != null ? `The stale-rotation alert (${m.alert_after_seconds} s) leaves ${m.alert_lead_seconds} s to react before the first failure. ` : "") +
-        `MIN_TTL_SECONDS ${m.min_ttl_seconds}.`)) : null,
-    h("p", { class: "muted small" }, `${s.emulator_requests} emulated HTTP calls, ${s.tokens_minted} tokens minted, ${s.elapsed_s.toFixed(2)} s wall time. ` +
-      "Real jfrog_oidc and rotate.py code against emulated endpoints."));
+    r.chain && r.chain.length ? h("details", {}, h("summary", { text: "Causal chain" }),
+      h("ol", { class: "chain" }, r.chain.map((c) => h("li", { text: c })))) : null);
 }
 
 function renderEvents() {
@@ -383,10 +377,12 @@ function renderEvents() {
   $("events").tBodies[0].replaceChildren(...shown.map((e) =>
     h("tr", { class: `ev-${e.type}${/fail|error|401|403|refus|FIRING|expired/i.test(e.message) ? " ev-bad" : ""}` },
       h("td", { class: "mono", text: hhmm(e.t) }), h("td", { text: e.type }), h("td", { class: "msg", text: e.message }))));
+  $("ev-title").textContent = `Events (${state.events.length})`;
   $("ev-count").textContent = `${rows.length} of ${state.events.length} events` + (rows.length > shown.length ? ` (first ${shown.length} shown)` : "");
 }
 
 function renderResult(r) {
+  $("sim-results").hidden = false;
   renderVerdict(r);
   renderTimeline($("timeline"), r);
   state.events = r.events || state.events;
