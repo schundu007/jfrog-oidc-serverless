@@ -38,6 +38,8 @@ from .steps import discover, preflight
 from .store import Store, StoreError
 
 STATIC_DIR = Path(__file__).parent / "static"
+# Page URLs: /gcp and /azure, and each tab under them; all serve index.html.
+PAGE_ROUTES = {"/gcp", "/azure"} | {f"/{c}/{t}" for c in ("gcp", "azure") for t in ("configs", "configure", "runs", "simulate")}
 # Replay mode never runs the real terraform: plans and applies go to this fake,
 # which writes nothing outside the workspace and touches no provider.
 FAKE_TERRAFORM = Path(__file__).parent / "tests" / "fixtures" / "fake_terraform"
@@ -385,7 +387,7 @@ def _make_handler(console: ConsoleServer):
             if path == "/favicon.ico":
                 self._headers(204, "text/plain", 0)
                 return
-            name = "index.html" if path == "/" else path[len("/static/"):] if path.startswith("/static/") else None
+            name = "index.html" if path.rstrip("/") in PAGE_ROUTES or path == "/" else path[len("/static/"):] if path.startswith("/static/") else None
             if name not in console.static_files:  # allow-list: no request path ever reaches the filesystem
                 raise HttpError(404, "not found")
             data = (STATIC_DIR / name).read_bytes()

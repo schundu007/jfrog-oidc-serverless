@@ -14,10 +14,11 @@ const $ = (id) => document.getElementById(id);
 const REDIRECTING = location.hostname === "localhost";
 if (REDIRECTING) location.replace(location.href.replace("//localhost", "//127.0.0.1"));
 
-// Google Cloud and Azure are separate pages (?cloud=gcp|azure); nothing on one shows the other.
+// Google Cloud and Azure are separate pages (/gcp, /azure; ?cloud= still works); nothing on one
+// shows the other. Each tab has its own path: /<cloud>/configs|configure|runs|simulate.
 const CLOUDS = { gcp: "Google Cloud", azure: "Azure" };
-const CLOUD = Object.hasOwn(CLOUDS, new URLSearchParams(location.search).get("cloud"))
-  ? new URLSearchParams(location.search).get("cloud") : null;
+const CLOUD = [location.pathname.split("/")[1], new URLSearchParams(location.search).get("cloud")]
+  .find((c) => Object.hasOwn(CLOUDS, c)) || null;
 const ofCloud = (kind) => !!kind && String(kind).startsWith(`${CLOUD}_`);
 
 // replaceChildren() would turn null children into the text "null"; drop them.
@@ -124,7 +125,7 @@ function showError(msg) {
 
 function setupTabs() {
   const tabs = [...document.querySelectorAll('[role="tab"]')];
-  const select = (tab, focus = true) => {
+  const select = (tab, focus = true, how = "push") => {
     for (const t of tabs) {
       const on = t === tab;
       t.setAttribute("aria-selected", String(on));
@@ -132,8 +133,14 @@ function setupTabs() {
       $(t.getAttribute("aria-controls")).hidden = !on;
     }
     if (focus) tab.focus();
+    const path = CLOUD ? `/${CLOUD}/${tab.id.slice("tab-".length)}` : "/";
+    if (how !== "none" && location.pathname !== path) history[how === "replace" ? "replaceState" : "pushState"](null, "", path);
   };
-  state.selectTab = (id) => select($(id), false);
+  state.selectTab = (id, how = "push") => select($(id), false, how);
+  window.addEventListener("popstate", () => {
+    const t = $(`tab-${location.pathname.split("/")[2] || ""}`);
+    if (t && tabs.includes(t)) select(t, false, "none");
+  });
   tabs.forEach((t) => {
     t.addEventListener("click", () => select(t));
     t.addEventListener("keydown", (e) => {
@@ -438,7 +445,8 @@ function applyCloud() {
   }
   $("cloud-switch").hidden = false;
   $("tabs").hidden = false;
-  state.selectTab("tab-configure");
+  const want = $(`tab-${location.pathname.split("/")[2] || ""}`);
+  state.selectTab(want && want.getAttribute("role") === "tab" ? want.id : "tab-configure", "replace");
 }
 
 async function boot() {

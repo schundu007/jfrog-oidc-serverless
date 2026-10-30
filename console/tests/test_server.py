@@ -62,6 +62,9 @@ class ServerTests(unittest.TestCase):
     def test_cross_site_page_navigation_allowed_but_not_api(self):
         nav = {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"}
         self.assertEqual(self.req("GET", "/?cloud=gcp", token=False, headers=nav)[0], 200)
+        for p in ("/gcp", "/azure/runs", "/gcp/configure", "/azure/simulate", "/gcp/configs"):
+            self.assertEqual(self.req("GET", p, token=False, headers=nav)[0], 200, p)
+        self.assertEqual(self.req("GET", "/aws/runs", token=False, headers=nav)[0], 404)
         self.assertEqual(self.req("GET", "/api/schema", headers=nav)[0], 403)
         fetch = {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "cors"}
         self.assertEqual(self.req("GET", "/", token=False, headers=fetch)[0], 403)
