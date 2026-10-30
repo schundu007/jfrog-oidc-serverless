@@ -1,6 +1,6 @@
 """Cloud Run function that reads from Artifactory with a short-lived token.
 
-Env (set by terraform/examples/complete/gcp.tf):
+Env (set by terraform/stacks/all-targets/gcp.tf):
     JFROG_URL, JFROG_OIDC_PROVIDER=gcp-cloudrun, JFROG_OIDC_AUDIENCE=jfrog-gcp, JFROG_OIDC_SOURCE=gcp
     JFROG_HEALTHCHECK_PATH  optional artifact for /healthz/jfrog to read
 

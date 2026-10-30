@@ -1,0 +1,48 @@
+# Build -> push -> deploy -> run for a Cloud Run job workload.
+# The base image comes through JFrog and the image goes to Artifact Registry;
+# both logins come from the service connection's OIDC token (no stored secrets).
+# Trust: terraform/stacks/ado-trust. Infrastructure: pipelines/stack-setup.yml.
+
+trigger:
+  branches:
+    include: [main]
+  paths:
+    include: [apps/artifact-reader, client/src, pipelines/gcp-build-deploy.yml, pipelines/scripts]
+
+pr: none
+
+parameters:
+  - name: environment
+    type: string
+    default: test
+    values: [test]
+
+variables:
+  - template: vars/${{ parameters.environment }}.yml
+  - name: APP
+    value: artifact-reader
+  - name: WORKLOAD
+    value: artifact-reader
+  - name: BASE_IMAGE
+    value: library/python:3.12-slim
+
+pool:
+  vmImage: ubuntu-24.04
+
+jobs:
+  - job: build_deploy
+    displayName: Build, push, deploy, run
+    timeoutInMinutes: 30
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - task: AzureCLI@2
+        displayName: Build, push, deploy, run (OIDC)
+        inputs:
+          azureSubscription: ${{ variables.BUILD_SERVICE_CONNECTION }}
+          scriptType: bash
+          scriptLocation: scriptPath
+          scriptPath: pipelines/scripts/gcp-build-deploy.sh
+          addSpnToEnvironment: true
+        env:
+          GCP_SERVICE_ACCOUNT: $(GCP_BUILD_SERVICE_ACCOUNT)

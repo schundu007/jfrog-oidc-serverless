@@ -1,0 +1,9 @@
+jfrog_url                = "https://trial9hnw59.jfrog.io"
+jfrog_reader_group       = "serverless-readers"
+gcp_project_id           = "csb-test-257615"
+gcp_region               = "us-central1"
+workload                 = "artifact-reader"
+deployer_service_account = "ado-build@csb-test-257615.iam.gserviceaccount.com"
+artifact_path            = "demo-generic/hello.txt"
+deploy_job               = true
+job_image                = "us-central1-docker.pkg.dev/csb-test-257615/platform/jfrog-oidc-demo:0.1.0"

@@ -44,8 +44,8 @@ terraform/modules/
   jfrog-oidc/                       OIDC integrations + per-workload identity mappings
   gcp-pull-path/                    AR remote repos, secret, rotator job, scheduler, alert
   azure-identity-and-pull-path/     Entra audience app, rotator identity/job, Key Vault wiring, alert
-terraform/examples/complete/        both clouds end to end, incl. all 3 Functions hosting models
-samples/                   Cloud Run function and Azure Function using the client
+terraform/stacks/all-targets/        both clouds end to end, incl. all 3 Functions hosting models
+apps/                   Cloud Run function and Azure Function using the client
 ```
 
 ## Docker registry host
@@ -54,7 +54,7 @@ Images are pulled from the JFrog Docker repo's **own host**,
 `<server>-<repo-key>.jfrog.io` (for example `acme-docker-virtual.jfrog.io/orders:1.4.2`).
 Do not use `<server>.jfrog.io/<repo-key>/...`: that repository-path method
 failed for local repos on the AKS pilot's instance. Set `jfrog_docker_repo` (or
-`jfrog_docker_host` to override the derived name) in the example. In the console,
+`jfrog_docker_host` to override the derived name) in the stack. In the console,
 the same fields are `jfrog.docker_repo` and `jfrog.docker_host`. Each AR Docker
 remote proxies one JFrog repo through that host. See `docs/aks-pilot-lessons.md`.
 
@@ -92,7 +92,7 @@ every mapping here. JFrog caps mapping token lifetime at 24h.
    forbids pulling base images from Docker Hub.
    Do not host it behind the JFrog remote it refreshes. If the token ever
    lapses, the rotator must still start to fix it.
-3. **Apply Terraform** from `terraform/examples/complete` (copy
+3. **Apply Terraform** from `terraform/stacks/all-targets` (copy
    `terraform.tfvars.example`). The JFrog provider needs an admin token in
    `JFROG_ACCESS_TOKEN`; in CI, get it with `jf eot` from your pipeline's own OIDC
    rather than storing one.
@@ -176,7 +176,7 @@ these points on a non-prod project, subscription and JFrog project first:
    instead; override `alert.query`.
 7. **`azurerm_function_app_flex_consumption` arguments.** These are recent; check
    them against the azurerm version you pin.
-8. **Cloud Run functions builds.** The example grants the default compute SA
+8. **Cloud Run functions builds.** The `all-targets` stack grants the default compute SA
    (the default build SA on newer projects) read access on the AR repos. If you
    use a custom build service account, grant that one instead.
 

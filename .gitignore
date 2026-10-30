@@ -31,3 +31,5 @@ terraform.tfvars
 # Local console state, including saved configs and your own runbook: never commit (the repo is public)
 .console/
 .kcp-console/
+tfplan
+backend_override.tf

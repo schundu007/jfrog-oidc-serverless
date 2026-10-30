@@ -1,60 +1,82 @@
-# Azure only, end to end: a Container Apps job reads JFrog artifacts with a
-# short-lived OIDC token. Images come from ACR and are pulled with the job's own
-# managed identity; JFrog holds artifacts (files, packages), not images. No stored
-# credentials anywhere.
+# Azure: a Container Apps job reads JFrog artifacts with a short-lived OIDC
+# token. Images come from ACR and are pulled with the job's own managed identity;
+# JFrog holds the artifacts. No stored credentials anywhere.
 #
-#   apply 1 (deploy_demo = false): resource group, ACR, Container Apps environment,
-#           the job's managed identity, the Entra audience app, JFrog trust for
-#           Entra tokens and the job's mapping.
-#   then:   build samples/cloud-run-job into ACR (output image_build_command).
-#   apply 2 (deploy_demo = true): the Container Apps job that exchanges its Entra
-#           token for a 1 h JFrog token and downloads var.demo_artifact.
+# Run by the ADO setup pipeline. The build pipeline pushes the image and rolls
+# it out, so the job image is ignored here after creation.
+#
+#   apply 1 (deploy_job = false): resource group, ACR, Container Apps environment,
+#           the workload's managed identity, the Entra audience app, JFrog trust
+#           for Entra tokens and the workload's mapping.
+#   then:   the build pipeline pushes apps/artifact-reader into ACR.
+#   apply 2 (deploy_job = true): the Container Apps job.
 
 locals {
-  name = "jfrog-oidc-demo"
-  # ACR names are global, 5-50 alphanumerics: derive one from the subscription.
-  acr_name = "jfrogoidc${substr(replace(var.azure_subscription_id, "-", ""), 0, 8)}"
+  # ACR names are global, 5-50 alphanumerics: derive one unless given.
+  acr_name = coalesce(var.acr_name, substr("cr${replace(var.workload, "-", "")}${replace(var.azure_subscription_id, "-", "")}", 0, 32))
 }
 
-resource "azurerm_resource_group" "demo" {
-  name     = "${local.name}-rg"
+resource "azurerm_resource_group" "workload" {
+  name     = "rg-${var.workload}"
   location = var.azure_location
+  tags     = var.tags
 }
 
-resource "azurerm_log_analytics_workspace" "demo" {
-  name                = "${local.name}-logs"
-  location            = azurerm_resource_group.demo.location
-  resource_group_name = azurerm_resource_group.demo.name
+resource "azurerm_log_analytics_workspace" "workload" {
+  name                = "log-${var.workload}"
+  location            = azurerm_resource_group.workload.location
+  resource_group_name = azurerm_resource_group.workload.name
   sku                 = "PerGB2018"
-  retention_in_days   = 30
+  retention_in_days   = var.log_retention_days
+  tags                = var.tags
 }
 
-resource "azurerm_container_app_environment" "demo" {
-  name                       = "${local.name}-env"
-  location                   = azurerm_resource_group.demo.location
-  resource_group_name        = azurerm_resource_group.demo.name
-  log_analytics_workspace_id = azurerm_log_analytics_workspace.demo.id
+resource "azurerm_container_app_environment" "workload" {
+  name                       = "cae-${var.workload}"
+  location                   = azurerm_resource_group.workload.location
+  resource_group_name        = azurerm_resource_group.workload.name
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.workload.id
+  tags                       = var.tags
 }
 
 # Images live in ACR; the job pulls them with its own identity (AcrPull).
-resource "azurerm_container_registry" "platform" {
+resource "azurerm_container_registry" "images" {
   name                = local.acr_name
-  location            = azurerm_resource_group.demo.location
-  resource_group_name = azurerm_resource_group.demo.name
-  sku                 = "Basic"
+  location            = azurerm_resource_group.workload.location
+  resource_group_name = azurerm_resource_group.workload.name
+  sku                 = var.acr_sku
   admin_enabled       = false
+  tags                = var.tags
 }
 
-resource "azurerm_user_assigned_identity" "demo" {
-  name                = "id-${local.name}"
-  location            = azurerm_resource_group.demo.location
-  resource_group_name = azurerm_resource_group.demo.name
+resource "azurerm_user_assigned_identity" "workload" {
+  name                = "id-${var.workload}"
+  location            = azurerm_resource_group.workload.location
+  resource_group_name = azurerm_resource_group.workload.name
+  tags                = var.tags
 }
 
-resource "azurerm_role_assignment" "demo_acr_pull" {
-  scope                = azurerm_container_registry.platform.id
+resource "azurerm_role_assignment" "workload_acr_pull" {
+  scope                = azurerm_container_registry.images.id
   role_definition_name = "AcrPull"
-  principal_id         = azurerm_user_assigned_identity.demo.principal_id
+  principal_id         = azurerm_user_assigned_identity.workload.principal_id
+  principal_type       = "ServicePrincipal"
+}
+
+# The deployer (ADO build pipeline identity) pushes images and rolls out the job.
+resource "azurerm_role_assignment" "deployer_acr_push" {
+  count                = var.deployer_principal_id == "" ? 0 : 1
+  scope                = azurerm_container_registry.images.id
+  role_definition_name = "AcrPush"
+  principal_id         = var.deployer_principal_id
+  principal_type       = "ServicePrincipal"
+}
+
+resource "azurerm_role_assignment" "deployer_contributor" {
+  count                = var.deployer_principal_id == "" ? 0 : 1
+  scope                = azurerm_resource_group.workload.id
+  role_definition_name = "Contributor"
+  principal_id         = var.deployer_principal_id
   principal_type       = "ServicePrincipal"
 }
 
@@ -62,15 +84,15 @@ resource "azurerm_role_assignment" "demo_acr_pull" {
 module "azure" {
   source = "../../modules/azure-identity-and-pull-path"
 
-  name_prefix         = "jfrogdemo"
-  location            = azurerm_resource_group.demo.location
-  resource_group_name = azurerm_resource_group.demo.name
+  name_prefix         = var.workload
+  location            = azurerm_resource_group.workload.location
+  resource_group_name = azurerm_resource_group.workload.name
   jfrog_url           = var.jfrog_url
   jfrog_provider_name = module.jfrog_oidc.azure_provider_name
   pull_path_enabled   = false
 
   audience_assignees = {
-    (local.name) = azurerm_user_assigned_identity.demo.principal_id
+    (var.workload) = azurerm_user_assigned_identity.workload.principal_id
   }
 }
 
@@ -78,32 +100,31 @@ module "jfrog_oidc" {
   source = "../../modules/jfrog-oidc"
 
   azure = {
-    provider_name   = "azure-entra"
+    provider_name   = var.jfrog_provider_name
     tenant_id       = module.azure.tenant_id
     audience_app_id = module.azure.audience_app_id
   }
 
   workloads = {
-    "azure-aca-demo" = {
+    (var.workload) = {
       cloud       = "azure"
-      subject     = azurerm_user_assigned_identity.demo.principal_id
+      subject     = azurerm_user_assigned_identity.workload.principal_id
       groups      = [var.jfrog_reader_group]
       expires_in  = 3600
-      description = "Container Apps demo job runtime token"
+      description = "Container Apps job ${var.workload} (runtime read)"
     }
   }
 }
 
-# Runtime artifact read: the job exchanges its Entra token for a 1 h JFrog token
-# (client/ library) and downloads var.demo_artifact.
-resource "azurerm_container_app_job" "runtime_demo" {
-  count                        = var.deploy_demo ? 1 : 0
-  name                         = "jfrog-runtime-demo"
-  location                     = azurerm_resource_group.demo.location
-  resource_group_name          = azurerm_resource_group.demo.name
-  container_app_environment_id = azurerm_container_app_environment.demo.id
+resource "azurerm_container_app_job" "workload" {
+  count                        = var.deploy_job ? 1 : 0
+  name                         = "caj-${var.workload}"
+  location                     = azurerm_resource_group.workload.location
+  resource_group_name          = azurerm_resource_group.workload.name
+  container_app_environment_id = azurerm_container_app_environment.workload.id
   replica_timeout_in_seconds   = 300
   replica_retry_limit          = 0
+  tags                         = var.tags
 
   manual_trigger_config {
     parallelism              = 1
@@ -112,18 +133,18 @@ resource "azurerm_container_app_job" "runtime_demo" {
 
   identity {
     type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_identity.demo.id]
+    identity_ids = [azurerm_user_assigned_identity.workload.id]
   }
 
   registry {
-    server   = azurerm_container_registry.platform.login_server
-    identity = azurerm_user_assigned_identity.demo.id
+    server   = azurerm_container_registry.images.login_server
+    identity = azurerm_user_assigned_identity.workload.id
   }
 
   template {
     container {
-      name   = "demo"
-      image  = "${azurerm_container_registry.platform.login_server}/${var.demo_image}"
+      name   = var.workload
+      image  = "${azurerm_container_registry.images.login_server}/${var.job_image}"
       cpu    = 0.25
       memory = "0.5Gi"
 
@@ -145,14 +166,19 @@ resource "azurerm_container_app_job" "runtime_demo" {
       }
       env {
         name  = "AZURE_CLIENT_ID"
-        value = azurerm_user_assigned_identity.demo.client_id
+        value = azurerm_user_assigned_identity.workload.client_id
       }
       env {
-        name  = "DEMO_ARTIFACT"
-        value = var.demo_artifact
+        name  = "JFROG_ARTIFACT_PATH"
+        value = var.artifact_path
       }
     }
   }
 
-  depends_on = [azurerm_role_assignment.demo_acr_pull, module.azure]
+  lifecycle {
+    # The build pipeline owns the image tag.
+    ignore_changes = [template[0].container[0].image]
+  }
+
+  depends_on = [azurerm_role_assignment.workload_acr_pull, module.azure]
 }

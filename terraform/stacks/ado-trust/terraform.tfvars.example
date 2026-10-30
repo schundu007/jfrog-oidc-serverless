@@ -1,0 +1,11 @@
+jfrog_url             = "https://acme.jfrog.io"
+jfrog_reader_group    = "serverless-readers"
+ado_org               = "contoso"
+azure_tenant_id       = "00000000-0000-0000-0000-000000000000"
+azure_subscription_id = "00000000-0000-0000-0000-000000000000"
+azure_identity        = { name = "id-ado-contoso", resource_group = "ado-cicd-rg" }
+connections = {
+  build = { name = "jfrog-oidc-wif", subject = "/eid1/c/pub/t/<tenant>/a/<app>/sc/<org-id>/<connection-id>" }
+  setup = { name = "jfrog-oidc-setup", subject = "/eid1/c/pub/t/<tenant>/a/<app>/sc/<org-id>/<connection-id>" }
+}
+gcp_project_id                = "my-project"

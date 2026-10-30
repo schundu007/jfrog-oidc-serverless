@@ -15,9 +15,17 @@ it before starting any milestone. Record progress in `docs/progress.md`.
 - `rotator/` — the pull-path rotator for GCP (Secret Manager + AR repoint) and
   Azure (Key Vault + ARM refresh).
 - `terraform/modules/` — `jfrog-oidc`, `gcp-pull-path`,
-  `azure-identity-and-pull-path`. `terraform/examples/complete` wires all
-  targets.
-- `samples/` — a Cloud Run function and an Azure Function using the client.
+  `azure-identity-and-pull-path`. `terraform/stacks/` holds the deployable root
+  configs: `ado-trust` (one-time ADO trust for JFrog, GCP and Azure),
+  `gcp-cloud-run`, `azure-container-apps` (one workload each, inputs in
+  `env/<env>.tfvars`) and `all-targets`.
+- `apps/` — workload images and functions that use the client:
+  `artifact-reader` (job for Cloud Run and Container Apps), `cloud-run-function`,
+  `azure-function`.
+- `pipelines/` — Azure DevOps pipelines (the only CI/CD): `stack-setup.yml`
+  (Terraform plan, environment approval, apply) and `gcp-build-deploy.yml`. Every
+  job authenticates with its service connection's OIDC token; settings per
+  environment in `pipelines/vars/<env>.yml`.
 - `console/` — to be built, per the spec.
 - `kcp_console/` — the KCP console: the AKS kubelet credential provider sibling
   (spec `docs/kcp-console-spec.md`, progress `docs/kcp-progress.md`). Same rules
@@ -38,7 +46,7 @@ PYTHONPATH=client/src:. python -m unittest discover -s console/tests -v
 # simulation scenarios vs expectations (M1+)
 PYTHONPATH=client/src:rotator:. python -m console.sim check-all
 # terraform (needs network to the provider registry)
-terraform -chdir=terraform/examples/complete init -backend=false && terraform -chdir=terraform/examples/complete validate
+terraform -chdir=terraform/stacks/all-targets init -backend=false && terraform -chdir=terraform/stacks/all-targets validate
 terraform fmt -recursive -check terraform/
 # run the console (M2+)
 PYTHONPATH=client/src:rotator:. python -m console
@@ -96,7 +104,7 @@ code when real providers or APIs disagree:
 Verified in M4 by `terraform validate` (azurerm 5.12.0): the
 `azurerm_function_app_flex_consumption` argument names. Verified by `terraform validate`
 (Terraform 1.15.5, jfrog/platform 2.2.11, google 8.9.0, azurerm 5.12.0) on both
-examples: the `jfrog-oidc` module validations from the AKS pilot lessons. Verified live: the AR
+stacks: the `jfrog-oidc` module validations from the AKS pilot lessons. Verified live: the AR
 PATCH `updateMask` (gcloud sends the same mask).
 
 Known blocker (2026-10-30, JFrog Cloud trial): Artifact Registry remote repos

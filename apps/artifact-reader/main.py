@@ -1,8 +1,8 @@
-"""Cloud Run job: read a JFrog artifact with a short-lived OIDC token.
+"""Job (Cloud Run or Container Apps): read a JFrog artifact with a short-lived OIDC token.
 
 The job's Google identity token is exchanged for a JFrog access token
 in-process; nothing is configured beyond the env vars in the client docstring
-and DEMO_ARTIFACT (<repo>/<path>). The token itself is never printed.
+and JFROG_ARTIFACT_PATH (<repo>/<path>). The token itself is never printed.
 """
 
 import os
@@ -12,7 +12,10 @@ from jfrog_oidc import JFrogOidcError, JFrogTokenProvider, download
 
 
 def main() -> int:
-    artifact = os.environ.get("DEMO_ARTIFACT", "demo-generic/hello.txt")
+    artifact = os.environ.get("JFROG_ARTIFACT_PATH", "")
+    if not artifact:
+        print("FAILED: JFROG_ARTIFACT_PATH is not set (<repo>/<path>)", file=sys.stderr)
+        return 1
     try:
         jfrog = JFrogTokenProvider.from_env()
         token = jfrog.token()

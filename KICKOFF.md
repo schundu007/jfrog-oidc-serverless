@@ -23,7 +23,7 @@ Paste this into Claude Code:
 
 > Read CLAUDE.md and docs/console-spec.md. Then run the existing client and rotator
 > tests to confirm a green baseline, run `terraform init -backend=false` and
-> `terraform validate` on terraform/examples/complete, and fix whatever the real
+> `terraform validate` on terraform/stacks/all-targets, and fix whatever the real
 > providers reject in the modules (keep behaviour the same; note each fix in
 > docs/progress.md). After that, start `/milestone M0`.
 

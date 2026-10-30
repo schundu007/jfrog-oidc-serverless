@@ -30,7 +30,7 @@ flagged as an open deviation for Option B on AKS.
    came back without the repo key. Every Docker repo answers on
    `<server>-<repo-key>.jfrog.io` instead.
    - Container Apps / Functions on ACA: `registry.server` and the image are on
-     that host (`terraform/examples/complete/azure.tf`, console wire step).
+     that host (`terraform/stacks/all-targets/azure.tf`, console wire step).
    - Functions Premium: `DOCKER_REGISTRY_SERVER_URL` and `image_name` likewise.
    - GCP: each AR Docker remote proxies one JFrog repo through its own host, so
      images resolve as `<ar-repo>/<image>`. The module rejects a Docker

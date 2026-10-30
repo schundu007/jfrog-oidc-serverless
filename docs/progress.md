@@ -479,3 +479,39 @@ Cloud Build and GitHub Actions options are removed for now:
 - What carries over to ADO, proven live with Cloud Build: package installs and the
   JFrog → AR image mirror with a 1 h OIDC token; WRITE (cache) on remote repos for
   the reader group (`serverless-remote-cache`: `pypi-remote`, `docker-remote`).
+
+## Production layout and ADO pipelines (2026-10-30)
+
+- Layout: `samples/` is now `apps/` (`cloud-run-job` became `artifact-reader`; it
+  runs on Cloud Run and Container Apps and reads `JFROG_ARTIFACT_PATH`).
+  `terraform/examples/` is now `terraform/stacks/` (`complete` became
+  `all-targets`). No demo naming remains. A `workload` input names the service
+  account, job, identity and JFrog mapping. Azure uses CAF prefixes (`rg-`,
+  `id-`, `cae-`, `caj-`, `cr`), tags, and job images ignored after creation
+  because the build pipeline owns the tag. Inputs per environment live in
+  `env/<env>.tfvars`.
+- `terraform/stacks/ado-trust`: a one-time bootstrap. It creates:
+  - the JFrog integration `ado-<org>` (Entra issuer, aud
+    `api://AzureADTokenExchange`);
+  - the mappings `ado-build` (reader group) and `ado-setup` (admin);
+  - federated credentials for both service connections on the ADO managed
+    identity (the existing one is imported);
+  - the GCP WIF pool `azure-devops` and provider `<org>`;
+  - the SAs `ado-build` and `ado-setup` with roles;
+  - a versioned GCS state bucket.
+
+  Validated, with a clean plan: 20 to add, 1 to import.
+- `pipelines/`:
+  - `stack-setup.yml`: plan, then the ADO environment `<stack>-<env>` approval,
+    then apply of the reviewed plan file, with GCS remote state through
+    `backend_override.tf`.
+  - `gcp-build-deploy.yml`: the base image comes through JFrog, is pushed to AR,
+    then `gcloud run jobs update` and `execute --wait`.
+
+  Every job turns the connection's `$idToken` into a JFrog exchange
+  (`jfrog_oidc`, file source) and a GCP WIF login inside a private temp dir. No
+  token is printed. Scripts pass shellcheck.
+- Open: apply `ado-trust` once, migrate the gcp-cloud-run state to
+  `gs://csb-test-257615-tfstate/gcp-cloud-run/test`, create the pipelines and
+  environment in ADO, then run them. The workload rename replaces the live test
+  SA, job and mapping on the first setup run.

@@ -1,0 +1,19 @@
+# Non-secret settings for the test environment. Nothing here is a credential:
+# every job authenticates with its service connection's OIDC token.
+variables:
+  ENVIRONMENT: test
+  BUILD_SERVICE_CONNECTION: jfrog-oidc-wif
+  SETUP_SERVICE_CONNECTION: jfrog-oidc-setup
+  TERRAFORM_VERSION: 1.15.5
+
+  JFROG_URL: https://trial9hnw59.jfrog.io
+  JFROG_OIDC_PROVIDER: ado-cdoazure
+  JFROG_DOCKER_REMOTE: docker-remote
+
+  GCP_PROJECT: csb-test-257615
+  GCP_REGION: us-central1
+  GCP_WIF_PROVIDER: projects/382389965689/locations/global/workloadIdentityPools/azure-devops/providers/cdoazure
+  GCP_BUILD_SERVICE_ACCOUNT: ado-build@csb-test-257615.iam.gserviceaccount.com
+  GCP_SETUP_SERVICE_ACCOUNT: ado-setup@csb-test-257615.iam.gserviceaccount.com
+  TF_STATE_BUCKET: csb-test-257615-tfstate
+  IMAGE_REPOSITORY: platform

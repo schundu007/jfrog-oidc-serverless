@@ -1,7 +1,10 @@
-jfrog_url          = "https://acme.jfrog.io"
-jfrog_reader_group = "serverless-readers"
-gcp_project_id     = "my-project"
-gcp_region         = "us-central1"
-# second apply, after building samples/cloud-run-job into Artifact Registry:
-# deploy_demo = true
-# demo_image  = "us-central1-docker.pkg.dev/my-project/platform/jfrog-oidc-demo:0.1.0"
+jfrog_url                = "https://acme.jfrog.io"
+jfrog_reader_group       = "serverless-readers"
+gcp_project_id           = "my-project"
+gcp_region               = "us-central1"
+workload                 = "artifact-reader"
+deployer_service_account = "ado-build@my-project.iam.gserviceaccount.com"
+artifact_path            = "generic-local/config/app.json"
+# after the build pipeline pushed the first image:
+# deploy_job = true
+# job_image  = "us-central1-docker.pkg.dev/my-project/platform/artifact-reader:<tag>"

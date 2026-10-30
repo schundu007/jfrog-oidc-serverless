@@ -3,7 +3,7 @@
 The same code runs on Flex Consumption, Premium/Dedicated (custom container) and
 Functions on Container Apps; only the hosting differs.
 
-App settings (set by terraform/examples/complete/azure.tf):
+App settings (set by terraform/stacks/all-targets/azure.tf):
     JFROG_URL, JFROG_OIDC_PROVIDER=azure-entra, JFROG_OIDC_AUDIENCE=api://<audience-app-id>,
     JFROG_OIDC_SOURCE=azure, AZURE_CLIENT_ID=<user-assigned identity client ID>
     JFROG_HEALTHCHECK_PATH  optional artifact for /healthz/jfrog to read

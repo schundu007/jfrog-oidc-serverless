@@ -2,5 +2,10 @@ jfrog_url             = "https://acme.jfrog.io"
 jfrog_reader_group    = "serverless-readers"
 azure_subscription_id = "00000000-0000-0000-0000-000000000000"
 azure_location        = "westus2"
-# second apply, after building samples/cloud-run-job into the ACR:
-# deploy_demo = true
+workload              = "artifact-reader"
+deployer_principal_id = "00000000-0000-0000-0000-000000000000"
+artifact_path         = "generic-local/config/app.json"
+tags                  = { owner = "platform", cost-center = "cc-000" }
+# after the build pipeline pushed the first image:
+# deploy_job = true
+# job_image  = "artifact-reader:<tag>"
