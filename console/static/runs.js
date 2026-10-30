@@ -122,12 +122,13 @@ function render() {
       h("h2", { text: snap.name }),
       h("span", { class: `pill run-${snap.status}`, text: snap.status.replaceAll("_", " ") }),
       LIVE.has(snap.status) ? h("button", { type: "button", class: "secondary danger small-btn", onclick: cancel, text: "Cancel run" }) : null),
+    // Each fact is a tile: label above value.
     h("dl", { class: "essentials" },
-      h("dt", { text: "Run ID" }), h("dd", { class: "mono", text: snap.id }),
-      h("dt", { text: "Workload type" }), h("dd", { text: KIND_LABELS[snap.kind] || snap.kind }),
-      h("dt", { text: "Started" }), h("dd", { text: (snap.created || "").replace("T", " ").replace("Z", " UTC") }),
-      h("dt", { text: "Steps" }), h("dd", {}, h("span", { class: "meter", role: "img", "aria-label": `${done} of ${shown.length} steps succeeded` },
-        shown.map((s) => h("i", { class: `meter-seg st-${s.status}` }))), ` ${done} / ${shown.length}`)));
+      h("div", {}, h("dt", { text: "Run ID" }), h("dd", { class: "mono", text: snap.id })),
+      h("div", {}, h("dt", { text: "Workload type" }), h("dd", { text: KIND_LABELS[snap.kind] || snap.kind })),
+      h("div", {}, h("dt", { text: "Started" }), h("dd", { text: (snap.created || "").replace("T", " ").replace("Z", " UTC") })),
+      h("div", {}, h("dt", { text: "Steps" }), h("dd", {}, h("span", { class: "meter", role: "img", "aria-label": `${done} of ${shown.length} steps succeeded` },
+        shown.map((s) => h("i", { class: `meter-seg st-${s.status}` }))), ` ${done} / ${shown.length}`))));
   note("", "");  // the run's status is the pill on its card
 
   // Steps that aren't built yet (planned) are left out rather than shown as skipped.

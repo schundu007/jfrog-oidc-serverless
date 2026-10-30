@@ -147,10 +147,10 @@ function renderEssentials(c, d, found) {
   const identity = d?.service_account || d?.principal_id || d?.client_id || "";
   // A dedicated identity the run creates has no ID yet: show its name.
   const planned = !identity && d?.dedicated_identity ? `${d.dedicated_identity} (new)` : "";
-  fill($("cfg-essentials"), h("dt", { text: "Identity" }), h("dd", {},
+  fill($("cfg-essentials"), h("div", {}, h("dt", { text: "Identity" }), h("dd", {},
     identity || planned ? h("span", { class: "with-icon" }, statusIcon(found ? "ok" : "warn"),
       h("span", { class: "mono", text: identity || planned }))
-      : h("span", { class: "with-icon muted" }, statusIcon("skip"), "not discovered")));
+      : h("span", { class: "with-icon muted" }, statusIcon("skip"), "not discovered"))));
 }
 
 const STATUS_GLYPH = { ok: "✓", warn: "!", fail: "✕", error: "✕", warning: "!", skip: "–" };

@@ -156,8 +156,28 @@ function setupBack() {
     else if (parentPath()) location.assign(parentPath());
   });
   window.addEventListener("popstate", update);
-  state.onNavigate = update;
+  state.onNavigate = () => { update(); renderTrail(); };
+  window.addEventListener("popstate", renderTrail);
   update();
+}
+
+// Where you are, in the top bar: Home / Serverless / <cloud> / <page>. Every step but the last is a link.
+function renderTrail() {
+  const steps = [];
+  if (BASE) steps.push(["Home", "/"]);
+  steps.push([BASE ? "Serverless" : "Clouds", `${BASE}/`]);
+  if (CLOUD) {
+    steps.push([CLOUDS[CLOUD], `${BASE}/${CLOUD}`]);
+    const tab = document.querySelector('[role="tab"][aria-selected="true"]');
+    if (tab) steps.push([tab.textContent.trim(), null]);
+  }
+  steps[steps.length - 1][1] = null;
+  const parts = [];
+  steps.forEach(([label, href], i) => {
+    if (i) parts.push(h("span", { class: "trail-sep", "aria-hidden": "true", text: "/" }));
+    parts.push(href ? h("a", { href, "data-section": "", text: label }) : h("span", { "aria-current": "page", text: label }));
+  });
+  $("trail").replaceChildren(...parts);
 }
 
 // Same-page changes (tabs) cross-fade like page loads do, where the browser supports it.
@@ -497,8 +517,6 @@ function applyCloud() {
   }
   for (const el of document.querySelectorAll("[data-cloud]")) if (el.dataset.cloud !== CLOUD) el.remove();
   for (const el of document.querySelectorAll(".crumb-cloud")) el.textContent = CLOUDS[CLOUD];
-  $("ctx-cloud").textContent = CLOUDS[CLOUD];
-  $("ctx-cloud").hidden = false;
   for (const a of document.querySelectorAll("[data-cloud-link]")) {
     if (a.dataset.cloudLink === CLOUD) a.setAttribute("aria-current", "page");
   }
@@ -512,6 +530,7 @@ async function boot() {
   setupTabs();
   setupBack();
   applyCloud();
+  renderTrail();
   $("legend").replaceChildren(...LEGEND.map(([cls, label]) => h("span", { class: "lg" }, h("i", { class: `sw ${cls}` }), label)));
   let wired = false;
   window.addEventListener("hashchange", async () => {

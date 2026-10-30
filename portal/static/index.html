@@ -8,22 +8,26 @@
 </head>
 <body>
 <header class="topbar">
-  <svg class="logo" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.5l7.4 4.25v8.5L10 18.5l-7.4-4.25v-8.5z"/><path class="logo-in" d="M10 6l3.5 2v4L10 14l-3.5-2V8z"/></svg>
-  <span>JFrog OIDC Console</span>
+  <a class="brand" href="/"><svg class="logo" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.5l7.4 4.25v8.5L10 18.5l-7.4-4.25v-8.5z"/><path class="logo-in" d="M10 6l3.5 2v4L10 14l-3.5-2V8z"/></svg><span>JFrog OIDC Console</span></a>
 </header>
 <main>
-  <h1>Choose a section</h1>
+  <p class="eyebrow">Short-lived JFrog tokens, nothing long-lived stored</p>
+  <h1>What are you connecting to JFrog?</h1>
+  <p class="lede">Two separate sections. Each keeps its own configurations, runs and approvals.</p>
   <div class="cards">
     <a class="card" href="/serverless/">
+      <span class="card-mark"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="6" fill="#7c3aed"/><path d="M7.6 6.4h1.7c.8 0 1.4.4 1.7 1.1L16.6 18M12.1 11.2 7.8 18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       <b>Serverless</b>
-      <span>Google Cloud: Cloud Run services, jobs, functions</span>
-      <span>Azure: Container Apps, Function Apps</span>
-      <small>In-process OIDC exchange · pull-path rotator</small>
+      <span class="card-sub">Workloads exchange their cloud identity for a JFrog token at runtime, and the platform pulls images on a rotated token.</span>
+      <ul class="chips"><li><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 18.6h9.6a4.4 4.4 0 0 0 .5-8.8A5.9 5.9 0 0 0 6 9.2a4.7 4.7 0 0 0 1.2 9.4z" pathLength="100" fill="none" stroke="#ea4335" stroke-width="2.2" stroke-dasharray="25 75" stroke-dashoffset="0"/><path d="M7.2 18.6h9.6a4.4 4.4 0 0 0 .5-8.8A5.9 5.9 0 0 0 6 9.2a4.7 4.7 0 0 0 1.2 9.4z" pathLength="100" fill="none" stroke="#fbbc04" stroke-width="2.2" stroke-dasharray="25 75" stroke-dashoffset="-25"/><path d="M7.2 18.6h9.6a4.4 4.4 0 0 0 .5-8.8A5.9 5.9 0 0 0 6 9.2a4.7 4.7 0 0 0 1.2 9.4z" pathLength="100" fill="none" stroke="#34a853" stroke-width="2.2" stroke-dasharray="25 75" stroke-dashoffset="-50"/><path d="M7.2 18.6h9.6a4.4 4.4 0 0 0 .5-8.8A5.9 5.9 0 0 0 6 9.2a4.7 4.7 0 0 0 1.2 9.4z" pathLength="100" fill="none" stroke="#4285f4" stroke-width="2.2" stroke-dasharray="25 75" stroke-dashoffset="-75"/></svg><span>Cloud Run</span></li><li><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.7 3.2h4.5L7.9 20.8H3.2z" fill="#0062ad"/><path d="M14.8 7.4l6 13.4H9.6l4-1.6-3.6-.2z" fill="#2a95e8"/></svg><span>Container Apps</span></li><li><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.7 3.2h4.5L7.9 20.8H3.2z" fill="#0062ad"/><path d="M14.8 7.4l6 13.4H9.6l4-1.6-3.6-.2z" fill="#2a95e8"/></svg><span>Function Apps</span></li></ul>
+      <span class="card-go">Open Serverless <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
     </a>
     <a class="card" href="/k8s/clusters">
+      <span class="card-mark"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><polygon points="12.0,1.8 20.0,5.6 21.9,14.3 16.4,21.2 7.6,21.2 2.1,14.3 4.0,5.6" fill="#326ce5"/><circle cx="12" cy="12" r="4.4" fill="none" stroke="#fff" stroke-width="1.5"/><path d="M12 12L12.0 5.8M12 12L16.8 8.1M12 12L18.0 13.4M12 12L14.7 17.6M12 12L9.3 17.6M12 12L6.0 13.4M12 12L7.2 8.1" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="12" r="1.4" fill="#fff"/></svg></span>
       <b>Kubernetes</b>
-      <span>Azure AKS · Google GKE · AWS EKS · OpenShift</span>
-      <small>Kubelet credential provider</small>
+      <span class="card-sub">The kubelet credential provider gets JFrog tokens for image pulls with the cluster's workload identity.</span>
+      <ul class="chips"><li><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.7 3.2h4.5L7.9 20.8H3.2z" fill="#0062ad"/><path d="M14.8 7.4l6 13.4H9.6l4-1.6-3.6-.2z" fill="#2a95e8"/></svg><span>AKS</span></li><li><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 18.6h9.6a4.4 4.4 0 0 0 .5-8.8A5.9 5.9 0 0 0 6 9.2a4.7 4.7 0 0 0 1.2 9.4z" pathLength="100" fill="none" stroke="#ea4335" stroke-width="2.2" stroke-dasharray="25 75" stroke-dashoffset="0"/><path d="M7.2 18.6h9.6a4.4 4.4 0 0 0 .5-8.8A5.9 5.9 0 0 0 6 9.2a4.7 4.7 0 0 0 1.2 9.4z" pathLength="100" fill="none" stroke="#fbbc04" stroke-width="2.2" stroke-dasharray="25 75" stroke-dashoffset="-25"/><path d="M7.2 18.6h9.6a4.4 4.4 0 0 0 .5-8.8A5.9 5.9 0 0 0 6 9.2a4.7 4.7 0 0 0 1.2 9.4z" pathLength="100" fill="none" stroke="#34a853" stroke-width="2.2" stroke-dasharray="25 75" stroke-dashoffset="-50"/><path d="M7.2 18.6h9.6a4.4 4.4 0 0 0 .5-8.8A5.9 5.9 0 0 0 6 9.2a4.7 4.7 0 0 0 1.2 9.4z" pathLength="100" fill="none" stroke="#4285f4" stroke-width="2.2" stroke-dasharray="25 75" stroke-dashoffset="-75"/></svg><span>GKE</span></li><li><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><text x="12" y="12" text-anchor="middle" font-size="8.6" font-weight="700" font-family="Arial, Helvetica, sans-serif" fill="currentColor">aws</text><path d="M4 15.2c4.7 3 11.3 3.2 16 .2" fill="none" stroke="#ff9900" stroke-width="2" stroke-linecap="round"/><path d="M17.3 14l3 .9-.9 3" fill="none" stroke="#ff9900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>EKS</span></li><li><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="#e00" stroke-width="3.4"/><path class="cut" d="M2.5 10.2l19-4.6M2.5 17.6l19-4.6" fill="none" stroke-width="1.8"/></svg><span>OpenShift</span></li></ul>
+      <span class="card-go">Open Kubernetes <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
     </a>
   </div>
 </main>
