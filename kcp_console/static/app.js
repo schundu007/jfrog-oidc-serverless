@@ -3,7 +3,6 @@
 // It is kept in localStorage for this origin so reloads and new tabs work: never in a cookie or the URL.
 
 import { initOverview } from "./overview.js";
-import { initDocs } from "./docs.js";
 import { initSimulate } from "./simulate.js";
 import { initConfigure } from "./configure.js";
 import { initInstall } from "./install.js";
@@ -101,7 +100,7 @@ function showAuth() {
 
 // ----------------------------------------------------------------- tabs
 
-const TABS = ["overview", "configure", "operate", "runs", "simulate", "docs"];
+const TABS = ["overview", "configure", "operate", "runs", "simulate"];
 // Pages inside Operate, picked from its side menu.
 const SUBS = ["install", "verify", "nodes", "artifactory", "troubleshoot", "security", "demo", "rollback"];
 export function selectTab(name) {
@@ -168,7 +167,7 @@ async function start() {
   initOverview(knowledge);
   initSimulate({ api });
   for (const init of [initConfigure, initInstall, initNodes, initArtifactory, initVerify, initTroubleshoot, initDemo,
-    initSecurity, initRollback, initRuns, initDocs]) {
+    initSecurity, initRollback, initRuns]) {
     try { init(); } catch (e) { console.error(e); }
   }
   state.emit("config", state.config);

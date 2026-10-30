@@ -17,17 +17,17 @@ const F = {
   "cluster.subscription_id": ["Subscription ID", "00000000-0000-0000-0000-000000000000"],
   "cluster.resource_group": ["Resource group", "rg-aks-prod"],
   "cluster.environment": ["Environment", ""],
-  "cluster.oidc_issuer": ["OIDC issuer URL", "filled by Discover (az aks show … oidcIssuerProfile.issuerUrl)"],
+  "cluster.oidc_issuer": ["OIDC issuer URL", "Discover fills this"],
   "jfrog.host": ["JFrog platform host", "yourcompany.jfrog.io"],
   "jfrog.oidc_provider": ["OIDC provider name", "aks-prod-oidc"],
-  "jfrog.mapped_user": ["Mapped JFrog user (token_spec.username)", "an existing user with read on the repo"],
+  "jfrog.mapped_user": ["Mapped JFrog user", "pull-user"],
   "jfrog.test_repo": ["Docker repository key", "team-docker-local"],
   "k8s.namespace": ["Namespace", "jfrog"],
   "k8s.service_account": ["Service account", "jfrog-provider-sa"],
   "k8s.release": ["Helm release", "jfrog-cred-provider"],
   "values.default_cache_duration": ["Token cache duration", "30m"],
   "values.chart_version": ["Chart version", "1.4.0"],
-  "values.download_url": ["Plugin binary URL (mirrored in Artifactory)", "yourcompany.jfrog.io/artifactory/<generic-repo>/jfrog-credential-provider/1.4.0/jfrog-credential-provider-linux"],
+  "values.download_url": ["Plugin binary URL", "chart default"],
   "ado.organization": ["Azure DevOps organization", "dev.azure.com/your-org"],
   "ado.project": ["Project", "Platform"],
   "ado.repo": ["Helm/ArgoCD repo", "platform-helm-templates"],
@@ -37,16 +37,12 @@ const F = {
   "ado.key_vault_secret": ["Key Vault secret name", "artifactory-download-token"],
 };
 const STEPS = [
-  ["Target cluster", ["cluster.name", "cluster.subscription_id", "cluster.resource_group", "cluster.environment", "cluster.oidc_issuer"],
-    "Read-only Discover resolves the cluster's OIDC issuer, Workload Identity, nodes, the Helm release and the JFrog providers."],
-  ["JFrog platform", ["jfrog.host", "jfrog.oidc_provider", "jfrog.mapped_user", "jfrog.test_repo"],
-    "The OIDC provider trusts the cluster issuer (provider_type Azure); the identity mapping turns system:serviceaccount:<ns>:<sa> into a short-lived token for the mapped user."],
-  ["Credential provider", ["k8s.namespace", "k8s.service_account", "k8s.release", "values.default_cache_duration", "values.chart_version", "values.download_url"],
-    "The jfrog-credentials-provider chart (Option B, projected service-account tokens, no app registration). The DaemonSet installs the plugin on labelled nodes."],
-  ["Pipelines", ["ado.organization", "ado.project", "ado.repo", "ado.branch", "ado.pilot_pipeline", "ado.key_vault", "ado.key_vault_secret"],
-    "Every change runs as an Azure DevOps pipeline (Helm through the ArgoCD utility pipeline), behind your approval. The binary download token stays a Key Vault secret."],
+  ["Cluster", ["cluster.name", "cluster.subscription_id", "cluster.resource_group", "cluster.environment", "cluster.oidc_issuer"]],
+  ["JFrog", ["jfrog.host", "jfrog.oidc_provider", "jfrog.mapped_user", "jfrog.test_repo"]],
+  ["Credential provider", ["k8s.namespace", "k8s.service_account", "k8s.release", "values.default_cache_duration", "values.chart_version", "values.download_url"]],
 ];
-const SHOWN = new Set(STEPS.flatMap((s) => s[1]));
+const PIPELINE_FIELDS = ["ado.organization", "ado.project", "ado.repo", "ado.branch", "ado.pilot_pipeline", "ado.key_vault", "ado.key_vault_secret"];
+const SHOWN = new Set(STEPS.flatMap((s) => s[1]).concat(PIPELINE_FIELDS));
 const ADVANCED = {
   cluster: ["subscription_name", "nodes"],
   k8s: ["daemonset", "test_pod", "stale_pods", "node_label"],
@@ -123,22 +119,24 @@ function render() {
   derive();
   const tmpl = cfg.mode === "template";
   fill(P(),
-    h("h1", { class: "cfg-title" }, cfg.name && cfg.name === state.config ? cfg.name : "New cluster", h("span", { class: "muted" }, " · AKS, kubelet credential provider")),
+    h("h1", { class: "cfg-title" }, cfg.name && cfg.name === state.config ? cfg.name : "New cluster", null),
     h("div", { class: "cfg-layout" },
       h("div", { class: "cfg-form" },
-        h("ol", { class: "rail" }, STEPS.map(([title, paths, hint], i) => h("li", { class: `rail-step ${stepDone(paths) ? "is-done" : ""}` },
+        h("ol", { class: "rail" }, STEPS.map(([title, paths], i) => h("li", { class: `rail-step ${stepDone(paths) ? "is-done" : ""}` },
           h("h2", {}, h("span", { class: "step-n" }, String(i + 1)), title),
           i === 0 ? h("div", { class: "tgrid" }, field("name", "Configuration name", "aks-prod-eastus-01"), ...paths.map((p) => field(p, ...F[p])))
             : h("div", { class: "tgrid" }, paths.map((p) => field(p, ...F[p]))),
-          i === 0 ? h("div", { class: "toolbar" }, h("button", { class: "secondary", onclick: () => discover(false) }, "Discover"),
-            h("span", { class: "small muted" }, hint)) : h("p", { class: "small muted" }, hint),
-          i === 3 ? h("div", { class: "mode" },
-            h("label", {}, h("input", { type: "radio", name: "mode", checked: !tmpl, onchange: () => { cfg.mode = "pilot"; render(); } }), " Utility pipeline scenarios"),
-            h("label", {}, h("input", { type: "radio", name: "mode", checked: tmpl, onchange: () => { cfg.mode = "template"; render(); } }), " Cluster template pipeline (jfrog-kcp-cluster)")) : null))),
+          i === 0 ? h("div", { class: "toolbar" }, h("button", { class: "secondary", onclick: () => discover(false) }, "Discover")) : null,
+          null))),
+        h("details", { class: "advanced" }, h("summary", {}, "Azure DevOps pipelines"),
+          h("div", { class: "tgrid" }, PIPELINE_FIELDS.map((p) => field(p, ...F[p]))),
+          h("div", { class: "mode" },
+            h("label", {}, h("input", { type: "radio", name: "mode", checked: !tmpl, onchange: () => { cfg.mode = "pilot"; render(); } }), " Utility pipeline"),
+            h("label", {}, h("input", { type: "radio", name: "mode", checked: tmpl, onchange: () => { cfg.mode = "template"; render(); } }), " Cluster template pipeline"))),
         h("details", { class: "advanced" }, h("summary", {}, "Advanced settings"),
           h("div", { class: "tgrid" }, Object.entries(ADVANCED).flatMap(([g, keys]) => keys.map((key) => field(`${g}.${key}`)))),
           h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!cfg.demo_mode, onchange: (e) => { cfg.demo_mode = e.target.checked; } }),
-            " Demo mode: refuse scenarios that restart the DaemonSet"),
+            " Demo mode"),
           tmpl ? h("div", { class: "tgrid" }, k.TEMPLATE_INPUTS.map((i) => field(`template.${i.name}`, i.name, i.default))) : null),
         h("details", { class: "advanced" }, h("summary", {}, "Generated files"),
           h("div", { id: "cfg-values" }), h("div", { id: "cfg-requests" })),
@@ -161,35 +159,26 @@ function renderSide() {
     if (!cs.length) return "";
     return cs.every((c) => c.status === "pass") ? "is-done" : cs.some((c) => c.status === "fail") ? "is-fail" : "";
   };
-  const node = (cls, title, detail) => h("li", { class: `chain-node ${cls}` }, h("span", { class: "chain-dot" }),
-    h("div", {}, h("b", {}, title), h("span", { class: "chain-detail" }, detail)));
-  const j = cfg.jfrog, k8 = cfg.k8s;
-  const issuer = cfg.cluster.oidc_issuer;
-  const planned = [];
-  if (!checks.provider || checks.provider.status !== "pass") planned.push(["create", "OIDC provider", j.oidc_provider || "?", "POST /access/api/v1/oidc"]);
-  if (!checks.mapping || checks.mapping.status !== "pass") planned.push(["create", "identity mapping", j.mapping_name || "?", "→ " + (j.mapped_user || "?")]);
-  if (!checks.sa || checks.sa.status !== "pass") planned.push(["annotate", "service account", `${k8.namespace}/${k8.service_account}`, "JFrogExchange: true"]);
-  if (!checks.release || checks.release.status !== "pass") planned.push(["install", "Helm release", k8.release, `chart ${cfg.values.chart_version}, nodes labelled ${cfg.values.node_affinity_label}=true`]);
+  const node = (cls, title) => h("li", { class: `chain-node ${cls}` }, h("span", { class: "chain-dot" }), h("div", {}, h("b", {}, title)));
   fill($("cfg-side"),
     h("div", { class: "summary" },
-      h("h2", {}, "OIDC trust chain"),
+      h("h2", {}, "Trust chain"),
       h("ol", { class: "chain" },
-        node(st("oidc-issuer", "workload-identity", "issuer"), "AKS OIDC issuer", issuer || "Not discovered yet"),
-        node(st("provider"), `JFrog OIDC provider ${j.oidc_provider || ""}`, `provider_type Azure, issuer = the cluster's${checks.provider ? "" : " · created by the provider step"}`),
-        node(st("mapping"), `Identity mapping ${j.mapping_name || ""}`, `sub system:serviceaccount:${k8.namespace}:${k8.service_account} → ${j.mapped_user || "?"}`),
-        node(st("sa", "release", "writers"), "Credential provider on the nodes", `${k8.namespace}/${k8.release}, SA ${k8.service_account}`),
-        node("is-end", "JFrog access token", `scope ${j.scope}, expires_in ${j.expires_in}s, cached ${cfg.values.default_cache_duration}`)),
-      h("h3", {}, "Planned changes"),
-      planned.length ? h("ul", { class: "plan-list" }, planned.map(([verb, what, name, det]) => h("li", {}, `${verb} ${what} `, h("code", {}, name), ` ${det}`)))
-        : h("p", { class: "small muted" }, "Nothing to change"),
+        node(st("oidc-issuer", "workload-identity", "issuer"), "AKS OIDC issuer"),
+        node(st("provider"), "JFrog OIDC provider"),
+        node(st("mapping"), "Identity mapping"),
+        node(st("sa", "release", "writers"), "Credential provider"),
+        node("is-end", "Short-lived JFrog token")),
       h("div", { class: "cfg-actions" },
         h("button", { class: "primary big", onclick: async () => { if (await save()) selectTab("install"); } }, cfg.mode === "template" ? "Run pipeline" : "Set up"),
         h("div", { class: "row-tight" },
           h("button", { class: "secondary", onclick: () => discover(true) }, "Preflight"),
           h("button", { class: "secondary", onclick: save }, "Save")),
-        state.config ? h("button", { class: "link danger", onclick: remove }, `Delete ${state.config}`) : null,
+        state.config && cfg.name === state.config ? h("button", { class: "link danger", onclick: remove }, `Delete ${state.config}`) : null,
         h("p", { class: "small muted", id: "cfg-msg" }))));
 }
+
+const filled = (path) => { const v = get(path); return Array.isArray(v) ? v.length > 0 : v !== "" && v != null; };
 
 let timer = null;
 function validateSoon(ms = 300) {
@@ -200,9 +189,9 @@ function validateSoon(ms = 300) {
     lastValues = v;
     const issues = cfg.mode === "template" ? v.issues.concat(v.template_issues) : v.issues;
     document.querySelectorAll("#panel-configure .issue").forEach((el) => { el.textContent = ""; el.className = "issue small"; });
-    for (const i of issues) {
+    for (const i of issues.filter((x) => x.level === "error" && filled(x.field))) {
       const el = document.querySelector(`#panel-configure .issue[data-field="${i.field}"]`);
-      if (el && !el.textContent) { el.textContent = i.message; el.classList.add(i.level); }
+      if (el && !el.textContent) { el.textContent = i.message.split(/[:(]/)[0].trim(); el.title = i.message; el.classList.add(i.level); }
     }
     fill($("cfg-values"), h("p", { class: "small muted" }, `Committed to ${v.path} · sha256 ${v.sha256.slice(0, 12)}…`),
       h("div", { class: "two-col" }, h("div", {}, h("h3", {}, "values.yaml"), h("pre", { class: "code" }, v.text)),

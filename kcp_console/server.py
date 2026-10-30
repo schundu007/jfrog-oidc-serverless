@@ -401,15 +401,6 @@ def _make_handler(console: KcpServer):
                 return self._json(200, {"ok": True})
             if method == "GET" and parts == ["session"]:
                 return self._json(200, console.session_info())
-            if method == "GET" and parts == ["docs", "runbook"]:
-                # The operator's own runbook, kept beside the configs (never in the repo).
-                root = Path(console.store.root)
-                rb = root / "runbook.md"
-                if not rb.is_file() and root.name == "replay":
-                    rb = root.parent / "runbook.md"
-                if not rb.is_file():
-                    return self._json(200, {"text": None, "path": str(rb)})
-                return self._json(200, {"text": redact.text(rb.read_text(errors="replace")[:2_000_000]), "path": str(rb)})
             if method == "GET" and parts == ["knowledge"]:
                 return self._json(200, knowledge.as_dict())
             if method == "GET" and parts == ["defaults"]:
