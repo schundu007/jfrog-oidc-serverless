@@ -26,8 +26,8 @@
     </nav>
     <nav class="tabs subnav" role="tablist" aria-label="Sections" aria-orientation="vertical" id="tabs" hidden>
       <button role="tab" class="nav-item" id="tab-configure" aria-controls="panel-configure" aria-selected="false" tabindex="-1"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span>Workloads</span></button>
-      <button role="tab" class="nav-item" id="tab-runs" aria-controls="panel-runs" aria-selected="false" tabindex="-1"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10.2 8.8v6.4l5.1-3.2z"/></svg><span>Runs</span></button>
       <button role="tab" class="nav-item" id="tab-simulate" aria-controls="panel-simulate" aria-selected="false" tabindex="-1"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6M10 3v5.5L4.8 18a2 2 0 0 0 1.8 3h10.8a2 2 0 0 0 1.8-3L14 8.5V3M7.2 15h9.6"/></svg><span>Simulate</span></button>
+      <button role="tab" class="nav-item" id="tab-runs" aria-controls="panel-runs" aria-selected="false" tabindex="-1"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10.2 8.8v6.4l5.1-3.2z"/></svg><span>Runs</span></button>
     </nav>
     <nav class="k8s-nav" aria-label="Kubernetes" data-portal hidden>
       <div class="nav-group">Kubernetes</div>
@@ -58,23 +58,6 @@
 
 
     <section id="panel-configure" role="tabpanel" aria-labelledby="tab-configure" hidden>
-      <header class="page-header">
-        <nav class="crumbs" aria-label="Breadcrumb"><span class="crumb-cloud"></span><span class="crumb-sep" aria-hidden="true">/</span></nav>
-        <div class="title-row">
-          <h1 id="cfg-title">New configuration</h1>
-          <span id="cfg-dirty" class="small muted" aria-live="polite"></span>
-        </div>
-        <div class="cmdbar" id="cfg-actions" role="toolbar" aria-label="Commands">
-          <button type="button" id="cfg-run-btn" class="cmd primary-cmd big"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4l10 6-10 6z"/></svg>Run pipeline</button>
-          <span class="cmd-sep" aria-hidden="true"></span>
-          <div class="row-tight">
-            <button type="button" id="cfg-preflight-btn" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5l4 4 8-9"/></svg>Preflight</button>
-            <button type="button" id="cfg-save" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h10l3 3v11H4z"/><path d="M7 3v5h6V3M7 17v-5h7v5"/></svg>Save</button>
-          </div>
-          <p id="cfg-status" class="small muted" role="status" aria-live="polite"></p>
-        </div>
-      </header>
-
       <section class="saved" id="cfg-saved-box" aria-label="Saved configurations">
         <div class="saved-head"><h2>Saved</h2><button type="button" id="cfg-new" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>New</button></div>
         <div class="table-card">
@@ -85,6 +68,24 @@
         </table>
       </div>
       </section>
+
+      <header class="page-header">
+        <nav class="crumbs" aria-label="Breadcrumb"><span class="crumb-cloud"></span><span class="crumb-sep" aria-hidden="true">/</span></nav>
+        <div class="title-row">
+          <h1 id="cfg-title">New configuration</h1>
+          <span id="cfg-dirty" class="small muted" aria-live="polite"></span>
+        </div>
+        <div class="cmdbar" id="cfg-actions" role="toolbar" aria-label="Commands">
+          <div class="row-tight">
+            <button type="button" id="cfg-save" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h10l3 3v11H4z"/><path d="M7 3v5h6V3M7 17v-5h7v5"/></svg>Save</button>
+            <button type="button" id="cfg-preflight-btn" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5l4 4 8-9"/></svg>Preflight</button>
+          </div>
+          <span class="cmd-sep" aria-hidden="true"></span>
+          <button type="button" id="cfg-run-btn" class="cmd primary-cmd big"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4l10 6-10 6z"/></svg>Run pipeline</button>
+          <p id="cfg-status" class="small muted" role="status" aria-live="polite"></p>
+        </div>
+      </header>
+
       <div class="cfg-layout">
       <form id="cfg-form" class="cfg-form" novalidate autocomplete="off" aria-label="Configuration">
         <ol class="rail">

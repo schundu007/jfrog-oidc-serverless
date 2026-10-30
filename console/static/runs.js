@@ -29,6 +29,9 @@ async function refreshList() {
   fill(sel, rs.runs.length ? rs.runs.map((r) => h("option", { value: r.id, text: `${r.name} · ${r.status.replaceAll("_", " ")} · ${r.created.slice(11, 19)}Z` }))
     : h("option", { value: "", text: "no runs yet" }));
   if (rs.id) sel.value = rs.id;
+  // No runs: one empty state instead of empty Steps and Log cards.
+  document.querySelector(".runs-layout").hidden = !rs.runs.length;
+  if (!rs.runs.length) fill($("run-head"), h("p", { class: "muted", text: "No runs yet. Run the pipeline from Workloads." }));
 }
 
 export async function startRun(cfg) {

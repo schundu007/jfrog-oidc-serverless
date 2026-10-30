@@ -34,23 +34,31 @@
   </aside>
   <div class="main-col">
   <main id="dash">
-    <div class="dash-head"><h1>Home</h1><button type="button" id="dash-refresh" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10a6 6 0 11-1.8-4.3M16 3v4h-4"/></svg>Refresh</button></div>
-    <section class="dash-sec" aria-labelledby="h-sl">
-      <div class="dash-sec-head"><h2 id="h-sl">Serverless</h2></div>
-      <div class="kpis" id="sl-kpis"></div>
-      <div class="dash-cols">
-        <div id="sl-clouds" class="tiles"></div>
-        <div class="panel"><h3 class="panel-title">Recent runs</h3><div id="sl-runs" class="dash-list"></div></div>
+    <section class="hero" aria-label="Overview">
+      <div class="hero-top"><h1>Home</h1><button type="button" id="dash-refresh" class="cmd hero-btn"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10a6 6 0 11-1.8-4.3M16 3v4h-4"/></svg>Refresh</button></div>
+      <div class="hero-stats">
+        <div class="hstat"><span class="ring" id="ring-sl"><b id="hs-sl-ok">–</b></span><span><b id="hs-sl">–</b><small>Serverless workloads</small></span></div>
+        <div class="hstat"><span class="ring" id="ring-k8s"><b id="hs-k8s-ok">–</b></span><span><b id="hs-k8s">–</b><small>Kubernetes clusters</small></span></div>
+        <div class="hstat plain"><span><b id="hs-runs">–</b><small>Runs</small></span></div>
+        <div class="hstat plain"><span><b id="hs-live">–</b><small>In progress</small></span></div>
       </div>
     </section>
-    <section class="dash-sec" aria-labelledby="h-k8s">
-      <div class="dash-sec-head"><h2 id="h-k8s">Kubernetes</h2></div>
-      <div class="kpis" id="k8s-kpis"></div>
-      <div class="dash-cols">
-        <div id="k8s-plats" class="tiles"></div>
-        <div class="panel"><h3 class="panel-title">Clusters</h3><div id="k8s-clusters" class="dash-list"></div></div>
-      </div>
-    </section>
+    <div class="bento">
+      <section class="board" aria-labelledby="h-sl">
+        <header class="board-head"><h2 id="h-sl">Serverless</h2><a class="board-link" href="/serverless/gcp">Open</a></header>
+        <div class="meter" id="sl-meter"></div>
+        <div class="chips" id="sl-clouds"></div>
+        <h3 class="board-sub">Recent runs</h3>
+        <div id="sl-runs" class="dash-list"></div>
+      </section>
+      <section class="board" aria-labelledby="h-k8s">
+        <header class="board-head"><h2 id="h-k8s">Kubernetes</h2><a class="board-link" href="/k8s/clusters/aks">Open</a></header>
+        <div class="meter" id="k8s-meter"></div>
+        <div class="chips" id="k8s-plats"></div>
+        <h3 class="board-sub">Clusters</h3>
+        <div id="k8s-clusters" class="dash-list"></div>
+      </section>
+    </div>
   </main>
   </div>
 </div>

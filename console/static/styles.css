@@ -916,3 +916,58 @@ input:focus-visible, select:focus-visible { border-color: var(--ai-1); box-shado
 
 /* Shared gradients for the inlined service icons: rendered, never display:none (hidden gradients do not paint). */
 .mark-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* ================================================================== fluid layout */
+/* Content is centered with a readable maximum width; padding and type scale with the window,
+   so a narrow or wide Chrome window keeps the same proportions instead of cramping or sprawling. */
+:root {
+  --t-sm: clamp(12.5px, 0.74rem + 0.1vw, 13.5px);
+  --t-md: clamp(13.5px, 0.8rem + 0.15vw, 15px);
+  --t-lg: clamp(15px, 0.86rem + 0.3vw, 17px);
+  --t-xl: clamp(18px, 0.95rem + 0.55vw, 22px);
+  --t-2xl: clamp(22px, 1.05rem + 1.1vw, 30px);
+  --page-max: 1360px;
+  --page-pad: clamp(16px, 3.2vw, 48px);
+}
+main { max-width: var(--page-max); margin-inline: auto; padding: clamp(16px, 2.4vw, 32px) var(--page-pad) clamp(32px, 4vw, 64px); }
+@media (max-width: 1280px) { main { padding-inline: var(--page-pad); } }
+@media (max-width: 860px) { main { padding: var(--s-4); } }
+img, svg, video { max-width: 100%; }
+
+/* ================================================================== collapse and expand */
+/* One chevron for every collapsible: form steps, the sidebar's open cloud and every <details>. */
+.step-toggle { margin-left: auto; width: 28px; height: 28px; flex: none; display: grid; place-items: center; padding: 0;
+  border: 0; border-radius: 8px; background: transparent; color: var(--fg-3); cursor: pointer; }
+.step-toggle::before, details > summary::before, .cloud-switch .nav-item[aria-expanded]::after {
+  content: ""; width: 7px; height: 7px; border: solid currentColor; border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translate(-2px, -2px); transition: transform 180ms ease; }
+.step-toggle:hover { background: rgba(124, 92, 255, 0.08); color: var(--ai-1); }
+.rail-step > h2 { cursor: pointer; user-select: none; }
+.rail-step.collapsed > h2 { border-bottom-color: transparent; }
+.rail-step.collapsed > .step-body { display: none; }
+.rail-step.collapsed .step-toggle::before { transform: rotate(-45deg) translate(-1px, -1px); }
+
+details > summary { list-style: none; display: flex; align-items: center; gap: 10px; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary::before { flex: none; color: var(--fg-3); transform: rotate(-45deg) translate(-1px, -1px); }
+details[open] > summary::before { transform: rotate(45deg) translate(-2px, -2px); }
+.events-box > summary::before { content: ""; display: block; width: 7px; }
+.events-box[open] > summary::before { content: ""; }
+
+.cloud-switch .nav-item[aria-expanded]::after { margin-left: auto; color: var(--rail-fg); opacity: 0.8; }
+.cloud-switch .nav-item[aria-expanded="false"]::after { transform: rotate(-45deg) translate(-1px, -1px); }
+@media (prefers-reduced-motion: reduce) { .step-toggle::before, details > summary::before { transition: none; } }
+
+/* The rail column below the sticky sidebar matches the sidebar's lower colour (no two-tone band). */
+.shell { background: linear-gradient(90deg, rgb(28, 40, 67) 0 var(--rail-w), transparent var(--rail-w)); }
+@media (max-width: 860px) { .shell { background: transparent; } }
+
+/* Narrow windows: the sidebar becomes one scrollable strip under the top bar instead of a full screen of links. */
+@media (max-width: 860px) {
+  .sidenav { flex-direction: row; align-items: center; overflow-x: auto; overflow-y: hidden; white-space: nowrap;
+    padding: var(--s-2) var(--s-3); gap: var(--s-1); height: auto; border-bottom: 1px solid var(--rail-line); }
+  .sidenav nav, .sidenav .subnav { flex-direction: row; flex-wrap: nowrap; border: 0; margin: 0; padding: 0; }
+  .sidenav .nav-item { width: auto; margin: 0; padding: 6px 12px; flex: none; }
+  .sidenav .subnav .nav-item { padding-left: 12px; }
+  .nav-group, .cloud-switch .nav-item[aria-expanded]::after { display: none; }
+}

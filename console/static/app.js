@@ -529,10 +529,41 @@ function applyCloud() {
   state.selectTab(want && want.getAttribute("role") === "tab" ? want.id : "tab-configure", "replace");
 }
 
+// Collapse and expand. Each form step's heading toggles its body; the open cloud in the sidebar
+// toggles its pages instead of reloading. Both carry aria-expanded and work from the keyboard.
+function setupCollapsibles() {
+  for (const step of document.querySelectorAll(".rail-step")) {
+    const head = step.querySelector(":scope > h2"), body = step.querySelector(":scope > .step-body");
+    if (!head || !body) continue;
+    body.id ||= `${step.id}-body`;
+    const btn = h("button", { type: "button", class: "step-toggle", "aria-expanded": "true", "aria-controls": body.id,
+      "aria-label": `Collapse ${head.textContent.trim().replace(/^\d+\s*/, "")}` });
+    head.append(btn);
+    const set = (open) => {
+      step.classList.toggle("collapsed", !open);
+      btn.setAttribute("aria-expanded", String(open));
+      btn.setAttribute("aria-label", `${open ? "Collapse" : "Expand"} ${head.textContent.trim().replace(/^\d+\s*/, "")}`);
+    };
+    head.addEventListener("click", (e) => { if (!e.target.closest("a, input, select, label")) set(step.classList.contains("collapsed")); });
+  }
+  const open = document.querySelector(`[data-cloud-link="${CLOUD}"]`);
+  if (!open) return;
+  open.setAttribute("aria-expanded", "true");
+  open.setAttribute("aria-controls", "tabs");
+  open.addEventListener("click", (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    const show = $("tabs").hidden;
+    $("tabs").hidden = !show;
+    open.setAttribute("aria-expanded", String(show));
+  }, true);
+}
+
 async function boot() {
   setupTabs();
   setupBack();
   applyCloud();
+  setupCollapsibles();
   renderTrail();
   $("legend").replaceChildren(...LEGEND.map(([cls, label]) => h("span", { class: "lg" }, h("i", { class: `sw ${cls}` }), label)));
   let wired = false;

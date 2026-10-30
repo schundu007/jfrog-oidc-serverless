@@ -35,14 +35,26 @@ function h(tag, attrs = {}, ...kids) {
 }
 const markEl = (k) => { const s = h("span", { class: "dash-mark" }); s.innerHTML = MARK[k]; return s; };  // constant SVG only
 const when = (t) => (t || "").replace("T", " ").replace(/:\d\dZ$/, " UTC").replace("Z", " UTC");
-const kpi = (n, label, cls = "") => h("div", { class: `kpi ${cls}` }, h("b", { text: String(n) }), h("span", { text: label }));
 const row = (href, ...kids) => h("a", { class: "dash-row", href }, ...kids);
-// A tile: big product mark, name, then its numbers, stacked and centered.
-function tile(href, markKey, name, line, pill) {
-  const m = h("span", { class: "tile-mark" }); m.innerHTML = MARK[markKey];  // constant SVG only
-  return h("a", { class: "tile", href }, m, h("b", { text: name }), h("small", { text: line }), pill);
-}
 const empty = (t) => h("p", { class: "muted dash-empty", text: t });
+// A chip: the service mark, its name and count, and a status dot.
+function chip(href, markKey, name, line, dot) {
+  const a = h("a", { class: "chip", href }, h("span", { class: `dot ${dot || ""}` }), h("b", { text: name }), h("small", { text: line }));
+  a.insertAdjacentHTML("afterbegin", MARK[markKey]);  // constant SVG only
+  return a;
+}
+// One segmented bar for a board's states, with a legend; segments with no count still show in the legend.
+function meter(id, segs) {
+  const total = segs.reduce((n, s) => n + s.n, 0);
+  const bar = h("div", { class: "meter-bar", role: "img", "aria-label": segs.map((s) => `${s.n} ${s.label}`).join(", ") },
+    ...(total ? segs.filter((s) => s.n).map((s) => { const i = h("i", { class: s.cls }); i.style.flex = String(s.n); return i; }) : [h("i", { class: "none" })]));
+  $(id).replaceChildren(bar, h("div", { class: "meter-legend" },
+    ...segs.map((s) => h("span", {}, h("i", { class: s.cls }), h("b", { text: String(s.n) }), s.label))));
+}
+const ring = (id, ok, total) => {
+  $(id).style.setProperty("--p", total ? String(Math.round((100 * ok) / total)) : "0");
+  $(id).title = `${ok} of ${total} working`;
+};
 
 async function serverless() {
   const [{ configs }, { runs }, schema] = await Promise.all([get("/serverless/api/configs"), get("/serverless/api/runs"),
@@ -50,14 +62,22 @@ async function serverless() {
   const label = (k) => schema.kinds?.[k]?.label || k;
   const cloudOf = (k) => String(k).split("_")[0];
   const count = (s) => runs.filter((r) => r.status === s).length;
-  $("sl-kpis").replaceChildren(kpi(configs.length, "Configurations"), kpi(configs.filter((c) => c.identity).length, "Identities discovered"),
-    kpi(count("succeeded"), "Runs succeeded", "ok"), kpi(count("failed") + count("cancelled"), "Runs failed", "bad"),
-    kpi(count("running") + count("waiting_approval"), "Runs in progress", "info"));
+  const live = count("running") + count("waiting_approval");
+  // A workload is working when its latest run succeeded.
+  const latest = new Map();
+  for (const r of runs) if (!latest.has(r.name)) latest.set(r.name, r);
+  const working = configs.filter((c) => latest.get(c.name)?.status === "succeeded").length;
+  $("hs-sl").textContent = String(configs.length);
+  $("hs-sl-ok").textContent = `${working}/${configs.length}`;
+  ring("ring-sl", working, configs.length);
+  $("hs-runs").textContent = String(runs.length);
+  $("hs-live").textContent = String(live);
+  meter("sl-meter", [{ n: count("succeeded"), cls: "ok", label: "succeeded" }, { n: count("failed") + count("cancelled"), cls: "bad", label: "failed" },
+    { n: live, cls: "info", label: "in progress" }]);
   $("sl-clouds").replaceChildren(...CLOUDS.map(([c, name]) => {
     const n = configs.filter((x) => cloudOf(x.kind) === c).length;
     const last = runs.find((r) => cloudOf(r.kind) === c);
-    return tile(`/serverless/${c}`, c, name, `${n} configuration${n === 1 ? "" : "s"}`,
-      last ? h("span", { class: `pill ${RUN[last.status] || ""}`, text: `last run ${last.status.replaceAll("_", " ")}` }) : null);
+    return chip(`/serverless/${c}`, c, name, `${n} workload${n === 1 ? "" : "s"}`, last ? RUN[last.status] : "");
   }));
   $("sl-runs").replaceChildren(...(runs.length ? runs.slice(0, 6).map((r) => row(`/serverless/${cloudOf(r.kind)}/runs`,
     markEl(kindMark(String(r.kind))), h("span", { class: "dash-main" }, h("b", { text: r.name }), h("small", { text: `${label(r.kind)} · ${when(r.created)}` })),
@@ -68,14 +88,16 @@ async function kubernetes() {
   const fleet = await get("/k8s/api/fleet");
   const cl = fleet.clusters || [];
   const by = (s) => cl.filter((c) => c.state === s).length;
-  $("k8s-kpis").replaceChildren(kpi(cl.length, "Clusters"), kpi(by("working"), "OIDC working", "ok"),
-    kpi(by("attention") + by("not_proven"), "Need attention", "bad"), kpi(by("approval"), "Awaiting approval", "warn"),
-    kpi(by("not_installed") + by("unread"), "Not set up", ""));
+  $("hs-k8s").textContent = String(cl.length);
+  $("hs-k8s-ok").textContent = `${by("working")}/${cl.length}`;
+  ring("ring-k8s", by("working"), cl.length);
+  meter("k8s-meter", [{ n: by("working"), cls: "ok", label: "working" }, { n: by("attention") + by("not_proven"), cls: "bad", label: "need attention" },
+    { n: by("approval") + by("unverified") + by("running"), cls: "warn", label: "pending" }, { n: by("not_installed") + by("unread"), cls: "none", label: "not set up" }]);
   $("k8s-plats").replaceChildren(...PLATFORMS.map(([p, m, name]) => {
     const mine = cl.filter((c) => c.cloud === p);
     const ok = mine.filter((c) => c.state === "working").length;
-    return tile(`/k8s/clusters/${p}`, m, name, `${mine.length} cluster${mine.length === 1 ? "" : "s"}`,
-      mine.length ? h("span", { class: `pill ${ok === mine.length ? "ok" : "warn"}`, text: `${ok}/${mine.length} working` }) : null);
+    return chip(`/k8s/clusters/${p}`, m, name, `${mine.length} cluster${mine.length === 1 ? "" : "s"}`,
+      mine.length ? (ok === mine.length ? "ok" : "warn") : "");
   }));
   const pm = Object.fromEntries(PLATFORMS.map(([p, m]) => [p, m]));
   $("k8s-clusters").replaceChildren(...(cl.length ? cl.map((c) => {
@@ -92,7 +114,7 @@ async function load() {
   $("session-state").hidden = !out;
   $("session-state").textContent = "Not signed in";
   results.forEach((r, i) => { if (r.status === "rejected" && r.reason?.message !== "signed-out") {
-    $(i ? "k8s-kpis" : "sl-kpis").replaceChildren(h("p", { class: "error small", text: r.reason.message })); } });
+    $(i ? "k8s-meter" : "sl-meter").replaceChildren(h("p", { class: "error small", text: r.reason.message })); } });
 }
 $("dash-refresh").addEventListener("click", load);
 load();
