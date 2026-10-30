@@ -233,7 +233,7 @@ const panel = (title, aside, ...body) => h("section", { class: "panel" },
   h("div", { class: "panel-head" }, h("h2", {}, title), aside), ...body);
 
 // Steps or checks as a list with a status mark: {status, title, detail}.
-const MARK = { ok: "✓", done: "✓", pass: "✓", failed: "✕", fail: "✕", error: "✕", warn: "!", skipped: "–" };
+const MARK = { running: "", pending: "", ok: "✓", done: "✓", pass: "✓", failed: "✕", fail: "✕", error: "✕", warn: "!", skipped: "–" };
 function checklist(items) {
   return h("ul", { class: "checks" }, items.map((x) => {
     const st = String(x.status === "done" ? "ok" : x.status || "").toLowerCase();
@@ -401,10 +401,20 @@ function actionEl(name) {
     ...parts);
 }
 
-// The steps as they run, from the run's own record.
+// The steps as they run: one row per plan step, updated in place from the run's own record.
 function progress(run) {
-  const lines = (run.events || []).filter((e) => /^[▶✓✗•■]/.test(e.text) && workflow(e.text));
-  return h("ol", { class: "events small" }, lines.map((e) => h("li", {}, h("span", { class: "mono muted" }, e.t.slice(11, 19), " "), brief(e.text))));
+  const by = {};
+  for (const e of run.events || []) {
+    if (!workflow(e.text)) continue;
+    const m = e.text.match(/^([▶✓✗•■]) (.*)$/);
+    if (!m) continue;
+    const step = (run.request.parameters.steps || []).find((s) => m[2] === s.title || m[2].startsWith(`${s.title}: `));
+    if (!step) continue;
+    const detail = m[2].slice(step.title.length + 2);
+    by[step.id] = m[1] === "▶" ? { status: "running", detail: "" }
+      : { status: m[1] === "✓" ? "ok" : m[1] === "✗" ? "failed" : "skipped", detail };
+  }
+  return checklist((run.request.parameters.steps || []).map((s) => ({ title: s.title, ...(by[s.id] || { status: "pending", detail: "" }) })));
 }
 
 // The confirmation: what the evidence says, in one line.
