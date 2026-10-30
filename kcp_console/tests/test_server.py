@@ -81,7 +81,7 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.req("GET", "/static/app.js", token=False)[0].status, 200)
 
     def test_page_routes_serve_the_app(self):
-        for p in ("/clusters", "/configure", "/runs"):
+        for p in ("/clusters", "/configure"):
             r, raw = self.req("GET", p, token=False)
             self.assertEqual(r.status, 200, p)
             self.assertIn(b'<script type="module" src="/static/app.js">', raw, p)

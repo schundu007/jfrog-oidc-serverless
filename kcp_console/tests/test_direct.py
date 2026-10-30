@@ -22,6 +22,7 @@ class FakeShell:
     def __init__(self, oidc=True, providers=None, mappings=None, pod_phase="Running", pod_reason="", ns_exists=True,
                  anonymous=False, downloaded_by=None):
         self.anonymous = anonymous
+        self.installed = True
         self.downloaded_by = downloaded_by or model.default_config()["jfrog"]["mapped_user"]
         self.calls, self.http_calls = [], []
         self.ns_exists = ns_exists
@@ -46,6 +47,8 @@ class FakeShell:
             out = json.dumps({"metadata": {"name": argv[3]}})
         elif argv[:2] == ["kubectl", "label"]:
             out = "node/a labeled\nnode/b labeled\n"
+        elif argv[:3] == ["kubectl", "get", "daemonset"] and not self.installed:
+            out = json.dumps({"items": []})
         elif argv[:3] == ["kubectl", "get", "daemonset"]:
             out = json.dumps({"items": [{"metadata": {"name": "jfrog-cred-provider-jfrog-credential-provider-daemonset"},
                                          "status": {"desiredNumberScheduled": 2, "numberReady": 2}}]})
@@ -62,8 +65,16 @@ class FakeShell:
                                          "message": "Successfully pulled image" if ok else "401 Unauthorized"}]})
         elif argv[:3] == ["kubectl", "get", "serviceaccount"]:
             out = json.dumps({"metadata": {"name": argv[3], "annotations": {"JFrogExchange": "true"}}})
+        elif argv[:2] == ["helm", "status"]:
+            return Result(list(argv), 0 if self.installed else 1, "", "" if self.installed else "Error: release: not found", 0.0)
+        elif argv[:3] == ["kubectl", "get", "nodes"]:
+            out = json.dumps({"items": [{"metadata": {"name": "a"}}] if self.installed else []})
         elif argv[:2] == ["kubectl", "apply"]:
             out = "serviceaccount/jfrog-provider-sa created\n"
+        if argv[:2] == ["helm", "uninstall"] and "--dry-run" not in argv:
+            self.installed = False
+        if argv[:2] == ["kubectl", "label"] and argv[-1].endswith("-"):
+            self.installed = False
         return Result(list(argv), 0, out, "", 0.0)
 
     def http(self, method, url, headers=None, body=None, timeout=20.0, sensitive=False):
@@ -76,6 +87,8 @@ class FakeShell:
             self.providers.append(json.loads(body))
         elif method == "POST" and url.endswith("/identity_mappings"):
             self.mappings.append(json.loads(body))
+        if method == "DELETE" and url.rstrip("/").split("/")[-2] == "oidc":
+            self.providers = [p for p in self.providers if p.get("name") != url.rstrip("/").split("/")[-1]]
         if method == "GET" and "/v2/" in url:
             return HttpResult(method, url, 200 if self.anonymous else 401, "{}")
         if method == "GET" and url.endswith("?stats"):
@@ -389,6 +402,20 @@ class ProofTest(unittest.TestCase):
         self.assertNotIn(ISSUER, text)
         self.assertNotIn("https://", text)
         self.assertNotIn(model.default_config()["jfrog"]["test_image"], text)
+
+    def test_tear_down_ends_with_evidence(self):
+        sh = FakeShell(**set_up())
+        rn = direct.Runner(cfg(), sh, self.root, {"JFROG_ACCESS_TOKEN": TOKEN}, lambda line: None, dry_run=False, sleep=lambda s: None)
+        res = rn.execute(direct.plan(cfg(), self.root, "teardown", dry_run=False))
+        self.assertEqual((res[-1]["id"], res[-1]["status"]), ("gone", "ok"), res)
+
+    def test_tear_down_names_what_is_left(self):
+        sh = FakeShell(**set_up())
+        rn = direct.Runner(cfg(), sh, self.root, {"JFROG_ACCESS_TOKEN": TOKEN}, lambda line: None, dry_run=False, sleep=lambda s: None)
+        res = rn.execute([{"id": "gone", "title": "gone"}])
+        self.assertEqual(res[0]["status"], "failed")
+        self.assertIn("Helm release", res[0]["detail"])
+        self.assertIn("JFrog OIDC provider", res[0]["detail"])
 
     def test_proof_steps_are_in_verify(self):
         self.assertTrue(set(direct.PROOF_STEPS) <= set(direct.VERIFY_STEPS))

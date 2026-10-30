@@ -41,7 +41,7 @@ CHART = "jfrog-credential-provider"
 STEPS = ("cluster", "oidc", "kubeconfig", "sa", "provider", "mapping", "label", "helm", "daemonset", "anon", "pull", "who")
 VERIFY_STEPS = ("cluster", "kubeconfig", "sa-check", "trust", "map", "daemonset", "anon", "pull", "who")
 PROOF_STEPS = ("cluster", "sa-check", "trust", "map", "anon", "pull", "who")
-TEARDOWN_STEPS = ("kubeconfig", "uninstall", "unlabel", "delete-mapping", "delete-provider")
+TEARDOWN_STEPS = ("kubeconfig", "uninstall", "unlabel", "delete-mapping", "delete-provider", "gone")
 
 
 class StepError(RuntimeError):
@@ -128,6 +128,7 @@ def plan(cfg: dict, root: Path, which: str = "setup", dry_run: bool = True) -> l
         "delete-mapping": (f"Delete identity mapping {j['mapping_name']}", "change",
                            f"DELETE https://{host}/access/api/v1/oidc/{v['provider_name']}/identity_mappings/{j['mapping_name']}"),
         "delete-provider": (f"Delete OIDC provider {v['provider_name']}", "change", f"DELETE https://{host}/access/api/v1/oidc/{v['provider_name']}"),
+        "gone": ("Nothing left on the cluster or JFrog", "read", f"helm status; kubectl get daemonset, nodes; GET https://{host}/access/api/v1/oidc"),
     }
     ids = {"setup": STEPS, "verify": VERIFY_STEPS, "teardown": TEARDOWN_STEPS}[which]
     out = []
@@ -464,6 +465,31 @@ class Runner:
             return "skipped", "dry run"
         r = self.jf.delete_mapping(self.cfg["values"]["provider_name"], self.cfg["jfrog"]["mapping_name"])
         return ("done" if r["ok"] or r["status"] == 404 else "failed"), f"HTTP {r['status']}"
+
+    def s_gone(self):
+        """Evidence for a tear down: the release, the DaemonSet, the node label and the provider are all absent."""
+        if self.dry:
+            return "skipped", "dry run: checked after a real tear down"
+        k, lab = self.cfg["k8s"], self.cfg["values"]["node_affinity_label"]
+        left = []
+        if self.sh.run(["helm", "status", k["release"], "--namespace", k["namespace"]], timeout=60, extra_env=self.kenv).rc == 0:
+            left.append("Helm release")
+        for _ in range(12):  # the DaemonSet's pods go away after the release
+            d = self._run(["kubectl", "get", "daemonset", "-n", k["namespace"], "-o", "json"], ok_rcs=(0, 1)).json({}) or {}
+            if not [x for x in d.get("items", []) if "jfrog" in x["metadata"]["name"]]:
+                break
+            self.sleep(5)
+        else:
+            left.append("DaemonSet")
+        n = self._run(["kubectl", "get", "nodes", "-l", f"{lab}=true", "-o", "json"]).json({}) or {}
+        if n.get("items"):
+            left.append(f"node label on {len(n['items'])} node(s)")
+        if self.jf.token_present:
+            if self.cfg["values"]["provider_name"] in self._provider_state():
+                left.append("JFrog OIDC provider")
+        if left:
+            raise StepError("still present: " + ", ".join(left))
+        return "ok", "release, DaemonSet, node label and JFrog provider are gone"
 
     def s_delete_provider(self):
         name = self.cfg["values"]["provider_name"]

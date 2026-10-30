@@ -4,7 +4,6 @@
 
 import { initOverview } from "./overview.js";
 import { initConfigure } from "./configure.js";
-import { initRuns } from "./runs.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -93,7 +92,7 @@ function showAuth() {
 
 // One page, a side menu, and a URL per section: /clusters, /configure, /install … /simulate. The server
 // serves index.html for all of them, so a reload or a shared link opens the same section.
-const PAGES = ["overview", "configure", "runs"];
+const PAGES = ["overview", "configure"];
 const pathOf = (p) => (p === "overview" ? "/clusters" : `/${p}`);
 
 function fromPath(path) {
@@ -146,7 +145,7 @@ async function start() {
   state.session = session;
   await refreshConfigs();
   initOverview();
-  for (const init of [initConfigure, initRuns]) {
+  for (const init of [initConfigure]) {
     try { init(); } catch (e) { console.error(e); }
   }
   state.emit("config", state.config);

@@ -1,18 +1,24 @@
 // Clusters: pick or add a cluster, see its live state, and run Set up / Verify / Tear down.
-// Each action runs itself: dry run, then the plan for one approval, then the real run, then a fresh
-// status read and, on a failure, the diagnosis. The approval is the only click inside a run.
+// Each action runs itself: dry run, then the plan for one approval, then the real run, then the
+// evidence and a fresh status read. The action is rebuilt from the server's run records, so a page
+// refresh or another page in between finds it where it was. The approval is the only click inside it.
 
 import { api, h, fill, state, selectTab, refreshConfigs } from "./app.js";
-import { $, pill, table, stream, workflow, brief } from "./ui.js";
+import { $, pill, table, workflow, brief } from "./ui.js";
 
 let aks = null;             // GET /api/aks
 const live = {};            // config name -> {loading, facts, preflight, error}
-let flow = null;            // the running action: {which, el, running}
+const acts = {};            // config name -> the newest action: {which, dry, real, error}
+const boxes = {};           // real run id -> its approval box (kept, so a re-render keeps what was typed)
+const causes = {};          // failed run id -> the diagnosed cause
+const driving = {};         // config name -> true while this page creates or approves a run
+let timer = null;
 
 const TITLES = { setup: "Set up", verify: "Verify", teardown: "Tear down" };
 
 export function initOverview() {
-  state.on("config", (name) => { if (!flow || !flow.running) flow = null; render(); if (name && !live[name]) readStatus(name); });
+  state.on("config", (name) => { render(); if (name && !live[name]) readStatus(name); else if (name) refreshAction(name); });
+  state.on("tab", (tab) => { if (tab === "overview" && state.config) refreshAction(state.config); });
   render();
   if (state.config) readStatus(state.config);
 }
@@ -64,7 +70,7 @@ function clusterCard(c) {
     ["JFrog OIDC provider", f.providers ? ((f.providers || []).some((p) => p.name === c.provider) ? "present" : "missing") : "—"],
   ];
   const problems = (s.preflight?.checks || []).filter((x) => x.status === "fail" || x.status === "warn");
-  const busy = !!(flow && flow.running);
+  const busy = isBusy(c.name);
   return h("section", { class: "summary cluster-card" },
     h("div", { class: "toolbar" },
       h("h2", {}, c.name, muted(` · ${c.cluster || "—"}`)),
@@ -78,7 +84,7 @@ function clusterCard(c) {
     problems.length ? table(["", "check", "detail"], problems.map((x) => [pill(x.status), x.title, brief(x.detail)])) : null,
     proofBlock(s.proof),
     table(["", ""], facts, "grid small facts"),
-    flow ? flow.el : null);
+    actionEl(c.name));
 }
 
 // The OIDC proof: each link of the newest real Set up or Verify that checked it, cluster to JFrog.
@@ -113,122 +119,197 @@ async function doRead(name) {
   try {
     const [r, { runs }] = await Promise.all([api("/api/preflight", { method: "POST", body: { config: name } }), api("/api/runs")]);
     live[name] = { facts: r.facts, preflight: r.preflight, proof: latestProof(runs, name) };
+    acts[name] = actionOf(runs, name);
   } catch (err) {
     live[name] = { error: err.message };
   }
   render();
+  await advance(name);
+  schedule(name);
 }
 
 // ----------------------------------------------------------------------- the automated action
 
-function start(which) {
-  const el = h("div", { class: "flow" });
-  flow = { which, el, running: true };
+const ACTIVE = ["queued", "running"];
+const dryOf = (r) => r.request.parameters.DryRun !== false;
+const fresh = (r) => Date.now() - Date.parse(r.created) < 30 * 60 * 1000;
+
+// The newest Set up / Verify / Tear down of a cluster: its real run and the dry run before it.
+function actionOf(runs, name) {
+  const mine = runs.filter((r) => r.config === name && r.kind === "direct" && TITLES[r.name]);
+  const top = mine[0];
+  if (!top) return null;
+  if (dryOf(top)) return { which: top.name, dry: top, real: null };
+  return { which: top.name, dry: mine.find((r) => r.name === top.name && dryOf(r) && r.created <= top.created) || null, real: top };
+}
+
+function isBusy(name) {
+  const a = acts[name];
+  if (driving[name]) return true;
+  if (!a) return false;
+  if (a.dry && !a.real && (a.dry.status === "prepared" || ACTIVE.includes(a.dry.status) || (a.dry.status === "succeeded" && fresh(a.dry)))) return true;
+  return !!(a.real && (a.real.status === "prepared" || ACTIVE.includes(a.real.status)));
+}
+
+async function refreshAction(name) {
+  let runs;
+  try { ({ runs } = await api("/api/runs")); } catch { return schedule(name); }
+  const was = acts[name]?.real;
+  acts[name] = actionOf(runs, name);
+  live[name] = { ...(live[name] || {}), proof: latestProof(runs, name) };
   render();
-  runFlow(which, el).finally(() => { flow.running = false; render(); });
+  await advance(name);
+  const now = acts[name]?.real;
+  // The real run just ended: read the cluster again for the fresh state.
+  if (was && now && was.id === now.id && ACTIVE.includes(was.status) && !ACTIVE.includes(now.status)) readStatus(name);
+  schedule(name);
 }
 
-function stage(el, text, cls = "") {
-  const li = h("li", { class: cls }, text);
-  el.querySelector("ol.stages").append(li);
-  return li;
+// Moves an action on by itself: a dry run starts as soon as it exists (it is read-only), and a passed
+// dry run gets its real run prepared for the approval. A refresh in between resumes here.
+async function advance(name) {
+  const a = acts[name];
+  if (!a || driving[name]) return;
+  driving[name] = true;
+  try {
+    if (a.dry && !a.real && a.dry.status === "prepared") {
+      a.dry = await api(`/api/runs/${a.dry.id}/approve`, { method: "POST", body: { request_sha256: a.dry.request_sha256, approved: true } });
+    }
+    if (a.dry && !a.real && a.dry.status === "succeeded" && fresh(a.dry)) {
+      a.real = await api("/api/runs", { method: "POST", body: { config: name, kind: "direct", name: a.which, params: { DryRun: false } } });
+    }
+  } catch (err) {
+    a.error = err.message;
+  } finally {
+    driving[name] = false;
+  }
+  render();
 }
 
-const set = (li, text, cls) => { li.textContent = text; li.className = cls; };
+function schedule(name) {
+  clearTimeout(timer);
+  const a = acts[name];
+  const moving = a && [a.dry, a.real].some((r) => r && ACTIVE.includes(r.status));
+  if (moving && state.config === name) timer = setTimeout(() => { if (state.config === name) refreshAction(name); }, 2000);
+}
 
-async function runFlow(which, el) {
+async function start(which) {
   const name = state.config;
-  fill(el, h("h3", {}, TITLES[which]), h("ol", { class: "stages" }));
-  // 1. Dry run: every step checked against the cluster and JFrog, nothing changed.
-  const s1 = stage(el, "Dry run…");
-  const dry = await execute(name, which, true);
-  if (!dry.ok) return failed(el, s1, "Dry run failed", dry, name);
-  set(s1, "Dry run passed", "ok");
-  // 2. One approval for the exact request (its sha256 binds the plan).
-  const s2 = stage(el, "Waiting for approval");
-  let real;
+  driving[name] = true;
+  render();
   try {
-    real = await api("/api/runs", { method: "POST", body: { config: name, kind: "direct", name: which, params: { DryRun: false } } });
-  } catch (err) { return failed(el, s2, err.message, null, name); }
-  if (real.guards.length) return failed(el, s2, real.guards.join(" "), null, name);
-  if (!(await approval(el, real, dry.result))) { set(s2, "Cancelled", "muted"); return; }
-  set(s2, "Approved", "ok");
-  // 3. Apply, with the live log.
-  const s3 = stage(el, "Applying…");
-  const log = h("ol", { class: "events small" });
-  el.append(log);
-  const done = await follow(real.id, log);
-  log.remove();
-  if (done.status !== "succeeded") return failed(el, s3, "Failed", done, name);
-  set(s3, which === "teardown" ? "Removed" : "Applied", "ok");
-  el.append(stepTable(done.result));
-  // 4. Fresh state.
-  await readStatus(name);
+    const dry = await api("/api/runs", { method: "POST", body: { config: name, kind: "direct", name: which, params: { DryRun: true } } });
+    acts[name] = { which, dry, real: null };
+    if (!dry.guards.length) {
+      acts[name].dry = await api(`/api/runs/${dry.id}/approve`, { method: "POST", body: { request_sha256: dry.request_sha256, approved: true } });
+    }
+  } catch (err) {
+    acts[name] = { which, dry: null, real: null, error: err.message };
+  } finally {
+    driving[name] = false;
+  }
+  refreshAction(name);
 }
 
-async function execute(name, which, dryRun) {
-  try {
-    const run = await api("/api/runs", { method: "POST", body: { config: name, kind: "direct", name: which, params: { DryRun: dryRun } } });
-    if (run.guards.length) return { ok: false, error: run.guards.join(" ") };
-    await api(`/api/runs/${run.id}/approve`, { method: "POST", body: { request_sha256: run.request_sha256, approved: true } });
-    const done = await follow(run.id, null);
-    return { ok: done.status === "succeeded", ...done };
-  } catch (err) { return { ok: false, error: err.message }; }
-}
-
-async function follow(id, log) {
-  let out = { status: "unknown" };
-  await stream(`/api/runs/${id}/events`, (kind, data) => {
-    if (kind === "event" && log && workflow(data.text)) log.append(h("li", {}, h("span", { class: "mono muted" }, data.t.slice(11, 19), " "), brief(data.text)));
-    if (kind === "done") out = data;
-  });
-  return out;
-}
-
-// The plan: what changes, with what the dry run saw, and one approve button
-// (plus the typed cluster name for a tear down).
-function approval(el, run, dryResult) {
-  return new Promise((resolve) => {
-    const dryById = Object.fromEntries(((dryResult || {}).steps || []).map((s) => [s.id, s]));
-    const typed = h("input", { type: "text", class: "typed", placeholder: run.cluster, autocomplete: "off", "aria-label": "Type the cluster name" });
-    const go = h("button", { class: "primary" }, run.needs_typed_cluster ? "Approve and tear down" : "Approve and apply");
-    const no = h("button", { class: "secondary" }, "Cancel");
-    const box = h("div", { class: "approve-box" },
-      table(["", "step", "dry run"], run.request.parameters.steps.map((s, i) => [String(i + 1), s.title,
-        dryById[s.id] ? h("span", {}, pill(dryById[s.id].status), " ", brief(dryById[s.id].detail)) : ""])),
-      h("div", { class: "approve" }, run.needs_typed_cluster ? typed : null, go, no));
-    el.append(box);
-    no.onclick = () => { box.remove(); resolve(false); };
-    go.onclick = async () => {
-      go.disabled = true;
-      try {
-        await api(`/api/runs/${run.id}/approve`, { method: "POST",
-          body: { request_sha256: run.request_sha256, approved: true, typed_cluster: typed.value } });
-        box.remove();
-        resolve(true);
-      } catch (err) {
-        go.disabled = false;
-        box.append(h("p", { class: "error small" }, err.message));
+function actionEl(name) {
+  const a = acts[name];
+  if (!a) return null;
+  const { dry: d, real: r } = a;
+  const stages = [], parts = [];
+  if (d) {
+    if (d.status === "refused") stages.push([brief(d.guards.join(" ")), "error"]);
+    else if (d.status === "prepared" || ACTIVE.includes(d.status)) stages.push(["Dry run…", ""]);
+    else if (d.status === "succeeded") stages.push(["Dry run passed", "ok"]);
+    else {
+      stages.push([d.status === "interrupted" ? "Dry run interrupted (the console restarted)" : "Dry run failed", "error"]);
+      parts.push(stepTable(d.result), causeEl(name, d));
+    }
+    if (d.status === "succeeded" && !r) stages.push(fresh(d) ? ["Preparing the approval…", ""] : ["Dry run expired: start again", "muted"]);
+  }
+  if (r) {
+    if (r.status === "refused") stages.push([brief(r.guards.join(" ")), "error"]);
+    else if (r.status === "prepared") { stages.push(["Waiting for approval", ""]); parts.push(approvalBox(name, r, d)); }
+    else if (r.status === "cancelled") stages.push(["Cancelled: nothing changed", "muted"]);
+    else {
+      stages.push([`Approved ${when(r.approved?.at)}`, "ok"]);
+      if (ACTIVE.includes(r.status)) { stages.push(["Applying…", ""]); parts.push(progress(r)); }
+      else if (r.status === "succeeded") { stages.push([a.which === "teardown" ? "Removed" : "Applied", "ok"]); parts.push(confirmation(a.which, r), stepTable(r.result)); }
+      else {
+        stages.push([r.status === "interrupted" ? "Interrupted (the console restarted)" : "Failed", "error"]);
+        parts.push(r.error ? h("p", { class: "error small" }, brief(r.error)) : null, stepTable(r.result), causeEl(name, r));
       }
-    };
-  });
+    }
+  }
+  if (a.error) parts.push(h("p", { class: "error small" }, brief(a.error)));
+  return h("div", { class: "flow" },
+    h("h3", {}, TITLES[a.which], muted(` · ${when((r || d || {}).created)}`)),
+    h("ol", { class: "stages" }, stages.map(([t, cls]) => h("li", { class: cls }, t))),
+    ...parts);
+}
+
+// The steps as they run, from the run's own record.
+function progress(run) {
+  const lines = (run.events || []).filter((e) => /^[▶✓✗•■]/.test(e.text) && workflow(e.text));
+  return h("ol", { class: "events small" }, lines.map((e) => h("li", {}, h("span", { class: "mono muted" }, e.t.slice(11, 19), " "), brief(e.text))));
+}
+
+// The confirmation: what the evidence says, in one line.
+function confirmation(which, run) {
+  const steps = (run.result || {}).steps || [];
+  const by = Object.fromEntries(steps.map((s) => [s.id, s]));
+  const bad = steps.find((s) => s.status === "failed" || s.status === "warn");
+  if (which === "teardown") {
+    return by.gone?.status === "ok"
+      ? h("div", { class: "callout ok" }, h("strong", {}, "Removed. "), "Checked: nothing left on the cluster or JFrog.")
+      : h("div", { class: "callout fail" }, h("strong", {}, "Not confirmed. "), brief(bad ? `${bad.title}: ${bad.detail}` : "the final check did not run"));
+  }
+  return by.who?.status === "ok" && !bad
+    ? h("div", { class: "callout ok" }, h("strong", {}, "OIDC working. "), "Pulled with no pull secret; JFrog recorded the mapped user.")
+    : h("div", { class: "callout fail" }, h("strong", {}, "OIDC not proven. "), brief(bad ? `${bad.title}: ${bad.detail}` : "the proof did not finish"));
+}
+
+// The plan and the dry-run result for each step, one approve button (and the typed cluster name for a tear down).
+function approvalBox(name, run, dry) {
+  if (boxes[run.id]) return boxes[run.id];
+  const dryById = Object.fromEntries(((dry || {}).result?.steps || []).map((s) => [s.id, s]));
+  const typed = h("input", { type: "text", class: "typed", placeholder: run.cluster, autocomplete: "off", "aria-label": "Type the cluster name" });
+  const go = h("button", { class: "primary" }, run.needs_typed_cluster ? "Approve and tear down" : "Approve and apply");
+  const no = h("button", { class: "secondary" }, "Cancel");
+  const msg = h("p", { class: "error small" });
+  const box = h("div", { class: "approve-box" },
+    table(["", "step", "dry run"], run.request.parameters.steps.map((s, i) => [String(i + 1), s.title,
+      dryById[s.id] ? h("span", {}, pill(dryById[s.id].status === "done" ? "ok" : dryById[s.id].status), " ", brief(dryById[s.id].detail)) : ""])),
+    h("div", { class: "approve" }, run.needs_typed_cluster ? typed : null, go, no), msg);
+  const act = async (path, body) => {
+    go.disabled = no.disabled = true;
+    try {
+      await api(`/api/runs/${run.id}/${path}`, { method: "POST", body });
+      delete boxes[run.id];
+      refreshAction(name);
+    } catch (err) {
+      go.disabled = no.disabled = false;
+      msg.textContent = brief(err.message);
+    }
+  };
+  go.onclick = () => act("approve", { request_sha256: run.request_sha256, approved: true, typed_cluster: typed.value });
+  no.onclick = () => act("cancel", {});
+  return (boxes[run.id] = box);
 }
 
 function stepTable(result) {
-  return table(["", "step", "detail"], ((result || {}).steps || []).map((s) => [pill(s.status === "done" ? "ok" : s.status), s.title || s.id, brief(s.detail)]));
+  const steps = (result || {}).steps || [];
+  return steps.length ? table(["", "step", "detail"], steps.map((s) => [pill(s.status === "done" ? "ok" : s.status), s.title || s.id, brief(s.detail)])) : null;
 }
 
-// A failed stage: the step results, then the cause from the run evidence, then a fresh status.
-async function failed(el, li, text, run, name) {
-  set(li, text, "error");
-  if (run && run.error) el.append(h("p", { class: "error small" }, brief(run.error)));
-  if (run && run.result) el.append(stepTable(run.result));
-  try {
-    const d = await api("/api/diagnose", { method: "POST", body: { config: name, text: "" } });
-    const top = (d.findings || []).find((f) => f.level === "cause");
-    if (top) el.append(h("div", { class: "callout fail" }, h("strong", {}, "Cause: "), top.title));
-  } catch { /* the step detail above stands */ }
-  await readStatus(name);
+// The cause of a failed run, from its evidence; read once per run.
+function causeEl(name, run) {
+  if (!(run.id in causes)) {
+    causes[run.id] = null;
+    api("/api/diagnose", { method: "POST", body: { config: name, text: "" } })
+      .then((d) => { causes[run.id] = (d.findings || []).find((f) => f.level === "cause")?.title || ""; render(); })
+      .catch(() => { causes[run.id] = ""; });
+  }
+  return causes[run.id] ? h("div", { class: "callout fail" }, h("strong", {}, "Cause: "), brief(causes[run.id])) : null;
 }
 
 // ----------------------------------------------------------------------- add a cluster

@@ -38,7 +38,7 @@ from .store import RUN_ID_RE, RunStore, StatusStore, Store, StoreError
 
 STATIC_DIR = Path(__file__).parent / "static"
 # Page URLs: each section has its own path (old /operate/<page> links still work); all serve index.html.
-PAGE_ROUTES = {"/", "/clusters", "/configure", "/runs"}
+PAGE_ROUTES = {"/", "/clusters", "/configure"}
 MAX_BODY = 1024 * 1024
 MAX_DRAIN = 8 * 1024 * 1024
 MAX_SIMS_KEPT = 20
