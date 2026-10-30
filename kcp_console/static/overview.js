@@ -203,16 +203,29 @@ function clusterView(c) {
   const [vcls, vtext] = verdict(s, acts[c.name], busy);
   const problems = (s.preflight?.checks || []).filter((x) => x.status === "fail" || x.status === "warn");
   const sa = f.service_account;
-  // Facts as two muted lines under the title; only what fails turns red.
-  const flag = (name, ok, bad) => (ok === undefined ? null : ok ? `${name} ✓` : h("span", { class: "bad" }, `${name} ${bad} ✕`));
-  const cl = f.cluster;
-  const facts = f.cluster || rel ? h("dl", { class: "cl-facts" },
-    h("dt", {}, "Cluster"), h("dd", {}, dots([CLOUD[c.platform || "aks"], cl?.kubernetes_version && `Kubernetes ${cl.kubernetes_version}`,
-      f.nodes && `${f.nodes.length} node${f.nodes.length === 1 ? "" : "s"}`,
-      (c.platform || "aks") === "aks" ? flag("OIDC issuer", cl?.oidc_enabled, "off") : null, flag("Workload Identity", cl?.workload_identity, "off")])),
-    h("dt", {}, "Credential provider"), h("dd", {}, dots([rel ? rel.chart.replace(/^.*-(?=\d)/, "v") : h("span", { class: "bad" }, "not installed ✕"),
-      sa && flag("service account allowed", sa.exists && sa.annotation === "true", sa.exists ? "no" : "missing"),
-      f.providers && flag("JFrog provider", f.providers.some((p) => p.name === c.provider), "missing")]))) : null;
+  // Essentials, as on a cloud portal's resource page: label/value pairs in two columns, state as pills.
+  const cl = f.cluster || {};
+  const gke = (c.platform || "aks") === "gke";
+  const pill = (ok, yes, no) => (ok === undefined || ok === null ? muted("—") : h("span", { class: `pill-s ${ok ? "ok" : "fail"}` }, ok ? yes : no));
+  const map = Object.values(f.mappings || {}).flat()[0];
+  const ttl = map?.token_spec?.expires_in;
+  const essentials = [
+    [gke ? "Project" : "Subscription", c.subscription || muted("—")],
+    gke ? null : ["Resource group", c.resource_group || muted("—")],
+    ["Location", cl.location || c.location || muted("—")],
+    ["Platform", CLOUD[c.platform || "aks"]],
+    ["Kubernetes version", cl.kubernetes_version || muted("—")],
+    ["Nodes", f.nodes ? String(f.nodes.length) : muted("—")],
+    gke ? null : ["OIDC issuer", pill(f.cluster ? cl.oidc_enabled : undefined, "Enabled", "Disabled")],
+    ["Workload Identity", pill(f.cluster ? cl.workload_identity : undefined, "Enabled", "Disabled")],
+    ["Credential provider", rel ? rel.chart.replace(/^.*-(?=\d)/, "v") : pill(f.cluster ? false : undefined, "", "Not installed")],
+    ["JFrog provider", pill(f.providers ? f.providers.some((p) => p.name === c.provider) : undefined, "Present", "Missing")],
+    ["Service account", pill(sa ? sa.exists && sa.annotation === "true" : undefined, "Allowed", sa?.exists ? "Not allowed" : "Missing")],
+    ["Mapped user", map ? `${map.token_spec?.username || "—"}${ttl ? ` · ${Math.round(ttl / 60)} min tokens` : ""}` : muted("—")],
+  ].filter(Boolean);
+  const facts = f.cluster || rel ? h("section", { class: "panel essentials" },
+    h("div", { class: "panel-head" }, h("h2", {}, "Essentials")),
+    h("dl", { class: "ess" }, essentials.map(([k, v]) => h("div", {}, h("dt", {}, k), h("dd", {}, v))))) : null;
   return h("div", { class: "cluster" },
     h("nav", { class: "crumbs", "aria-label": "Breadcrumb" },
       h("a", { href: "/clusters", onclick: (e) => { e.preventDefault(); openFleet(); } }, "Clusters"), h("span", {}, "/"), h("span", {}, c.name)),
@@ -221,8 +234,7 @@ function clusterView(c) {
         h("div", { class: "cl-title" },
           h("h1", {}, c.name),
           h("span", { class: `badge ${vcls}` }, vtext),
-          c.cluster && c.cluster !== c.name ? muted(c.cluster) : null),
-        facts),
+          c.cluster && c.cluster !== c.name ? muted(c.cluster) : null)),
       h("div", { class: "cl-actions" },
         h("button", { class: "ghost", disabled: s.loading || busy, onclick: () => readStatus(c.name) }, s.loading ? "Reading…" : "Refresh"),
         h("button", { class: "ghost", disabled: busy, onclick: () => selectTab("configure") }, "Edit"),
@@ -230,13 +242,11 @@ function clusterView(c) {
         rel ? h("button", { class: "secondary", disabled: busy, onclick: () => start("setup") }, "Set up again") : null,
         h("button", { class: "primary", disabled: busy, onclick: () => start(rel ? "verify" : "setup") }, rel ? "Verify" : "Set up"))),
     s.error ? h("div", { class: "callout fail" }, brief(s.error)) : null,
+    facts,
     problems.length ? panel("Problems", null, checklist(problems)) : null,
     actionEl(c.name),
     busy ? null : proofBlock(s.proof));
 }
-
-// Items joined by a middle dot, skipping empty ones.
-const dots = (items) => items.filter(Boolean).flatMap((x, i) => (i ? [" · ", x] : [x]));
 
 const panel = (title, aside, ...body) => h("section", { class: "panel" },
   h("div", { class: "panel-head" }, h("h2", {}, title), aside), ...body);
@@ -244,7 +254,7 @@ const panel = (title, aside, ...body) => h("section", { class: "panel" },
 // Steps or checks as a list with a status mark: {status, title, detail}.
 const MARK = { running: "", pending: "", ok: "✓", done: "✓", pass: "✓", failed: "✕", fail: "✕", error: "✕", warn: "!", skipped: "–" };
 function checklist(items) {
-  return h("ul", { class: "checks" }, items.map((x) => {
+  return h("ul", { class: "checks" }, h("li", { class: "head", "aria-hidden": "true" }, h("span", {}), h("span", {}, "Item"), h("span", {}, "Result")), items.map((x) => {
     const st = String(x.status === "done" ? "ok" : x.status || "").toLowerCase();
     return h("li", { class: `st-${st}` }, h("span", { class: "mark", title: st }, MARK[st] || "•"),
       h("span", { class: "t" }, x.title || x.id), h("span", { class: "d" }, brief(x.detail)));
@@ -267,7 +277,7 @@ function proofBlock(p) {
   if (!p) return null;
   const tag = p.proven ? ["ok", "Working"] : !p.complete ? ["warn", "Incomplete"] : ["fail", "Not proven"];
   return h("details", { class: "panel proof", open: !p.proven },
-    h("summary", { class: "panel-head" }, h("h2", {}, "OIDC proof"), h("span", { class: `badge ${tag[0]}` }, tag[1]), muted(when(p.at))),
+    h("summary", { class: "panel-head" }, h("h2", {}, "OIDC"), h("span", { class: `badge ${tag[0]}` }, tag[1]), muted(when(p.at))),
     checklist(p.steps));
 }
 
