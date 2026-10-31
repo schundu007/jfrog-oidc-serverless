@@ -18,7 +18,7 @@ source pipelines/scripts/oidc-login.sh
 JFROG_ACCESS_TOKEN=$(python3 -m jfrog_oidc token)
 export JFROG_ACCESS_TOKEN
 
-inputs="$RUNNER_TEMP/${stack}.tfvars.json" state="$RUNNER_TEMP/${stack}.state.json"
+inputs="$AGENT_TEMPDIRECTORY/${stack}.tfvars.json" state="$AGENT_TEMPDIRECTORY/${stack}.state.json"
 printf '%s' "${STACK_INPUTS:-{\}}" > "$inputs"
 printf '%s' "${STACK_STATE:-{\}}" > "$state"
 backend_args=$(python3 -m setup_console.stacks backend-args "$stack" "$environment" "$state")
