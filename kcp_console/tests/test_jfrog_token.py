@@ -3,9 +3,11 @@ for the operator service account → /access/api/v1/oidc/token), caches it in me
 never puts it in argv or a log line."""
 
 import json
+import pathlib
+import tempfile
 import unittest
 
-from kcp_console.jfrog import Jfrog, OperatorToken, TokenError
+from kcp_console.jfrog import Jfrog, OperatorToken, TokenError, operator_env
 from kcp_console.shell import HttpResult, Result
 
 ENV = {"JFROG_OIDC_PROVIDER": "gcp-cloudrun", "JFROG_OIDC_AUDIENCE": "jfrog-gcp",
@@ -63,8 +65,17 @@ class OperatorTokenTests(unittest.TestCase):
 
     def test_not_configured_names_the_settings(self):
         with self.assertRaises(TokenError) as cm:
-            OperatorToken({}).get(FakeShell(), "x.jfrog.io")
+            OperatorToken({}, state_file=None).get(FakeShell(), "x.jfrog.io")
         self.assertIn("JFROG_OIDC_SERVICE_ACCOUNT", str(cm.exception))
+
+    def test_unset_settings_come_from_the_ado_trust_output(self):
+        with tempfile.TemporaryDirectory() as d:
+            state = pathlib.Path(d, "terraform.tfstate")
+            state.write_text(json.dumps({"outputs": {"console_operator_env": {"value": ENV}}}))
+            self.assertEqual(operator_env({}, state), ENV)
+            self.assertEqual(operator_env({"JFROG_OIDC_AUDIENCE": "other"}, state)["JFROG_OIDC_AUDIENCE"], "other")
+            self.assertTrue(OperatorToken({}, state_file=state).configured)
+            self.assertFalse(OperatorToken({}, state_file=pathlib.Path(d, "missing")).configured)
 
     def test_a_failed_exchange_says_so_and_the_call_goes_out_anonymous(self):
         sh = FakeShell(status=401)
@@ -79,7 +90,7 @@ class OperatorTokenTests(unittest.TestCase):
 
     def test_the_stored_token_variable_is_ignored(self):
         sh = FakeShell()
-        jf = Jfrog(sh, "x.jfrog.io", env={"JFROG_ACCESS_TOKEN": "stored-admin-token"})
+        jf = Jfrog(sh, "x.jfrog.io", tokens=OperatorToken({"JFROG_ACCESS_TOKEN": "stored-admin-token"}, state_file=None))
         jf.providers()
         self.assertNotIn("Authorization", sh.http_calls[-1][2])
 
