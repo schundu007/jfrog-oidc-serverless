@@ -129,7 +129,9 @@ function markDirty(on) {
 // The field's own label, so problems read "App name is required", not "target.azure.name: …".
 function labelFor(path) {
   const el = $("cfg-form").querySelector(`[data-path="${CSS.escape(path)}"]`);
-  const text = el?.closest("label")?.querySelector("span, b")?.textContent?.trim();
+  const label = el?.closest("label")?.querySelector("span, b")?.cloneNode(true);
+  label?.querySelectorAll(".help, button").forEach((n) => n.remove());
+  const text = label?.textContent?.trim();
   return { el, text: text || path };
 }
 
@@ -165,10 +167,10 @@ function renderIdentity(d, found) {
   const identity = d?.service_account || d?.principal_id || d?.client_id || "";
   // A dedicated identity the run creates has no ID yet: show its name.
   const planned = !identity && d?.dedicated_identity ? `${d.dedicated_identity} (new)` : "";
-  if (!$("cfg-identity")) return;
-  fill($("cfg-identity"), h("span", { class: "fact-k", text: "Identity" }),
-    identity || planned ? h("span", { class: "with-icon" }, statusIcon(found ? "ok" : "warn"), h("span", { class: "mono", text: identity || planned }))
-      : h("span", { class: "with-icon muted" }, statusIcon("skip"), "not discovered"));
+  const value = identity || planned ? h("span", { class: "with-icon" }, statusIcon(found ? "ok" : "warn"), h("span", { class: "mono", text: identity || planned }))
+    : h("span", { class: "with-icon muted" }, statusIcon("skip"), "not discovered");
+  if ($("cfg-identity")) fill($("cfg-identity"), h("span", { class: "fact-k", text: "Identity" }), value);
+  else fill($("cfg-essentials"), h("div", {}, h("dt", { text: "Identity" }), h("dd", {}, value)));
 }
 
 const STATUS_GLYPH = { ok: "✓", warn: "!", fail: "✕", error: "✕", warning: "!", skip: "–" };
@@ -320,6 +322,10 @@ function armed(btn, prompt, label) {
 async function save() {
   st.showAll = true;
   const name = st.cfg.name;
+  if (!name) {
+    await validate();
+    return status("Name the configuration first (Target workload → Configuration name).", "error");
+  }
   await busy("Saving…", async () => {
     await api(`/api/configs/${encodeURIComponent(name)}`, { method: "PUT", body: { config: st.cfg } });
     st.current = name;
