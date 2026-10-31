@@ -326,7 +326,9 @@ function iconEl(key, cls) {
 async function load() {
   const data = await api("/api/stacks");
   byId = Object.fromEntries(data.stacks.map((s) => [s.id, s]));
-  $("env").textContent = data.env;
+  // The environment every stack here deploys to: it picks the saved inputs, the ADO environments
+  // <stack>-<env> and the variable groups jfrog-oidc-<cloud>-<env>.
+  fill($("env"), `Environment: ${data.env}`, help(`Stacks deploy to the ${data.env} environment: saved inputs, ADO environments <stack>-${data.env} and variable groups jfrog-oidc-<cloud>-${data.env}.`));
   // The cloud is the root: one column per cloud, and under it Common (the CI/CD bootstrap, used by
   // both kinds), Serverless and Kubernetes, each its own table. The kinds never share a table.
   const ORDER = ["Common", "Serverless", "Kubernetes"];
@@ -340,7 +342,10 @@ async function load() {
     fillEl.style.width = `${of ? Math.round((100 * n) / of) : 0}%`;   // CSSOM, allowed by the CSP
     return h("span", { class: "meter", role: "img", "aria-label": `${n} of ${of} deployed`, title: `${n} of ${of} deployed` }, fillEl);
   };
-  fill($("groups"), Object.entries(clouds).map(([g, kinds]) => {
+  // Clouds stacked top to bottom: Azure first, then Google Cloud.
+  const CLOUD_ORDER = ["Azure", "Google Cloud"];
+  const rank = (g) => (CLOUD_ORDER.includes(g) ? CLOUD_ORDER.indexOf(g) : CLOUD_ORDER.length);
+  fill($("groups"), Object.entries(clouds).sort(([a], [b]) => rank(a) - rank(b)).map(([g, kinds]) => {
     const all = Object.values(kinds).flat();
     return h("section", { class: "cloud-root", "data-cloud": CLOUD_ID[g] || "" },
       h("div", { class: "cloud-head" }, iconEl(CLOUD_ID[g], "cloud-badge"),

@@ -93,7 +93,7 @@
 /* Blocked by a missing bootstrap: dimmed until it can be deployed. */
 
 /* ---- Cloud as the root: one column per cloud; Common, Serverless and Kubernetes as folders under it ---- */
-#groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-6, 32px); align-items: start; }
+#groups { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-7, 40px); align-items: start; }
 @media (max-width: 1100px) { #groups { grid-template-columns: minmax(0, 1fr); } }
 .cloud-root { --cloud: var(--navy); }
 .cloud-root[data-cloud="gcp"] { --cloud: #1a73e8; }
@@ -109,3 +109,9 @@
 #groups .kind-folder .table-wrap { border: 0; background: none; overflow: visible; border-radius: 0; }
 #groups .kind-folder td:first-child { padding-left: 0; }
 #groups .kind-folder td:last-child { padding-right: 0; }
+#env { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+/* Stacked clouds: a readable width, and fair column shares (name, status, actions), not a page-wide gap. */
+#groups { max-width: 1040px; }
+#groups td:first-child { width: 52%; }
+#groups td:nth-child(2) { width: 34%; }
+#groups td:last-child { width: 14%; }

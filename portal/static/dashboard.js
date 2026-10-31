@@ -4,7 +4,7 @@ import { MARK, CLOUD_NAMES, SECTIONS, LIVE_STATES, h, markEl, when, runPill, loa
 
 const $ = (id) => document.getElementById(id);
 const empty = (t) => h("p", { class: "muted dash-empty", text: t });
-const CLOUDS = ["gcp", "azure"];
+const CLOUDS = ["azure", "gcp"];   // Azure first, then Google Cloud
 
 // A tile: the service mark, its name, its kind and count, and a status dot. One size for all.
 function tile(href, markKey, name, line, dot) {

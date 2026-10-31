@@ -123,9 +123,10 @@ class PortalTests(unittest.TestCase):
         text = shell.decode()
         for s in ('"/"', '"/setup"', '"/runs"', "`/serverless/${cloud}?type=${kind}`", "`/k8s/clusters/${p}`"):
             self.assertIn(s, text)
-        order = ['"Google Cloud"', '"Serverless"', '"gcp_run_job"', '"gcp_run_service"', '"gcp_run_function"', '"Kubernetes"',
-                 'k8s("gke"', '"Azure"', '"Serverless"', '"azure_container_app_job"', '"azure_container_app"',
-                 '"azure_functions_aca"', '"azure_functions_premium"', '"azure_functions_flex"', '"Kubernetes"', 'k8s("aks"']
+        order = ['"Azure"', '"Serverless"', '"azure_container_app_job"', '"azure_container_app"',
+                 '"azure_functions_aca"', '"azure_functions_premium"', '"azure_functions_flex"', '"Kubernetes"', 'k8s("aks"',
+                 '"Google Cloud"', '"Serverless"', '"gcp_run_job"', '"gcp_run_service"', '"gcp_run_function"', '"Kubernetes"',
+                 'k8s("gke"']
         at = 0
         for s in order:
             at = text.index(s, at) + len(s)

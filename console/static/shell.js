@@ -11,11 +11,8 @@
   // item is one cluster platform. [key, label, href, icon, attrs]
   const sl = (cloud, kind, label, icon) => [kind, label, `/serverless/${cloud}?type=${kind}`, icon];
   const k8s = (p, label) => [p, label, `/k8s/clusters/${p}`, p, { "data-cloud": p }];
+  // Azure first, then Google Cloud (top to bottom everywhere).
   const CLOUDS = [
-    ["Google Cloud", "gcp", [
-      ["Serverless", [sl("gcp", "gcp_run_job", "Cloud Run jobs", "run"), sl("gcp", "gcp_run_service", "Cloud Run services", "run"),
-        sl("gcp", "gcp_run_function", "Cloud Run functions", "fn"), sl("gcp", "gcp_run_worker_pool", "Cloud Run worker pools", "run")]],
-      ["Kubernetes", [k8s("gke", "GKE clusters")]]]],
     ["Azure", "azure", [
       ["Serverless", [sl("azure", "azure_container_app_job", "Container Apps jobs", "aca"),
         sl("azure", "azure_container_app", "Container Apps", "aca"),
@@ -23,6 +20,10 @@
         sl("azure", "azure_functions_premium", "Functions Premium", "func"),
         sl("azure", "azure_functions_flex", "Functions Flex Consumption", "func")]],
       ["Kubernetes", [k8s("aks", "AKS clusters")]]]],
+    ["Google Cloud", "gcp", [
+      ["Serverless", [sl("gcp", "gcp_run_job", "Cloud Run jobs", "run"), sl("gcp", "gcp_run_service", "Cloud Run services", "run"),
+        sl("gcp", "gcp_run_function", "Cloud Run functions", "fn"), sl("gcp", "gcp_run_worker_pool", "Cloud Run worker pools", "run")]],
+      ["Kubernetes", [k8s("gke", "GKE clusters")]]]],
   ];
   const TOP = [["home", "Home", "/", "home"], ["infra", "Infrastructure", "/setup", "infra"]];
   const BOTTOM = [["runs", "Runs", "/runs", "runs"]];
