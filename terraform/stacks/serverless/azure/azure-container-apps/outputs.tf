@@ -1,13 +1,13 @@
 output "acr_login_server" {
-  value = azurerm_container_registry.images.login_server
+  value = module.base.acr_login_server
 }
 
 output "workload_identity_client_id" {
-  value = azurerm_user_assigned_identity.workload.client_id
+  value = module.base.identity.client_id
 }
 
 output "resource_group" {
-  value = azurerm_resource_group.workload.name
+  value = module.base.resource_group_name
 }
 
 output "job_name" {

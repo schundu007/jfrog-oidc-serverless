@@ -3,7 +3,7 @@
 # with its own service account; a run never touches another workload.
 # Base images come through JFrog, images go to Artifact Registry; every login comes from the
 # service connection's OIDC token (no stored secrets).
-# Trust: terraform/stacks/gcp-foundation. Infrastructure: pipelines/gcp-stack-setup.yml.
+# Trust: terraform/stacks/serverless/gcp/gcp-foundation. Infrastructure: pipelines/gcp-stack-setup.yml.
 
 trigger: none
 pr: none

@@ -1,7 +1,7 @@
 # Azure pipelines, test environment: ADO settings only, nothing shared with other clouds.
 # Not credentials: every job authenticates with its service connection's OIDC token.
 # Target values (JFrog URL and integration, project or subscription, identities) are not
-# here: terraform/stacks/azure-foundation writes them (and the connection IDs) to the
+# here: terraform/stacks/serverless/azure/azure-foundation writes them (and the connection IDs) to the
 # variable group jfrog-oidc-azure-<env>. Connection names are read at compile time, so they stay here.
 variables:
   ENVIRONMENT: test

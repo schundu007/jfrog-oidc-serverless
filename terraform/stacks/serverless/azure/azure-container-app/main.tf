@@ -9,7 +9,7 @@
 # Its JFROG_* settings and JFrog mapping belong to the console's workspace (azure-workload-onboard).
 
 module "base" {
-  source                     = "../../modules/azure-workload"
+  source                     = "../../../../modules/azure-workload"
   workload                   = var.workload
   azure_subscription_id      = var.azure_subscription_id
   location                   = var.azure_location

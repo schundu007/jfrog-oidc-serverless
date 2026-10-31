@@ -56,7 +56,7 @@ class Jobs:
             for s in stacks.CATALOGUE:
                 sid = s["id"]
                 needs, dependents = self._needs(sid), self._dependents(sid)
-                out.append(dict(s, status=self._status.get(sid), busy=sid in running, job=running.get(sid),
+                out.append(dict(s, dir=f"terraform/stacks/{stacks.rel_dir(sid)}", status=self._status.get(sid), busy=sid in running, job=running.get(sid),
                                 plan=self._public_plan(self._plans.get(sid)), failed=failed.get(sid),
                                 depends_on=stacks.depends_on(sid, self.root), needs=needs, dependents=dependents,
                                 missing=stacks.missing(sid, self.env_name, self.root, self.state_root)))
@@ -134,7 +134,7 @@ class Jobs:
         if "storage_account_name" in pairs:
             return (f"storage account {pairs['storage_account_name']}, container {pairs.get('container_name', '')}, "
                     f"key {pairs.get('key', '')}")
-        return f"local file terraform/stacks/{stack_id}/terraform.tfstate"
+        return f"local file terraform/stacks/{stacks.rel_dir(stack_id)}/terraform.tfstate"
 
     def _terraform(self, job) -> Terraform:
         # The plan's Terraform is reused by the apply job: its log goes to whichever job runs it now.

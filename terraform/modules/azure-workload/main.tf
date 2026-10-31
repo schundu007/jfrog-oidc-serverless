@@ -34,7 +34,7 @@ resource "azurerm_role_assignment" "deployer_contributor" {
 
 resource "azurerm_container_registry" "this" {
   count               = var.registry ? 1 : 0
-  name                = substr("cr${local.alnum}${local.suffix}", 0, 50)
+  name                = coalesce(var.acr_name, substr("cr${local.alnum}${local.suffix}", 0, 50))
   location            = azurerm_resource_group.this.location
   resource_group_name = azurerm_resource_group.this.name
   sku                 = var.acr_sku

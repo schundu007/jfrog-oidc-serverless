@@ -1,7 +1,7 @@
 # Build and roll out ONE Azure serverless workload per run: the type (kind) and its name.
 # Each type is its own stack in Setup with its own resource group; a run never touches another.
 # Base images come through JFrog; every login comes from the service connection's OIDC token
-# (no stored secrets). Trust: terraform/stacks/azure-foundation. Infrastructure: azure-stack-setup.yml.
+# (no stored secrets). Trust: terraform/stacks/serverless/azure/azure-foundation. Infrastructure: azure-stack-setup.yml.
 
 trigger: none
 pr: none

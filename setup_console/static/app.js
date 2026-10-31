@@ -249,7 +249,7 @@ function row(s) {
   const blockedDeploy = s.needs?.length ? `Deploy ${s.needs.map(titleOf).join(", ")} first` : "";
   const notes = warnings(s);
   const main = h("tr", { id: `stack-${s.id}`, class: notes.length ? "has-notes" : "" },
-    h("td", { title: `terraform/stacks/${s.id}` }, h("b", { text: s.title })),
+    h("td", { title: s.dir }, h("b", { text: s.title })),
     h("td", {}, stackStatus(s)),
     h("td", { class: "setup-row-actions" },
       progress,

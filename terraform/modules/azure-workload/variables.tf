@@ -26,6 +26,12 @@ variable "registry" {
   default     = false
 }
 
+variable "acr_name" {
+  description = "Registry name (global). Empty: derived from the workload and subscription."
+  type        = string
+  default     = ""
+}
+
 variable "acr_sku" {
   type    = string
   default = "Standard"

@@ -453,7 +453,7 @@ Build in order. Each milestone ends with its tests green and a short demo note i
   - `terraform validate` passes for generated workspaces for every kind.
   - A fake `terraform` binary in tests covers the approval gates.
   - Apply is refused without approval, refused on a plan-hash mismatch, and refused on a delete without typed confirmation.
-- Before M4 is accepted, run `terraform validate` on `terraform/stacks/all-targets` and fix whatever the real providers reject. That code has never seen real providers.
+- Before M4 is accepted, run `terraform validate` on `terraform/reference/all-targets` and fix whatever the real providers reject. That code has never seen real providers.
 
 **M5 — First rotation + Verify + Report**
 - Implement §5 in full.

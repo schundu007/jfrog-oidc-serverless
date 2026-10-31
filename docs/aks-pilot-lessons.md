@@ -15,7 +15,7 @@ The Azure side here uses an Entra app registration as the token audience, so it 
 ## What changed in this repo because of the pilot
 
 1. **Docker pulls use the repo's dedicated host.** On the pilot's instance, the repository-path method (`example.jfrog.io/<repo-key>/<image>`) failed for local repos with `Unsupported v2 repository request for ''`, and the token realm came back without the repo key. Every Docker repo answers on `<server>-<repo-key>.jfrog.io` instead.
-   - Container Apps / Functions on ACA: `registry.server` and the image are on that host (`terraform/stacks/all-targets/azure.tf`, console wire step).
+   - Container Apps / Functions on ACA: `registry.server` and the image are on that host (`terraform/reference/all-targets/azure.tf`, console wire step).
    - Functions Premium: `DOCKER_REGISTRY_SERVER_URL` and `image_name` likewise.
    - GCP: each AR Docker remote proxies one JFrog repo through its own host, so images resolve as `<ar-repo>/<image>`. The module rejects a Docker `upstream_uri` with a path. The console warns when it is the platform host.
    - Console: `jfrog.docker_repo` derives the host; `jfrog.docker_host` overrides it (self-hosted platforms).

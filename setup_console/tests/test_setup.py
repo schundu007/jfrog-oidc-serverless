@@ -87,8 +87,8 @@ class Root:
         self.dir = Path(tempfile.mkdtemp())
         self.state = self.dir / ".state"
         for s in stacks.CATALOGUE:
-            d = self.dir / s["id"]
-            d.mkdir()
+            d = stacks.stack_dir(s["id"], self.dir)
+            d.mkdir(parents=True)
             (d / "variables.tf").write_text(VARS.get(s["id"], ""))
             if s["id"] in BACKENDS:
                 (d / "backend.tf").write_text(f'terraform {{\n  backend "{BACKENDS[s["id"]]}" {{}}\n}}\n')
@@ -103,7 +103,7 @@ class Root:
         self.save("azure-container-apps", {"azure_subscription_id": "sub-1"})
 
     def calls(self, sid):
-        p = self.dir / sid / ".fake_calls"
+        p = stacks.stack_dir(sid, self.dir) / ".fake_calls"
         return [json.loads(l)["argv"] for l in p.read_text().splitlines()] if p.exists() else []
 
 
@@ -234,7 +234,7 @@ class JobTests(unittest.TestCase):
             self.jobs._set_status(f, {"deployed": True, "outputs": {}})
 
     def _plan(self, sid, changes, action="plan-apply"):
-        (self.root.dir / sid / ".fake_plan.json").write_text(json.dumps(changes))
+        (stacks.stack_dir(sid, self.root.dir) / ".fake_plan.json").write_text(json.dumps(changes))
         return wait(self.jobs, self.jobs.start(sid, action))
 
     def test_deploy_needs_the_approved_plan(self):
@@ -294,7 +294,7 @@ class JobTests(unittest.TestCase):
         self.assertTrue(done["result"]["destroyed"])
 
     def test_destroy_skips_jfrog_token_when_state_has_no_jfrog_resources(self):
-        state = self.root.dir / "gcp-foundation" / "terraform.tfstate"
+        state = stacks.stack_dir("gcp-foundation", self.root.dir) / "terraform.tfstate"
         state.write_text(json.dumps({"resources": [{"type": "google_storage_bucket"}]}))
         self._plan("gcp-foundation", [{"address": "a.b", "type": "x", "change": {"actions": ["delete"]}}], action="plan-destroy")
         self.assertEqual(self.minted, [])
@@ -320,7 +320,7 @@ class JobTests(unittest.TestCase):
         self.assertNotIn("minted-token-value", json.dumps(j))
 
     def test_failed_plan_reported(self):
-        (self.root.dir / "azure-container-apps" / ".fake_fail_plan").write_text("")
+        (stacks.stack_dir("azure-container-apps", self.root.dir) / ".fake_fail_plan").write_text("")
         j = wait(self.jobs, self.jobs.start("azure-container-apps", "plan-apply"))
         self.assertEqual(j["state"], "failed")
         self.assertIn("plan failed", j["error"])
@@ -348,7 +348,7 @@ class JobTests(unittest.TestCase):
 
     def test_refresh_all_leaves_stacks_alone_until_their_foundation_is_deployed(self):
         self.jobs._status.clear()
-        (self.root.dir / "gcp-foundation" / ".fake_fail_init").write_text("")   # not deployed: read fails
+        (stacks.stack_dir("gcp-foundation", self.root.dir) / ".fake_fail_init").write_text("")   # not deployed: read fails
         ids = self.jobs.refresh_all()
         done = [wait(self.jobs, {"id": i}) for i in ids]
         self.assertNotIn("gcp-cloud-run", {d["stack"] for d in done})
@@ -396,14 +396,14 @@ class JobTests(unittest.TestCase):
         self.assertEqual([s for s in self.jobs.stacks() if s["id"] == "azure-foundation"][0]["dependents"], [])
 
     def test_failed_job_named_on_its_stack(self):
-        (self.root.dir / "azure-container-apps" / ".fake_fail_plan").write_text("")
+        (stacks.stack_dir("azure-container-apps", self.root.dir) / ".fake_fail_plan").write_text("")
         j = wait(self.jobs, self.jobs.start("azure-container-apps", "plan-apply"))
         row = [s for s in self.jobs.stacks() if s["id"] == "azure-container-apps"][0]
         self.assertEqual(row["failed"]["id"], j["id"])
         self.assertIn("plan failed", row["failed"]["error"])
 
     def test_failed_status_means_not_deployed(self):
-        (self.root.dir / "azure-container-apps" / ".fake_fail_init").write_text("")
+        (stacks.stack_dir("azure-container-apps", self.root.dir) / ".fake_fail_init").write_text("")
         j = wait(self.jobs, self.jobs.start("azure-container-apps", "status"))
         self.assertEqual(j["state"], "failed")
         st = [s for s in self.jobs.stacks() if s["id"] == "azure-container-apps"][0]["status"]

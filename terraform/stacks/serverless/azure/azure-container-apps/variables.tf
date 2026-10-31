@@ -1,23 +1,3 @@
-variable "jfrog_url" {
-  description = "JFrog platform origin, e.g. https://acme.jfrog.io"
-  type        = string
-  validation {
-    condition     = can(regex("^https://[a-z0-9.-]+$", var.jfrog_url))
-    error_message = "jfrog_url must be the platform origin only: https, no path, no trailing slash."
-  }
-}
-
-variable "jfrog_reader_group" {
-  description = "Existing JFrog group with read permission on the repos the workload uses."
-  type        = string
-}
-
-variable "jfrog_provider_name" {
-  description = "JFrog OIDC integration for Entra-issued tokens."
-  type        = string
-  default     = "azure-entra"
-}
-
 variable "azure_subscription_id" {
   type = string
 }

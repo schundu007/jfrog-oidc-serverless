@@ -26,7 +26,7 @@ from . import logic
 IDENTITY_KEYS = ("JFROG_OIDC_PROVIDER", "JFROG_OIDC_AUDIENCE", "JFROG_OIDC_SERVICE_ACCOUNT")
 EXCHANGE_PATH = "/access/api/v1/oidc/token"
 REFRESH_BEFORE = 120  # seconds: mint a new token this long before the old one expires
-OPERATOR_STATE = pathlib.Path(__file__).resolve().parent.parent / "terraform/stacks/gcp-foundation/terraform.tfstate"
+OPERATOR_STATE = pathlib.Path(__file__).resolve().parent.parent / "terraform/stacks/serverless/gcp/gcp-foundation/terraform.tfstate"
 
 
 def operator_identity(state_file=OPERATOR_STATE) -> dict:

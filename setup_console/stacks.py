@@ -1,4 +1,5 @@
-"""Infrastructure the console can deploy and destroy (Terraform stacks under terraform/stacks).
+"""Infrastructure the console can deploy and destroy (Terraform stacks under
+terraform/stacks/<serverless|kubernetes>/<gcp|azure>/<stack>).
 
 Only for trying the credential provider where nothing exists yet. In production the targets are
 already there and only the Serverless and Kubernetes consoles' configure steps run.
@@ -116,9 +117,18 @@ def get(stack_id: str) -> dict:
     raise StackError(f"unknown stack {stack_id!r}")
 
 
+CLOUD_DIR = {"Google Cloud": "gcp", "Azure": "azure"}
+
+
+def rel_dir(stack_id: str) -> str:
+    """Where a stack lives under terraform/stacks: <kind>/<cloud>/<id>. Serverless and Kubernetes,
+    and each cloud, have their own tree; the id (state key, ADO environment) never changes."""
+    meta = get(stack_id)
+    return f"{meta['kind'].lower()}/{CLOUD_DIR[meta['group']]}/{stack_id}"
+
+
 def stack_dir(stack_id: str, root: Path = STACKS_DIR) -> Path:
-    get(stack_id)
-    return Path(root) / stack_id
+    return Path(root) / rel_dir(stack_id)
 
 
 # -- variables.tf ----------------------------------------------------------------------------------
@@ -405,8 +415,12 @@ def needs_jfrog(stack_id: str, action: str, root: Path = STACKS_DIR) -> bool:
 
 def main(argv=None) -> int:
     """Pipelines: python3 -m setup_console.stacks backend-args <stack> <env> <foundation.json>
-    prints one -backend-config=k=v per line (nothing for a local-state stack)."""
+    prints one -backend-config=k=v per line (nothing for a local-state stack);
+    python3 -m setup_console.stacks dir <stack> prints its directory under terraform/stacks."""
     argv = sys.argv[1:] if argv is None else argv
+    if len(argv) == 2 and argv[0] == "dir":   # the stack's directory, relative to terraform/stacks
+        print(rel_dir(argv[1]))
+        return 0
     if len(argv) != 4 or argv[0] != "backend-args":
         print(main.__doc__, file=sys.stderr)
         return 2

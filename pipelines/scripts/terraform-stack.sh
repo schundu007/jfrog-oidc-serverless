@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # terraform-stack.sh <plan|plan-destroy|apply> <stack> <environment> <plan-file>
 #
-# Runs terraform/stacks/<stack> with the inputs the run was queued with (STACK_INPUTS,
+# Runs terraform/stacks/<kind>/<cloud>/<stack> with the inputs the run was queued with (STACK_INPUTS,
 # JSON: the stack's variables, as the Infrastructure page saves them) and the stack's
 # remote state derived from STACK_STATE (JSON: gcp_project_id, or azure_subscription_id,
 # ado_org and state_resource_group), the store that cloud's foundation stack creates. Nothing is read from
@@ -25,7 +25,7 @@ backend_args=$(python3 -m setup_console.stacks backend-args "$stack" "$environme
 mapfile -t backend <<< "$backend_args"
 [ -n "$backend_args" ] || backend=()
 
-cd "terraform/stacks/${stack}"
+cd "terraform/stacks/$(python3 -m setup_console.stacks dir "$stack")"
 terraform init -input=false -no-color -reconfigure "${backend[@]}"
 
 case "$action" in
