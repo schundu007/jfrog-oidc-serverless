@@ -270,7 +270,7 @@ function row(s) {
     onclick: () => follow(s, failed, flyout(`${s.group} · ${s.title}: ${ACTION_NAME[failed.action] || failed.action}`)) }) : null;
   return h("tr", { id: `stack-${s.id}` },
     h("td", { title: s.dir }, h("div", { class: "stack-name" }, iconEl(STACK_ICON[s.id], "stack-icon"),
-      h("b", { text: s.title }))),
+      h("b", { text: s.title }), s.about ? help(s.about) : null)),
     h("td", {}, h("div", { class: "stack-status" }, stackStatus(s), notes.length ? help(notes.join(" ")) : null)),
     h("td", {}, h("div", { class: "setup-row-actions" },
       progress,
