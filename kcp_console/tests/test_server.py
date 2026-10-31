@@ -258,7 +258,7 @@ class DiscoverRaceTest(unittest.TestCase):
         srv.store.put("a", model.default_config() | {"name": "a"})
         gate, calls = threading.Event(), []
 
-        def slow(cfg, sh, env=None, kubeconfig=None):
+        def slow(cfg, sh, env=None, kubeconfig=None, tokens=None):
             calls.append(1)
             gate.wait(5)
             return {"cluster": {"ok": True}}

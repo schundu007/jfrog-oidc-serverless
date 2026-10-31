@@ -1,35 +1,118 @@
-"""Artifactory and Access over HTTPS (spec §1). Reads use JFROG_ACCESS_TOKEN from the
-environment; writes exist only as functions the runner calls after an approval.
+"""Artifactory and Access over HTTPS (spec §1). Writes exist only as functions the runner
+calls after an approval.
 
-The token is read at call time, sent only as an Authorization header to the
-configured host (redirects are never followed), and never logged, stored or returned.
+No JFrog token is stored anywhere. The console mints a short-lived one by OIDC exchange
+(OperatorToken): gcloud prints an ID token for the operator service account
+(--impersonate-service-account, audience = the JFrog provider's), and JFrog's
+/access/api/v1/oidc/token swaps it for an access token. The token lives in memory until
+shortly before it expires, is sent only as an Authorization header to the configured
+host (redirects are never followed), and is never logged, stored or returned.
+
+Configuration (not secrets), from the console's environment:
+  JFROG_OIDC_PROVIDER         the JFrog OIDC provider that trusts Google ID tokens
+  JFROG_OIDC_AUDIENCE         that provider's audience
+  JFROG_OIDC_SERVICE_ACCOUNT  the operator service account the identity mapping matches
 """
 
 from __future__ import annotations
 
 import json
 import os
+import threading
+import time
 import urllib.parse
 
 from . import logic
 
-TOKEN_ENV = "JFROG_ACCESS_TOKEN"
+CONFIG_ENV = ("JFROG_OIDC_PROVIDER", "JFROG_OIDC_AUDIENCE", "JFROG_OIDC_SERVICE_ACCOUNT")
+EXCHANGE_PATH = "/access/api/v1/oidc/token"
+REFRESH_BEFORE = 120  # seconds: mint a new token this long before the old one expires
+
+
+class TokenError(RuntimeError):
+    pass
+
+
+class OperatorToken:
+    """Short-lived JFrog tokens by OIDC exchange, one cached per host in memory only."""
+
+    def __init__(self, env=None, clock=time.time):
+        env = os.environ if env is None else env
+        self.provider, self.audience, self.service_account = (env.get(k, "") for k in CONFIG_ENV)
+        self.clock = clock
+        self._cache = {}  # host -> (token, expires_at)
+        self._lock = threading.Lock()
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.provider and self.audience and self.service_account)
+
+    def missing(self) -> str:
+        return ", ".join(k for k, v in zip(CONFIG_ENV, (self.provider, self.audience, self.service_account)) if not v)
+
+    def get(self, shell, host: str) -> str:
+        if not self.configured:
+            raise TokenError(f"no JFrog OIDC identity: set {self.missing()} for the console")
+        with self._lock:
+            tok, exp = self._cache.get(host, ("", 0.0))
+            if tok and exp - REFRESH_BEFORE > self.clock():
+                return tok
+            idt = shell.run(["gcloud", "auth", "print-identity-token", f"--impersonate-service-account={self.service_account}",
+                             f"--audiences={self.audience}", "--include-email"], timeout=60, sensitive=True)
+            subject = (idt.stdout or "").strip() if idt.rc == 0 else ""
+            if not subject:
+                raise TokenError(f"gcloud could not mint an ID token as {self.service_account} "
+                                 "(needs roles/iam.serviceAccountTokenCreator on it; run gcloud auth login)")
+            body = json.dumps({"grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+                               "subject_token_type": "urn:ietf:params:oauth:token-type:id_token",
+                               "subject_token": subject, "provider_name": self.provider}).encode()
+            res = shell.http("POST", f"https://{host}{EXCHANGE_PATH}", body=body, sensitive=True,
+                             headers={"Content-Type": "application/json", "Accept": "application/json"})
+            data = res.json() if res.ok else None
+            tok = (data or {}).get("access_token") if isinstance(data, dict) else None
+            if not tok:
+                raise TokenError(f"JFrog OIDC exchange with {self.provider} failed: HTTP {res.status or res.error}")
+            self._cache[host] = (tok, self.clock() + float(data.get("expires_in") or 300))
+            return tok
+
+
+class StaticToken:
+    """A fixed value: replay mode's placeholder and tests. Never a real token."""
+
+    configured = True
+
+    def __init__(self, value: str):
+        self._value = value
+
+    def get(self, shell, host):
+        return self._value
 
 
 class Jfrog:
-    def __init__(self, shell, host: str, env=None):
+    def __init__(self, shell, host: str, env=None, tokens=None):
         self.sh, self.host = shell, host
-        self.env = os.environ if env is None else env
+        self.tokens = tokens if tokens is not None else OperatorToken(env)
 
     @property
     def token_present(self) -> bool:
-        return bool(self.env.get(TOKEN_ENV))
+        """An identity to mint a token with is configured (the exchange itself runs on first use)."""
+        return self.tokens.configured
+
+    def token_error(self) -> str:
+        """Why no token could be minted, or "" when one was."""
+        try:
+            self.tokens.get(self.sh, self.host)
+            return ""
+        except TokenError as exc:
+            return str(exc)
 
     def _headers(self, extra=None):
         h = dict(extra or {})
-        tok = self.env.get(TOKEN_ENV)
-        if tok:
-            h["Authorization"] = f"Bearer {tok}"
+        if self.tokens.configured:
+            try:
+                h["Authorization"] = f"Bearer {self.tokens.get(self.sh, self.host)}"
+            except TokenError:
+                pass  # the call goes out anonymous and its 401/403 says so
         return h
 
     def _call(self, method, path, body=None, ctype="application/json", host=None, auth=True):

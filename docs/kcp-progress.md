@@ -270,3 +270,7 @@ Found and fixed on the way:
 - Two approved changes on one cluster collided (the same test pod): `RunManager.approve` now refuses a
   second state-changing run while one for the same configuration is queued or running.
 - Mounted in the unified console (portal/) at /k8s: `KcpServer(base=...)`, `make_handler`, BASE in the page.
+- No stored JFrog token (2026-10-31): `JFROG_ACCESS_TOKEN` is gone from kcp_console. `jfrog.OperatorToken` mints a
+  short-lived admin token by OIDC exchange (gcloud ID token as the `jfrog-console-operator` service account, JFrog
+  provider `gcp-cloudrun`, mapping `console-operator`, 900 s), cached in memory per host. Verify, preflight, the
+  direct plan and approved JFrog writes all use it. Trust: `terraform/stacks/ado-trust/console-operator.tf`.

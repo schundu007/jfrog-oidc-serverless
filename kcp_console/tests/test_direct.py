@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from kcp_console import direct, model
+from kcp_console.jfrog import StaticToken
 from kcp_console.runner import RunError, RunManager, build_request
 from kcp_console.shell import HttpResult, Result
 from kcp_console.store import RunStore
@@ -167,7 +168,7 @@ class RunnerTest(unittest.TestCase):
         self.lines = []
 
     def runner(self, sh, dry, c=None):
-        return direct.Runner(c or cfg(), sh, self.root, {"JFROG_ACCESS_TOKEN": TOKEN}, self.lines.append, dry_run=dry, sleep=lambda s: None)
+        return direct.Runner(c or cfg(), sh, self.root, {}, self.lines.append, dry_run=dry, sleep=lambda s: None, tokens=StaticToken(TOKEN))
 
     def test_dry_run_changes_nothing(self):
         sh = FakeShell(oidc=False)
@@ -298,7 +299,7 @@ class ManagerTest(unittest.TestCase):
     def test_prepare_approve_run_and_store_without_token(self):
         root = Path(tempfile.mkdtemp())
         sh = FakeShell()
-        m = RunManager(RunStore(root), lambda log: sh, env={"JFROG_ACCESS_TOKEN": TOKEN}, sleep=lambda s: None, root=root)
+        m = RunManager(RunStore(root), lambda log: sh, env={}, sleep=lambda s: None, root=root, tokens=StaticToken(TOKEN))
         run = m.prepare(cfg(), "direct", "setup", {"DryRun": False})
         with self.assertRaises(RunError):
             m.approve(run["id"], run["request_sha256"], approved=False)
@@ -323,7 +324,7 @@ class ConflictShell(FakeShell):
 class JfrogActionTest(unittest.TestCase):
     def manager(self, sh):
         root = Path(tempfile.mkdtemp())
-        return RunManager(RunStore(root), lambda log: sh, env={"JFROG_ACCESS_TOKEN": TOKEN}, sleep=lambda s: None, root=root)
+        return RunManager(RunStore(root), lambda log: sh, env={}, sleep=lambda s: None, root=root, tokens=StaticToken(TOKEN))
 
     def test_create_that_already_exists_succeeds(self):
         m = self.manager(ConflictShell())
@@ -374,7 +375,7 @@ class ProofTest(unittest.TestCase):
         self.root = Path(tempfile.mkdtemp())
 
     def verify(self, sh):
-        rn = direct.Runner(cfg(), sh, self.root, {"JFROG_ACCESS_TOKEN": TOKEN}, lambda line: None, dry_run=False, sleep=lambda s: None)
+        rn = direct.Runner(cfg(), sh, self.root, {}, lambda line: None, dry_run=False, sleep=lambda s: None, tokens=StaticToken(TOKEN))
         return {r["id"]: r for r in rn.execute(direct.plan(cfg(), self.root, "verify", dry_run=False))}
 
     def test_every_link_holds(self):
@@ -401,8 +402,8 @@ class ProofTest(unittest.TestCase):
 
     def test_cached_image_keeps_the_earlier_download(self):
         sh = FakeShell(**set_up())
-        rn = direct.Runner(cfg(), sh, self.root, {"JFROG_ACCESS_TOKEN": TOKEN}, lambda line: None, dry_run=False,
-                           sleep=lambda s: None, clock=lambda: time.time() + 3600)
+        rn = direct.Runner(cfg(), sh, self.root, {}, lambda line: None, dry_run=False,
+                           sleep=lambda s: None, clock=lambda: time.time() + 3600, tokens=StaticToken(TOKEN))
         by = {r["id"]: r for r in rn.execute(direct.plan(cfg(), self.root, "verify", dry_run=False))}
         self.assertEqual(by["who"]["status"], "ok")
         self.assertIn("cached", by["who"]["detail"])
@@ -416,13 +417,13 @@ class ProofTest(unittest.TestCase):
 
     def test_tear_down_ends_with_evidence(self):
         sh = FakeShell(**set_up())
-        rn = direct.Runner(cfg(), sh, self.root, {"JFROG_ACCESS_TOKEN": TOKEN}, lambda line: None, dry_run=False, sleep=lambda s: None)
+        rn = direct.Runner(cfg(), sh, self.root, {}, lambda line: None, dry_run=False, sleep=lambda s: None, tokens=StaticToken(TOKEN))
         res = rn.execute(direct.plan(cfg(), self.root, "teardown", dry_run=False))
         self.assertEqual((res[-1]["id"], res[-1]["status"]), ("gone", "ok"), res)
 
     def test_tear_down_names_what_is_left(self):
         sh = FakeShell(**set_up())
-        rn = direct.Runner(cfg(), sh, self.root, {"JFROG_ACCESS_TOKEN": TOKEN}, lambda line: None, dry_run=False, sleep=lambda s: None)
+        rn = direct.Runner(cfg(), sh, self.root, {}, lambda line: None, dry_run=False, sleep=lambda s: None, tokens=StaticToken(TOKEN))
         res = rn.execute([{"id": "gone", "title": "gone"}])
         self.assertEqual(res[0]["status"], "failed")
         self.assertIn("Helm release", res[0]["detail"])

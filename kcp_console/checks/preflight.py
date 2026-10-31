@@ -18,7 +18,7 @@ from ..parse import helm
 from . import writers
 
 
-def discover(cfg: dict, shell, env=None, kubeconfig=None) -> dict:
+def discover(cfg: dict, shell, env=None, kubeconfig=None, tokens=None) -> dict:
     """kubeconfig: the console's file for this cluster (az aks get-credentials --file), so the reads hit the
     configured cluster and not whatever the operator's current kubectl context is."""
     cfg = model.merged(cfg)
@@ -61,8 +61,9 @@ def discover(cfg: dict, shell, env=None, kubeconfig=None) -> dict:
             out["reads"].append({k2: r.get(k2) for k2 in ("what", "ok", "forbidden", "fallback", "user_principal", "error")
                                  if r.get(k2) is not None})
 
-    jf = Jfrog(shell, cfg["jfrog"]["host"], env=env)
-    out["jfrog_token_present"] = jf.token_present
+    jf = Jfrog(shell, cfg["jfrog"]["host"], env=env, tokens=tokens)
+    out["jfrog_token_error"] = jf.token_error()
+    out["jfrog_token_present"] = not out["jfrog_token_error"]
     prov = jf.providers()
     out["providers"] = prov["json"] if prov["ok"] and isinstance(prov["json"], list) else []
     out["reads"].append({"what": "GET /access/api/v1/oidc", "ok": prov["ok"], "status": prov["status"]})
@@ -149,8 +150,9 @@ def preflight(cfg: dict, facts: dict) -> dict:
             who = f" (attributed to user {r['user_principal']})" if r.get("user_principal") else ""
             checks.append(_c(f"forbidden-{r['what']}", f"Read {r['what']}", "forbidden",
                              f"Forbidden{who}: personal accounts are read-only and namespaced.", fallback=r.get("fallback")))
-    checks.append(_c("jfrog-token", "JFROG_ACCESS_TOKEN for Artifactory reads", "pass" if facts.get("jfrog_token_present") else "warn",
-                     "present in the environment (never shown)" if facts.get("jfrog_token_present") else "not set: Artifactory reads will be anonymous"))
+    checks.append(_c("jfrog-token", "Short-lived JFrog token (OIDC exchange)", "pass" if facts.get("jfrog_token_present") else "warn",
+                     "minted (never shown or stored)" if facts.get("jfrog_token_present")
+                     else f"{facts.get('jfrog_token_error') or 'not minted'}: Artifactory reads will be anonymous"))
     issues = model.validate(cfg, providers or None)
     errs = model.errors(issues)
     checks.append(_c("values", "Config and values file", "fail" if errs else "pass",

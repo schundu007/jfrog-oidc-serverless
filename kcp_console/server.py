@@ -29,7 +29,7 @@ from pathlib import Path
 
 from . import diagnose as diag, direct, fleet, knowledge, logic, model, platforms, redact, report
 from .checks import artifactory as art_checks, hygiene, preflight as pf, verify as vchecks
-from .jfrog import Jfrog
+from .jfrog import Jfrog, OperatorToken, StaticToken
 from .runner import RunError, RunManager, bundle as run_bundle, pod_from_log
 from .shell import Shell, load_fixtures
 from .sim import engine
@@ -88,11 +88,13 @@ class KcpServer:
         self.fixtures_path = str(fixtures) if fixtures else None
         self.fixtures = load_fixtures(fixtures) if fixtures else None
         self.mode = "replay" if fixtures else "live"
-        self.env = {"JFROG_ACCESS_TOKEN": "replay-mode-placeholder"} if self.mode == "replay" else (env if env is not None else os.environ)
+        self.env = {} if self.mode == "replay" else (env if env is not None else os.environ)
+        # No stored JFrog token: live mode mints short-lived ones by OIDC exchange (jfrog.OperatorToken).
+        self.tokens = StaticToken("replay-mode-placeholder") if self.mode == "replay" else OperatorToken(self.env)
         self.status = StatusStore(self.store.root)
         self.run_store = RunStore(self.store.root)
         self.runs = RunManager(self.run_store, self.shell, env=self.env, sleep=sleep, poll_seconds=poll_seconds,
-                               root=self.store.root)
+                               root=self.store.root, tokens=self.tokens)
         self.read_lock = threading.Lock()
         self._reads = {}  # (name, with_preflight) -> the in-flight read other callers join
         self._reads_lock = threading.Lock()
@@ -186,7 +188,7 @@ class KcpServer:
             sh = self.shell()
             kc = direct.paths(Path(self.store.root), name)["kubeconfig"] if self.mode == "live" else None
             # Rendered manifests and values can hold secret-looking strings; store and show them redacted.
-            facts = redact.obj(pf.discover(cfg, sh, env=self.env, kubeconfig=kc))
+            facts = redact.obj(pf.discover(cfg, sh, env=self.env, kubeconfig=kc, tokens=self.tokens))
             out = {"facts": facts, "mode": self.mode}
             patch = {"discover": facts, "discover_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
             if with_preflight:
@@ -234,7 +236,7 @@ class KcpServer:
 
     def artifactory(self, name: str, action: str, body: dict) -> dict:
         cfg = self.config(name)
-        jf = Jfrog(self.shell(), cfg["jfrog"]["host"], env=self.env)
+        jf = Jfrog(self.shell(), cfg["jfrog"]["host"], tokens=self.tokens)
         j = cfg["jfrog"]
         if action == "probe":
             res = []
@@ -303,7 +305,7 @@ class KcpServer:
     def session_info(self) -> dict:
         return {"mode": self.mode, "fixtures": self.fixtures_path, "store": str(self.store.root),
                 "runbook": knowledge.RUNBOOK, "platforms": model.PLATFORMS,
-                "jfrog_token_present": bool(self.env.get("JFROG_ACCESS_TOKEN"))}
+                "jfrog_token_present": self.tokens.configured}
 
     # -- simulations: deterministic and fast, so they run inline and are kept for replay over SSE
 

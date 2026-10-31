@@ -1,5 +1,5 @@
 """Direct execution of jfrog/jfrog-credentials-provider AZURE.md, Option B (Workload Identity,
-projected service-account tokens), with the operator's az login, kubeconfig and JFROG_ACCESS_TOKEN.
+projected service-account tokens), with the operator's az login, kubeconfig and a short-lived JFrog token minted by OIDC exchange (jfrog.OperatorToken).
 
 plan() lists the steps with the exact commands and requests, so the approval covers them.
 execute() runs them in order. With dry_run, nothing changes anywhere: kubectl and helm use
@@ -169,13 +169,13 @@ def problems(cfg: dict, which: str = "setup") -> list:
 class Runner:
     """Runs a plan. log(text) gets one redacted line per event."""
 
-    def __init__(self, cfg, sh, root, env, log, dry_run=True, sleep=time.sleep, pull_timeout=180, clock=time.time):
+    def __init__(self, cfg, sh, root, env, log, dry_run=True, sleep=time.sleep, pull_timeout=180, clock=time.time, tokens=None):
         self.cfg = _resolved(cfg)
         self.sh, self.env, self.log, self.dry, self.sleep = sh, env, log, dry_run, sleep
         self.p = paths(root, self.cfg["name"])
         self.p["dir"].mkdir(parents=True, exist_ok=True, mode=0o700)
         self.kenv = {"KUBECONFIG": str(self.p["kubeconfig"])}
-        self.jf = Jfrog(sh, self.cfg["jfrog"]["host"], env=env)
+        self.jf = Jfrog(sh, self.cfg["jfrog"]["host"], env=env, tokens=tokens)
         self.facts = {}
         self.pull_timeout = pull_timeout
         self.clock = clock
@@ -297,10 +297,11 @@ class Runner:
             if self.dry:
                 return "skipped", "dry run: created once the OIDC issuer is on (the oidc step enables it)"
             raise StepError("no OIDC issuer yet (the cluster step reads it)")
-        if not self.jf.token_present:
+        err = self._jfrog_error()
+        if err:
             if self.dry:
-                return "skipped", f"dry run: no JFrog token, so the provider was not read; would create {name}"
-            raise StepError("no JFrog token: start the console with JFROG_ACCESS_TOKEN")
+                return "skipped", f"dry run: {err}, so the provider was not read; would create {name}"
+            raise StepError(err)
         have = self._provider_state().get(name)
         if have:
             if (have.get("issuer_url") or "").rstrip("/") != issuer.rstrip("/"):
@@ -316,10 +317,11 @@ class Runner:
     def s_mapping(self):
         cfg = self.cfg
         prov, name = cfg["values"]["provider_name"], cfg["jfrog"]["mapping_name"]
-        if not self.jf.token_present:
+        err = self._jfrog_error()
+        if err:
             if self.dry:
-                return "skipped", f"dry run: no JFrog token; would map {cfg['k8s']['service_account']} → {cfg['jfrog']['mapped_user']}"
-            raise StepError("no JFrog token: start the console with JFROG_ACCESS_TOKEN")
+                return "skipped", f"dry run: {err}; would map {cfg['k8s']['service_account']} → {cfg['jfrog']['mapped_user']}"
+            raise StepError(err)
         r = self.jf.mappings(prov)
         if r["ok"] and any(m.get("name") == name for m in (r["json"] or [])):
             return "ok", "exists"
@@ -400,12 +402,18 @@ class Runner:
 
     # -- the OIDC proof ------------------------------------------------------------
 
+    def _jfrog_error(self) -> str:
+        """"" once a short-lived JFrog token is minted, else why not."""
+        err = self.jf.token_error()
+        return f"no JFrog token ({err})" if err else ""
+
     def _need_token(self, what):
-        if self.jf.token_present:
+        err = self._jfrog_error()
+        if not err:
             return None
         if self.dry:
-            return "skipped", f"dry run: no JFrog token, so {what} was not read"
-        raise StepError("no JFrog token: start the console with JFROG_ACCESS_TOKEN")
+            return "skipped", f"dry run: {err}, so {what} was not read"
+        raise StepError(err)
 
     def s_sa_check(self):
         k = self.cfg["k8s"]
@@ -537,7 +545,7 @@ class Runner:
         n = self._run(["kubectl", "get", "nodes", "-l", f"{lab}=true", "-o", "json"]).json({}) or {}
         if n.get("items"):
             left.append(f"node label on {len(n['items'])} node(s)")
-        if self.jf.token_present:
+        if not self._jfrog_error():
             if self.cfg["values"]["provider_name"] in self._provider_state():
                 left.append("JFrog OIDC provider")
         if left:

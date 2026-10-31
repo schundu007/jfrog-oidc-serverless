@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from kcp_console import direct, model, platforms
+from kcp_console.jfrog import StaticToken
 from kcp_console.shell import Result
 from kcp_console.tests.test_direct import FakeShell
 
@@ -168,7 +169,7 @@ class RunTest(unittest.TestCase):
         self.root = Path(tempfile.mkdtemp())
 
     def run_setup(self, sh, dry):
-        rn = direct.Runner(gke_cfg(), sh, self.root, {"JFROG_ACCESS_TOKEN": "t"}, lambda line: None, dry_run=dry, sleep=lambda s: None)
+        rn = direct.Runner(gke_cfg(), sh, self.root, {}, lambda line: None, dry_run=dry, sleep=lambda s: None, tokens=StaticToken("t"))
         return rn.execute(direct.plan(gke_cfg(), self.root, "setup", dry_run=dry))
 
     def test_real_setup_creates_what_is_missing(self):

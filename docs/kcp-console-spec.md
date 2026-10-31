@@ -55,8 +55,12 @@ these places, and `docs/kcp-progress.md` §Traceability says which:
   - uses local `kubectl` for reads personal RBAC allows, and on
     `Forbidden ... User does not have access to the resource in Azure` points to
     the read-only pipeline scenario instead;
-  - calls Artifactory REST directly for reads, with `JFROG_ACCESS_TOKEN` from the
-    environment. JFrog writes are approval-gated.
+  - calls Artifactory REST directly for reads with a short-lived token it mints by OIDC
+    exchange (no stored token): `gcloud auth print-identity-token
+    --impersonate-service-account=$JFROG_OIDC_SERVICE_ACCOUNT --audiences=$JFROG_OIDC_AUDIENCE`,
+    exchanged at `/access/api/v1/oidc/token` with `$JFROG_OIDC_PROVIDER` (`jfrog.OperatorToken`,
+    in memory only, renewed 2 min before expiry). The trust is `terraform/stacks/ado-trust/console-operator.tf`.
+    `JFROG_ACCESS_TOKEN` is ignored. JFrog writes are approval-gated.
 
 ## 2. Ground rules
 

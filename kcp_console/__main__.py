@@ -52,7 +52,7 @@ def check_bind(host: str, exposed_ok: bool):
         loopback = False
     if loopback or exposed_ok:
         return None
-    return (f"refusing to bind to {host}: the console acts with your az login, ADO access and JFROG_ACCESS_TOKEN. "
+    return (f"refusing to bind to {host}: the console acts with your az login, ADO access and JFrog tokens it mints. "
             f"Use 127.0.0.1, or pass {EXPOSE_FLAG} if you really mean it.")
 
 

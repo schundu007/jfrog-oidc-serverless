@@ -129,7 +129,7 @@ EXECUTION_MODEL = {
     "rules": ["Never runs a state-changing kubectl or helm as the operator.",
               "Queues Azure DevOps pipeline runs with parameters (az pipelines run), using the operator's az login and the ADO organization/project from the config, then streams and stores their logs.",
               "Uses local kubectl only for reads that personal RBAC allows, and falls back to the read-only pipeline scenarios on `Forbidden ... User does not have access to the resource in Azure`.",
-              "Calls Artifactory REST directly for read checks, with JFROG_ACCESS_TOKEN from the environment. JFrog writes (creating OIDC providers or mappings, Promote) happen only behind an approval gate."],
+              "Calls Artifactory REST directly for read checks, with a short-lived token the console mints by OIDC exchange (no stored token). JFrog writes (creating OIDC providers or mappings, Promote) happen only behind an approval gate."],
 }
 
 SCOPE = {

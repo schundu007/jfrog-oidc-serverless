@@ -18,7 +18,7 @@ import time
 
 from . import direct, knowledge, logic, model, redact
 from .ado import Ado, AdoError, param_args
-from .jfrog import Jfrog
+from .jfrog import Jfrog, OperatorToken
 from .parse import events, summary
 
 PILOT_EXTRAS = {"TEST_POD_IMAGE", "TEST_POD_NAME", "TEST_POD_SA", "DiagnosticImage", "ChartRepo"}
@@ -235,8 +235,10 @@ def bundle(cfg: dict, runs: list, logs: dict, status: dict) -> dict:
 # ---------------------------------------------------------------- the manager
 
 class RunManager:
-    def __init__(self, runs_store, shell_factory, env=None, sleep=time.sleep, poll_seconds=10.0, on_change=None, root=".kcp-console"):
+    def __init__(self, runs_store, shell_factory, env=None, sleep=time.sleep, poll_seconds=10.0, on_change=None, root=".kcp-console",
+                 tokens=None):
         self.store, self.shell_factory, self.env, self.root = runs_store, shell_factory, env, root
+        self.tokens = tokens if tokens is not None else OperatorToken(env)  # one in-memory cache for every run
         self.sleep, self.poll_seconds = sleep, poll_seconds
         self.lock = threading.Lock()
         self.cond = threading.Condition(self.lock)
@@ -377,7 +379,7 @@ class RunManager:
 
     def _jfrog(self, run, sh):
         cfg = run["cfg"]
-        jf = Jfrog(sh, cfg["jfrog"]["host"], env=self.env)
+        jf = Jfrog(sh, cfg["jfrog"]["host"], tokens=self.tokens)
         p = run["request"]["parameters"]
         run["status"] = "running"
         if p["action"] == "create-provider":
@@ -399,8 +401,8 @@ class RunManager:
     def _direct(self, run, sh):
         p = run["request"]["parameters"]
         run["status"] = "running"
-        rn = direct.Runner(run["cfg"], sh, self.root, self.env, lambda line: self._event(run, "log", line),
-                           dry_run=p["DryRun"], sleep=self.sleep)
+        rn = direct.Runner(run["cfg"], sh, self.root, self.env, tokens=self.tokens,
+                           log=lambda line: self._event(run, "log", line), dry_run=p["DryRun"], sleep=self.sleep)
         results = rn.execute(p["steps"], stop=lambda: bool(run.get("cancel")))
         run["result"] = {"steps": results}
         failed = [r for r in results if r["status"] == "failed"]
