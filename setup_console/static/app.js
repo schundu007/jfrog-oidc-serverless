@@ -14,15 +14,20 @@ async function waitJob(id, onTick) {
   }
 }
 
-// Terraform's output, streamed while a job runs; open while running or after a failure.
+// Terraform's own output, streamed while a job runs; open while running or after a failure.
+// The "$ command → exit" bookkeeping lines are left out, and the box stays hidden until there is output.
+const output = (lines) => (lines || []).filter((l) => !l.startsWith("$ "));
 function logBox(lines, open = true) {
-  const pre = h("pre", { class: "pf-log" }, (lines || []).join("\n"));
+  const pre = h("pre", { class: "pf-log" });
   const box = h("details", { class: "pf-log-box", open }, h("summary", { text: "Terraform log" }), pre);
   box.update = (next) => {
+    const shown = output(next);
+    box.hidden = !shown.length;
     const stick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 8;
-    pre.textContent = (next || []).join("\n");
+    pre.textContent = shown.join("\n");
     if (stick) pre.scrollTop = pre.scrollHeight;
   };
+  box.update(lines);
   return box;
 }
 
