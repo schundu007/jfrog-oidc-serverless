@@ -373,6 +373,12 @@ async function loadInventory(scope = "", refresh = false) {
   const fresh = st.inv.workloads.filter((w) => !w.onboarded).length;
   fill(sel, h("option", { value: "", text: n ? `${n} workload${n === 1 ? "" : "s"} · ${fresh} not onboarded` : st.inv.errors[0] || "No workloads found" }),
     Object.entries(groups).map(([label, opts]) => h("optgroup", { label }, opts)));
+  // One workload left to onboard: load it (fields, type and identity) without a click.
+  const open = st.inv.workloads.map((w, i) => [w, i]).filter(([w]) => w.supported && !w.onboarded);
+  if (open.length === 1 && !st.dirty) {
+    sel.value = String(open[0][1]);
+    pickWorkload();
+  }
 }
 
 function pickWorkload() {
