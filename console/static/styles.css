@@ -803,3 +803,34 @@ table.lt tr.lg-step td { border-top: 2px solid #d6e2f2; background: #f5f8fc; }
 table.lt tr.lg-error td { background: #fdf1f0; }
 table.lt tr.lg-warn td { background: #fdf7ec; }
 table.lt .lg { padding-left: 0; text-indent: 0; margin-top: 0; }
+
+/* Sidebar, bold: each cloud is a block with its brand colour; Serverless and Kubernetes are
+   indented sub-headings over a guide line; the open page is solid green. Shared by both consoles. */
+.sidenav { --gcp: #1a73e8; --azure: #0078d4; }
+.sidenav .nav-cloud { margin-top: var(--s-3); padding-top: var(--s-2); border-top: 1px solid var(--side-line); }
+.sidenav .nav-cloud + nav { margin-top: var(--s-3); padding-top: var(--s-2); border-top: 1px solid var(--side-line); }
+.sidenav .nav-cloud .nav-group {
+  display: flex; align-items: center; gap: 8px; padding: var(--s-2) 24px 4px; font-size: 13px; font-weight: 800;
+  letter-spacing: 0.06em; color: var(--cloud, var(--navy));
+}
+.sidenav .nav-cloud .nav-group::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--cloud, var(--navy)); }
+.sidenav .nav-cloud[data-cloud-group="gcp"] { --cloud: var(--gcp); }
+.sidenav .nav-cloud[data-cloud-group="azure"] { --cloud: var(--azure); }
+.sidenav .nav-sub {
+  margin: 6px 0 2px 24px; padding: 2px 0 2px 18px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--navy); border-left: 2px solid var(--cloud, var(--side-line));
+}
+.sidenav .nav-item.nested { margin-left: 24px; width: calc(100% - 24px); padding-left: 18px; border-left: 2px solid color-mix(in srgb, var(--cloud, var(--brand)) 35%, transparent); }
+.sidenav .nav-item.nested:hover { border-left-color: var(--cloud, var(--brand)); }
+.sidenav .nav-item:hover { background: var(--side-hover); color: var(--navy); }
+.sidenav .nav-item[aria-current="page"] { background: var(--accent); color: var(--on-accent, #fff); font-weight: 700; }
+.sidenav .nav-item[aria-current="page"]::before { background: var(--brand); }
+.sidenav .nav-item.nested[aria-current="page"] { border-left-color: var(--brand); }
+.sidenav .nav-item[aria-current="page"] > svg:not(.mark) { stroke: var(--on-accent, #fff); }
+.sidenav .nav-item[aria-current="page"] svg.mark { filter: drop-shadow(0 0 1.5px #fff); }
+.sidenav .nav-item[aria-current="true"] { background: var(--side-on); color: var(--accent); font-weight: 700; }
+@media (max-width: 860px) {
+  .sidenav .nav-cloud { margin: 0; padding: 0; border: 0; }
+  .sidenav .nav-sub { display: none; }
+  .sidenav .nav-item.nested { margin: 0; width: auto; border-left: 0; }
+}

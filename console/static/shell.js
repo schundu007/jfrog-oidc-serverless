@@ -55,8 +55,8 @@
 
   const html = [DEFS];
   html.push(`<nav aria-label="Home">${TOP.map((i) => link(i)).join("")}</nav>`);
-  for (const [cloud, , groups] of CLOUDS) {
-    html.push(`<nav aria-label="${esc(cloud)}"><div class="nav-group">${esc(cloud)}</div>`);
+  for (const [cloud, id, groups] of CLOUDS) {
+    html.push(`<nav class="nav-cloud" data-cloud-group="${esc(id)}" aria-label="${esc(cloud)}"><div class="nav-group">${esc(cloud)}</div>`);
     for (const [group, items] of groups) html.push(`<div class="nav-sub">${esc(group)}</div>`, ...items.map((i) => link(i, " nested")));
     html.push("</nav>");
   }
