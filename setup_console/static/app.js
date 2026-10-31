@@ -1,6 +1,6 @@
 // Setup: deploy and destroy test infrastructure. Check reads the stack's outputs; Deploy and Destroy
 // plan first, show the plan, and run it only after Approve (destroy also needs the stack name typed).
-import { $, api, h, hasToken, setToken, statusPill, flyout, closeFlyout, armed, help } from "/serverless/static/core.js";
+import { $, api, h, hasToken, setToken, statusPill, flyout, closeFlyout, help, menu } from "/serverless/static/core.js";
 import { logBox as tableLog } from "/serverless/static/logview.js";
 
 const POLL_MS = 1000;
@@ -252,8 +252,6 @@ const lastFailure = (s) => (s.failed && !s.busy && !(s.failed.action === "status
 
 function row(s) {
   const blockedDestroy = s.dependents?.length ? `Destroy ${s.dependents.map(titleOf).join(", ")} first` : "";
-  const destroy = h("button", { type: "button", class: "secondary", text: "Destroy", disabled: s.busy || !!blockedDestroy, title: blockedDestroy });
-  destroy.onclick = () => { if (armed(destroy, "Plan destroy?")) run(s, "plan-destroy"); };
   const plan = s.plan ? h("button", { type: "button", class: "primary", text: "Review plan" }) : null;
   if (plan) plan.onclick = () => { const p = flyout(`${s.group} · ${s.title}`); fill(p.body, planView(s, s.plan, p)); };
   // A running job keeps going when its drawer is closed or the page reloads: this reopens its live log.
@@ -276,10 +274,13 @@ function row(s) {
       progress,
       plan,
       log,
-      h("button", { type: "button", class: "secondary", text: "Inputs", onclick: () => editInputs(s) }),
-      h("button", { type: "button", class: "primary", text: "Deploy", disabled: s.busy || !!blockedDeploy, title: blockedDeploy,
-        onclick: () => run(s, "plan-apply") }),
-      destroy)));
+      // Inputs, Deploy and Destroy behind "⋯"; Destroy asks once more before it plans.
+      menu(`Actions for ${s.title}`, [
+        { text: "Inputs", onSelect: () => editInputs(s) },
+        { text: "Deploy", disabled: s.busy || !!blockedDeploy, title: blockedDeploy || null, onSelect: () => run(s, "plan-apply") },
+        { text: "Destroy", danger: true, confirm: "Plan destroy?", disabled: s.busy || !!blockedDestroy, title: blockedDestroy || null,
+          onSelect: () => run(s, "plan-destroy") },
+      ]))));
 }
 
 let byId = {};

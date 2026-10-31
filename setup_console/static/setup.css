@@ -46,7 +46,7 @@
    word without a pill outline; only an enabled Deploy is a solid button, the rest are text buttons. */
 #groups .cloud-card { border: 0; border-radius: 0; background: none; padding: 0; }
 #groups .cloud-card .cloud-head { padding: 0 0 var(--s-2); border-bottom: 2px solid var(--cloud); background: none; }
-#groups .cloud-card .table-wrap { border: 0; background: none; }
+#groups .cloud-card .table-wrap { border: 0; background: none; overflow: visible; }
 #groups .cloud-card td:first-child { padding-left: 0; }
 #groups .cloud-card td:last-child { padding-right: 0; }
 #groups .pill { border: 0; background: none; padding: 0; color: var(--fg-2); }
@@ -54,3 +54,18 @@
   background: none; border-color: transparent; color: var(--accent); padding-left: var(--s-2); padding-right: var(--s-2); }
 #groups .setup-row-actions button.secondary:hover:not(:disabled) { text-decoration: underline; }
 #groups .setup-row-actions button.primary:disabled, #groups .setup-row-actions button.secondary:disabled { color: var(--fg-3); }
+/* A cloud's heading on one line: logo, name, then its stack count. */
+#groups .cloud-head { align-items: center; gap: var(--s-2); }
+#groups .cloud-badge { width: 24px; height: 24px; }
+#groups .cloud-badge svg { width: 22px; height: 22px; }
+#groups .cloud-title { flex-direction: row; align-items: baseline; gap: var(--s-3); }
+#groups .cloud-title h3 { font-size: var(--t-md, 15px); font-weight: 700; }
+#groups .cloud-sub { font-weight: 500; color: var(--fg-3); }
+/* Each section's clouds side by side, two columns; one column on a narrow screen. */
+#groups .setup-kind { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-4) var(--s-6, 32px); align-items: start; }
+#groups .setup-kind > .setup-kind-title { grid-column: 1 / -1; margin-bottom: 0; }
+#groups .setup-kind > .cloud-card + .cloud-card { margin-top: 0; }
+#groups td:first-child { width: auto; }
+#groups td:nth-child(2) { width: 150px; }
+#groups td:last-child { width: 48px; text-align: right; }
+@media (max-width: 1100px) { #groups .setup-kind { grid-template-columns: minmax(0, 1fr); } }
