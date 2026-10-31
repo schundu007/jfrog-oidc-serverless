@@ -1,2 +1,2 @@
-bucket = "csb-test-257615-tfstate"
+bucket = "unioxe-tfstate"
 prefix = "gke-cluster/test"

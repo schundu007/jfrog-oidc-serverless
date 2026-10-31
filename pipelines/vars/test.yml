@@ -12,11 +12,11 @@ variables:
   JFROG_OIDC_PROVIDER: ado-cdoazure
   JFROG_DOCKER_REMOTE: docker-remote
 
-  GCP_PROJECT: csb-test-257615
+  GCP_PROJECT: unioxe
   GCP_REGION: us-central1
   GCP_WIF_PROVIDER: projects/382389965689/locations/global/workloadIdentityPools/azure-devops/providers/cdoazure
-  GCP_BUILD_SERVICE_ACCOUNT: ado-build@csb-test-257615.iam.gserviceaccount.com
-  GCP_SETUP_SERVICE_ACCOUNT: ado-setup@csb-test-257615.iam.gserviceaccount.com
+  GCP_BUILD_SERVICE_ACCOUNT: ado-build@unioxe.iam.gserviceaccount.com
+  GCP_SETUP_SERVICE_ACCOUNT: ado-setup@unioxe.iam.gserviceaccount.com
   IMAGE_REPOSITORY: platform
 
   # AWS: roles from terraform/stacks/ado-trust/aws.tf (not applied yet for this account).

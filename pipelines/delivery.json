@@ -7,9 +7,9 @@
   },
   "merge": "direct",
   "environment": "test",
-  "pipeline_identity": {"gcp": "ado-setup@csb-test-257615.iam.gserviceaccount.com", "azure": "3bcee2bd-f6b3-4bac-a30e-4fe8c55dd039"},
+  "pipeline_identity": {"gcp": "ado-setup@unioxe.iam.gserviceaccount.com", "azure": "3bcee2bd-f6b3-4bac-a30e-4fe8c55dd039"},
   "state": {
-    "gcp": {"type": "gcs", "bucket": "csb-test-257615-tfstate"},
+    "gcp": {"type": "gcs", "bucket": "unioxe-tfstate"},
     "azure": {"type": "azurerm", "resource_group_name": "ado-cicd-rg", "storage_account_name": "stcdoazuretfstate", "container_name": "tfstate"},
     "aws": {"type": "s3", "bucket": "365506438424-cdoazure-tfstate", "region": "us-east-1"}
   }

@@ -475,3 +475,7 @@ Tests: setup 15, portal 14, console 374 (9 skipped), KCP 221.
 - `workload-onboard` skips a workspace removed from git (cleanup) instead of failing.
 - ado-trust: the GCP setup identity gets `container.admin` and `serviceusage.serviceUsageAdmin` (GKE); `azure_console_operators` (Entra object IDs) get Storage Blob Data Contributor on the Azure tfstate container, so the Infrastructure page can plan and destroy Azure stacks locally. Planned: 3 creates, nothing else; apply pending from the Infrastructure page.
 - Cleanup (workloads only): Azure rg-artifact-reader, rg-jfrog-types, kcp-test-rg, Entra app jfrog-jfrog-oidc-audience, AWS ECS cluster jfrog-demo deleted; Azure OIDC workspace removed. JFrog integrations azure-entra and kcp-test-aks-oidc (and their 6 mappings) deleted; left: gcp-cloudrun, ado-cdoazure, kcp-test-gke-oidc.
+
+## 2026-10-31: GCP test project moved to UniOxe
+
+Slurm-Clusters (csb-test-257615) deleted with everything in it; all old JFrog OIDC integrations removed. GCP test project is now `unioxe` (stack tfvars, backends, pipelines/vars/test.yml, delivery.json, ado-trust tfvars). Nothing deployed there yet: ado-trust must be applied first (it creates `unioxe-tfstate` and the ADO identities).
