@@ -874,7 +874,7 @@ table.lt .lg { padding-left: 0; text-indent: 0; margin-top: 0; }
 .ov-table tr.row-link:hover { background: var(--surface-2); }
 .ov-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
 .ov-dot-ok { background: var(--ok-fg, #188038); }
-.ov-dot-warn { background: var(--warn-fg, #b06000); }
+.ov-dot-none { background: var(--fg-3, #9aa0a6); }
 .ov-empty { margin: var(--s-3) var(--s-5) var(--s-2); color: var(--fg-3); font-size: 14px; }
 .ov-create { margin-top: var(--s-6, 32px); border-top: 1px solid var(--border); padding-top: var(--s-5); display: flex; flex-wrap: wrap; gap: var(--s-5) var(--s-6, 32px); }
 .ov-group-title { margin: 0 0 var(--s-3); font-size: 18px; font-weight: 500; }

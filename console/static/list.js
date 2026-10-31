@@ -1,15 +1,13 @@
-// Serverless (/<cloud>, or one kind with ?type=): the resources that exist in the cloud right now, then
-// Create tiles grouped by what the workload does. A configuration is listed only once the cloud
-// confirms its workload exists (wired or not); missing or unreadable ones are not shown. The whole row opens the workload; "⋯" holds Delete (saved only: an
-// onboarded config lives in git, where only offboarding removes it).
+// Serverless (/<cloud>, or one kind with ?type=): the workloads that exist in the cloud right now,
+// read live, whether onboarded here or not; then type tiles grouped by what a workload does.
+// A row opens its workload when onboarded, else New workload on its type.
 
-import { $, api, h, fill, inSection, ofCloud, href, CLOUD, TYPE, template, ago, stamp, help, status as setStatus } from "./core.js";
+import { $, api, h, fill, inSection, ofCloud, href, CLOUD, TYPE, template, help, status as setStatus } from "./core.js";
 import { kindLabel } from "./configure.js";
 
-const ls = { rows: [], schema: null, checked: false };
-const REAL = new Set(["wired", "not_wired"]);
-// Status dot: green when the JFrog settings are on the workload, amber when it exists without them.
-const DOT = { wired: ["ok", "Exists, wired to JFrog"], not_wired: ["warn", "Exists, not wired to JFrog"] };
+const ls = { rows: [], configs: [], schema: null, checked: false };
+// Status dot: green when the workload is onboarded to JFrog OIDC here, grey when it only exists in the cloud.
+const DOT = { true: ["ok", "Onboarded to JFrog OIDC"], false: ["none", "Not onboarded"] };
 
 // What a workload kind does, as the clouds' own consoles group them; and its service icon.
 const GROUPS = [["Services", (k) => /_service$|_container_app$/.test(k)],
@@ -17,23 +15,26 @@ const GROUPS = [["Services", (k) => /_service$|_container_app$/.test(k)],
   ["Functions", (k) => /function/.test(k)]];
 const iconOf = (k) => (k === "gcp_run_function" ? "fn" : k.startsWith("gcp_") ? "run" : k.startsWith("azure_functions") ? "func" : "aca");
 
-function row(c) {
-  const open = href.workload(c.name);
-  const [tone, label] = DOT[c.live.state];
-  const tr = h("tr", { class: "row-link", "data-name": c.name },
+// The saved configuration that targets this cloud workload, if any (same kind, same workload name).
+const configOf = (w) => ls.configs.find((c) => c.kind === w.kind && String(c.workload || "").split(" / ").pop() === w.name);
+
+function row(w) {
+  const cfg = configOf(w);
+  const open = cfg ? href.workload(cfg.name) : `${href.create()}?kind=${encodeURIComponent(w.kind)}`;
+  const [tone, label] = DOT[!!cfg];
+  const tr = h("tr", { class: "row-link", "data-name": w.name },
     h("td", { class: "col-icon" }, h("span", { class: `ov-dot ov-dot-${tone}`, role: "img", "aria-label": label, title: label })),
-    h("td", {}, h("a", { href: open, text: c.name })),
-    h("td", { text: c.where || "—" }),
-    h("td", { text: ls.schema?.kinds?.[c.kind]?.label || c.kind }),
-    h("td", { title: c.when ? stamp(c.when) : null, text: c.when ? ago(c.when) : "—" }));
+    h("td", {}, h("a", { href: open, text: w.name })),
+    h("td", { text: w.region || "—" }),
+    h("td", { text: ls.schema?.kinds?.[w.kind]?.label || w.kind }),
+    h("td", { text: w.project || w.resource_group || "—" }));
   tr.addEventListener("click", (e) => { if (!e.target.closest("a")) location.assign(open); });
   return tr;
 }
 
 function render() {
-  const real = ls.checked ? ls.rows.filter((c) => REAL.has(c.live?.state)) : [];
-  fill($("wl-rows"), real.map(row));
-  $("wl-empty").hidden = !ls.checked || real.length > 0;
+  fill($("wl-rows"), ls.rows.map(row));
+  $("wl-empty").hidden = !ls.checked || ls.rows.length > 0;
 }
 
 function tiles() {
@@ -49,26 +50,19 @@ function tiles() {
       }))));
 }
 
-async function load() {
-  const [{ configs }, { runs }] = await Promise.all([api("/api/configs"), api("/api/runs")]);
-  const mine = runs.filter((r) => inSection(r.kind));
-  ls.rows = configs.filter((c) => inSection(c.kind)).map((c) => {
-    const run = mine.find((r) => r.name === c.name);
-    return { ...c, when: run?.created || c.updated || "" };
-  });
+// What exists in the cloud now (the same read-only listing the New workload picker uses), and the
+// saved configurations, to mark and open the onboarded ones.
+async function load(refresh = false) {
   ls.checked = false;
   render();
-  setStatus($("list-status"), "Checking the cloud", "busy");
-  try {
-    const { status } = await api(`/api/live?cloud=${CLOUD}`);
-    for (const c of ls.rows) c.live = status[c.name] || { state: "unknown" };
-    setStatus($("list-status"), "");
-  } catch (e) {
-    for (const c of ls.rows) c.live = { state: "unknown" };
-    setStatus($("list-status"), `Could not read the cloud: ${e.message}`, "error");
-  }
+  setStatus($("list-status"), "Reading the cloud", "busy");
+  const [inv, { configs }] = await Promise.all([api(`/api/inventory/${CLOUD}${refresh ? "?refresh=1" : ""}`), api("/api/configs")]);
+  ls.configs = configs;
+  ls.rows = (inv.workloads || []).filter((w) => w.supported && inSection(w.kind));
   ls.checked = true;
   render();
+  const errs = inv.errors || [];
+  setStatus($("list-status"), errs.length ? `Could not read part of the cloud: ${errs[0]}` : "", errs.length ? "error" : "");
 }
 
 export async function mountList(page, { schema }) {
@@ -80,10 +74,10 @@ export async function mountList(page, { schema }) {
     page.querySelector(".page-header h1").textContent = section.label;
     document.title = `${section.label} · ${section.cloud}`;
   }
-  $("wl-help").append(help("Workloads onboarded here that exist in the cloud now. Green: wired to JFrog; amber: not wired yet."));
-  $("wl-where").textContent = CLOUD === "azure" ? "Resource group" : "Region";
+  $("wl-help").append(help("What exists in the cloud now. Green: onboarded to JFrog OIDC here; grey: not onboarded (opens New workload)."));
+  $("wl-where").textContent = CLOUD === "azure" ? "Resource group" : "Project";
   fill($("wl-create"), tiles());
-  $("wl-refresh").addEventListener("click", () => load().catch((e) => setStatus($("list-status"), e.message, "error")));
+  $("wl-refresh").addEventListener("click", () => load(true).catch((e) => setStatus($("list-status"), e.message, "error")));
   try {
     await load();
   } catch (e) {
