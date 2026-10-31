@@ -9,12 +9,15 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 from console.shell import Shell
+from setup_console import jobs as jobs_module
 from setup_console import stacks
 from setup_console.jobs import JobError, Jobs
 from setup_console.server import SetupServer, make_handler
 
+REFRESH_403 = 'Error: Error when reading or editing Resource "artifactregistry repository \\\\"projects/p/locations/us-central1/repositories/platform\\\\"" with IAM Member: Error retrieving IAM policy for artifactregistry repository: googleapi: Error 403: The caller does not have permission'
 FAKE_TF = Path(__file__).resolve().parents[2] / "console" / "tests" / "fixtures" / "fake_terraform"
 TOKEN = "tok-setup-test"
+jobs_module.probe_store = lambda kind, store: "unknown"   # tests never ask a real cloud about state stores
 
 
 def fake_shell(log):
@@ -406,7 +409,8 @@ class JobTests(unittest.TestCase):
         j = self._plan("gcp-cloud-run", [{"address": "google_container_cluster.cluster", "type": "x", "change": {"actions": ["delete"]}}],
                        action="plan-destroy")
         plan = j["result"]
-        self.assertIn("-destroy", self.root.calls("gcp-cloud-run")[1])
+        planned = [c for c in self.root.calls("gcp-cloud-run") if c[0] == "plan" and "-refresh-only" not in c]
+        self.assertIn("-destroy", planned[0])   # after the read-only check of which resources still exist
         self.assertEqual(plan["confirmation_phrase"], "gcp-cloud-run")
         with self.assertRaises(JobError) as e:
             self.jobs.start("gcp-cloud-run", "apply", {"plan_sha256": plan["sha256"]})
@@ -461,6 +465,52 @@ class JobTests(unittest.TestCase):
         self.assertEqual(j["state"], "failed")
         self.assertIn("plan failed", j["error"])
         self.assertTrue(j["log"][-1].startswith("▶ Failed: "), j["log"])
+
+    def test_failed_run_says_what_to_do_next(self):
+        # Any failure: the cause in words, then Try again and Check status.
+        (stacks.stack_dir("azure-container-apps", self.root.dir) / ".fake_fail_plan").write_text("")
+        j = wait(self.jobs, self.jobs.start("azure-container-apps", "plan-apply"))
+        self.assertEqual([a["action"] for a in j["next"]["actions"]], ["plan-apply", "status"])
+        self.assertTrue(j["next"]["cause"])
+        failed = {s["id"]: s for s in self.jobs.stacks()}["azure-container-apps"]["failed"]
+        self.assertEqual(failed["next"], j["next"])
+
+    def test_unreadable_resources_offer_forget_for_local_state(self):
+        # The foundation's resources were deleted outside the console: the destroy plan cannot read
+        # them (403). Next: Forget its local state (no cloud call), or Check status, or try again.
+        sid = "gcp-foundation"
+        d = stacks.stack_dir(sid, self.root.dir)
+        (d / "terraform.tfstate").write_text('{"version": 4, "resources": [{"type": "x"}]}')
+        (d / ".fake_fail_plan").write_text(REFRESH_403)
+        j = wait(self.jobs, self.jobs.start(sid, "plan-destroy"))
+        self.assertEqual(j["state"], "failed")
+        self.assertIn("deleted outside the console", j["next"]["cause"])
+        self.assertEqual([a["action"] for a in j["next"]["actions"]], ["forget", "status", "plan-destroy"])
+        # A workload (remote state) is not offered Forget.
+        (stacks.stack_dir("gcp-cloud-run", self.root.dir) / ".fake_fail_plan").write_text(REFRESH_403)
+        w = wait(self.jobs, self.jobs.start("gcp-cloud-run", "plan-destroy"))
+        self.assertNotIn("forget", [a["action"] for a in w["next"]["actions"]])
+
+    def test_forget_moves_local_state_aside_after_typed_name(self):
+        sid = "gcp-foundation"
+        d = stacks.stack_dir(sid, self.root.dir)
+        (d / "terraform.tfstate").write_text('{"version": 4, "resources": [{"type": "x"}]}')
+        (d / "terraform.tfstate.backup").write_text("{}")
+        with self.assertRaises(JobError) as e:
+            self.jobs.start(sid, "forget", {"typed_confirmation": "nope"})
+        self.assertEqual(e.exception.status, 403)
+        j = wait(self.jobs, self.jobs.start(sid, "forget", {"typed_confirmation": sid}))
+        self.assertEqual(j["state"], "done", j)
+        self.assertFalse((d / "terraform.tfstate").exists())
+        self.assertFalse((d / "terraform.tfstate.backup").exists())
+        kept = list((self.root.state / "test" / "forgotten").glob(f"{sid}-*.tfstate"))
+        self.assertEqual(len(kept), 1)
+        self.assertIn('"resources"', kept[0].read_text())
+        self.assertFalse(self.jobs.deployed(sid))
+        self.assertEqual(self.root.calls(sid), [])   # Terraform never ran: nothing in the cloud was touched
+        # Only stacks with local state can be forgotten.
+        with self.assertRaises(JobError):
+            self.jobs.start("gcp-cloud-run", "forget", {"typed_confirmation": "gcp-cloud-run"})
 
     def test_log_tells_each_stage_in_words(self):
         j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
@@ -545,6 +595,108 @@ class JobTests(unittest.TestCase):
         st = [s for s in self.jobs.stacks() if s["id"] == "azure-container-apps"][0]["status"]
         self.assertFalse(st["deployed"])
         self.assertTrue(st["error"])
+
+
+class DeletedOutsideTests(unittest.TestCase):
+    """Resources deleted outside the console (by hand, another tool): the deletion is validated with the
+    cloud and passes, instead of a read or a destroy failing on the not-found."""
+
+    def setUp(self):
+        self.root = Root()
+        self.addCleanup(shutil.rmtree, self.root.dir)
+        self.root.ready()
+        self.repo = self.root.dir / "repo"
+        p = self.repo / "pipelines" / stacks.rel_dir("gcp-cloud-run")
+        p.mkdir(parents=True)
+        (p / "stack-setup.yml").write_text("trigger: none\n")
+        self.asked = []
+
+    def jobs(self, answer):
+        self.ado = FakeAdo([PLANNED])
+        j = Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state, ado=self.ado,
+                 repo_root=self.repo, sleep=lambda s: None, probe=lambda kind, store: self.asked.append(store["label"]) or answer)
+        for f in ("gcp-foundation", "azure-foundation"):
+            j._set_status(f, {"deployed": True, "outputs": {}})
+        return j
+
+    def status(self, jobs, sid):
+        return [s for s in jobs.stacks() if s["id"] == sid][0]["status"]
+
+    def ws(self, sid, name, text):
+        (stacks.stack_dir(sid, self.root.dir) / name).write_text(text)
+
+    def test_a_workload_whose_state_store_is_gone_reads_as_deleted(self):
+        jobs = self.jobs("missing")
+        j = wait(jobs, jobs.start("gcp-cloud-run", "status"))
+        self.assertEqual(j["state"], "done", j)
+        self.assertEqual(self.asked, ["Cloud Storage bucket proj-1-tfstate"])
+        st = self.status(jobs, "gcp-cloud-run")
+        self.assertFalse(st["deployed"])
+        self.assertIn("proj-1-tfstate, no longer exists", st["deleted"])
+        self.assertNotIn("error", st)
+        self.assertEqual(self.root.calls("gcp-cloud-run"), [])   # nothing to read: no terraform
+
+    def test_destroying_it_passes_without_a_pipeline_run(self):
+        jobs = self.jobs("missing")
+        j = wait(jobs, jobs.start("gcp-cloud-run", "plan-destroy"))
+        self.assertEqual(j["state"], "done", j)
+        self.assertTrue(j["result"]["already_deleted"])
+        self.assertEqual(self.ado.queued, [])
+        self.assertIsNone([s for s in jobs.stacks() if s["id"] == "gcp-cloud-run"][0]["plan"])
+
+    def test_an_unconfirmed_store_is_never_taken_as_deleted(self):
+        jobs = self.jobs("unknown")   # no sign-in, no access: not proof of anything
+        wait(jobs, jobs.start("gcp-cloud-run", "plan-destroy"))
+        self.assertEqual(self.ado.queued[0][1]["action"], "destroy")
+
+    def test_a_foundation_with_its_store_gone_is_partly_deleted(self):
+        jobs = self.jobs("missing")
+        self.ws("gcp-foundation", ".fake_outputs.json", json.dumps({"tfstate_bucket": {"value": "proj-1-tfstate"}}))
+        j = wait(jobs, jobs.start("gcp-foundation", "status"))
+        self.assertEqual(j["state"], "done", j)
+        st = self.status(jobs, "gcp-foundation")
+        self.assertFalse(st["deployed"])
+        self.assertTrue(st["deleted"].startswith("Partly deleted outside the console"))
+        self.assertEqual(st["outputs"], {"tfstate_bucket": "proj-1-tfstate"})
+
+    def test_destroy_forgets_what_the_cloud_says_is_gone_and_plans_the_rest(self):
+        jobs = self.jobs("unknown")
+        repo_id = "projects/proj-1/locations/us-central1/repositories/platform"
+        events = [
+            {"type": "resource_drift", "change": {"resource": {"addr": "google_artifact_registry_repository.images"}, "action": "delete"}},
+            {"type": "resource_drift", "change": {"resource": {"addr": "google_service_account.ado"}, "action": "delete"}},
+            # Held by the deleted repository: its read fails with 403, which names the repository.
+            {"type": "diagnostic", "diagnostic": {"severity": "error", "address": "google_artifact_registry_repository_iam_member.push",
+                                                  "summary": f'Error retrieving IAM policy for "{repo_id}": Error 403'}},
+            {"type": "diagnostic", "diagnostic": {"severity": "error", "address": "google_storage_bucket.tfstate",
+                                                  "summary": "googleapi: Error 404: The specified bucket does not exist., notFound"}},
+            # Lacking a token is not proof the resource is gone: it stays.
+            {"type": "diagnostic", "diagnostic": {"severity": "error", "address": "platform_oidc_configuration.ado",
+                                                  "summary": "Unable to Refresh Resource", "detail": '{"code":"UNAUTHORIZED"}'}},
+        ]
+        self.ws("gcp-foundation", ".fake_refresh.jsonl", "\n".join(json.dumps(e) for e in events))
+        self.ws("gcp-foundation", ".fake_state.json", json.dumps({"values": {"root_module": {"resources": [
+            {"address": "google_artifact_registry_repository.images", "values": {"id": repo_id}}]}}}))
+        self.ws("gcp-foundation", ".fake_plan.json", json.dumps(
+            [{"address": "platform_oidc_configuration.ado", "type": "platform_oidc_configuration", "change": {"actions": ["delete"]}}]))
+        j = wait(jobs, jobs.start("gcp-foundation", "plan-destroy"))
+        self.assertEqual(j["state"], "done", j)
+        forgotten = (stacks.stack_dir("gcp-foundation", self.root.dir) / ".fake_forgotten").read_text().split()
+        self.assertEqual(forgotten, ["google_artifact_registry_repository.images", "google_service_account.ado",
+                                     "google_artifact_registry_repository_iam_member.push", "google_storage_bucket.tfstate"])
+        self.assertEqual(j["result"]["summary"]["delete"], 1)   # the JFrog integration is still there to destroy
+        self.assertIn("4 of its resources were already deleted outside the console", "\n".join(j["log"]))
+
+    def test_destroy_with_nothing_left_passes(self):
+        jobs = self.jobs("unknown")
+        self.ws("gcp-foundation", ".fake_refresh.jsonl", json.dumps(
+            {"type": "resource_drift", "change": {"resource": {"addr": "google_service_account.ado"}, "action": "delete"}}))
+        self.ws("gcp-foundation", ".fake_plan.json", "[]")
+        j = wait(jobs, jobs.start("gcp-foundation", "plan-destroy"))
+        self.assertEqual(j["state"], "done", j)
+        self.assertTrue(j["result"]["already_deleted"])
+        st = self.status(jobs, "gcp-foundation")
+        self.assertEqual((st["deployed"], st["deleted"]), (False, "Deleted outside the console: nothing of it is left."))
 
 
 class ServerTests(unittest.TestCase):

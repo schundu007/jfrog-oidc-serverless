@@ -5,7 +5,9 @@ Behaviour is driven by files in the -chdir workspace:
   .fake_plan.json     resource_changes that `plan` writes into plan.bin
                       (default: create every mapping in terraform.tfvars.json)
   .fake_outputs.json  what `output -json` prints (default: derived from the tfvars)
-  .fake_fail_<cmd>    make <cmd> (init/validate/plan/apply) exit 1
+  .fake_fail_<cmd>    make <cmd> (init/validate/plan/apply) exit 1, printing the file's text if any
+  .fake_refresh.jsonl what `plan -refresh-only -json` prints; .fake_state.json what `show -json`
+                      (no plan file) prints; `state rm` appends the addresses to .fake_forgotten
 Every call is appended to .fake_calls as one JSON argv per line, with a flag
 saying whether JFROG_ACCESS_TOKEN was in the environment (never its value).
 """
@@ -58,7 +60,7 @@ def default_outputs():
 
 
 if (ws / f".fake_fail_{cmd}").exists():
-    print(f"Error: fake {cmd} failure", file=sys.stderr)
+    print((ws / f".fake_fail_{cmd}").read_text().strip() or f"Error: fake {cmd} failure", file=sys.stderr)
     sys.exit(1)
 
 if cmd == "version":
@@ -67,6 +69,17 @@ elif cmd == "init":
     print("Terraform has been successfully initialized!")
 elif cmd == "validate":
     print(json.dumps({"valid": True, "error_count": 0, "warning_count": 0, "diagnostics": []}))
+elif cmd == "plan" and "-refresh-only" in args:
+    p = ws / ".fake_refresh.jsonl"
+    print(p.read_text() if p.exists() else "")
+    sys.exit(1 if p.exists() and '"severity": "error"' in p.read_text() else 0)
+elif cmd == "show" and args[-1].startswith("-"):
+    p = ws / ".fake_state.json"
+    print(p.read_text() if p.exists() else "{}")
+elif cmd == "state" and args[1:2] == ["rm"]:
+    with open(ws / ".fake_forgotten", "a") as f:
+        f.write("".join(a + "\n" for a in args[2:] if not a.startswith("-")))
+    print("Successfully removed fake resource instance(s).")
 elif cmd == "plan":
     out = next(a.split("=", 1)[1] for a in args if a.startswith("-out="))
     fp = ws / ".fake_plan.json"

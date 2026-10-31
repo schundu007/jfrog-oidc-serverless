@@ -16,12 +16,14 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import subprocess
 import threading
+import re
 import time
 
 from console import redact
 from console.shell import Shell
-from console.steps.terraform import ApplyRefused, Terraform, TerraformError
+from console.steps.terraform import NOT_FOUND, ApplyRefused, Terraform, TerraformError
 
 from . import stacks
 from .ado import AdoError
@@ -40,8 +42,9 @@ class JobError(RuntimeError):
 
 class Jobs:
     def __init__(self, env_name: str = "test", root=stacks.STACKS_DIR, shell_factory=None, environ=None, token_source=None,
-                 state_root=stacks.STATE_ROOT, ado=None, repo_root=stacks.REPO_ROOT, sleep=time.sleep):
+                 state_root=stacks.STATE_ROOT, ado=None, repo_root=stacks.REPO_ROOT, sleep=time.sleep, probe=None):
         self.env_name, self.root, self.state_root = env_name, root, state_root
+        self.probe = probe or probe_store   # (kind, store) -> "missing" | "present" | "unknown"
         self.shell_factory = shell_factory or (lambda log: Shell(mode="live", log=log))
         self.environ = os.environ if environ is None else environ
         self.token_source = token_source   # callable(shell, host) -> JFrog token, for stacks with a JFrog provider
@@ -71,7 +74,8 @@ class Jobs:
             for j in sorted(self._jobs.values(), key=lambda j: j["started"]):
                 if j["state"] != "running" and j["action"] != "status":   # automatic state reads never warn
                     last[j["stack"]] = j
-            failed = {sid: {"id": j["id"], "action": j["action"], "error": (j["error"] or "").splitlines()[0][:300] if j["error"] else ""}
+            failed = {sid: {"id": j["id"], "action": j["action"], "error": (j["error"] or "").splitlines()[0][:300] if j["error"] else "",
+                            "next": j.get("next")}
                       for sid, j in last.items() if j["state"] == "failed" and j["action"] != "status"}
             out = []
             for s in stacks.CATALOGUE:
@@ -126,9 +130,14 @@ class Jobs:
 
     def start(self, stack_id: str, action: str, approval=None) -> dict:
         stacks.get(stack_id)
-        if action not in ("plan-apply", "plan-destroy", "apply", "status"):
-            raise JobError(400, "action must be plan-apply, plan-destroy, apply or status")
-        if action != "apply":
+        if action not in ("plan-apply", "plan-destroy", "apply", "status", "forget"):
+            raise JobError(400, "action must be plan-apply, plan-destroy, apply, status or forget")
+        if action == "forget":
+            if not self._local_state(stack_id):
+                raise JobError(409, f"{stack_id} has no local Terraform state to forget")
+            if (approval or {}).get("typed_confirmation", "").strip() != stack_id:
+                raise JobError(403, f"type {stack_id} to forget its state")
+        elif action != "apply":
             stacks.tf_args(stack_id, self.env_name, self.root, self.state_root)   # inputs filled in, state derivable
         with self._lock:
             if any(j["stack"] == stack_id and j["state"] == "running" for j in self._jobs.values()):
@@ -206,6 +215,21 @@ class Jobs:
         meta = stacks.get(sid)
         name = f"{meta['kind']} · {meta['group']} · {meta['title']} ({sid}), environment {self.env_name}"
         try:
+            if action == "forget":
+                self._finish(job, "done", result=self._forget(job, meta))
+                return
+            # A workload's whole state lives in its foundation's store: with the store confirmed gone, the
+            # deletion is validated and a read or a destroy passes, with no Terraform run and no ADO run.
+            if action in ("status", "plan-destroy") and stacks.depends_on(sid, self.root):
+                gone = self._store_gone(sid)
+                if gone:
+                    note = f"Deleted outside the console: {gone}."
+                    self._say(job, f"Validated: {gone}, so nothing of {meta['title']} is left.")
+                    if action == "plan-destroy":
+                        self._say(job, "Already deleted: nothing to destroy.")
+                    self._set_status(sid, {"deployed": False, "outputs": {}, "deleted": note})
+                    self._finish(job, "done", result={"deployed": False, "outputs": {}, "already_deleted": True, "message": note})
+                    return
             if action in ("plan-apply", "plan-destroy", "apply") and self.pipeline_path(sid):
                 result = self._work_ado(job, name, approval)
                 self._finish(job, "done", result=result)
@@ -229,8 +253,17 @@ class Jobs:
                 tf.init()
                 outs = tf.outputs()
                 result = {"deployed": bool(outs), "outputs": outs}
+                # A foundation's state is a local file: it can still list resources deleted outside the console.
+                gone = self._store_gone(sid) if outs and not stacks.depends_on(sid, self.root) else None
+                if gone:
+                    result = {"deployed": False, "outputs": outs, "deleted": (
+                        f"Partly deleted outside the console: {gone}. Its state still lists other resources; "
+                        "Destroy checks each one and removes what is left, Deploy rebuilds it.")}
+                    self._say(job, f"Validated: {gone}.", result["deleted"])
                 self._set_status(sid, result)
-                if outs:
+                if gone:
+                    self._say(job, "Not deployed as recorded: see above.")
+                elif outs:
                     self._say(job, "Deployed. Outputs:", *_outputs_lines(outs))
                 else:
                     self._say(job, "Not deployed: the state holds nothing yet.")
@@ -238,8 +271,21 @@ class Jobs:
                 destroy = action == "plan-destroy"
                 self._say(job, f"Planning a {'destroy' if destroy else 'deploy'} of {name} with the saved inputs.")
                 tf = self._terraform(job)
-                self._say(job, "Terraform: initialising providers and state, then planning…")
+                self._say(job, "Terraform: initialising providers and state, then checking which resources still exist…")
+                tf.init()
+                gone = tf.vanished()
+                if gone:   # deleted outside the console: validated by the cloud, so the plan does not trip on them
+                    tf.forget(gone)
+                    self._say(job, f"Validated: {len(gone)} of its resources were already deleted outside the console; "
+                                   "removed them from the state (Terraform kept a backup of it).", *gone)
+                self._say(job, "Planning…")
                 p = tf.plan(destroy=destroy)
+                if destroy and not p.get("changes"):
+                    note = "Deleted outside the console: nothing of it is left."
+                    self._say(job, "Already deleted: nothing to destroy.")
+                    self._set_status(sid, {"deployed": False, "outputs": {}, "deleted": note})
+                    self._finish(job, "done", result={"deployed": False, "outputs": {}, "already_deleted": True, "message": note})
+                    return
                 p.update(action="destroy" if destroy else "apply", job=job["id"], _tf=tf)
                 with self._lock:
                     self._plans[sid] = p
@@ -254,6 +300,7 @@ class Jobs:
             self._say(job, f"Failed: {first}")
             if action == "status":   # e.g. the state store does not exist yet: nothing is deployed there
                 self._set_status(sid, {"deployed": False, "outputs": {}, "error": first[:300]})
+            job["next"] = next_step(action, msg, local_state=self._local_state(sid))
             self._finish(job, "failed", error=msg)
 
     def _follow(self, job, run_id, until) -> dict:
@@ -348,6 +395,38 @@ class Jobs:
             except AdoError:
                 pass
 
+    def _store_gone(self, sid) -> str | None:
+        """Why this stack's state store is known to be gone (the cloud answered not-found), else None.
+        A foundation's store is the one it creates; a workload's is its foundation's."""
+        kind = stacks.backend_kind(sid, self.root) or {v: k for k, v in stacks.FOUNDATION.items()}.get(sid)
+        store = state_store(kind, stacks.foundation(kind, self.env_name, self.state_root)) if kind else None
+        if not store or self.probe(kind, store) != "missing":
+            return None
+        return f"its state store, {store['label']}, no longer exists"
+
+    def _local_state(self, sid) -> bool:
+        """The stack keeps its state in a local file (a foundation) and that file exists."""
+        return stacks.backend_kind(sid, self.root) is None and (stacks.stack_dir(sid, self.root) / "terraform.tfstate").is_file()
+
+    def _forget(self, job, meta) -> dict:
+        """Move a local state file (and its backup) aside, out of the stack, after its resources were
+        deleted outside the console. Nothing in the cloud is called; the file is kept to restore."""
+        sid = job["stack"]
+        d = stacks.stack_dir(sid, self.root)
+        keep = stacks.Path(self.state_root) / self.env_name / "forgotten"
+        keep.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        self._say(job, f"Forgetting the Terraform state of {meta['title']} ({sid}): nothing in the cloud is touched.")
+        for name, suffix in (("terraform.tfstate", ".tfstate"), ("terraform.tfstate.backup", ".tfstate.backup")):
+            src = d / name
+            if src.is_file():
+                dst = keep / f"{sid}-{stamp}{suffix}"
+                src.replace(dst)
+                self._say(job, f"Moved {name} aside.", f"  kept as {dst.name} in .console/setup/{self.env_name}/forgotten")
+        self._set_status(sid, {"deployed": False, "outputs": {}, "deleted": "State forgotten: its resources were deleted outside the console."})
+        self._say(job, "Done: the stack shows as not deployed. Deploy builds it again from nothing.")
+        return {"forgotten": True, "deployed": False, "outputs": {}}
+
     def _set_status(self, sid, status):
         with self._lock:
             self._status[sid] = dict(status, checked=time.time())
@@ -355,6 +434,35 @@ class Jobs:
     def _finish(self, job, state, result=None, error=None):
         with self._lock:
             job.update(state=state, result=result, error=error, finished=time.time())
+
+
+def state_store(kind: str, found: dict) -> dict | None:
+    """Where the foundation of `kind` keeps state (stacks.backend_config's naming), for asking the cloud."""
+    if kind == "gcs" and found.get("gcp_project_id"):
+        bucket = f"{found['gcp_project_id']}-tfstate"
+        return {"bucket": bucket, "label": f"Cloud Storage bucket {bucket}"}
+    if kind == "azurerm" and found.get("azure_subscription_id") and found.get("ado_org") and found.get("state_resource_group"):
+        account = ("st" + found["ado_org"].replace("-", "") + "tfstate")[:24]
+        return {"account": account, "resource_group": found["state_resource_group"], "subscription": found["azure_subscription_id"],
+                "label": f"storage account {account} (resource group {found['state_resource_group']})"}
+    return None
+
+
+def probe_store(kind: str, store: dict) -> str:
+    """Ask the cloud whether a state store exists: "missing" only on a not-found answer; any other
+    failure (no sign-in, no access, no CLI) is "unknown", which never counts as deleted."""
+    if kind == "gcs":
+        argv = ["gcloud", "storage", "buckets", "describe", f"gs://{store['bucket']}", "--format=value(name)"]
+    else:
+        argv = ["az", "storage", "account", "show", "-n", store["account"], "-g", store["resource_group"],
+                "--subscription", store["subscription"], "--query", "name", "-o", "tsv"]
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown"
+    if r.returncode == 0:
+        return "present"
+    return "missing" if NOT_FOUND.search(r.stderr or "") else "unknown"
 
 
 def _check_ado_approval(plan, approval) -> None:
@@ -365,6 +473,30 @@ def _check_ado_approval(plan, approval) -> None:
         raise ApplyRefused("typed_confirmation_required",
                            f"this plan deletes or replaces {len(plan['destructive'])} resource(s); "
                            f"type the stack name '{plan['confirmation_phrase']}' to confirm")
+
+
+_UNREADABLE = re.compile(r"(Error 403|Error 404|does not have permission|AuthorizationFailed|was not found|could not be found"
+                         r"|ResourceGroupNotFound|NotFound|notFound|Missing JFrog Access Token|status: 401|status: 403)")
+_RETRY = {"plan-apply": "Deploy again", "plan-destroy": "Destroy again", "apply": "Plan again", "status": "Check again"}
+
+
+def next_step(action: str, error: str, local_state: bool) -> dict:
+    """What to do about a failed run, in words, with the actions that fix it (first = most likely)."""
+    err = error or ""
+    retry = {"action": "plan-apply" if action == "apply" else action, "label": _RETRY.get(action, "Try again")}
+    check = {"action": "status", "label": "Check status"}
+    if action in ("plan-destroy", "plan-apply", "status") and _UNREADABLE.search(err):
+        if local_state:
+            return {"cause": "Terraform cannot read resources its state lists: they, or the identity that reads them, "
+                             "were deleted outside the console. If they are gone, forget the state: nothing in the cloud "
+                             "is touched and the file is kept.",
+                    "actions": [{"action": "forget", "label": "Forget state", "confirm": True}, check, retry]}
+        return {"cause": "Terraform cannot read resources its state lists: they, or the identity that reads them, were "
+                         "deleted outside the console, or the foundation's identity lost access. Check the foundation, "
+                         "then try again.",
+                "actions": [check, retry]}
+    return {"cause": "The run stopped on the error above. Fix what it names (inputs, sign-in, quota), then try again.",
+            "actions": [retry, check] if action != "status" else [check]}
 
 
 def _append(job, lines):

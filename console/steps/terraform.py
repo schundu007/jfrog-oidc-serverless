@@ -19,7 +19,9 @@ sensitive outputs are replaced.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+import re
 from pathlib import Path
 
 from ..shell import Shell
@@ -152,3 +154,51 @@ class Terraform:
     def outputs(self) -> dict:
         data = self._run("output", "-json", "-no-color", sensitive=True).json() or {}
         return {k: ("[sensitive]" if v.get("sensitive") else v.get("value")) for k, v in data.items() if isinstance(v, dict)}
+
+    def vanished(self) -> list:
+        """Addresses in the state whose resource no longer exists, as the cloud answers a refresh: read
+        back as deleted, or unreadable with not-found, or unreadable because the resource holding it (a
+        repository, account, pool) is one of those deleted. Read-only: a refresh-only plan, not saved."""
+        res = self._run("plan", "-refresh-only", "-json", "-input=false", "-lock-timeout=60s", "-no-color",
+                        *self.plan_args, ok=(0, 1, 2), sensitive=True)
+        deleted, failed = [], []
+        for line in (res.stdout or "").splitlines():
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            if ev.get("type") == "resource_drift" and (ev.get("change") or {}).get("action") == "delete":
+                deleted.append(ev["change"]["resource"]["addr"])
+            d = ev.get("diagnostic") or {}
+            if ev.get("type") == "diagnostic" and d.get("severity") == "error" and d.get("address"):
+                failed.append((d["address"], f"{d.get('summary', '')} {d.get('detail', '')}"))
+        ids = _state_ids(self._run("show", "-json", "-no-color", sensitive=True).json() or {}, set(deleted))
+        gone = list(deleted)
+        for addr, text in failed:
+            if addr not in gone and (NOT_FOUND.search(text) or any(i in text for i in ids)):
+                gone.append(addr)
+        return gone
+
+    def forget(self, addresses: list) -> None:
+        """Drop resources from the state without touching them (they are already gone). Terraform keeps
+        a backup of the state it replaces."""
+        with self._lock():
+            self._run("state", "rm", "-lock-timeout=60s", *addresses)
+
+
+# A read that failed because the thing is not there (any cloud's wording), not for lack of access.
+NOT_FOUND = re.compile(r"\b404\b|notFound|NotFound|does not exist|was not found|could not be found|no such host")
+
+
+def _state_ids(state: dict, addresses: set) -> set:
+    """The ids of these resources in a `terraform show -json` state: long enough to name one resource."""
+    out, mods = set(), [((state.get("values") or {}).get("root_module")) or {}]
+    while mods:
+        m = mods.pop()
+        mods.extend(m.get("child_modules") or [])
+        for r in m.get("resources") or []:
+            if r.get("address") in addresses:
+                rid = str((r.get("values") or {}).get("id") or "")
+                if "/" in rid and len(rid) >= 12:
+                    out.add(rid)
+    return out

@@ -41,6 +41,12 @@ function stackStatus(s) {
   // Its state lives in the foundation: with the foundation missing, it cannot be deployed.
   if (!s.status) return statusPill("notrun", s.needs?.length ? "Not deployed" : "Checking…");
   if (s.status.deployed) return statusPill("succeeded", "Deployed");
+  // Deleted outside the console, validated with the cloud: the evidence is the tooltip.
+  if (s.status.deleted) {
+    const pill = partlyDeleted(s) ? statusPill("waiting_approval", "Partly deleted") : statusPill("notrun", "Deleted");
+    pill.title = s.status.deleted;
+    return pill;
+  }
   // A status read that failed (e.g. no state bucket yet) also means nothing is deployed; the reason is the tooltip.
   const pill = statusPill("notrun", "Not deployed");
   if (s.status.error) pill.title = s.status.error;
@@ -120,17 +126,42 @@ async function follow(stack, job, panel) {
   load();
   if (done.state === "failed") {
     fill(panel.status, statusPill("failed", "Failed"));
-    return fill(panel.body, h("pre", { class: "pf-log" }, done.error || ""), logBox(done));
+    return fill(panel.body, nextView(stack, done.next), h("pre", { class: "pf-log" }, done.error || ""), logBox(done));
   }
+  if (done.result?.forgotten) return fill(panel.body, h("p", {}, h("b", { text: "State forgotten." }),
+    " The stack shows as not deployed; the old state file is kept aside. Deploy builds it again from nothing."), logBox(done, false));
   fill(panel.status, statusPill("succeeded", "Done"));
+  // Validated as deleted outside the console: nothing to plan or approve.
+  if (done.result?.already_deleted) return fill(panel.body, h("p", {}, h("b", { text: done.result.message })), logBox(done, false));
   if (done.action.startsWith("plan-")) return fill(panel.body, planView(stack, done.result, panel), logBox(done, false));
   fill(panel.body, resultView(stack, done.result), logBox(done, false));
 }
 
-async function run(stack, action) {
-  const panel = flyout(`${stack.group} · ${stack.title}: ${{ status: "Check", "plan-apply": "Deploy", "plan-destroy": "Destroy" }[action]}`);
-  try { await follow(stack, await api(`/api/stacks/${stack.id}/jobs`, { method: "POST", body: { action } }), panel); }
+async function run(stack, action, approval) {
+  const verb = { status: "Check", "plan-apply": "Deploy", "plan-destroy": "Destroy", forget: "Forget state" }[action];
+  const panel = flyout(`${stack.group} · ${stack.title}: ${verb}`);
+  try { await follow(stack, await api(`/api/stacks/${stack.id}/jobs`, { method: "POST", body: { action, approval } }), panel); }
   catch (e) { fill(panel.status, statusPill("failed", e.message)); }
+}
+
+// What a failed run suggests: the likely cause in words, then the actions that fix it (first = most
+// likely). Forget state touches nothing in the cloud but needs the stack name typed.
+function nextActions(s, next, { withForget = true } = {}) {
+  return (next?.actions || []).map((a) => {
+    if (a.action !== "forget") return h("button", { type: "button", class: "secondary small-btn", text: a.label, onclick: () => run(s, a.action) });
+    if (!withForget) return null;
+    const typed = h("input", { type: "text", placeholder: s.id, "aria-label": `Type ${s.id} to forget its state`, spellcheck: "false" });
+    const go = h("button", { type: "button", class: "secondary danger", text: a.label, disabled: true });
+    typed.oninput = () => { go.disabled = typed.value.trim() !== s.id; };
+    go.onclick = () => run(s, "forget", { typed_confirmation: typed.value.trim() });
+    return [typed, go];
+  });
+}
+
+function nextView(s, next) {
+  if (!next) return null;
+  return h("div", { class: "setup-next" }, h("p", {}, h("b", { text: "Next: " }), next.cause),
+    h("div", { class: "actions setup-actions" }, nextActions(s, next)));
 }
 
 // One field per variable the stack declares. Pickers list live projects / subscriptions; any
@@ -208,7 +239,7 @@ function goTo(id) {
 const titleOf = (id) => byId[id] ? byId[id].title : id;
 const linkTo = (id) => h("button", { type: "button", class: "link", text: titleOf(id), onclick: () => goTo(id) });
 const joinLinks = (ids) => ids.flatMap((id, i) => (i ? [", ", linkTo(id)] : [linkTo(id)]));
-const ACTION_NAME = { status: "State read", "plan-apply": "Deploy plan", "plan-destroy": "Destroy plan", apply: "Apply" };
+const ACTION_NAME = { status: "State read", "plan-apply": "Deploy plan", "plan-destroy": "Destroy plan", apply: "Apply", forget: "Forget state" };
 
 // Terraform's error, cut to its point: no "terraform x failed (exit 1): Error:" prefix, one short line.
 function brief(text, max = 140) {
@@ -219,16 +250,23 @@ function brief(text, max = 140) {
 // What stops or failed this stack, each with where to go: the foundation it needs, the stacks that
 // stand on it, the last run that failed. A failed state read is left out when the missing foundation
 // already explains it.
+const partlyDeleted = (s) => Boolean(s.status?.deleted && Object.keys(s.status.outputs || {}).length);
+
 function warnings(s) {
   const out = [];
+  if (partlyDeleted(s) && !s.busy && !s.plan) out.push(h("div", { class: "setup-note warn", text: s.status.deleted }));
   if (s.needs?.length) out.push(h("div", { class: "setup-note warn" }, "Deploy ", joinLinks(s.needs), " first."));
   if (s.dependents?.length) out.push(h("div", { class: "setup-note warn" }, "Destroy ", joinLinks(s.dependents), " first."));
   const failed = s.failed && !s.busy && !(s.failed.action === "status" && s.needs?.length) ? s.failed : null;
   if (failed) {
     const log = h("button", { type: "button", class: "link", text: "Log" });
     log.onclick = () => follow(s, failed, flyout(`${s.group} · ${s.title}: ${ACTION_NAME[failed.action] || failed.action}`));
-    out.push(h("div", { class: "setup-note fail", title: failed.error || "" },
-      `${ACTION_NAME[failed.action] || "Last run"} failed: ${brief(failed.error) || "see the log"} `, log));
+    // Forget needs the name typed: it is offered in the log's drawer, where the cause is explained.
+    const offersForget = failed.next?.actions?.some((a) => a.action === "forget");
+    out.push(h("div", { class: "setup-note fail", title: failed.next?.cause || failed.error || "" },
+      `${ACTION_NAME[failed.action] || "Last run"} failed: ${brief(failed.error) || "see the log"} `,
+      log, nextActions(s, failed.next, { withForget: false }),
+      offersForget ? h("span", { class: "small", text: " Forget state is in the log." }) : null));
   }
   return out;
 }
