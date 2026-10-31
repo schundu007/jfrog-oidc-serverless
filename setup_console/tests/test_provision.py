@@ -90,6 +90,15 @@ class ProvisionTests(unittest.TestCase):
         self.assertEqual(self.ado.answers, [("ap-100", True), ("ap-102", True)])
         self.assertEqual(stacks.read_inputs("gcp-cloud-run", "test", self.root.state)["job_image"], IMAGE)
 
+    def test_a_never_saved_stack_takes_the_clouds_shared_inputs(self):
+        (self.root.state / "test" / "gcp-cloud-run.tfvars.json").unlink()
+        stacks.write_inputs("gcp-foundation", "test", {"gcp_project_id": "proj-9", "ado_org": "o", "jfrog_url": "https://a.jfrog.io"},
+                            self.root.dir, self.root.state)                         # shared: gcp_project_id = proj-9
+        self.p.run(job_cfg(), self.yes, self.lines.append)
+        inputs = self.ado.queued[0][1]["inputs"]
+        self.assertEqual((inputs["gcp_project_id"], inputs["workload"]), ("proj-1", "artifact-reader"))   # the target's own wins
+        self.assertEqual(inputs["deploy_job"], False)                                # declared default, then the first pass
+
     def test_no_changes_nothing_and_the_run_is_rejected(self):
         with self.assertRaises(provision.Declined):
             self.p.run(job_cfg(), lambda info: {"answer": "no"}, self.lines.append)

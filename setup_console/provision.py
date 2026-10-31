@@ -84,7 +84,9 @@ class Provisioner:
         t = cfg["target"].get(cloud) or {}
         workload = workload_name(kind, t.get("name") or cfg["name"])
         declared = {v["name"] for v in stacks.variables(sid, self.jobs.root)}
-        values = {k: v for k, v in stacks.read_inputs(sid, self.jobs.env_name, self.jobs.state_root).items() if k in declared}
+        # What the Inputs form would show: saved, else the cloud's shared values (deployer, project), else defaults.
+        values = {f["name"]: f["current"] for f in stacks.form(sid, self.jobs.env_name, self.jobs.root, self.jobs.state_root)["fields"]
+                  if "current" in f}
         values.update({k: v for k, v in {"workload": workload, "gcp_project_id": t.get("project"), "gcp_region": t.get("region"),
                                          "azure_subscription_id": t.get("subscription")}.items() if v and k in declared})
         where = " / ".join(x for x in (t.get("project") or t.get("subscription"), t.get("region") or t.get("resource_group")) if x)
