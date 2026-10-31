@@ -196,6 +196,22 @@ class StackTests(unittest.TestCase):
         f = {x["name"]: x for x in stacks.form("gke-cluster", "test", self.root.dir, self.root.state)["fields"]}
         self.assertNotIn("current", f.get("gcp_project_id", {}))
 
+    def test_each_serverless_type_is_its_own_stack(self):
+        # The real stacks: one per workload type, each standing only on its cloud's foundation.
+        types = {s["id"]: s for s in stacks.CATALOGUE if s["kind"] == "Serverless" and "foundation" not in s["id"]}
+        self.assertEqual(sorted(t["title"] for t in types.values() if t["group"] == "Google Cloud"),
+                         ["Cloud Run function", "Cloud Run job", "Cloud Run service"])
+        self.assertEqual(len([t for t in types.values() if t["group"] == "Azure"]), 5)
+        for sid, t in types.items():
+            want = {"Google Cloud": "gcp-foundation", "Azure": "azure-foundation"}[t["group"]]
+            self.assertEqual(stacks.depends_on(sid), want, sid)
+            self.assertTrue(any(v["name"] == "workload" for v in stacks.variables(sid)), sid)
+        # A workload's own name never prefills another workload stack.
+        self.root.save("gcp-foundation", GCP_FOUNDATION)
+        stacks.write_inputs("gcp-cloud-run", "test", {"gcp_project_id": "proj-9"}, self.root.dir, self.root.state)
+        shared = json.loads((self.root.state / "test" / "shared-serverless-google-cloud.json").read_text())
+        self.assertTrue(set(shared) <= stacks.SHARED_INPUTS, shared)
+
     def test_unknown_stack_refused(self):
         with self.assertRaises(stacks.StackError):
             stacks.stack_dir("../etc", self.root.dir)

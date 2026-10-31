@@ -40,7 +40,7 @@ terraform/modules/
   jfrog-oidc/                     OIDC integrations + per-workload identity mappings
   gcp-pull-path/                  AR remote repos, secret, rotator job, scheduler, alert
   azure-identity-and-pull-path/   Entra audience app, rotator identity/job, Key Vault wiring, alert
-terraform/stacks/all-targets/     both clouds end to end, incl. all 3 Functions hosting models
+terraform/stacks/<type>/          one stack per workload type (Infrastructure page), each on its own
 apps/                             Cloud Run function and Azure Function using the client
 ```
 
@@ -62,8 +62,8 @@ Images are pulled from the JFrog Docker repo's **own host**, `<server>-<repo-key
 
 1. **Publish the client** to your Artifactory PyPI repo (`python -m build client/`, then `jf rt upload`), or vendor `client/src/jfrog_oidc` into each app.
 2. **Build the rotator image** from the repo root and push it to a *standard* AR repo and to ACR: `docker build -f rotator/Dockerfile -t <registry>/jfrog-oidc-rotator:0.1.0 .` Add `--build-arg BASE_IMAGE=<approved mirror>/python:3.12-slim` where policy forbids pulling base images from Docker Hub. Do not host it behind the JFrog remote it refreshes. If the token ever lapses, the rotator must still start to fix it.
-3. **Apply Terraform** from `terraform/stacks/all-targets` (copy `terraform.tfvars.example`). The JFrog provider needs an admin token in `JFROG_ACCESS_TOKEN`; in CI, get it with `jf eot` from your pipeline's own OIDC rather than storing one.
-4. **Apply in two stages, then run each rotator once.** The repos and the Key Vault secret are created with a placeholder, because AR and Key Vault need a value at create time. Any workload that pulls through them fails until the first rotation, so a single apply that also creates the workloads cannot succeed. Stage one creates the identities, the JFrog side and the pull path: `terraform apply -target=module.jfrog_oidc -target=module.gcp -target=module.azure`. Then run both `terraform output first_run` commands. Stage two is a plain `terraform apply`, which creates the workloads. The console's pipeline does the same thing: rotation runs before wiring.
+3. **Deploy each workload type on its own.** On the Infrastructure page (Setup), deploy the cloud's foundation, then only the workload-type stacks you need, one at a time: Cloud Run job, service or function; Container Apps job, Container App, Functions on Container Apps, Functions Premium / Dedicated or Functions Flex Consumption. Each has its own identity and resources and never touches another. Roll each out with its cloud's build-deploy pipeline (one `kind` and `workload` per run).
+4. **Onboard each workload** in the Serverless console: it writes the JFrog side, the pull path where one is used, and the workload's JFROG_* settings, per workload.
 5. **Verify** from inside a workload (Cloud Run job shell, `az containerapp exec`):
    - `python -m jfrog_oidc claims` shows the platform token's claims; compare them with the mapping.
    - `python -m jfrog_oidc check` performs the exchange and prints the username and expiry, never the token.
@@ -100,7 +100,7 @@ The Terraform here is written against the providers' and platforms' documented i
 5. **Functions on Container Apps.** `functions_on_aca_api_version` must be a `Microsoft.App` API version that accepts `kind = "functionapp"` in your tenant.
 6. **Azure alert query.** The default KQL uses `ContainerAppConsoleLogs_CL`. Environments using diagnostic settings write to `ContainerAppConsoleLogs` instead; override `alert.query`.
 7. **`azurerm_function_app_flex_consumption` arguments.** These are recent; check them against the azurerm version you pin.
-8. **Cloud Run functions builds.** The `all-targets` stack grants the default compute SA (the default build SA on newer projects) read access on the AR repos. If you use a custom build service account, grant that one instead.
+8. **Cloud Run functions builds.** The `gcp-cloud-run-function` stack grants the default compute SA (the default build SA on newer projects) read access on its source bucket; the pull path grants it read on the AR repos. If you use a custom build service account, grant that one instead.
 
 ## Tests
 

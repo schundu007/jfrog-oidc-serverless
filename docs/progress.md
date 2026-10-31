@@ -508,3 +508,22 @@ Problems met and fixed on the way:
 ## 2026-10-31: Serverless and Kubernetes infrastructure separate
 
 The Infrastructure page has two independent sections, Serverless (each cloud's foundation and its workload stack) and Kubernetes (GKE and AKS clusters), with one card per cloud inside each. The cluster stacks no longer keep state in a Serverless foundation's store: they keep local state like the foundations, need nothing deployed first and never block a foundation's destroy. Form prefill is kept per kind and cloud. The stack-setup pipelines are Serverless only.
+
+## 2026-10-31: One stack per serverless workload type
+
+Every serverless type is its own stack, deployed and destroyed on its own from the Infrastructure page, standing only on its cloud's foundation (for state and pipeline trust) and never on another workload:
+
+| Cloud | Stack | Type |
+|---|---|---|
+| Google Cloud | `gcp-cloud-run` | Cloud Run job |
+| Google Cloud | `gcp-cloud-run-service` | Cloud Run service |
+| Google Cloud | `gcp-cloud-run-function` | Cloud Run function (own source bucket) |
+| Azure | `azure-container-apps` | Container Apps job |
+| Azure | `azure-container-app` | Container App |
+| Azure | `azure-functions-aca` | Functions on Container Apps |
+| Azure | `azure-functions-premium` | Functions Premium / Dedicated (code) |
+| Azure | `azure-functions-flex` | Functions Flex Consumption (code) |
+
+The Azure ones use `terraform/modules/azure-workload` (own resource group, identity, and registry, Container Apps environment and keyless host storage as the type needs). Only cloud-level inputs prefill between stacks; a workload's name, image and switches never do. The build-deploy pipelines roll out one workload per run (`kind`, `workload`), with no CI trigger rolling out several at once; the stack-setup pipelines take any one workload stack. `all-targets` (everything in one apply) is out of Setup and the pipelines.
+
+Validated with `terraform validate`; not yet applied: the six new stacks, `apps/azure-function/Dockerfile`, the Azure zip deploy (`config-zip --build-remote false` on Premium and Flex), and keyless storage (`shared_access_key_enabled = false` with `storage_use_azuread`).

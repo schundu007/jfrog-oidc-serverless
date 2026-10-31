@@ -1,14 +1,9 @@
-# Build -> push -> deploy -> run for a Container Apps job workload.
-# The base image comes through JFrog and the image goes to the workload's ACR;
-# both logins come from the service connection's OIDC token (no stored secrets).
-# Trust: terraform/stacks/azure-foundation and jfrog-ado-trust. Infrastructure: pipelines/azure-stack-setup.yml.
+# Build and roll out ONE Azure serverless workload per run: the type (kind) and its name.
+# Each type is its own stack in Setup with its own resource group; a run never touches another.
+# Base images come through JFrog; every login comes from the service connection's OIDC token
+# (no stored secrets). Trust: terraform/stacks/azure-foundation. Infrastructure: azure-stack-setup.yml.
 
-trigger:
-  branches:
-    include: [main]
-  paths:
-    include: [apps/artifact-reader, client/src, pipelines/azure-build-deploy.yml, pipelines/scripts/azure-build-deploy.sh, pipelines/scripts/oidc-login.sh]
-
+trigger: none
 pr: none
 
 parameters:
@@ -16,29 +11,36 @@ parameters:
     type: string
     default: test
     values: [test]
+  - name: kind
+    displayName: Workload type
+    type: string
+    default: job
+    values: [job, app, functions-aca, functions-premium, functions-flex]
+  - name: workload
+    displayName: Workload name (the stack's workload input)
+    type: string
+    default: artifact-reader
 
 variables:
   - template: vars/azure-${{ parameters.environment }}.yml
   - group: jfrog-oidc-azure-${{ parameters.environment }}
-  - name: APP
-    value: artifact-reader
+  - name: KIND
+    value: ${{ parameters.kind }}
   - name: WORKLOAD
-    value: artifact-reader
-  - name: BASE_IMAGE
-    value: library/python:3.12-slim
+    value: ${{ parameters.workload }}
 
 pool:
   vmImage: ubuntu-24.04
 
 jobs:
   - job: build_deploy
-    displayName: Build, push, deploy, run
+    displayName: Roll out ${{ parameters.kind }} ${{ parameters.workload }}
     timeoutInMinutes: 30
     steps:
       - checkout: self
         fetchDepth: 1
       - task: AzureCLI@2
-        displayName: Build, push, deploy, run (OIDC)
+        displayName: Roll out ${{ parameters.kind }} ${{ parameters.workload }} (OIDC)
         inputs:
           azureSubscription: ${{ variables.BUILD_SERVICE_CONNECTION }}
           scriptType: bash

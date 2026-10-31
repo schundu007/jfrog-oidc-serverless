@@ -1,18 +1,11 @@
-# Build and roll out the Google Cloud workloads: the Cloud Run job (artifact-reader),
-# service (cloud-run-service) and function (cloud-run-function). One job per kind; a kind
-# whose workload is not deployed in the project is skipped with a warning, not a failure.
+# Build and roll out ONE Google Cloud serverless workload per run: the type (kind) and its name.
+# Each type is its own stack in Setup (gcp-cloud-run, gcp-cloud-run-service, gcp-cloud-run-function)
+# with its own service account; a run never touches another workload.
 # Base images come through JFrog, images go to Artifact Registry; every login comes from the
 # service connection's OIDC token (no stored secrets).
 # Trust: terraform/stacks/gcp-foundation. Infrastructure: pipelines/gcp-stack-setup.yml.
 
-trigger:
-  batch: true   # pushes during a run wait for it, so two runs never deploy the function at once
-  branches:
-    include: [main]
-  paths:
-    include: [apps/artifact-reader, apps/cloud-run-service, apps/cloud-run-function, client/src,
-              pipelines/gcp-build-deploy.yml, pipelines/scripts/gcp-build-deploy.sh, pipelines/scripts/oidc-login.sh]
-
+trigger: none
 pr: none
 
 parameters:
@@ -20,22 +13,15 @@ parameters:
     type: string
     default: test
     values: [test]
-  - name: kinds
-    displayName: Workloads to roll out
-    type: object
-    default: [job, service, function]
-  - name: job
-    displayName: Cloud Run job name
+  - name: kind
+    displayName: Workload type
+    type: string
+    default: job
+    values: [job, service, function]
+  - name: workload
+    displayName: Workload name (the stack's workload input)
     type: string
     default: artifact-reader
-  - name: service
-    displayName: Cloud Run service name
-    type: string
-    default: jfrog-svc-demo
-  - name: function
-    displayName: Cloud Run function name
-    type: string
-    default: jfrog-fn-demo
 
 variables:
   - template: vars/gcp-${{ parameters.environment }}.yml
@@ -47,37 +33,34 @@ pool:
   vmImage: ubuntu-24.04
 
 jobs:
-  - ${{ each kind in parameters.kinds }}:
-      - job: ${{ kind }}
-        displayName: Cloud Run ${{ kind }}
-        timeoutInMinutes: 30
-        variables:
-          KIND: ${{ kind }}
-          ${{ if eq(kind, 'job') }}:
-            APP: artifact-reader
-            WORKLOAD: ${{ parameters.job }}
-          ${{ if eq(kind, 'service') }}:
-            APP: cloud-run-service
-            WORKLOAD: ${{ parameters.service }}
-          ${{ if eq(kind, 'function') }}:
-            APP: cloud-run-function
-            WORKLOAD: ${{ parameters.function }}
-        steps:
-          - checkout: self
-            fetchDepth: 1
-          # ADO issues the connection's OIDC token only to a job that references it; this
-          # skipped task is that reference. Nothing signs in to Azure.
-          - task: AzureCLI@2
-            displayName: Reference the service connection
-            condition: false
-            inputs:
-              azureSubscription: ${{ variables.BUILD_SERVICE_CONNECTION }}
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: 'true'
-          - bash: bash pipelines/scripts/gcp-build-deploy.sh
-            displayName: Roll out $(WORKLOAD) (OIDC)
-            env:
-              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-              JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(BUILD_SERVICE_CONNECTION_ID)
-              GCP_SERVICE_ACCOUNT: $(GCP_BUILD_SERVICE_ACCOUNT)
+  - job: rollout
+    displayName: Cloud Run ${{ parameters.kind }} ${{ parameters.workload }}
+    timeoutInMinutes: 30
+    variables:
+      KIND: ${{ parameters.kind }}
+      WORKLOAD: ${{ parameters.workload }}
+      ${{ if eq(parameters.kind, 'job') }}:
+        APP: artifact-reader
+      ${{ if eq(parameters.kind, 'service') }}:
+        APP: cloud-run-service
+      ${{ if eq(parameters.kind, 'function') }}:
+        APP: cloud-run-function
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      # ADO issues the connection's OIDC token only to a job that references it; this
+      # skipped task is that reference. Nothing signs in to Azure.
+      - task: AzureCLI@2
+        displayName: Reference the service connection
+        condition: false
+        inputs:
+          azureSubscription: ${{ variables.BUILD_SERVICE_CONNECTION }}
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: 'true'
+      - bash: bash pipelines/scripts/gcp-build-deploy.sh
+        displayName: Roll out $(WORKLOAD) (OIDC)
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(BUILD_SERVICE_CONNECTION_ID)
+          GCP_SERVICE_ACCOUNT: $(GCP_BUILD_SERVICE_ACCOUNT)

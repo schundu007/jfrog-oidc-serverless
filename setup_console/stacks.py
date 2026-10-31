@@ -5,8 +5,8 @@ already there and only the Serverless and Kubernetes consoles' configure steps r
 
 Nothing about a target is written into the stacks. Each stack's inputs are the variables its
 variables.tf declares; the Infrastructure page shows them as a form and saves what is filled in
-as JSON (<state root>/<env>/<stack>.tfvars.json, outside git), passed with -var-file. A variable
-two stacks of the same cloud share (jfrog_url, gcp_project_id, ...) is prefilled from the last
+as JSON (<state root>/<env>/<stack>.tfvars.json, outside git), passed with -var-file. A cloud-level
+variable two stacks of the same cloud share (jfrog_url, gcp_project_id, ...) is prefilled from the last
 value saved for it in that cloud; clouds never prefill from each other.
 
 Serverless and Kubernetes are separate kinds of infrastructure and never depend on each other.
@@ -37,24 +37,52 @@ CATALOGUE = (
     {"id": "gcp-foundation", "kind": "Serverless", "group": "Google Cloud", "title": "Foundation (ADO trust, state)",
      "about": "Lets the Google Cloud pipelines sign in to Google Cloud and JFrog with their OIDC token, "
               "with no stored keys: the workload identity provider, the pipeline service accounts, "
-              "their ADO service connections and variable group, the JFrog integration, and the "
-              "bucket that holds the Cloud Run job stack's Terraform state.",
-     "next": "Deploy the Cloud Run job stack."},
+              "their ADO service connections and variable group, the JFrog integration, the image "
+              "repository, and the bucket that holds each Google Cloud workload stack's Terraform state.",
+     "next": "Deploy the workload stacks you need, each on its own."},
     {"id": "gcp-cloud-run", "kind": "Serverless", "group": "Google Cloud", "title": "Cloud Run job",
-     "about": "The workload's runtime service account, and the Cloud Run job itself once deploy_job is on.",
-     "next": "Run gcp-build-deploy to push the first image, then turn on deploy_job (Inputs) and deploy "
-             "again. Until the job exists, the pipeline's update step fails."},
+     "about": "The job's own service account, and the Cloud Run job itself once deploy_job is on.",
+     "next": "Run gcp-build-deploy (kind job) to push the first image, then set job_image, turn on "
+             "deploy_job (Inputs) and deploy again."},
+    {"id": "gcp-cloud-run-service", "kind": "Serverless", "group": "Google Cloud", "title": "Cloud Run service",
+     "about": "The service's own service account, and the Cloud Run service itself once deploy_service is on.",
+     "next": "Run gcp-build-deploy (kind service) to push the first image, then set service_image, turn on "
+             "deploy_service (Inputs) and deploy again."},
+    {"id": "gcp-cloud-run-function", "kind": "Serverless", "group": "Google Cloud", "title": "Cloud Run function",
+     "about": "The function's own service account and source bucket, and the function itself once "
+              "deploy_function is on.",
+     "next": "Run gcp-build-deploy (kind function) to upload the first source package, then set "
+             "source_object, turn on deploy_function (Inputs) and deploy again."},
     {"id": "azure-foundation", "kind": "Serverless", "group": "Azure", "title": "Foundation (ADO trust, state)",
      "about": "Lets the Azure pipelines sign in to Azure and JFrog with their OIDC token, with no "
               "stored secrets: the setup identity and its federated credentials, its ADO service "
               "connections and variable group, the JFrog integration, and the storage account that "
-              "holds the Container Apps job stack's Terraform state.",
-     "next": "Deploy the Container Apps job stack."},
+              "holds each Azure workload stack's Terraform state.",
+     "next": "Deploy the workload stacks you need, each on its own."},
     {"id": "azure-container-apps", "kind": "Serverless", "group": "Azure", "title": "Container Apps job",
-     "about": "A resource group with a container registry, the workload's identity, a Container Apps "
+     "about": "Its own resource group with a container registry, the job's identity, a Container Apps "
               "environment, and the job itself once deploy_job is on.",
-     "next": "Run azure-build-deploy to push the first image, then turn on deploy_job (Inputs) and "
-             "deploy again."},
+     "next": "Run azure-build-deploy (kind job) to push the first image, then set job_image, turn on "
+             "deploy_job (Inputs) and deploy again."},
+    {"id": "azure-container-app", "kind": "Serverless", "group": "Azure", "title": "Container App",
+     "about": "Its own resource group with a container registry, the app's identity, a Container Apps "
+              "environment, and the container app itself once deploy_app is on.",
+     "next": "Run azure-build-deploy (kind app) to push the first image, then set app_image, turn on "
+             "deploy_app (Inputs) and deploy again."},
+    {"id": "azure-functions-aca", "kind": "Serverless", "group": "Azure", "title": "Functions on Container Apps",
+     "about": "Its own resource group with a container registry, the function's identity, a Container "
+              "Apps environment, host storage, and the function app (kind functionapp) once "
+              "deploy_function is on.",
+     "next": "Run azure-build-deploy (kind functions-aca) to push the first image, then set "
+             "function_image, turn on deploy_function (Inputs) and deploy again."},
+    {"id": "azure-functions-premium", "kind": "Serverless", "group": "Azure", "title": "Functions Premium / Dedicated",
+     "about": "Its own resource group with the function's identity, host storage, an Elastic Premium "
+              "(or Dedicated) plan and the function app.",
+     "next": "Run azure-build-deploy (kind functions-premium) to deploy the code."},
+    {"id": "azure-functions-flex", "kind": "Serverless", "group": "Azure", "title": "Functions Flex Consumption",
+     "about": "Its own resource group with the function's identity, host storage with its deployment "
+              "container, a Flex Consumption plan and the function app.",
+     "next": "Run azure-build-deploy (kind functions-flex) to deploy the code."},
     {"id": "gke-cluster", "kind": "Kubernetes", "group": "Google Cloud", "title": "GKE cluster",
      "about": "A test GKE cluster and node pool with its OIDC issuer on.",
      "next": "Run the credentials command, then use the cluster from the Kubernetes console."},
@@ -63,6 +91,11 @@ CATALOGUE = (
      "next": "Run the credentials command, then use the cluster from the Kubernetes console."},
 )
 IDS = tuple(s["id"] for s in CATALOGUE)
+# Only cloud-level inputs prefill another stack's form. A workload's own name, image and switches
+# never do: each workload stack is separate and two must never get the same resources.
+SHARED_INPUTS = frozenset({"jfrog_url", "jfrog_reader_group", "ado_org", "gcp_project_id", "gcp_region",
+                           "azure_subscription_id", "azure_tenant_id", "azure_location",
+                           "deployer_service_account", "deployer_principal_id", "image_repository", "tags"})
 # The foundation whose inputs a remote backend's location derives from, by backend type.
 FOUNDATION = {"gcs": "gcp-foundation", "azurerm": "azure-foundation"}
 MAX_VARS = 64 * 1024
@@ -235,7 +268,7 @@ def form(stack_id: str, env: str, root: Path = STACKS_DIR, state_root: Path = ST
         f = dict(v)
         if v["name"] in saved:
             f["current"], f["source"] = saved[v["name"]], "saved"
-        elif v["name"] in shared:
+        elif v["name"] in shared and v["name"] in SHARED_INPUTS:
             f["current"], f["source"] = shared[v["name"]], "shared"
         elif "default" in v:
             f["current"], f["source"] = v["default"], "default"
@@ -291,7 +324,7 @@ def write_inputs(stack_id: str, env: str, values: dict, root: Path = STACKS_DIR,
     others = {x["name"] for s in CATALOGUE if s["id"] != stack_id and (s["kind"], s["group"]) == (meta["kind"], meta["group"])
               for x in variables(s["id"], root)}
     shared = _load(_shared_file(env, state_root, stack_id))
-    shared.update({k: val for k, val in out.items() if k in others})
+    shared.update({k: val for k, val in out.items() if k in others and k in SHARED_INPUTS})
     _write(_shared_file(env, state_root, stack_id), shared)
     return out
 

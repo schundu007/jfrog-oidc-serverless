@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Build and roll out a Cloud Run workload. KIND picks how:
+# Build and roll out ONE Cloud Run workload (its own stack in Setup). KIND picks how:
 #   job       build apps/$APP (base image through JFrog), push to Artifact Registry,
 #             update the job and run it to completion
 #   service   same image build, then update the service and check it is ready
-#   function  deploy apps/$APP from source (gen2) with the jfrog_oidc client in the package
+#   function  deploy apps/$APP from source (gen2) with the jfrog_oidc client in the package;
+#             before the stack has created it, upload the first package to its source bucket
 # Every login comes from the service connection's OIDC token; nothing is stored.
 set -euo pipefail
 cd "$BUILD_SOURCESDIRECTORY"
@@ -30,7 +31,7 @@ build_image() {
 # A new project has no job or service yet: Setup creates it from the first image. Push that image
 # and say what to put in the stack's inputs, instead of failing on the update.
 first_image() {
-  echo "##vso[task.logissue type=warning]$1 $WORKLOAD does not exist yet: pushed $image. In Setup, set job_image to it and deploy_job on, deploy, then run this pipeline again."
+  echo "##vso[task.logissue type=warning]$1 $WORKLOAD does not exist yet: pushed $image. In Setup, set $2 to it and $3 on, deploy, then run this pipeline again."
   echo "##vso[build.addbuildtag]first-image"
   exit 0
 }
@@ -38,14 +39,14 @@ first_image() {
 case "$KIND" in
   job)
     build_image
-    gcloud run jobs describe "$WORKLOAD" "${loc[@]}" --format='value(name)' >/dev/null 2>&1 || first_image "Cloud Run job"
+    gcloud run jobs describe "$WORKLOAD" "${loc[@]}" --format='value(name)' >/dev/null 2>&1 || first_image "Cloud Run job" job_image deploy_job
     gcloud run jobs update "$WORKLOAD" --image "$image" "${loc[@]}" --quiet
     gcloud run jobs execute "$WORKLOAD" "${loc[@]}" --wait --quiet
     echo "deployed and ran $image"
     ;;
   service)
     build_image
-    gcloud run services describe "$WORKLOAD" "${loc[@]}" --format='value(name)' >/dev/null 2>&1 || first_image "Cloud Run service"
+    gcloud run services describe "$WORKLOAD" "${loc[@]}" --format='value(name)' >/dev/null 2>&1 || first_image "Cloud Run service" service_image deploy_service
     # Only the image changes: the identity and JFrog env the console wired stay.
     gcloud run services update "$WORKLOAD" --image "$image" "${loc[@]}" --quiet
     ready=$(gcloud run services describe "$WORKLOAD" "${loc[@]}" --format='value(status.conditions[0].status)')
@@ -53,15 +54,19 @@ case "$KIND" in
     echo "deployed $image"
     ;;
   function)
-    # Onboarding creates the function (identity + JFrog env); with none yet there is nothing to redeploy.
-    gcloud run services describe "$WORKLOAD" "${loc[@]}" --format='value(name)' >/dev/null 2>&1 || {
-      echo "##vso[task.logissue type=warning]Cloud Run function $WORKLOAD is not deployed in ${GCP_PROJECT}: skipped."
-      exit 0
-    }
     src=$(mktemp -d)
     cp "apps/${APP}/main.py" "$src/"
     cp -R client/src/jfrog_oidc "$src/"
     echo 'functions-framework==3.*' > "$src/requirements.txt"
+    # Not created yet: the stack (gcp-cloud-run-function) creates it from a package in its source bucket.
+    gcloud run services describe "$WORKLOAD" "${loc[@]}" --format='value(name)' >/dev/null 2>&1 || {
+      object="${WORKLOAD}-${BUILD_SOURCEVERSION:0:12}.zip"
+      (cd "$src" && find . -name __pycache__ -prune -o -type f -print | zip -q -@ "../$object")
+      gcloud storage cp "$src/../$object" "gs://${GCP_PROJECT}-${WORKLOAD}-src/$object" --project "$GCP_PROJECT" --quiet
+      echo "##vso[task.logissue type=warning]Cloud Run function $WORKLOAD does not exist yet: uploaded $object. In Setup, set source_object to it and deploy_function on, deploy, then run this pipeline again."
+      echo "##vso[build.addbuildtag]first-image"
+      exit 0
+    }
     # A source deploy rewrites the function's config: carry over the runtime identity
     # and JFrog settings the console wired (on the underlying Cloud Run service).
     sa=$(gcloud run services describe "$WORKLOAD" "${loc[@]}" --format='value(spec.template.spec.serviceAccountName)')
