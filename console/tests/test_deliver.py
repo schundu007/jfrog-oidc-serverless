@@ -231,8 +231,8 @@ class LoadTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, d, True)
         (d / "delivery.json").write_text(json.dumps({"ado": DELIVERY["ado"]}))
         stacks = d / "stacks"
-        for name, outs in (("gcp-foundation", {"tfstate_bucket": "p-tfstate", "gcp_service_accounts": {"setup": "ado-setup@p.iam"}}),
-                           ("azure-foundation", {"azure_setup_identity_principal_id": "pid",
+        for name, outs in (("serverless/gcp/gcp-foundation", {"tfstate_bucket": "p-tfstate", "gcp_service_accounts": {"setup": "ado-setup@p.iam"}}),
+                           ("serverless/azure/azure-foundation", {"azure_setup_identity_principal_id": "pid",
                                                  "azure_tfstate": {"resource_group": "rg", "storage_account": "st", "container": "tfstate"}})):
             (stacks / name).mkdir(parents=True)
             (stacks / name / "terraform.tfstate").write_text(json.dumps({"outputs": {k: {"value": v} for k, v in outs.items()}}))
@@ -240,7 +240,7 @@ class LoadTests(unittest.TestCase):
         self.assertEqual(s["pipeline_identity"], {"gcp": "ado-setup@p.iam", "azure": "pid"})
         self.assertEqual(s["state"]["gcp"], {"type": "gcs", "bucket": "p-tfstate"})
         self.assertEqual(s["state"]["azure"]["storage_account_name"], "st")
-        (stacks / "azure-foundation" / "terraform.tfstate").unlink()    # not deployed: that cloud is left out
+        (stacks / "serverless/azure/azure-foundation" / "terraform.tfstate").unlink()    # not deployed: that cloud is left out
         self.assertNotIn("azure", deliver.load_settings(d / "delivery.json", stacks)["state"])
 
 

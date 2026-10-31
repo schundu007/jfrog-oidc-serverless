@@ -53,7 +53,7 @@ class DeliveryError(RuntimeError):
 
 def foundation_settings(stacks_dir) -> dict:
     """Each cloud's pipeline identity and state backend, from its foundation stack's outputs
-    (terraform/stacks/<cloud>-foundation, local state). A cloud whose foundation isn't deployed
+    (terraform/stacks/serverless/<cloud>/<cloud>-foundation, local state). A cloud whose foundation isn't deployed
     is left out."""
     def outputs(stack):
         try:
@@ -63,11 +63,11 @@ def foundation_settings(stacks_dir) -> dict:
             return {}
 
     found = {"pipeline_identity": {}, "state": {}}
-    g = outputs("gcp-foundation")
+    g = outputs("serverless/gcp/gcp-foundation")
     if g.get("tfstate_bucket") and (g.get("gcp_service_accounts") or {}).get("setup"):
         found["pipeline_identity"]["gcp"] = g["gcp_service_accounts"]["setup"]
         found["state"]["gcp"] = {"type": "gcs", "bucket": g["tfstate_bucket"]}
-    a = outputs("azure-foundation")
+    a = outputs("serverless/azure/azure-foundation")
     t = a.get("azure_tfstate") or {}
     if a.get("azure_setup_identity_principal_id") and t.get("storage_account"):
         found["pipeline_identity"]["azure"] = a["azure_setup_identity_principal_id"]
