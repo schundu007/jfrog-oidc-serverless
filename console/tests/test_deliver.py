@@ -133,7 +133,7 @@ class PublishTests(unittest.TestCase):
         self.assertEqual(sh.misses, [])
         self.assertIsNone(res["pull_request"])
         self.assertEqual(res["branch"], "main")
-        self.assertEqual(res["pipeline"]["name"], "gcp-workload-onboard")
+        self.assertEqual(res["pipeline"]["name"], "Google Cloud - Onboard workloads to JFrog")
         self.assertNotIn("POST", self.verbs(sh))
         push = next(c for c in sh.calls if c[0] == "git" and c[3] == "push")
         self.assertEqual(push[4:], ["--quiet", REPO_URL, "onboard/orders-01234567:refs/heads/main"])

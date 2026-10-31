@@ -39,6 +39,12 @@ STATE_FIELDS = {"gcs": ("bucket",), "azurerm": ("resource_group_name", "storage_
                 "s3": ("bucket", "region"), "kubernetes": ("namespace",)}
 STATE_TYPES = {"gcp": "gcs", "azure": "azurerm", "aws": "s3", "openshift": "kubernetes"}
 WORKSPACE_FILES = ("backend.tf.json", "console.json", "main.tf.json", "terraform.tfvars.json")
+# The ADO pipeline running pipelines/<cloud>-workload-onboard.yml, by its name in ADO.
+ONBOARD_PIPELINES = {"gcp": "Google Cloud - Onboard workloads to JFrog", "azure": "Azure - Onboard workloads to JFrog"}
+
+
+def onboard_pipeline(cloud: str) -> str:
+    return ONBOARD_PIPELINES.get(cloud, f"{cloud}-workload-onboard")
 
 
 class DeliveryError(RuntimeError):
@@ -196,16 +202,16 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
         if direct:
             remote(f"git push to {base}", "push", "--quiet", repo_url, f"{branch}:refs/heads/{base}", cwd=wt)
             commit = git("rev-parse", "HEAD", cwd=wt).stdout.strip()
-            log(f"pushed {commit[:12]} to {base}: {cloud}-workload-onboard applies it")
+            log(f"pushed {commit[:12]} to {base}: {onboard_pipeline(cloud)} applies it")
             return {"changed": True, "branch": base, "workspace": out["workspace"], "commit": commit,
-                    "pipeline": {"name": f"{cloud}-workload-onboard", "url": pipeline_url}, "pull_request": None}
+                    "pipeline": {"name": onboard_pipeline(cloud), "url": pipeline_url}, "pull_request": None}
         remote("git push", "push", "--quiet", repo_url, f"{branch}:refs/heads/{branch}", cwd=wt)
         if not token:
             raise DeliveryError("opening a pull request needs an Azure DevOps token: run `az login` to the ADO tenant")
         body = {"sourceRefName": f"refs/heads/{branch}", "targetRefName": f"refs/heads/{base}",
                 "title": f"Onboard {cfg['name']} to JFrog OIDC",
                 "description": (f"Workspace `{out['workspace']}`, targets: {', '.join(out['targets'])}.\n\n"
-                                f"Merging runs {cloud}-workload-onboard: terraform plan and apply, then wire the target.")}
+                                f"Merging runs {onboard_pipeline(cloud)}: terraform plan and apply, then wire the target.")}
         pr = sh.http("POST", f"{org_url}/{ado['project']}/_apis/git/repositories/{ado['repository']}/pullrequests"
                              "?api-version=7.1",
                      headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
