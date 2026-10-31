@@ -118,10 +118,12 @@ class Jobs:
         threading.Thread(target=self._work, args=(job, approval), name=f"setup-{stack_id}", daemon=True).start()
         return self.get(job["id"])
 
-    def _say(self, job, text):
-        """One plain-words progress line in the job's log (Terraform's own output streams in between)."""
+    def _say(self, job, text, *details):
+        """One plain-words progress line in the job's log (Terraform's own output streams in between),
+        then any detail lines under it, unmarked."""
         with self._lock:
             job["log"].append("▶ " + redact.text(text))
+            job["log"].extend(redact.text(d) for d in details)
             del job["log"][:-MAX_LOG]
 
     def _where(self, stack_id, init_args) -> str:
@@ -182,7 +184,7 @@ class Jobs:
                 if result["destroyed"]:
                     self._say(job, "Destroyed: nothing of this stack is left in its Terraform state.")
                 else:
-                    self._say(job, f"Deployed. {_outputs_text(result['outputs'])}")
+                    self._say(job, "Deployed.")  # Terraform printed the outputs just above
             elif action == "status":
                 self._say(job, f"Checking {name}: reading its Terraform state.")
                 tf = self._terraform(job)
@@ -190,7 +192,10 @@ class Jobs:
                 outs = tf.outputs()
                 result = {"deployed": bool(outs), "outputs": outs}
                 self._set_status(sid, result)
-                self._say(job, f"Deployed. {_outputs_text(outs)}" if outs else "Not deployed: the state holds nothing yet.")
+                if outs:
+                    self._say(job, "Deployed. Outputs:", *_outputs_lines(outs))
+                else:
+                    self._say(job, "Not deployed: the state holds nothing yet.")
             else:
                 destroy = action == "plan-destroy"
                 self._say(job, f"Planning a {'destroy' if destroy else 'deploy'} of {name} with the saved inputs.")
@@ -260,12 +265,12 @@ def _summary_text(summary) -> str:
     return ", ".join(parts) or "no changes"
 
 
-def _outputs_text(outputs) -> str:
-    """Outputs as "name = value" (scalars; maps by entry), never sensitive ones (already "[sensitive]")."""
+def _outputs_lines(outputs) -> list:
+    """Outputs as "name = value" lines (scalars; maps by entry), never sensitive ones (already "[sensitive]")."""
     rows = []
     for k, v in (outputs or {}).items():
         if isinstance(v, dict):
             rows += [f"{k}.{sk} = {sv}" for sk, sv in v.items() if not isinstance(sv, (dict, list))]
         elif v is not None and not isinstance(v, list):
             rows.append(f"{k} = {v}")
-    return ("Outputs: " + "; ".join(rows) + ".") if rows else "No outputs."
+    return ["  " + r for r in rows]

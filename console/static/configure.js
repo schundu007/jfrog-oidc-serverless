@@ -3,6 +3,7 @@
 // (results in the side panel) and Save. Step cards are always open.
 // Rendered with DOM APIs only (no innerHTML); the config holds no secrets.
 
+import { logLine } from "./logview.js";
 import { $, api, h, fill, streamEvents, CLOUD as cloud, statusIcon, statusPill, template, attachHelp,
   flyout, status as setStatus } from "./core.js";
 
@@ -316,7 +317,7 @@ export async function runPreflight() {
     let failed = null;
     await streamEvents("/api/preflight?stream=1", (kind, data) => {
       if (kind === "check") list.append(checkItem(data));
-      else if (kind === "log") { log.append(`${data.line}\n`); log.scrollTop = log.scrollHeight; }
+      else if (kind === "log") { log.append(logLine(data.line)); log.scrollTop = log.scrollHeight; }
       else if (kind === "done") res = data;
       else if (kind === "failed") failed = data.error;
     }, undefined, { method: "POST", body: { config: st.cfg } });

@@ -1,6 +1,7 @@
 // Setup: deploy and destroy test infrastructure. Check reads the stack's outputs; Deploy and Destroy
 // plan first, show the plan, and run it only after Approve (destroy also needs the stack name typed).
 import { $, api, h, hasToken, setToken, statusPill, flyout, closeFlyout, armed } from "/serverless/static/core.js";
+import { renderLog } from "/serverless/static/logview.js";
 
 const POLL_MS = 1000;
 const fill = (el, ...kids) => { el.replaceChildren(...kids.flat().filter(Boolean)); return el; };
@@ -24,7 +25,7 @@ function logBox(lines, open = true) {
     const shown = output(next);
     box.hidden = !shown.length;
     const stick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 8;
-    pre.textContent = shown.join("\n");
+    renderLog(pre, shown);
     if (stick) pre.scrollTop = pre.scrollHeight;
   };
   box.update(lines);

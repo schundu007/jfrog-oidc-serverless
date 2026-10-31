@@ -5,6 +5,7 @@
 import { api, h, fill, state, refreshConfigs, route, go, url, clusterPath } from "./app.js";
 import { $, muted, brief, icon, kindOf, KIND_TEXT, when, duration, link, liveSteps, ACTIVE, runTitle, runStarted } from "./ui.js";
 import { approvalBox, dryBefore } from "./cluster.js";
+import { logLine } from "./logview.js";
 
 const P = () => $("panel-run");
 const here = () => { const r = route(); return r.page === "run" ? r : null; };
@@ -156,7 +157,7 @@ function pane(r, sel) {
       h("table", { class: "kv-table" }, h("thead", {}, h("tr", {}, facts.filter(Boolean).map(([k]) => h("th", { scope: "col" }, k)))), h("tbody", {}, h("tr", {}, facts.filter(Boolean).map(([, v]) => h("td", {}, v)))))),
     h("section", { class: "card log-card" },
       h("div", { class: "card-head" }, h("h2", {}, "Log"), muted(`${lines.length} line${lines.length === 1 ? "" : "s"}`), copy),
-      lines.length ? h("ol", { class: "log" }, lines.map((t) => h("li", {}, t))) : muted(run.status === "prepared" ? "Starts after the approval." : "No output.")));
+      lines.length ? h("ol", { class: "log" }, lines.map((t) => h("li", {}, logLine(t)))) : muted(run.status === "prepared" ? "Starts after the approval." : "No output.")));
 }
 
 async function cancel() {

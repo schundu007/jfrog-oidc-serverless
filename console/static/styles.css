@@ -761,3 +761,21 @@ table.kv-table { width: auto; border-collapse: collapse; margin: var(--s-2) 0 va
 table.kv-table th, table.kv-table td { position: static; padding: 4px 16px 4px 0; border: 0; text-align: left; vertical-align: middle; background: none; }
 table.kv-table th { color: var(--fg-2); font-weight: 500; white-space: nowrap; border-bottom: 1px solid var(--border, #ddd); }
 table.kv-table td { overflow-wrap: anywhere; }
+
+/* Formatted log lines (logview.js): one block per line, wrapped lines indented under their start. */
+.lg { display: block; padding-left: 2ch; text-indent: -2ch; }
+.lg-time { color: var(--fg-3); }
+.lg-step { color: #1f4e8c; font-weight: 600; margin-top: 0.6em; }
+.lg:first-child.lg-step { margin-top: 0; }
+.lg-mark { color: #1f4e8c; }
+.lg-error, .lg-step.lg-error, .lg-remove, .lg-failed { color: #b42318; }
+.lg-error { font-weight: 600; }
+.lg-warn { color: #9a5b00; }
+.lg-done, .lg-step.lg-done, .lg-add, .lg-ok { color: #2f7d12; }
+.lg-done { font-weight: 600; }
+.lg-change { color: #9a5b00; }
+.lg-quiet, .lg-dim, .lg-diag, .lg-skipped { color: var(--fg-3); }
+.lg-addr { color: #5b3a9e; }
+.lg-summary, .lg-heading { font-weight: 600; margin-top: 0.4em; }
+.lg-key { color: #1f4e8c; }
+.lg-val { color: var(--fg); }
