@@ -66,6 +66,7 @@ def outputs(lines: list) -> dict:
 class Ado:
     def __init__(self, sh, organization: str, project: str, branch: str = "main"):
         self.sh, self.branch = sh, branch
+        self.org = organization
         self.base = f"https://dev.azure.com/{organization}/{project}/_apis"
         self.web = f"https://dev.azure.com/{organization}/{project}"
         self._token, self._token_at = "", 0.0
@@ -95,6 +96,21 @@ class Ado:
             raise AdoError(f"Azure DevOps answered {res.status or res.error} to {method} {path.split('?')[0]}"
                            + (f": {redact.text(msg)[:300]}" if msg else ""))
         return res.body if text else res.json({})
+
+    def users(self) -> list:
+        """The organisation's users by email (read-only), for the approver picker: [{id, name}]."""
+        res = self.sh.http("GET", f"https://vsaex.dev.azure.com/{self.org}/_apis/userentitlements?top=500&api-version=7.1-preview.3",
+                           headers=self._auth(), timeout=60)
+        if not res.ok:
+            raise AdoError(f"Azure DevOps answered {res.status or res.error} to the user list")
+        items = (res.json({}) or {}).get("items") or (res.json({}) or {}).get("members") or []
+        out = {}
+        for it in items:
+            u = it.get("user") or {}
+            email = u.get("mailAddress") or u.get("principalName")
+            if email and "@" in email:
+                out[email] = u.get("displayName") or email
+        return [{"id": e, "name": n} for e, n in out.items()]
 
     # -- pipelines --------------------------------------------------------------------------
 

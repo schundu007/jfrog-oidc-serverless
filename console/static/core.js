@@ -334,6 +334,14 @@ export function help(text) {
   return el;
 }
 
+// Static pages mark an explanation with data-help="…": it becomes the element's circled "?".
+export function helpFromData(root = document) {
+  for (const el of root.querySelectorAll("[data-help]")) {
+    if (!el.querySelector(":scope > .help")) el.append(help(el.dataset.help));
+  }
+}
+if (typeof document !== "undefined") helpFromData();
+
 export function attachHelp(root, table) {
   for (const [sel, text] of Object.entries(table)) {
     const el = root.querySelector(sel);
@@ -350,4 +358,65 @@ export function status(el, text, kind = "") {
   if (!el) return;
   el.textContent = text || "";
   el.className = `page-status small${kind ? ` status-${kind}` : ""}`;
+}
+
+// Plain editors for lists and name/value pairs, so no form ever asks for JSON. Each returns an
+// element with .value() giving the list (blanks dropped) or the object (blank names dropped).
+// With options (a promise of [{id, name}] from live data), each row offers them and is tinted:
+// green when the value exists there, red when it does not (a pipeline would fail on it).
+export function markKnown(input, knownOf) {
+  const check = () => {
+    const v = input.value.trim().toLowerCase(), known = knownOf();
+    input.classList.toggle("is-known", Boolean(v && known?.has(v)));
+    input.classList.toggle("is-unknown", Boolean(v && known && !known.has(v)));
+  };
+  input.addEventListener("input", check);
+  check();
+  return check;
+}
+
+let lists = 0;
+export function listEditor(values = [], { label = "value", placeholder = "", options = null } = {}) {
+  const rows = h("div", { class: "kv-rows" });
+  const listId = `opts-${++lists}`;
+  const datalist = h("datalist", { id: listId });
+  let known = null;
+  const checks = [];
+  options?.then((opts) => {
+    known = new Set(opts.map((o) => String(o.id).toLowerCase()));
+    datalist.replaceChildren(...opts.map((o) => h("option", { value: o.id, text: o.name })));
+    checks.forEach((c) => c());
+  }).catch(() => {});
+  const add = (v = "") => {
+    const input = h("input", { type: "text", value: v, placeholder, spellcheck: "false", "aria-label": label, list: listId });
+    checks.push(markKnown(input, () => known));
+    const row = h("div", { class: "kv-row kv-one" }, input,
+      h("button", { type: "button", class: "icon", "aria-label": `Remove ${label}`, text: "✕", onclick: () => row.remove() }));
+    rows.append(row);
+    return input;
+  };
+  (values.length ? values : [""]).forEach((v) => add(String(v)));
+  const el = h("div", { class: "kv" }, rows, datalist,
+    h("button", { type: "button", class: "secondary small-btn", text: "+ Add", onclick: () => add().focus() }));
+  el.value = () => [...rows.querySelectorAll("input")].map((i) => i.value.trim()).filter(Boolean);
+  return el;
+}
+
+export function mapEditor(values = {}, { keyLabel = "name", valueLabel = "value" } = {}) {
+  const rows = h("div", { class: "kv-rows" });
+  const add = (k = "", v = "") => {
+    const key = h("input", { type: "text", value: k, placeholder: keyLabel, spellcheck: "false", "aria-label": keyLabel, class: "kv-key" });
+    const val = h("input", { type: "text", value: v, placeholder: valueLabel, spellcheck: "false", "aria-label": valueLabel, class: "kv-val" });
+    const row = h("div", { class: "kv-row" }, key, val,
+      h("button", { type: "button", class: "icon", "aria-label": `Remove ${keyLabel}`, text: "✕", onclick: () => row.remove() }));
+    rows.append(row);
+    return key;
+  };
+  const entries = Object.entries(values || {});
+  (entries.length ? entries : [["", ""]]).forEach(([k, v]) => add(k, Array.isArray(v) ? v.join(", ") : String(v)));
+  const el = h("div", { class: "kv" }, rows,
+    h("button", { type: "button", class: "secondary small-btn", text: "+ Add", onclick: () => add().focus() }));
+  el.value = () => Object.fromEntries([...rows.children]
+    .map((r) => [r.querySelector(".kv-key").value.trim(), r.querySelector(".kv-val").value.trim()]).filter(([k]) => k));
+  return el;
 }

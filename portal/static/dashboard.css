@@ -165,3 +165,24 @@
 .dash-empty { padding: var(--s-4); margin: 0; border-radius: var(--cute-r-sm); background: #fbfcf9; border: 1px dashed #e2e8da; text-align: center; }
 .dash-table tbody th a { text-decoration: none; font-weight: 600; }
 .dash-table tbody tr.row-link:hover th a { color: #3f7a12; }
+
+/* Spacing and type: a fair gap between every card, readable sizes. A cloud board holds a Serverless and a
+   Kubernetes section, each a heading (name, then count), its tiles, then its table, never touching. */
+#dash .bento { gap: var(--s-6); }
+#dash .hero { margin-bottom: var(--s-6); }
+#dash .hero-stats { gap: var(--s-5); }
+#dash .board { padding: var(--s-6); }
+#dash .board-head { margin-bottom: var(--s-2); }
+#dash .board-head h2 { font-size: 20px; }
+.board-group { display: flex; flex-direction: column; gap: var(--s-4); }
+.board-group + .board-group { margin-top: var(--s-6); padding-top: var(--s-5); border-top: 1px solid var(--edge); }
+#dash .board-group > .board-sub { display: flex; align-items: baseline; gap: var(--s-2); margin: var(--s-3) 0 0;
+  font-size: 15px; font-weight: 700; color: #2c3a1e; }
+#dash .board-group > .board-sub .board-count { font-size: 13px; font-weight: 500; color: var(--fg-3); }
+#dash .tiles { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--s-4); }
+#dash .tile { height: 76px; }
+#dash .tile-main b { font-size: 15px; }
+#dash .tile-main small { font-size: 13px; }
+#dash .dash-empty { font-size: 14px; }
+#dash .dash-table thead th { font-size: 13px; }
+#dash .dash-table td, #dash .dash-table tbody th { font-size: 14px; }

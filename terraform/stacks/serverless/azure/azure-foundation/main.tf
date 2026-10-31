@@ -125,10 +125,44 @@ resource "azurerm_role_assignment" "setup_state" {
 }
 
 
+# Operators are given by email. A member's sign-in name is the email; a guest's (a personal account
+# invited to the tenant) is <email with @ as _>#EXT#@<the tenant's default domain>. Both are tried.
+data "azuread_domains" "default" {
+  only_default = true
+}
+
+locals {
+  operator_upns = {
+    for e in var.azure_console_operators : e => [
+      e, "${replace(e, "@", "_")}#EXT#@${data.azuread_domains.default.domains[0].domain_name}",
+    ]
+  }
+}
+
+data "azuread_users" "console_operators" {
+  user_principal_names = flatten(values(local.operator_upns))
+  ignore_missing       = true
+}
+
+locals {
+  operator_ids = {
+    for e, upns in local.operator_upns : e => one([
+      for u in data.azuread_users.console_operators.users : u.object_id if contains([for x in upns : lower(x)], lower(u.user_principal_name))
+    ])
+  }
+}
+
 resource "azurerm_role_assignment" "console_operator_state" {
   for_each             = toset(var.azure_console_operators)
   scope                = azurerm_storage_container.tfstate.id
   role_definition_name = "Storage Blob Data Contributor"
-  principal_id         = each.value
+  principal_id         = local.operator_ids[each.value]
   principal_type       = "User"
+
+  lifecycle {
+    precondition {
+      condition     = local.operator_ids[each.value] != null
+      error_message = "No user in the tenant has the email ${each.value}."
+    }
+  }
 }

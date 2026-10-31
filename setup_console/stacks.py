@@ -109,7 +109,9 @@ MAX_VARS = 64 * 1024
 _SECRETISH = re.compile(r"(password|secret|(^|_)(api_)?key$|(^|_)token$)", re.I)
 # Inputs a picker can offer live choices for (read-only CLI listings).
 OPTION_SOURCES = {"gcp_project_id": "gcp_projects", "azure_subscription_id": "azure_subscriptions",
-                  "azure_tenant_id": "azure_tenants"}
+                  "azure_tenant_id": "azure_tenants",
+                  # People, by email, from live data: an unknown one would fail the pipeline.
+                  "ado_approvers": "ado_users", "console_operators": "gcp_members", "azure_console_operators": "azure_users"}
 
 
 class StackError(ValueError):
@@ -211,15 +213,33 @@ def _literal(expr: str):
         return False, None
 
 
+def _shape(t: str) -> dict:
+    """How the form edits a type: string, number, bool, list (of text), map (text to text) or object
+    (named text fields). Anything else is "json", which the form cannot edit."""
+    t = re.sub(r"\s+", " ", t).strip()
+    if t in ("string", "number", "bool"):
+        return {"kind": t}
+    if t in ("list(string)", "set(string)"):
+        return {"kind": "list"}
+    if t == "map(string)":
+        return {"kind": "map"}
+    m = re.fullmatch(r"object\(\{(.*)\}\)", t)
+    if m:
+        pairs = re.findall(r"(\w+)\s*=\s*(\w+)", m.group(1))
+        if pairs and all(ty == "string" for _, ty in pairs):
+            return {"kind": "object", "fields": [n for n, _ in pairs]}
+    return {"kind": "json"}
+
+
 def variables(stack_id: str, root: Path = STACKS_DIR) -> list:
-    """The stack's declared inputs: name, kind (string, number, bool, json), required, default, description."""
+    """The stack's declared inputs: name, kind (see _shape), required, default, description."""
     out = []
     for f in sorted(stack_dir(stack_id, root).glob("*.tf")):
         for name, body in _blocks(f.read_text()):
             a = _attrs(body)
             t = a.get("type", "any").strip()
             desc = a.get("description", "").strip()
-            v = {"name": name, "kind": t if t in ("string", "number", "bool") else "json", "type": t,
+            v = {"name": name, **_shape(t), "type": t,
                  "required": "default" not in a,
                  "description": desc[1:-1] if desc.startswith('"') and desc.endswith('"') else desc,
                  "sensitive": a.get("sensitive", "").strip() == "true" or bool(_SECRETISH.search(name))}
@@ -311,11 +331,19 @@ def _coerce(v: dict, raw):
         if not isinstance(raw, bool):
             raise StackError(f"{v['name']}: true or false expected")
         return raw
-    if isinstance(raw, str):
-        try:
-            return json.loads(raw)
-        except ValueError:
-            raise StackError(f"{v['name']}: JSON expected") from None
+    text = lambda x: isinstance(x, str)
+    if k == "list":
+        if not isinstance(raw, list) or not all(map(text, raw)):
+            raise StackError(f"{v['name']}: a list of text values expected")
+        return [x.strip() for x in raw if x.strip()]
+    if k == "map":
+        if not isinstance(raw, dict) or not all(text(a) and text(b) for a, b in raw.items()):
+            raise StackError(f"{v['name']}: names with text values expected")
+        return {a.strip(): b.strip() for a, b in raw.items() if a.strip()}
+    if k == "object":
+        if not isinstance(raw, dict) or set(raw) != set(v["fields"]) or not all(text(x) and x.strip() for x in raw.values()):
+            raise StackError(f"{v['name']}: {', '.join(v['fields'])} expected")
+        return {a: raw[a].strip() for a in v["fields"]}
     return raw
 
 

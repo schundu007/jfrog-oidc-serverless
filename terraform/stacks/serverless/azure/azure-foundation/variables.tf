@@ -37,7 +37,7 @@ variable "azure_identity" {
 
 
 variable "azure_console_operators" {
-  description = "Entra object IDs of people who run the Infrastructure page: read/write the Azure Terraform state (the pipelines' setup identity already can)."
+  description = "Emails of the people who run the Infrastructure page: read/write the Azure Terraform state (the pipelines' setup identity already can)."
   type        = list(string)
   default     = []
 }

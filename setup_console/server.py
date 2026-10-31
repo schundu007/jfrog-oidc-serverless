@@ -30,7 +30,10 @@ OPTION_COMMANDS = {
     "gcp_projects": ["gcloud", "projects", "list", "--filter=lifecycleState:ACTIVE", "--format=json"],
     "azure_subscriptions": ["az", "account", "list", "--query", "[?state=='Enabled']", "-o", "json"],
     "azure_tenants": ["az", "account", "list", "-o", "json"],
+    "azure_users": ["az", "ad", "user", "list", "--query",
+                    "[].{userPrincipalName:userPrincipalName,mail:mail,displayName:displayName}", "-o", "json"],
 }
+PROJECT_ID = re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
 
 
 class HttpError(Exception):
@@ -51,16 +54,39 @@ class SetupServer:
     def allowed_hosts(self) -> set:
         return {f"127.0.0.1:{self.port}", f"localhost:{self.port}"}
 
-    def options(self, source: str) -> list:
-        """Live choices for a picker (read-only listings): [{id, name}]."""
-        argv = OPTION_COMMANDS.get(source)
+    def options(self, source: str, scope: str | None = None) -> list:
+        """Live choices for a picker (read-only listings): [{id, name}]. People are listed by email:
+        ADO organisation users, Entra users, and the user members of a Google Cloud project (scope)."""
+        if source == "ado_users":
+            ado = getattr(self.jobs, "ado", None)
+            try:
+                return sorted(ado.users(), key=lambda o: o["name"].lower()) if ado else []
+            except Exception as exc:   # no ADO sign-in or no access: the picker stays free text
+                raise HttpError(502, redact.text(str(exc))[:200]) from None
+        if source == "gcp_members":
+            if not scope or not PROJECT_ID.match(scope):
+                raise HttpError(400, "a Google Cloud project id is needed")
+            argv = ["gcloud", "projects", "get-iam-policy", scope, "--format=json"]
+        else:
+            argv = OPTION_COMMANDS.get(source)
         if not argv:
             raise HttpError(404, "no such option source")
         res = self.jobs.shell_factory(lambda line: None).run(argv, timeout=60)
         if not res.ok:
             raise HttpError(502, f"{argv[0]}: {res.error_text(160)}")
         rows = res.json() or []
-        if source == "gcp_projects":
+        if source == "gcp_members":
+            emails = {m[5:] for b in (rows.get("bindings") or []) for m in b.get("members", []) if m.startswith("user:")}
+            out = [{"id": e, "name": e} for e in emails]
+        elif source == "azure_users":
+            out = []
+            for r in rows:
+                upn = r.get("userPrincipalName") or ""
+                # A guest's sign-in name is <email with its last @ as _>#EXT#@<tenant domain>.
+                guest = upn.split("#EXT#")[0] if "#EXT#" in upn else ""
+                email = r.get("mail") or ("@".join(guest.rsplit("_", 1)) if "_" in guest else upn)
+                out.append({"id": email, "name": r.get("displayName") or email})
+        elif source == "gcp_projects":
             out = [{"id": r.get("projectId"), "name": r.get("name") or r.get("projectId")} for r in rows]
         elif source == "azure_subscriptions":
             out = [{"id": r.get("id"), "name": r.get("name") or r.get("id")} for r in rows]
@@ -179,7 +205,8 @@ def make_handler(console: SetupServer):
                     console.jobs.discard(sid)
                     return self._json(200, {"discarded": True})
             if m == ("GET", "options", 2):
-                return self._json(200, {"options": console.options(parts[1])})
+                scope = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("scope", [None])[0]
+                return self._json(200, {"options": console.options(parts[1], scope)})
             if m == ("GET", "jobs", 2):
                 return self._json(200, console.jobs.get(parts[1]))
             raise HttpError(404, "not found")

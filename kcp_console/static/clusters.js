@@ -2,7 +2,7 @@
 // narrows it, the whole row opens the cluster, and the row's "⋯" menu holds the destructive actions.
 // Add a cluster lists the clusters the operator's cloud logins can see and saves one as a new configuration.
 
-import { api, h, fill, state, refreshConfigs, route, go, url, clusterPath, runPath, markOf, CLOUDS as CLOUD } from "./app.js";
+import { api, h, fill, state, refreshConfigs, route, go, url, clusterPath, runPath, markOf, help, CLOUDS as CLOUD } from "./app.js";
 import { $, muted, brief, icon, ago, duration, moreMenu, link, TITLES } from "./ui.js";
 
 const PAGE = 25;
@@ -285,8 +285,7 @@ function notYet(k, label) {
   const info = NOT_YET[k] || { will: "", needs: [] };
   const ready = Object.entries(CLOUD).filter(([c]) => !NOT_YET[c] && c !== k);
   return h("section", { class: "card not-yet" },
-    h("div", { class: "card-head" }, h("h2", {}, `${label} isn't available yet`)),
-    info.will ? h("p", {}, info.will) : null,
+    h("div", { class: "card-head" }, h("h2", {}, `${label} isn't available yet`, info.will ? help(info.will) : null)),
     info.needs.length ? [h("h3", {}, "What it will need"), h("ul", {}, info.needs.map((n) => h("li", {}, n)))] : null,
     h("h3", {}, "Available now"),
     h("p", { class: "ready-links" }, ready.map(([c, name]) => link(go, url, `/clusters/${c}`, markOf(c), name))));

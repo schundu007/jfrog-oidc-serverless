@@ -3,7 +3,7 @@
 // Everything shown has been redacted by the server; approvals send back only the hashes it showed.
 
 import { $, api, h, fill, streamEvents, statusIcon, statusPill, template, armed, href, ago, stamp, dur,
-  runDuration, stepDuration, LIVE, status as setStatus } from "./core.js";
+  runDuration, stepDuration, LIVE, help, status as setStatus } from "./core.js";
 
 const rs = { id: null, name: null, snap: null, selected: null, abort: null, log: [], refetch: null, userPicked: false, tick: null };
 
@@ -151,8 +151,8 @@ function viewApply(step, ev) {
     const errBox = h("div");
     const btn = h("button", { type: "button", class: "primary", text: "Approve and apply this plan" });
     out.push(h("div", { class: "gate" },
-      h("p", {}, "Terraform applies exactly the plan shown in ", h("b", { text: "Plan" }), " (sha256 ",
-        h("code", { text: a.plan_sha256.slice(0, 16) + "…" }), ") and nothing else."),
+      h("p", {}, h("b", { text: "Plan " }), h("code", { text: a.plan_sha256.slice(0, 16) + "…" }),
+        help("Terraform applies exactly this plan (by its sha256) and nothing else.")),
       summaryChips(a.summary)));
     let input = null;
     if (a.destructive?.length) {
@@ -195,7 +195,8 @@ function viewWire(step, ev) {
     const errBox = h("div");
     const btn = h("button", { type: "button", class: "primary", text: "Approve and apply these settings" });
     btn.addEventListener("click", () => approve("wire", { diff_sha256: a.diff_sha256 }, btn, errBox));
-    out.unshift(h("div", { class: "gate" }, h("p", { text: "These commands change the target's settings. If the target changes before they run, you'll be shown the new diff." }), btn, errBox));
+    out.unshift(h("div", { class: "gate" }, h("p", {}, btn,
+      help("These commands change the target's settings. If the target changes before they run, you'll be shown the new diff.")), errBox));
   }
   if (ev.result) {
     const r = ev.result;

@@ -34,15 +34,15 @@
   --border-strong: #999999;
   --control-line: #9a9a9a;
 
-  /* status: green is good, dark grey needs action */
+  /* status, simple color coding: green good, amber needs you, red failed, grey idle */
   --ok-fg: #4e8416;   --ok-bg: #eef6e6;   --ok-line: #5ba908;
   --info-fg: #4e8416; --info-bg: #eef6e6; --info-line: #5ba908;
-  --warn-fg: #333333; --warn-bg: #eeeeee; --warn-line: #999999;
-  --bad-fg: #333333;  --bad-bg: #eeeeee;  --bad-line: #333333;
+  --warn-fg: #9a5b00; --warn-bg: #fff4e0; --warn-line: #e0a030;
+  --bad-fg: #b42318;  --bad-bg: #fdecea;  --bad-line: #d64545;
   --neutral-fg: #666666; --neutral-bg: #f7f7f7; --neutral-line: #dddddd;
 
   /* timeline marks */
-  --ok: #5ba908; --cached: #999999; --unavail: #999999; --fail: #333333; --exposure: rgba(0, 0, 0, 0.18);
+  --ok: #5ba908; --cached: #999999; --unavail: #999999; --fail: #d64545; --exposure: rgba(0, 0, 0, 0.18);
   --token: #4e8416; --hold: #5ba908; --alert: #666666; --fault: #333333; --fault-band: rgba(0, 0, 0, 0.05); --lane: #f7f7f7;
 
   /* spacing: 8px grid */
@@ -613,7 +613,7 @@ tr.log-row-bad .log-msg { font-weight: 600; }
 .fault-row { display: grid; grid-template-columns: 1fr 12px 1fr auto; gap: var(--s-1) 6px; align-items: center;
   padding-bottom: var(--s-2); border-bottom: 1px dashed var(--border); }
 .fault-row select { grid-column: 1 / 5; min-width: 0; }
-.fault-row .params { grid-column: 1 / 4; font-family: var(--mono); font-size: var(--t-sm); }
+.fault-row .params { grid-column: 1 / 4; }
 .fault-row button { grid-row: 2; grid-column: 4; }
 .slider { display: grid; grid-template-columns: 1fr 44px; gap: 2px var(--s-2); font-size: var(--t-sm); color: var(--fg-2); margin: 6px 0; }
 .slider span { grid-column: 1 / 3; }
@@ -876,3 +876,17 @@ table.lt .lg { padding-left: 0; text-indent: 0; margin-top: 0; }
   padding: var(--s-2); text-decoration: none; background: var(--surface, #fff); }
 .ov-tile:hover, .ov-tile:focus-visible { border-color: var(--brand); }
 .ov-tile-icon svg { width: 36px; height: 36px; }
+
+/* List and name/value editors (core.js listEditor / mapEditor): one row per item, never JSON. */
+.kv { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; font-weight: 400; }
+.kv-rows { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.kv-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto; gap: 6px; align-items: center; }
+.kv-row.kv-one { grid-template-columns: minmax(0, 1fr) auto; }
+.kv-row input { width: 100%; min-width: 0; }
+.field-sub { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 6px; font-weight: 400; }
+.field-sub label { display: flex; flex-direction: column; gap: 4px; font-size: var(--t-xs); color: var(--fg-3); }
+
+/* Simple color coding for values checked against live data: green found, red not found. */
+input.is-known { border-color: var(--ok-line); background: var(--ok-bg); }
+input.is-unknown { border-color: var(--bad-line); background: var(--bad-bg); }
+.field input[type="checkbox"] { width: auto; align-self: flex-start; }

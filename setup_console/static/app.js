@@ -1,6 +1,6 @@
 // Setup: deploy and destroy test infrastructure. Check reads the stack's outputs; Deploy and Destroy
 // plan first, show the plan, and run it only after Approve (destroy also needs the stack name typed).
-import { $, api, h, hasToken, setToken, statusPill, flyout, closeFlyout, help, menu } from "/serverless/static/core.js";
+import { $, api, h, hasToken, setToken, statusPill, flyout, closeFlyout, help, menu, listEditor, mapEditor, markKnown } from "/serverless/static/core.js";
 import { logBox as tableLog } from "/serverless/static/logview.js";
 
 const POLL_MS = 1000;
@@ -39,7 +39,9 @@ function stackStatus(s) {
   if (s.busy) return statusPill("running", "Running");
   if (s.plan) return statusPill("waiting_approval", s.plan.action === "destroy" ? "Destroy planned" : "Deploy planned");
   // Its state lives in the foundation: with the foundation missing, it cannot be deployed.
-  if (!s.status) return statusPill("notrun", s.needs?.length ? "Not deployed" : "Checking…");
+  // Waiting on another stack (its foundation): say which.
+  if (s.needs?.length && !s.status?.deployed) return statusPill("waiting_approval", `Needs ${titleOf(s.needs[0])}`);
+  if (!s.status) return statusPill("notrun", "Checking…");
   if (s.status.deployed) return statusPill("succeeded", "Deployed");
   // Deleted outside the console, validated with the cloud: the evidence is behind the row's "?".
   if (s.status.deleted) {
@@ -77,14 +79,12 @@ function outputsTable(outputs) {
 
 // What a Check or an apply found, in words: the state, what the stack is, its values, what to do next.
 function resultView(stack, result) {
-  if (result?.destroyed) return h("p", {}, h("b", { text: "Destroyed." }), " Nothing of this stack is left in its Terraform state.");
+  if (result?.destroyed) return h("p", {}, h("b", { text: "Destroyed" }), help("Nothing of this stack is left in its Terraform state."));
   if (!result?.deployed && !result?.applied) {
-    return [h("p", {}, h("b", { text: "Not deployed." }), " This stack has no Terraform state yet."),
-      h("p", { text: `Deploy creates: ${stack.about}` })];
+    return h("p", {}, h("b", { text: "Not deployed" }), help(`No Terraform state yet. Deploy creates: ${stack.about}`));
   }
-  return [h("p", {}, h("b", { text: "Deployed." }), ` ${stack.about}`),
-    outputsTable(result.outputs),
-    stack.next ? h("p", {}, h("b", { text: "Next: " }), stack.next) : null];
+  return [h("p", {}, h("b", { text: "Deployed" }), help(stack.next ? `${stack.about} Next: ${stack.next}` : stack.about)),
+    outputsTable(result.outputs)];
 }
 
 function planView(stack, plan, panel) {
@@ -124,8 +124,8 @@ async function follow(stack, job, panel) {
     fill(panel.status, statusPill("failed", "Failed"));
     return fill(panel.body, nextView(stack, done.next), h("pre", { class: "pf-log" }, done.error || ""), logBox(done));
   }
-  if (done.result?.forgotten) return fill(panel.body, h("p", {}, h("b", { text: "State forgotten." }),
-    " The stack shows as not deployed; the old state file is kept aside. Deploy builds it again from nothing."), logBox(done, false));
+  if (done.result?.forgotten) return fill(panel.body, h("p", {}, h("b", { text: "State forgotten" }),
+    help("The stack shows as not deployed; the old state file is kept aside. Deploy builds it again from nothing.")), logBox(done, false));
   fill(panel.status, statusPill("succeeded", "Done"));
   // Validated as deleted outside the console: nothing to plan or approve.
   if (done.result?.already_deleted) return fill(panel.body, h("p", {}, h("b", { text: done.result.message })), logBox(done, false));
@@ -156,31 +156,54 @@ function nextActions(s, next, { withForget = true } = {}) {
 
 function nextView(s, next) {
   if (!next) return null;
-  return h("div", { class: "setup-next" }, h("p", {}, h("b", { text: "Next: " }), next.cause),
-    h("div", { class: "actions setup-actions" }, nextActions(s, next)));
+  return h("div", { class: "setup-next" },
+    h("div", { class: "actions setup-actions" }, nextActions(s, next), help(next.cause)));
 }
 
 // One field per variable the stack declares. Pickers list live projects / subscriptions; any
-// value can still be typed. JSON-typed variables (objects, maps, lists) take JSON.
+// value can still be typed. Lists take one row per item, maps name/value rows, objects one box per
+// field: the form never asks for JSON. The description sits behind the field's "?".
 const optionCache = {};
-async function options(source) {
-  optionCache[source] ||= api(`/api/options/${source}`).then((r) => r.options).catch(() => []);
-  return optionCache[source];
+// A failed listing resolves to null: no tint, the field stays free text.
+async function options(source, scope = "") {
+  const key = `${source}?${scope}`;
+  optionCache[key] ||= api(`/api/options/${source}${scope ? `?scope=${encodeURIComponent(scope)}` : ""}`)
+    .then((r) => r.options).catch(() => null);
+  return optionCache[key];
 }
+// Google Cloud members are listed for the project typed in the same form.
+const scopeOf = (source) => (source === "gcp_members" ? $("in-gcp_project_id")?.value.trim() || "" : "");
 
 function input(f) {
   const id = `in-${f.name}`;
   if (f.kind === "bool") return h("input", { id, type: "checkbox", checked: f.current === true });
-  if (f.kind === "json") {
-    return h("textarea", { id, class: "setup-json", spellcheck: "false", rows: 4 },
-      f.current === undefined ? "" : JSON.stringify(f.current, null, 2));
+  if (f.kind === "list") {
+    const opts = f.options ? new Promise((r) => setTimeout(r)).then(() => options(f.options, scopeOf(f.options))).then((o) => o || Promise.reject()) : null;
+    return Object.assign(listEditor(Array.isArray(f.current) ? f.current : [], { label: f.name, placeholder: f.options ? "email" : "", options: opts }), { id });
+  }
+  if (f.kind === "map") return Object.assign(mapEditor(f.current || {}), { id });
+  if (f.kind === "object") {
+    const el = h("div", { id, class: "field-sub" }, f.fields.map((k) => h("label", {}, k,
+      h("input", { type: "text", "data-key": k, value: f.current?.[k] ?? "", spellcheck: "false" }))));
+    el.value = () => {
+      const o = Object.fromEntries([...el.querySelectorAll("input")].map((i) => [i.dataset.key, i.value.trim()]));
+      return Object.values(o).some(Boolean) ? o : null;
+    };
+    return el;
   }
   const el = h("input", { id, type: f.kind === "number" ? "number" : "text", spellcheck: "false",
     value: f.current ?? "", required: f.required });
   if (f.options) {
     const list = h("datalist", { id: `${id}-list` });
     el.setAttribute("list", list.id);
-    options(f.options).then((opts) => fill(list, opts.map((o) => h("option", { value: o.id, text: o.name }))));
+    let known = null;
+    const check = markKnown(el, () => known);
+    options(f.options).then((opts) => {
+      if (!opts) return;
+      known = new Set(opts.map((o) => String(o.id).toLowerCase()));
+      fill(list, opts.map((o) => h("option", { value: o.id, text: o.name })));
+      check();
+    });
     return [el, list];
   }
   return el;
@@ -189,6 +212,7 @@ function input(f) {
 function readField(f) {
   const el = $(`in-${f.name}`);
   if (f.kind === "bool") return el.checked;
+  if (["list", "map", "object"].includes(f.kind)) return el.value();
   if (f.kind === "number") return el.value === "" ? null : Number(el.value);
   return el.value;
 }
@@ -196,17 +220,18 @@ function readField(f) {
 async function editInputs(stack) {
   const panel = flyout(`${stack.group} · ${stack.title}: Inputs`);
   const draw = (form) => {
-    const fields = form.fields.map((f) => h("label", { class: "field" },
-      h("span", {}, h("span", { class: "field-label", text: f.name }), f.required ? h("span", { class: "small", text: "required" }) : null),
-      input(f),
-      f.description ? h("span", { class: "field-msg", text: f.description }) : null));
+    // A list, map or object is a group of inputs: a div, so its rows' buttons are not the label's target.
+    const fields = form.fields.filter((f) => f.kind !== "json").map((f) => h(["list", "map", "object"].includes(f.kind) ? "div" : "label", { class: "field" },
+      h("span", {}, h("span", { class: "field-label", text: f.name }), f.required ? h("span", { class: "small", text: "required" }) : null,
+        f.description ? help(f.description) : null),
+      input(f)));
     const save = h("button", { type: "submit", class: "primary", text: "Save" });
     const el = h("form", { class: "setup-form", autocomplete: "off" }, fields, h("div", { class: "actions setup-actions" }, save));
     el.onsubmit = async (e) => {
       e.preventDefault();
       save.disabled = true;
       try {
-        const values = Object.fromEntries(form.fields.map((f) => [f.name, readField(f)]));
+        const values = Object.fromEntries(form.fields.filter((f) => f.kind !== "json").map((f) => [f.name, readField(f)]));
         const next = await api(`/api/stacks/${stack.id}/inputs`, { method: "PUT", body: { values } });
         load();
         // Complete: close. Still missing a required input: stay open on it.
@@ -266,8 +291,8 @@ function row(s) {
   const failed = lastFailure(s);
   const log = failed ? h("button", { type: "button", class: "secondary", text: "Log",
     onclick: () => follow(s, failed, flyout(`${s.group} · ${s.title}: ${ACTION_NAME[failed.action] || failed.action}`)) }) : null;
-  // The row's state tones its status (green deployed, dark needs you, grey idle); blocked rows are dimmed.
-  const state = s.busy || s.plan ? "busy" : s.status?.deployed ? "ok" : partlyDeleted(s) || lastFailure(s) ? "attention" : "idle";
+  // The row's state tones its status (green deployed, dark needs you, grey idle); a row waiting on another stack says which.
+  const state = s.busy || s.plan ? "busy" : s.status?.deployed ? "ok" : partlyDeleted(s) || lastFailure(s) || s.needs?.length || s.missing?.length ? "attention" : "idle";
   return h("tr", { id: `stack-${s.id}`, "data-state": state, class: s.needs?.length ? "blocked" : null },
     h("td", { title: s.dir }, h("div", { class: "stack-name" }, iconEl(STACK_ICON[s.id], "stack-icon"),
       h("b", { text: s.title }), s.about ? help(s.about) : null)),

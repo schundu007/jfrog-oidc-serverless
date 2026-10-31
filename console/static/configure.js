@@ -5,7 +5,7 @@
 
 import { logBox as tableLog } from "./logview.js";
 import { $, api, h, fill, streamEvents, CLOUD as cloud, statusIcon, statusPill, template, attachHelp,
-  flyout, status as setStatus } from "./core.js";
+  flyout, help, status as setStatus } from "./core.js";
 
 // showAll: list problems on empty fields too. Off for a new configuration until a button is pressed.
 const st = { inv: null, schema: null, cfg: null, dirty: false, busy: false, validateTimer: null, validation: null,
@@ -312,7 +312,8 @@ export async function runPreflight() {
     const list = h("ul", { class: "checklist" });
     const logBox = tableLog("Log", [], true);
     fill(panel.status, statusPill("running", "running"));
-    fill(panel.body, h("p", { class: "muted small", text: "Read-only checks." }), list, logBox);
+    $("flyout-title").append(help("Read-only checks: nothing in the cloud or JFrog changes."));
+    fill(panel.body, list, logBox);
     let failed = null;
     await streamEvents("/api/preflight?stream=1", (kind, data) => {
       if (kind === "check") list.append(checkItem(data));

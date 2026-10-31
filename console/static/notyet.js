@@ -1,7 +1,7 @@
 // A cloud the console doesn't set up live yet: what it will do there, what it needs, and where to go now.
 // Same page as the Kubernetes section's EKS and OpenShift.
 
-import { h, BASE, CLOUDS } from "./core.js";
+import { h, BASE, CLOUDS, help } from "./core.js";
 
 export const NOT_YET = {
   aws: {
@@ -30,8 +30,7 @@ export function mountNotYet(page, cloud) {
     h("header", { class: "page-header" },
       h("div", { class: "page-id" }, h("div", { class: "page-title" }, h("span", { class: "head-mark" }, markOf(cloud)), h("h1", {}, label)))),
     h("section", { class: "card not-yet" },
-      h("div", { class: "card-head" }, h("h2", {}, `${label} isn't available yet`)),
-      h("p", {}, info.will),
+      h("div", { class: "card-head" }, h("h2", {}, `${label} isn't available yet`, info.will ? help(info.will) : null)),
       h("h3", {}, "What it will need"),
       h("ul", {}, info.needs.map((n) => h("li", {}, n))),
       h("h3", {}, "Available now"),

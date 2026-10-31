@@ -1,5 +1,6 @@
 import http.client
 import json
+import types
 import shutil
 import tempfile
 import threading
@@ -50,6 +51,10 @@ variable "azure_identity" {
     name           = string
     resource_group = string
   })
+}
+variable "tags" {
+  type    = map(string)
+  default = {}
 }
 ''',
     "gcp-cloud-run": '''variable "gcp_project_id" { type = string }
@@ -129,8 +134,9 @@ class StackTests(unittest.TestCase):
         self.assertEqual(list(by), ["jfrog_url", "ado_org", "gcp_project_id", "notes"])
         self.assertTrue(by["jfrog_url"]["required"])
         self.assertEqual(by["jfrog_url"]["description"], "JFrog platform origin")
-        self.assertEqual((by["notes"]["kind"], by["notes"]["default"]), ("json", []))
-        self.assertEqual(stacks.variables("azure-foundation", self.root.dir)[2]["kind"], "json")
+        self.assertEqual((by["notes"]["kind"], by["notes"]["default"]), ("list", []))
+        ident = stacks.variables("azure-foundation", self.root.dir)[2]
+        self.assertEqual((ident["kind"], ident["fields"]), ("object", ["name", "resource_group"]))
         self.assertEqual(by["gcp_project_id"]["options"], "gcp_projects")
         g = {v["name"]: v for v in stacks.variables("gcp-cloud-run", self.root.dir)}
         self.assertEqual((g["node_count"]["kind"], g["node_count"]["default"]), ("number", 1))
@@ -160,8 +166,26 @@ class StackTests(unittest.TestCase):
         for bad in ({"nope": "x"}, {"api_token": "x"}, {"node_count": "many"}, {"gcp_project_id": 5}):
             with self.assertRaises(stacks.StackError, msg=bad):
                 self.root.save("gcp-cloud-run", bad)
+        for bad in ({"azure_identity": "{not json"}, {"azure_identity": {"name": "id"}},
+                    {"azure_identity": {"name": "id", "resource_group": "rg", "x": "y"}}):
+            with self.assertRaises(stacks.StackError, msg=bad):
+                self.root.save("azure-foundation", bad)
         with self.assertRaises(stacks.StackError):
-            self.root.save("azure-foundation", {"azure_identity": "{not json"})
+            self.root.save("gcp-foundation", {"notes": "[\"a\"]"})    # lists come as lists, never JSON text
+
+    def test_lists_and_objects_are_plain_values(self):
+        self.root.save("gcp-foundation", {"notes": [" a ", "", "b"]})
+        self.root.save("azure-foundation", {"azure_identity": {"name": " id ", "resource_group": "rg"}})
+        f = {x["name"]: x for x in stacks.form("gcp-foundation", "test", self.root.dir, self.root.state)["fields"]}
+        self.assertEqual(f["notes"]["current"], ["a", "b"])
+        f = {x["name"]: x for x in stacks.form("azure-foundation", "test", self.root.dir, self.root.state)["fields"]}
+        self.assertEqual(f["azure_identity"]["current"], {"name": "id", "resource_group": "rg"})
+        self.assertEqual(f["tags"]["kind"], "map")
+        self.root.save("azure-foundation", {"tags": {" owner ": " me ", "": "dropped"}})
+        f = {x["name"]: x for x in stacks.form("azure-foundation", "test", self.root.dir, self.root.state)["fields"]}
+        self.assertEqual(f["tags"]["current"], {"owner": "me"})
+        with self.assertRaises(stacks.StackError):
+            self.root.save("azure-foundation", {"tags": {"owner": 5}})
 
     def test_terraform_args_from_inputs(self):
         with self.assertRaises(stacks.StackError) as e:
@@ -758,6 +782,46 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.req("POST", "/api/stacks/azure-container-apps/jobs", {"action": "plan-apply"})[0], 400)
         self.assertEqual(self.req("POST", "/api/stacks/nope/jobs", {"action": "plan-apply"})[0], 400)
         self.assertEqual(self.req("GET", "/api/options/nope")[0], 404)
+
+class LiveOptionTests(unittest.TestCase):
+    """Approvers and operators are picked from live ADO, Entra and Google Cloud data, by email."""
+
+    class Res:
+        def __init__(self, data):
+            self.ok, self.data = True, data
+
+        def json(self, default=None):
+            return self.data
+
+    def console(self, data, ado=None):
+        sh = types.SimpleNamespace(run=lambda argv, timeout=60, **kw: (self.argv.append(argv), LiveOptionTests.Res(data))[1])
+        jobs = types.SimpleNamespace(shell_factory=lambda log: sh, ado=ado)
+        self.argv = []
+        return SetupServer(token=TOKEN, jobs=jobs, log=open("/dev/null", "w"))
+
+    def test_gcp_members_are_the_projects_user_emails(self):
+        c = self.console({"bindings": [{"role": "roles/owner", "members": ["user:b@x.com", "serviceAccount:sa@p.iam"]},
+                                       {"role": "roles/viewer", "members": ["user:a@x.com", "user:b@x.com", "group:g@x.com"]}]})
+        self.assertEqual([o["id"] for o in c.options("gcp_members", "proj-1")], ["a@x.com", "b@x.com"])
+        self.assertIn("proj-1", self.argv[0])
+        with self.assertRaises(Exception):
+            c.options("gcp_members", "bad project; rm")
+
+    def test_azure_users_by_email(self):
+        c = self.console([{"userPrincipalName": "m@corp.com", "mail": "m@corp.com", "displayName": "M"},
+                          {"userPrincipalName": "g.h_gmail.com#EXT#@t.onmicrosoft.com", "mail": None, "displayName": "G"}])
+        self.assertEqual({o["id"]: o["name"] for o in c.options("azure_users")}, {"g.h@gmail.com": "G", "m@corp.com": "M"})
+
+    def test_ado_users_from_the_organisation(self):
+        ado = types.SimpleNamespace(users=lambda: [{"id": "a@x.com", "name": "A"}])
+        self.assertEqual(self.console(None, ado).options("ado_users"), [{"id": "a@x.com", "name": "A"}])
+        self.assertEqual(self.console(None, None).options("ado_users"), [])
+
+    def test_fields_name_their_sources(self):
+        self.assertEqual(stacks.OPTION_SOURCES["ado_approvers"], "ado_users")
+        self.assertEqual(stacks.OPTION_SOURCES["console_operators"], "gcp_members")
+        self.assertEqual(stacks.OPTION_SOURCES["azure_console_operators"], "azure_users")
+
 
 if __name__ == "__main__":
     unittest.main()

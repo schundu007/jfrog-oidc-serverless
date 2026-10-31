@@ -7,7 +7,7 @@
 # The console reads console_operator_env from this stack's state: nothing to set before starting it.
 
 variable "console_operators" {
-  description = "Who may act as the console operator, as IAM members (user:<email>). Empty: no operator identity."
+  description = "Emails of the people who may act as the console operator (Google accounts). Empty: no operator identity."
   type        = list(string)
   default     = []
 }
@@ -40,7 +40,7 @@ resource "google_service_account_iam_member" "console_operator" {
   for_each           = toset(var.console_operators)
   service_account_id = google_service_account.console_operator[0].name
   role               = "roles/iam.serviceAccountTokenCreator"
-  member             = each.value
+  member             = strcontains(each.value, ":") ? each.value : "user:${each.value}"
 }
 
 # Its own integration, so it never depends on (or collides with) a workload's gcp-cloudrun one.

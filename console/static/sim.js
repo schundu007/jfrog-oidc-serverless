@@ -2,7 +2,7 @@
 // emulated cloud and JFrog endpoints, with the real client and rotator. Nothing in the cloud changes.
 
 import { renderTimeline, hhmm, LEGEND } from "./timeline.js";
-import { $, api, h, fill, streamEvents, CLOUD, ofCloud, statusPill, template, attachHelp } from "./core.js";
+import { $, api, h, fill, streamEvents, CLOUD, ofCloud, statusPill, template, attachHelp, mapEditor, help } from "./core.js";
 
 const LOAD_SPEC = {
   cold_starts_per_hour: { label: "Cold starts / hour", min: 0, max: 120, step: 1 },
@@ -63,7 +63,7 @@ function renderOverrides(s) {
     });
     box.append(h("label", { class: "field" }, h("span", { text: SETTING_LABELS[key] || key }), input));
   }
-  if (!box.children.length) box.append(h("p", { class: "muted small", text: "The configuration's own settings." }));
+  if (!box.children.length) box.append(h("span", { class: "muted small", text: "None" }), help("The configuration's own settings apply."));
 }
 
 function faultRow(f = {}) {
@@ -72,16 +72,17 @@ function faultRow(f = {}) {
     types.map((t) => h("option", { value: t, text: faultLabel(t), selected: t === f.type, title: state.catalogue.fault_types[t] })));
   const start = h("input", { type: "text", value: f.start ?? "03:00", placeholder: "HH:MM", "aria-label": "Fault start (HH:MM)", size: 6 });
   const end = h("input", { type: "text", value: f.end ?? "", placeholder: "end", "aria-label": "Fault end (HH:MM, empty = until the end)", size: 6 });
-  const params = h("input", { type: "text", value: f.params && Object.keys(f.params).length ? JSON.stringify(f.params) : "",
-    placeholder: "params JSON", "aria-label": "Fault params as JSON", spellcheck: "false", class: "params" });
+  // Params as name/value rows: a value with commas is a list (services = jfrog, access), a number stays a number.
+  const params = mapEditor(f.params || {}, { keyLabel: "param", valueLabel: "value" });
+  params.classList.add("params");
   const row = h("div", { class: "fault-row" }, type, start, h("span", { class: "muted", text: "→" }), end, params,
     h("button", { type: "button", class: "icon", "aria-label": "Remove fault", text: "✕", onclick: () => row.remove() }));
   row.collect = () => {
     const out = { type: type.value, start: start.value.trim() || "00:00" };
     if (end.value.trim()) out.end = end.value.trim();
-    if (params.value.trim()) {
-      try { out.params = JSON.parse(params.value); } catch { throw new Error(`fault ${type.value}: params is not valid JSON`); }
-    }
+    const p = Object.fromEntries(Object.entries(params.value()).map(([k, v]) =>
+      [k, v.includes(",") ? v.split(",").map((x) => x.trim()).filter(Boolean) : /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v]));
+    if (Object.keys(p).length) out.params = p;
     return out;
   };
   return row;

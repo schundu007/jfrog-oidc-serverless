@@ -1,5 +1,5 @@
-// Home: every cloud at a glance, read-only. One board per cloud holds its workloads and clusters
-// together (the sidebar's grouping), then the newest runs of all of them. Data: data.js.
+// Home: every cloud at a glance, read-only. One board per cloud; inside it Serverless and Kubernetes
+// are separate sections, each with its own tiles and table (never mixed). Then the newest runs. Data: data.js.
 import { MARK, CLOUD_NAMES, SECTIONS, LIVE_STATES, h, markEl, when, runPill, loadAll } from "./data.js";
 
 const $ = (id) => document.getElementById(id);
@@ -46,24 +46,30 @@ function runRow(r) {
     h("td", { text: r.type || "" }), h("td", { class: "muted", text: when(r.created) }), h("td", {}, h("span", { class: `pill ${cls}`, text }))]);
 }
 
+// One section of a cloud: Serverless (workloads) or Kubernetes (clusters), its tiles then its table.
+function groupSection(cloud, group, mine, runs) {
+  const noun = group === "Kubernetes" ? "cluster" : "workload";
+  const here = mine.filter((it) => (it.kind === "cluster") === (group === "Kubernetes"));
+  const tiles = Object.entries(SECTIONS).filter(([, s]) => s[0] === cloud && s[4] === group).map(([key, [, label, page, mark]]) => {
+    const inSec = here.filter((it) => it.section === key);
+    const last = runs.find((r) => r.section === key);
+    const dot = inSec.length ? (inSec.every((it) => it.ok) ? "ok" : "warn") : last ? runPill(last.status)[0] : "";
+    return tile(page, mark, label, plural(inSec.length, noun), dot);
+  });
+  if (!tiles.length) return null;
+  return h("div", { class: "board-group" },
+    h("h3", { class: "board-sub" }, h("span", { text: group }), h("span", { class: "board-count", text: plural(here.length, noun) })),
+    h("div", { class: "tiles" }, ...tiles),
+    table(["", "Name", "Type", "Detail", "Status"], here.map(itemRow), `No ${noun}s on ${CLOUD_NAMES[cloud]} yet`));
+}
+
 function board(cloud, items, runs) {
   const mine = items.filter((it) => it.cloud === cloud);
-  // Serverless, then Kubernetes, in one grid of same-size tiles, as the sidebar lists them.
-  const tiles = ["Serverless", "Kubernetes"].flatMap((group) =>
-    Object.entries(SECTIONS).filter(([, s]) => s[0] === cloud && s[4] === group).map(([key, [, label, page, mark]]) => {
-      const here = mine.filter((it) => it.section === key);
-      const last = runs.find((r) => r.section === key);
-      const dot = here.length ? (here.every((it) => it.ok) ? "ok" : "warn") : last ? runPill(last.status)[0] : "";
-      return tile(page, mark, label, `${group} · ${plural(here.length, group === "Kubernetes" ? "cluster" : "workload")}`, dot);
-    }));
   const id = `h-${cloud}`;
-  const onboarded = mine.length;
   return h("section", { class: "board", "aria-labelledby": id },
-    h("header", { class: "board-head" }, h("h2", { id, text: CLOUD_NAMES[cloud] }),
-      h("span", { class: "board-count", text: `${onboarded} onboarded` })),
-    h("div", { class: "tiles" }, ...tiles),
-    h("h3", { class: "board-sub", text: "Workloads and clusters" }),
-    table(["", "Name", "Type", "Detail", "Status"], mine.map(itemRow), `Nothing onboarded on ${CLOUD_NAMES[cloud]} yet`));
+    h("header", { class: "board-head" }, h("h2", { id, text: CLOUD_NAMES[cloud] })),
+    groupSection(cloud, "Serverless", mine, runs),
+    groupSection(cloud, "Kubernetes", mine, runs));
 }
 
 async function load() {

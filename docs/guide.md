@@ -110,7 +110,7 @@ Inputs used in the run:
 | `ado_tenant_id` | the Entra tenant of the ADO org | Issuer of the pipelines' OIDC tokens |
 | `ado_token_audience` | the `aud` the run's ADO tokens carry | Default `api://AzureADTokenExchange`; check with `python -m jfrog_oidc claims` in a pipeline |
 | `pipeline_environment` | `test` | Names the variable group `jfrog-oidc-gcp-test` |
-| `console_operators` | `["user:<your Google account>"]` | Who may act as the console operator |
+| `console_operators` | your Google account email (picked from the project's members) | Who may act as the console operator |
 | `ado_approvers` | `["<your ADO sign-in>"]` | Who approves each stack's pipeline apply |
 
 Result of the run: **47 added, 1 changed** (the existing ADO environment
@@ -146,7 +146,7 @@ Inputs used in the run:
 | `azure_subscription_id` | `0e56d318-75b3-43ef-a41b-6a1a3c95b458` | Subscription everything goes into |
 | `azure_location` | `westus2` | Region (default) |
 | `azure_identity` | `{"name": "id-ado-cdoazure", "resource_group": "ado-cicd-rg"}` | Names of the build identity and the resource group; the stack creates both |
-| `azure_console_operators` | your Entra object ID | May read and write the Azure Terraform state from the console |
+| `azure_console_operators` | your email (picked from the tenant's users) | May read and write the Azure Terraform state from the console |
 
 Result of the run: **31 added, 1 changed** (environment `azure-container-apps-test` imported). Outputs:
 
