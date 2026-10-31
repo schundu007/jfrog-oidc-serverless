@@ -43,8 +43,9 @@ class Jobs:
 
     def stacks(self) -> list:
         with self._lock:
-            busy = {j["stack"] for j in self._jobs.values() if j["state"] == "running"}
-            return [dict(s, status=self._status.get(s["id"]), busy=s["id"] in busy,
+            # The running job per stack, so a page that closed the drawer or reloaded can follow it again.
+            running = {j["stack"]: {"id": j["id"], "action": j["action"]} for j in self._jobs.values() if j["state"] == "running"}
+            return [dict(s, status=self._status.get(s["id"]), busy=s["id"] in running, job=running.get(s["id"]),
                          plan=self._public_plan(self._plans.get(s["id"])),
                          missing=stacks.missing(s["id"], self.env_name, self.root, self.state_root))
                     for s in stacks.CATALOGUE]
@@ -88,6 +89,22 @@ class Jobs:
         threading.Thread(target=self._work, args=(job, approval), name=f"setup-{stack_id}", daemon=True).start()
         return self.get(job["id"])
 
+    def _say(self, job, text):
+        """One plain-words progress line in the job's log (Terraform's own output streams in between)."""
+        with self._lock:
+            job["log"].append("▶ " + redact.text(text))
+            del job["log"][:-MAX_LOG]
+
+    def _where(self, stack_id, init_args) -> str:
+        """Where this stack's Terraform state lives, in words."""
+        pairs = dict(a[len("-backend-config="):].split("=", 1) for a in init_args if a.startswith("-backend-config="))
+        if "bucket" in pairs:
+            return f"Cloud Storage bucket {pairs['bucket']}, prefix {pairs.get('prefix', '')}"
+        if "storage_account_name" in pairs:
+            return (f"storage account {pairs['storage_account_name']}, container {pairs.get('container_name', '')}, "
+                    f"key {pairs.get('key', '')}")
+        return f"local file terraform/stacks/{stack_id}/terraform.tfstate"
+
     def _terraform(self, job) -> Terraform:
         # The plan's Terraform is reused by the apply job: its log goes to whichever job runs it now.
         current = {"job": job}
@@ -99,45 +116,85 @@ class Jobs:
                 del lines[:-MAX_LOG]
         sh = self.shell_factory(log)
         env = dict(self.environ)
+        init, plan = stacks.tf_args(job["stack"], self.env_name, self.root, self.state_root)
+        self._say(job, f"Terraform state: {self._where(job['stack'], init)}.")
         host = stacks.jfrog_host(job["stack"], self.env_name, self.state_root)
-        if not env.get("JFROG_ACCESS_TOKEN") and self.token_source and host \
-                and stacks.needs_jfrog(job["stack"], job["action"], self.root):
+        if not host:
+            self._say(job, "JFrog: this stack has no JFrog resources.")
+        elif env.get("JFROG_ACCESS_TOKEN"):
+            self._say(job, f"JFrog {host}: using the admin token the portal was started with.")
+        elif not stacks.needs_jfrog(job["stack"], job["action"], self.root):
+            self._say(job, f"JFrog {host}: not needed, the state holds no JFrog resources.")
+        elif self.token_source:
+            self._say(job, f"JFrog {host}: getting a short-lived token from your OIDC login…")
             try:
                 env["JFROG_ACCESS_TOKEN"] = self.token_source(sh, host)
+                self._say(job, f"JFrog {host}: token received.")
             except Exception as exc:   # stacks without JFrog resources still plan
-                log(f"no JFrog token: {redact.text(str(exc))[:200]}")
-        init, plan = stacks.tf_args(job["stack"], self.env_name, self.root, self.state_root)
+                self._say(job, f"JFrog {host}: no token ({redact.text(str(exc))[:200]}); continuing without it.")
         tf = Terraform(sh, stacks.stack_dir(job["stack"], self.root), env=env, init_args=init, plan_args=plan)
         tf.log_to = current
         return tf
 
     def _work(self, job, approval):
         sid, action = job["stack"], job["action"]
+        meta = stacks.get(sid)
+        name = f"{meta['group']} · {meta['title']} ({sid}), environment {self.env_name}"
         try:
             if action == "apply":
                 with self._lock:
                     plan = self._plans.pop(sid)
                     plan["_tf"].log_to["job"] = job
+                verb = "destroy" if plan["action"] == "destroy" else "deploy"
+                self._say(job, f"Running the approved {verb} plan for {name} (plan {plan['sha256'][:12]}).")
                 result = plan["_tf"].apply(plan, approval)
                 result = {"applied": True, "destroyed": plan["action"] == "destroy", "outputs": result["outputs"]}
                 self._set_status(sid, {"deployed": plan["action"] != "destroy", "outputs": {} if plan["action"] == "destroy" else result["outputs"]})
+                if result["destroyed"]:
+                    self._say(job, "Destroyed: nothing of this stack is left in its Terraform state.")
+                else:
+                    self._say(job, f"Deployed. {_outputs_text(result['outputs'])}")
             elif action == "status":
+                self._say(job, f"Checking {name}: reading its Terraform state.")
                 tf = self._terraform(job)
                 tf.init()
                 outs = tf.outputs()
                 result = {"deployed": bool(outs), "outputs": outs}
                 self._set_status(sid, result)
+                self._say(job, f"Deployed. {_outputs_text(outs)}" if outs else "Not deployed: the state holds nothing yet.")
             else:
-                tf = self._terraform(job)
                 destroy = action == "plan-destroy"
+                self._say(job, f"Planning a {'destroy' if destroy else 'deploy'} of {name} with the saved inputs.")
+                tf = self._terraform(job)
+                self._say(job, "Terraform: initialising providers and state, then planning…")
                 p = tf.plan(destroy=destroy)
                 p.update(action="destroy" if destroy else "apply", job=job["id"], _tf=tf)
                 with self._lock:
                     self._plans[sid] = p
                 result = self._public_plan(p)
+                self._say(job, f"Plan ready: {_summary_text(p.get('summary'))}. Nothing changes until you approve it.")
             self._finish(job, "done", result=result)
         except (TerraformError, ApplyRefused, stacks.StackError, OSError) as exc:
-            self._finish(job, "failed", error=redact.text(str(exc))[:2000])
+            msg = redact.text(str(exc))[:2000]
+            first = msg.splitlines()[0] if msg else type(exc).__name__
+            self._say(job, f"Failed: {first}")
+            if action == "status":   # e.g. the state store does not exist yet: nothing is deployed there
+                self._set_status(sid, {"deployed": False, "outputs": {}, "error": first[:300]})
+            self._finish(job, "failed", error=msg)
+
+    def refresh_all(self) -> list:
+        """Read every stack's state in the background, so the list knows what is deployed without a
+        Check button. Skips stacks with inputs still missing, a known status, or a running job."""
+        started = []
+        for sid in stacks.IDS:
+            with self._lock:
+                if sid in self._status or any(j["stack"] == sid and j["state"] == "running" for j in self._jobs.values()):
+                    continue
+            try:
+                started.append(self.start(sid, "status")["id"])
+            except (JobError, stacks.StackError):
+                continue
+        return started
 
     def discard(self, stack_id: str) -> None:
         stacks.get(stack_id)
@@ -151,3 +208,20 @@ class Jobs:
     def _finish(self, job, state, result=None, error=None):
         with self._lock:
             job.update(state=state, result=result, error=error, finished=time.time())
+
+
+def _summary_text(summary) -> str:
+    words = {"create": "to add", "update": "to change", "replace": "to replace", "delete": "to destroy", "import": "to import"}
+    parts = [f"{n} {words[k]}" for k, n in (summary or {}).items() if k in words and n]
+    return ", ".join(parts) or "no changes"
+
+
+def _outputs_text(outputs) -> str:
+    """Outputs as "name = value" (scalars; maps by entry), never sensitive ones (already "[sensitive]")."""
+    rows = []
+    for k, v in (outputs or {}).items():
+        if isinstance(v, dict):
+            rows += [f"{k}.{sk} = {sv}" for sk, sv in v.items() if not isinstance(sv, (dict, list))]
+        elif v is not None and not isinstance(v, list):
+            rows.append(f"{k} = {v}")
+    return ("Outputs: " + "; ".join(rows) + ".") if rows else "No outputs."

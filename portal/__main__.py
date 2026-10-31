@@ -75,6 +75,7 @@ def main(argv=None) -> int:
     except OSError as exc:
         print(f"portal: cannot listen on {args.host}:{args.port}: {exc}", file=sys.stderr)
         return 1
+    setup.jobs.refresh_all()   # the Setup list shows what is deployed without a Check click
     url = portal.url()
     print(f"JFrog OIDC console (Serverless {SERVERLESS}, Kubernetes {K8S}, Setup {SETUP}): {url}")
     print("Ctrl+C to stop.", flush=True)

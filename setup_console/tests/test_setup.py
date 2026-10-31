@@ -229,6 +229,25 @@ class JobTests(unittest.TestCase):
         self.assertTrue(any("terraform" in line and "apply" in line for line in done["log"]), done["log"])
         self.assertEqual(len(self.jobs.get(j["id"])["log"]), planned)
 
+    def test_stacks_name_the_running_job(self):
+        # A page that closed the drawer (or was reloaded) finds the running job here and follows it again.
+        gate = threading.Event()
+
+        def held_shell(log):
+            sh = fake_shell(log)
+            run = sh.run
+            sh.run = lambda *a, **kw: gate.wait(5) and run(*a, **kw)
+            return sh
+        self.jobs.shell_factory = held_shell
+        job = self.jobs.start("gke-cluster", "status")
+        row = lambda: [s for s in self.jobs.stacks() if s["id"] == "gke-cluster"][0]
+        try:
+            self.assertEqual(row()["job"], {"id": job["id"], "action": "status"})
+        finally:
+            gate.set()
+        wait(self.jobs, job)
+        self.assertIsNone(row()["job"])
+
     def test_destroy_needs_the_stack_name(self):
         j = self._plan("gke-cluster", [{"address": "google_container_cluster.cluster", "type": "x", "change": {"actions": ["delete"]}}],
                        action="plan-destroy")
@@ -274,6 +293,35 @@ class JobTests(unittest.TestCase):
         j = wait(self.jobs, self.jobs.start("aks-cluster", "plan-apply"))
         self.assertEqual(j["state"], "failed")
         self.assertIn("plan failed", j["error"])
+        self.assertTrue(j["log"][-1].startswith("▶ Failed: "), j["log"])
+
+    def test_log_tells_each_stage_in_words(self):
+        j = self._plan("gke-cluster", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        said = [line[2:] for line in j["log"] if line.startswith("▶ ")]
+        self.assertTrue(said[0].startswith("Planning a deploy of Google Cloud · GKE cluster (gke-cluster)"), said)
+        self.assertIn("Terraform state: Cloud Storage bucket proj-1-tfstate, prefix gke-cluster/test.", said)
+        self.assertIn("Plan ready: 1 to add. Nothing changes until you approve it.", said)
+        done = wait(self.jobs, self.jobs.start("gke-cluster", "apply", {"plan_sha256": j["result"]["sha256"]}))
+        said = [line[2:] for line in done["log"] if line.startswith("▶ ")]
+        self.assertTrue(said[0].startswith("Running the approved deploy plan"), said)
+        self.assertTrue(said[-1].startswith("Deployed."), said)
+        self.assertNotIn(TOKEN, "\n".join(done["log"]))
+
+    def test_refresh_all_reads_every_ready_stack_once(self):
+        ids = self.jobs.refresh_all()
+        done = [wait(self.jobs, {"id": i}) for i in ids]
+        checked = {d["stack"] for d in done}
+        self.assertIn("gke-cluster", checked)
+        self.assertTrue(all(d["action"] == "status" for d in done))
+        self.assertEqual(self.jobs.refresh_all(), [])   # known now: nothing started again
+
+    def test_failed_status_means_not_deployed(self):
+        (self.root.dir / "aks-cluster" / ".fake_fail_init").write_text("")
+        j = wait(self.jobs, self.jobs.start("aks-cluster", "status"))
+        self.assertEqual(j["state"], "failed")
+        st = [s for s in self.jobs.stacks() if s["id"] == "aks-cluster"][0]["status"]
+        self.assertFalse(st["deployed"])
+        self.assertTrue(st["error"])
 
 
 class ServerTests(unittest.TestCase):
