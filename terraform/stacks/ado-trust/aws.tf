@@ -136,8 +136,9 @@ resource "aws_iam_role_policy" "ado" {
 }
 
 resource "aws_s3_bucket" "tfstate" {
-  count  = local.aws_enabled ? 1 : 0
-  bucket = "${var.aws_account_id}-${var.ado_org}-tfstate"
+  count         = local.aws_enabled ? 1 : 0
+  bucket        = "${var.aws_account_id}-${var.ado_org}-tfstate"
+  force_destroy = true
 }
 
 resource "aws_s3_bucket_versioning" "tfstate" {

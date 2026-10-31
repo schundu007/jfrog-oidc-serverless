@@ -251,6 +251,7 @@ resource "google_storage_bucket" "tfstate" {
   location                    = upper(var.gcp_region)
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
+  force_destroy               = true # test infrastructure: destroy empties the state bucket
   versioning {
     enabled = true
   }
