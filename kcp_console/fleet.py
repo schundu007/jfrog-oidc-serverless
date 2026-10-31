@@ -70,7 +70,9 @@ def row(c: dict, st: dict, runs: list) -> dict:
         "chart": chart.rsplit("-", 1)[-1] if chart else "", "nodes": len((d or {}).get("nodes") or []),
         "ready": f"{ds.get('ready', 0)}/{ds.get('desired', 0)}" if ds else "",
         "read_at": st.get("discover_at", ""), "updated": c.get("updated", ""),
-        "action": {"which": act["name"], "status": act["status"], "dry": not _real(act), "at": act.get("created", "")} if act else None,
+        "action": {"id": act.get("id", ""), "which": act["name"], "status": act["status"], "dry": not _real(act),
+                   "at": act.get("created", ""), "started": (act.get("approved") or {}).get("at", ""),
+                   "finished": act.get("finished", "")} if act else None,
     }
 
 

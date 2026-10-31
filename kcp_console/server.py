@@ -39,10 +39,11 @@ from .store import RUN_ID_RE, RunStore, StatusStore, Store, StoreError
 STATIC_DIR = Path(__file__).parent / "static"
 # Page URLs: each section has its own path (old /operate/<page> links still work); all serve index.html.
 PAGE_ROUTES = {"/", "/clusters", "/configure"}
-# /clusters/<cloud> lists one platform's clusters, /clusters/<cloud>/<name>[/edit] is one cluster;
-# /clusters/<name> is the old link to a cluster (the page moves it under its cloud).
-CLUSTER_PAGE_RE = re.compile(r"^/clusters/(?:(?:aks|gke|eks|openshift)(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,62}(?:/edit)?)?"
-                             r"|[A-Za-z0-9][A-Za-z0-9._-]{0,62})$")
+# /clusters/<cloud> lists one platform's clusters, /clusters/<cloud>/<name> is one cluster (its tab in ?tab=),
+# /clusters/<cloud>/<name>/runs/<run id> is one run. /clusters/<name> and .../<name>/edit are older links
+# (the page moves them).
+CLUSTER_PAGE_RE = re.compile(r"^/clusters/(?:(?:aks|gke|eks|openshift)(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,62}"
+                             r"(?:/edit|/runs/[0-9]{8}-[0-9]{6}-[0-9a-f]{6})?)?|[A-Za-z0-9][A-Za-z0-9._-]{0,62})$")
 MAX_BODY = 1024 * 1024
 MAX_DRAIN = 8 * 1024 * 1024
 MAX_SIMS_KEPT = 20

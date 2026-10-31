@@ -1,10 +1,9 @@
-// Configure: one cluster's settings. Validation is live (POST /api/values); Save goes back to Clusters,
-// where Set up runs. Nothing here changes the cluster or JFrog.
+// Configuration: one cluster's settings, the Configuration tab of its page. Validation is live
+// (POST /api/values). Nothing here changes the cluster or JFrog: Set up does, from the page header.
 
 import { api, h, fill, help, state, refreshConfigs, route, go, clusterPath } from "./app.js";
 import { $ } from "./ui.js";
 
-const P = () => $("panel-configure");
 let cfg = null;
 let blank = null;
 
@@ -57,10 +56,21 @@ const GROUPS = [
 const ADVANCED = ["values.match_images", "values.download_url", "values.azure_app_audience", "values.node_affinity_label",
   "jfrog.scope", "jfrog.audience", "jfrog.expires_in", "jfrog.protected_providers", "k8s.test_pod", "cluster.nodes"];
 
-export function initConfigure() {
-  state.on("config", load);
-  // /clusters/<cloud>/<name>/edit opened directly: edit that cluster, not the last one selected.
-  state.on("tab", (tab) => { const n = route().name; if (tab === "configure" && n && n !== state.config) refreshConfigs(n); });
+// The Configuration tab of a cluster's page. The form is kept per cluster while the page is open, so
+// switching tabs keeps what was typed; Discard reads the saved one again.
+let host = null;
+let loaded = null;
+
+export async function renderConfig(el, name) {
+  host = el;
+  if (loaded !== name || !cfg) {
+    loaded = name;
+    cfg = null;
+    fill(el, h("p", { class: "muted" }, "Loading…"));
+    await load(name);
+    if (loaded !== name) return;
+  }
+  if (host === el) render();
 }
 
 async function load(name) {
@@ -69,7 +79,6 @@ async function load(name) {
   if (name) {
     try { cfg = (await api(`/api/configs/${encodeURIComponent(name)}`)).config; } catch { /* new */ }
   }
-  render();
 }
 
 const get = (path) => path.split(".").reduce((o, k) => (o == null ? o : o[k]), cfg);
@@ -110,14 +119,11 @@ function field(path, label, placeholder, tip = F[path]?.[2]) {
 
 function render() {
   derive();
-  const saved = cfg.name && cfg.name === state.config;
-  fill(P(),
-    h("div", { class: "cfg-head" }, h("div", {}, h("h1", {}, saved ? cfg.name : "New cluster")),
-      h("div", { class: "head-actions" },
-        saved ? h("button", { class: "link danger", onclick: remove }, "Delete") : null,
-        h("button", { class: "secondary", onclick: () => back(saved ? cfg.name : null) }, "Cancel"),
-        h("button", { class: "primary", onclick: async () => { if (await save()) back(cfg.name); } }, "Save"))),
-    h("p", { class: "small", id: "cfg-msg" }),
+  fill(host,
+    h("div", { class: "tab-bar" },
+      h("button", { class: "primary", onclick: save }, "Save"),
+      h("button", { class: "secondary", onclick: async () => { await load(loaded); render(); msg("Changes discarded"); } }, "Discard"),
+      h("span", { class: "small", id: "cfg-msg", role: "status" })),
     h("div", { class: "cfg-form" },
       h("div", { class: "tgrid" }, field("name", ...F.name)),
       ...GROUPS.map(([title, paths]) => [title, paths || CLUSTER[cfg.platform || "aks"] || CLUSTER.aks]).map(([title, paths]) => h("section", { class: "block" }, h("h2", {}, title, help(GROUP_HELP[title])),
@@ -135,39 +141,26 @@ function validateSoon(ms = 300) {
   timer = setTimeout(async () => {
     let v;
     try { v = await api("/api/values", { method: "POST", body: { config: cfg } }); } catch { return; }
-    document.querySelectorAll("#panel-configure .issue").forEach((el) => { el.textContent = ""; el.className = "issue small"; });
+    if (!host?.isConnected) return;
+    host.querySelectorAll(".issue").forEach((el) => { el.textContent = ""; el.className = "issue small"; });
     for (const i of v.issues.filter((x) => x.level === "error" && filled(x.field))) {
-      const el = document.querySelector(`#panel-configure .issue[data-field="${i.field}"]`);
+      const el = host.querySelector(`.issue[data-field="${i.field}"]`);
       if (el && !el.textContent) { el.textContent = i.message.split(/[:(]/)[0].trim(); el.title = i.message; el.classList.add(i.level); }
     }
   }, ms);
 }
 
-// Back to the cluster's own page (or the fleet).
-function back(name) {
-  go(name ? clusterPath(name) : `/clusters/${route().cloud || "aks"}`);
-}
-
 function msg(text, cls = "small") { const m = $("cfg-msg"); if (m) { m.textContent = text; m.className = cls; } }
 
+// Save keeps the operator on the tab; a new name saves a new cluster and opens it.
 async function save() {
   const name = (cfg.name || "").trim();
-  if (!name) { msg("Name required", "small error"); return false; }
+  if (!name) { msg("Name required", "small error"); return; }
   try {
     await api(`/api/configs/${encodeURIComponent(name)}`, { method: "PUT", body: { config: cfg } });
     await refreshConfigs(name);
+    if (name !== route().name) { loaded = name; go(clusterPath(name, "config")); return; }
     state.emit("config", name);
-    return true;
-  } catch (e) { msg(e.message, "small error"); return false; }
-}
-
-async function remove() {
-  const name = state.config;
-  const m = $("cfg-msg");
-  if (!name || !m) return;
-  if (m.dataset.armed !== name) { m.dataset.armed = name; msg(`Click Delete again to delete ${name}.`, "small error"); return; }
-  await api(`/api/configs/${encodeURIComponent(name)}`, { method: "DELETE" });
-  await refreshConfigs(null);
-  state.emit("config", state.config);
-  back(null);
+    msg("Saved");
+  } catch (e) { msg(e.message, "small error"); }
 }

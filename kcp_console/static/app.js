@@ -2,8 +2,9 @@
 // The session token comes from the URL fragment and is sent only as the X-Console-Token header.
 // It is kept in localStorage for this origin so reloads and new tabs work: never in a cookie or the URL.
 
-import { initOverview } from "./overview.js";
-import { initConfigure } from "./configure.js";
+import { initClusters } from "./clusters.js";
+import { initCluster } from "./cluster.js";
+import { initRun } from "./run.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -40,7 +41,7 @@ export const url = (path) => BASE + path;
 
 let TOKEN = REDIRECTING ? null : rememberToken(takeTokenFromHash() || pageToken()) || storedToken();
 
-// Shared state: the selected config and a tiny event bus ("config", "tab").
+// Shared state: the selected config and a tiny event bus ("config", "page").
 export const state = {
   config: null, configs: [], started: false,
   listeners: {},
@@ -100,26 +101,34 @@ function showAuth() {
 
 // ----------------------------------------------------------------- pages
 
-// One URL per page, each cloud kept apart:
-//   /clusters/<cloud>              that platform's clusters (aks, gke, eks, openshift)
-//   /clusters/<cloud>/<name>       one cluster
-//   /clusters/<cloud>/<name>/edit  its configuration
-// /clusters, /clusters/<name> and /configure are older links; they move to the paths above. The server
-// serves index.html for all of them, so a reload or a shared link opens the same page.
+// One URL per page, each cloud kept apart (docs/ui-pattern.md):
+//   /clusters/<cloud>                     that platform's clusters (aks, gke, eks, openshift)
+//   /clusters/<cloud>/<name>?tab=…        one cluster: Summary, Runs or Configuration
+//   /clusters/<cloud>/<name>/runs/<id>    one run: its step tree and log
+// /clusters, /clusters/<name>, /configure and .../<name>/edit are older links; they move to the paths above.
+// The server serves index.html for all of them, so a reload or a shared link opens the same page.
 export const CLOUDS = { aks: "Azure AKS", gke: "Google GKE", eks: "AWS EKS", openshift: "OpenShift" };
-const PAGES = ["overview", "configure"];
+export const TABS = { summary: "Summary", runs: "Runs", config: "Configuration" };
+const PAGES = ["list", "cluster", "run"];
 
 export const cloudOf = (name) => (state.configs.find((c) => c.name === name) || {}).platform || "aks";
-export const clusterPath = (name, edit = false) => `/clusters/${cloudOf(name)}/${encodeURIComponent(name)}${edit ? "/edit" : ""}`;
+export const clusterPath = (name, tab) => `/clusters/${cloudOf(name)}/${encodeURIComponent(name)}${tab && tab !== "summary" ? `?tab=${tab}` : ""}`;
+export const runPath = (name, id) => `/clusters/${cloudOf(name)}/${encodeURIComponent(name)}/runs/${id}`;
 
-// {cloud, name, page} from the address; moved: an older link to rewrite.
+// {page, cloud, name, tab, run} from the address; moved: an older link to rewrite.
 export function route(path = location.pathname) {
   if (BASE && path.startsWith(BASE)) path = path.slice(BASE.length) || "/";
   const p = path.replace(/\/+$/, "").split("/").slice(1).map(decodeURIComponent);
-  if (p[0] === "configure") return { cloud: cloudOf(state.config), name: state.config, page: "configure", moved: true };
-  if (p[0] !== "clusters") return { cloud: null, name: null, page: "overview", moved: true };
-  if (p[1] && !CLOUDS[p[1]]) return { cloud: cloudOf(p[1]), name: p[1], page: "overview", moved: true };
-  return { cloud: p[1] || null, name: p[2] || null, page: p[3] === "edit" ? "configure" : "overview", moved: !p[1] };
+  const q = new URLSearchParams(location.search).get("tab");
+  const tab = TABS[q] ? q : "summary";
+  if (p[0] === "configure") return { page: "cluster", cloud: cloudOf(state.config), name: state.config, tab: "config", moved: true };
+  if (p[0] !== "clusters") return { page: "list", cloud: null, name: null, moved: true };
+  if (p[1] && !CLOUDS[p[1]]) return { page: "cluster", cloud: cloudOf(p[1]), name: p[1], tab, moved: true };
+  if (!p[1]) return { page: "list", cloud: null, name: null, moved: true };
+  if (!p[2]) return { page: "list", cloud: p[1], name: null };
+  if (p[3] === "edit") return { page: "cluster", cloud: p[1], name: p[2], tab: "config", moved: true };
+  if (p[3] === "runs" && p[4]) return { page: "run", cloud: p[1], name: p[2], run: p[4] };
+  return { page: "cluster", cloud: p[1], name: p[2], tab };
 }
 
 // The first platform that has clusters, for /clusters.
@@ -128,7 +137,7 @@ const homeCloud = () => Object.keys(CLOUDS).find((k) => state.configs.some((c) =
 function canonical(r) {
   const cloud = r.cloud || homeCloud();
   if (!r.name) return `/clusters/${cloud}`;
-  return `/clusters/${cloud}/${encodeURIComponent(r.name)}${r.page === "configure" ? "/edit" : ""}`;
+  return `/clusters/${cloud}/${encodeURIComponent(r.name)}${r.tab && r.tab !== "summary" ? `?tab=${r.tab}` : ""}`;
 }
 
 // Go to a path inside the console without a reload.
@@ -144,9 +153,9 @@ function transition(update) {
   for (const p of [t.ready, t.finished, t.updateCallbackDone]) p.catch(() => {});
 }
 
-// One level up: cluster edit → cluster → its platform's list → (inside the unified console) Home.
+// One level up: run → its cluster's Runs tab → its platform's list → (inside the unified console) Home.
 function parent(r) {
-  if (r.name && r.page === "configure") return { path: clusterPath(r.name), label: r.name };
+  if (r.page === "run") return { path: clusterPath(r.name, "runs"), label: r.name };
   if (r.name) return { path: `/clusters/${r.cloud}`, label: CLOUDS[r.cloud] };
   return BASE ? { home: true, label: "Home" } : null;
 }
@@ -154,13 +163,12 @@ function parent(r) {
 // A product mark (aks, gke, eks, openshift, k8s) or the arrow icon, cloned from the page's template.
 export const markOf = (k) => $("marks").content.querySelector(`[data-mark="${k}"] svg`).cloneNode(true);
 
-// Where you are, at the top of the page: Kubernetes > <platform> > <cluster> > Edit. Names come from the
-// path (route()), never from the selected tab, which can change mid-transition.
+// Where you are: Kubernetes > <platform> > <cluster> > Run <id>. Names come from the path.
 function renderTrail(r) {
   const steps = [["Kubernetes", null]];
   if (r.cloud) steps.push([CLOUDS[r.cloud], `/clusters/${r.cloud}`]);
-  if (r.name) steps.push([r.name, clusterPath(r.name)]);
-  if (r.name && r.page === "configure") steps.push(["Edit", null]);
+  if (r.name) steps.push([r.name, r.page === "run" ? clusterPath(r.name, "runs") : clusterPath(r.name)]);
+  if (r.page === "run") steps.push([`Run ${r.run}`, null]);
   const parts = [];
   steps.forEach(([label, path], i) => {
     if (i) parts.push(h("span", { class: "trail-sep", "aria-hidden": "true" }, "/"));
@@ -194,37 +202,35 @@ function renderBand(r) {
     } }, h("span", {}, c.name))));
 }
 
+// Back walks up one level, as the breadcrumb does.
 function backButton(r) {
   const b = $("nav-back");
-  const hasHistory = (window.navigation?.currentEntry?.index ?? 0) > 0;
   const up = parent(r);
-  b.hidden = !hasHistory && !up;
-  b.title = hasHistory || !up ? "Back" : `Back to ${up.label}`;
+  b.hidden = !up;
+  b.title = up ? `Back to ${up.label}` : "Back";
   b.onclick = () => {
-    if (hasHistory) history.back();
-    else if (up?.home) location.assign("/");
+    if (up?.home) location.assign("/");
     else if (up) go(up.path);
   };
 }
 
+let shown = "";
 function show() {
   const r = route();
   if (r.moved) history.replaceState({}, "", url(canonical(r)) + (r.name ? "" : location.search));
-  const cloud = route().cloud;
-  for (const p of PAGES) $(`panel-${p}`).hidden = p !== r.page;
+  const now = route();
+  for (const p of PAGES) $(`panel-${p}`).hidden = p !== now.page;
   document.querySelectorAll("#sidenav [data-cloud]").forEach((a) => {
-    if (a.dataset.cloud === cloud) a.setAttribute("aria-current", r.name ? "true" : "page"); else a.removeAttribute("aria-current");
+    if (a.dataset.cloud === now.cloud) a.setAttribute("aria-current", now.name ? "true" : "page"); else a.removeAttribute("aria-current");
   });
-  backButton(route());
-  renderTrail(route());
-  renderBand(route());
-  window.scrollTo(0, 0);
-  state.emit("tab", r.page);
-}
-
-// Open a page for the selected cluster: "configure" is its Edit page, "overview" its own page.
-export function selectTab(name) {
-  go(state.config ? clusterPath(state.config, name === "configure") : `/clusters/${route().cloud || homeCloud()}`);
+  backButton(now);
+  renderTrail(now);
+  renderBand(now);
+  // A tab switch keeps the scroll position; a new page starts at the top.
+  const key = `${now.page}|${now.name}|${now.run}`;
+  if (key !== shown) window.scrollTo(0, 0);
+  shown = key;
+  state.emit("page", now);
 }
 
 // Platform links go through the router; any other link (the other console's section) loads its page.
@@ -277,8 +283,9 @@ async function start() {
   pill.textContent = "replay";
   state.started = true;
   await refreshConfigs();
-  initOverview();
-  initConfigure();
+  initClusters();
+  initCluster();
+  initRun();
   state.emit("config", state.config);
   show();
   window.addEventListener("popstate", () => transition(show));

@@ -53,6 +53,15 @@ class RowTest(unittest.TestCase):
         r = fleet.row({"name": "n"}, inst, runs)
         self.assertEqual((r["state"], r["action"]["which"], r["action"]["status"]), ("approval", "setup", "prepared"))
 
+    def test_last_run_carries_its_timing(self):
+        inst = {"discover": {"release": {"chart": "x-1"}}}
+        r = run("verify", "n", False, "failed", "2026-10-30T10:00:00Z")
+        r.update(approved={"at": "2026-10-30T10:05:00Z"}, finished="2026-10-30T10:06:32Z", id="20261030-100000-abcdef")
+        a = fleet.row({"name": "n"}, inst, [r])["action"]
+        self.assertEqual((a["id"], a["started"], a["finished"]), ("20261030-100000-abcdef", "2026-10-30T10:05:00Z", "2026-10-30T10:06:32Z"))
+        waiting = fleet.row({"name": "n"}, inst, [run("verify", "n", False, "prepared", "2026-10-30T10:00:00Z")])["action"]
+        self.assertEqual((waiting["started"], waiting["finished"]), ("", ""))
+
     def test_summary_counts_and_other_configs_runs_ignored(self):
         runs = [run("verify", "b", False, "succeeded", "2026-10-30T09:00:00Z", PROOF_OK)]
         rows = fleet.rows([{"name": "a"}, {"name": "b"}], {"a": {}, "b": {"discover": {"release": {"chart": "c-1"}}}}, runs)
