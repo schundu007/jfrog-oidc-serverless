@@ -33,7 +33,6 @@
   background: color-mix(in srgb, var(--cloud) 7%, #fff); border: 1px solid color-mix(in srgb, var(--cloud) 18%, transparent); }
 .stack-icon svg { width: 20px; height: 20px; }
 .stack-icon svg.ico { fill: none; stroke: var(--cloud); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.stack-id { font-family: var(--mono); font-size: 12px; color: var(--fg-3); margin-top: 1px; }
 #groups tbody tr > td { vertical-align: middle; }
 #groups tbody tr:hover > td { background: color-mix(in srgb, var(--cloud) 4%, #fff); }
 .cloud-card { padding: 0; }
