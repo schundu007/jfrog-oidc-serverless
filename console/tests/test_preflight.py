@@ -117,10 +117,10 @@ class GcpPreflightTests(unittest.TestCase):
             sh.fixtures.append({"argv": ["git", "-C", "/repo", "ls-tree", "HEAD", f"{path}/"], "rc": 0,
                                 "stdout": "".join(f"040000 tree {sha}\t{path}/{n}\n" for n, sha in entries.items())})
         for path, entries in remote.items():
-            sh.fixtures.append({"argv": ["az", "devops", "invoke", "--org", "https://dev.azure.com/org", "--area", "git",
-                                         "--resource", "items", "--route-parameters", "project=proj", "repositoryId=repo",
-                                         "--query-parameters", f"scopePath=/{path}", "recursionLevel=OneLevel",
-                                         "versionDescriptor.version=main", "--api-version", "7.1", "-o", "json"], "rc": 0,
+            sh.fixtures.append({"argv": ["az", "rest", "--resource", "499b84ac-1321-427f-aa17-267ca6975798", "--url",
+                                         f"https://dev.azure.com/org/proj/_apis/git/repositories/repo/items?scopePath=/{path}"
+                                         "&recursionLevel=OneLevel&versionDescriptor.version=main&api-version=7.1",
+                                         "-o", "json"], "rc": 0,
                                 "stdout": json.dumps({"value": [{"path": f"/{path}", "objectId": "root"}] + [
                                     {"path": f"/{path}/{n}", "objectId": sha} for n, sha in entries.items()]})})
         res = preflight.run(gcp_cfg(), sh, env={}, delivery={"ado": ado}, repo_root="/repo")

@@ -81,6 +81,9 @@ def _version_tuple(text: str):
     return tuple(int(n) for n in nums[:3]) if nums else None
 
 
+# Azure DevOps' Entra resource: az rest gets an ADO token for it from the az login.
+ADO_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798"
+
 class Preflight(AwsPreflight, OpenShiftPreflight):
     def __init__(self, cfg: dict, sh: Shell, env=None, delivery=False, repo_root=None):
         self.cfg = cfg
@@ -233,11 +236,11 @@ class Preflight(AwsPreflight, OpenShiftPreflight):
         stale = []
         for path, skip in self.PIPELINE_CODE.items():
             local = self.sh.run(["git", "-C", str(self.repo_root), "ls-tree", "HEAD", f"{path}/"], timeout=30)
-            remote = self.sh.run(["az", "devops", "invoke", "--org", f"https://dev.azure.com/{ado['organization']}",
-                                  "--area", "git", "--resource", "items", "--route-parameters",
-                                  f"project={ado['project']}", f"repositoryId={ado['repository']}",
-                                  "--query-parameters", f"scopePath=/{path}", "recursionLevel=OneLevel",
-                                  f"versionDescriptor.version={branch}", "--api-version", "7.1", "-o", "json"], timeout=60)
+            # az rest signs in with the az login itself (no separate az devops login or PAT).
+            remote = self.sh.run(["az", "rest", "--resource", ADO_RESOURCE, "--url",
+                                  f"https://dev.azure.com/{ado['organization']}/{ado['project']}/_apis/git/repositories/"
+                                  f"{ado['repository']}/items?scopePath=/{path}&recursionLevel=OneLevel"
+                                  f"&versionDescriptor.version={branch}&api-version=7.1", "-o", "json"], timeout=60)
             if not local.ok or not remote.ok:
                 return self.add("pipeline_code", title, "warn",
                                 f"could not compare {path}/: {(remote if local.ok else local).error_text(200)}",
