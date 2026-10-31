@@ -136,9 +136,9 @@ function showError(msg) {
 
 // ----------------------------------------------------------------- page
 
-// One page per cloud: Workloads, with Pipeline runs and the Simulator as sections below the form.
+// One page per cloud: Workloads, with the Simulator and Pipeline runs as sections below the form.
 // Every section and step starts collapsed on each load; nothing remembers what was open.
-// Open a section (sec-runs, sec-sim) and bring it into view: a run started from the form opens Pipeline runs.
+// Open a section (sec-sim, sec-runs) and bring it into view: Simulate opens the Simulator, Run pipeline opens Pipeline runs.
 function showSection(id) {
   const sec = $(id);
   sec.open = true;
@@ -587,7 +587,8 @@ function wire() {
   if (initial && scenarioByName(initial)) sel.value = initial;
   selectScenario(sel.value);
   const runs = initRuns({ api, h, streamEvents, showSection, ofCloud, cloud: CLOUD }).catch((e) => showError(`Pipeline runs: ${e.message}`));
-  initConfigure({ api, h, streamEvents, cloud: CLOUD, ofCloud, onRun: (cfg) => runs.then((r) => r && r.startRun(cfg)) })
+  initConfigure({ api, h, streamEvents, cloud: CLOUD, ofCloud, onRun: (cfg) => runs.then((r) => r && r.startRun(cfg)),
+    onSimulate: (cfg) => { showSection("sec-sim"); if (!state.running) startSim({ config: cfg, duration: $("duration").value }); } })
     .catch((e) => showError(`Workloads: ${e.message}`));
   return true;
 }

@@ -74,6 +74,7 @@
         <div class="cmdbar" id="cfg-actions" role="toolbar" aria-label="Commands">
           <div class="row-tight">
             <button type="button" id="cfg-save" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h10l3 3v11H4z"/><path d="M7 3v5h6V3M7 17v-5h7v5"/></svg>Save</button>
+            <button type="button" id="cfg-sim-btn" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h3l2-5 4 10 2-5h3"/></svg>Simulate</button>
             <button type="button" id="cfg-preflight-btn" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5l4 4 8-9"/></svg>Preflight</button>
           </div>
           <span class="cmd-sep" aria-hidden="true"></span>
@@ -172,31 +173,6 @@
       <section id="cfg-problems" class="side-box problems wide-box" hidden aria-live="polite"></section>
       <section id="cfg-preflight" class="side-box wide-box" hidden aria-live="polite"></section>
 
-      <details class="section" id="sec-runs">
-        <summary class="section-head"><h2>Pipeline runs <span id="runs-count" class="count-badge"></span></h2></summary>
-        <div class="cmdbar runs-bar" role="toolbar" aria-label="Commands">
-          <label class="field inline-field"><span>Run</span><select id="runs-list"></select></label>
-          <button type="button" id="runs-refresh" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10a6 6 0 11-1.8-4.3M16 3v4h-4"/></svg>Refresh</button>
-          <button type="button" id="runs-delete" class="cmd secondary">Delete run</button>
-          <button type="button" id="runs-clear" class="cmd secondary">Clear finished</button>
-          <span id="runs-status" class="small" role="status" aria-live="polite"></span>
-        </div>
-      <div id="run-head" class="run-head panel"><p class="muted">No run selected.</p></div>
-      <div class="runs-layout">
-        <aside class="card steps-card" aria-label="Steps">
-          <h2 class="panel-title">Steps</h2>
-          <ol id="run-steps" class="steps"></ol>
-        </aside>
-        <section class="card detail-card">
-          <div id="run-detail"></div>
-          <details class="run-log-box">
-            <summary>Log <span id="run-log-count" class="count-badge"></span></summary>
-            <div id="run-log" class="run-log" tabindex="0" aria-label="Run log"></div>
-          </details>
-        </section>
-      </div>
-      </details>
-
       <details class="section" id="sec-sim">
         <summary class="section-head"><h2>Simulator</h2></summary>
         <p class="section-lead">Run pipeline already simulates the workload before it changes anything (step 3). Use this to
@@ -281,6 +257,31 @@
         </div>
       </div>
       </details>
+      <details class="section" id="sec-runs">
+        <summary class="section-head"><h2>Pipeline runs <span id="runs-count" class="count-badge"></span></h2></summary>
+        <div class="cmdbar runs-bar" role="toolbar" aria-label="Commands">
+          <label class="field inline-field"><span>Run</span><select id="runs-list"></select></label>
+          <button type="button" id="runs-refresh" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10a6 6 0 11-1.8-4.3M16 3v4h-4"/></svg>Refresh</button>
+          <button type="button" id="runs-delete" class="cmd secondary">Delete run</button>
+          <button type="button" id="runs-clear" class="cmd secondary">Clear finished</button>
+          <span id="runs-status" class="small" role="status" aria-live="polite"></span>
+        </div>
+      <div id="run-head" class="run-head panel"><p class="muted">No run selected.</p></div>
+      <div class="runs-layout">
+        <aside class="card steps-card" aria-label="Steps">
+          <h2 class="panel-title">Steps</h2>
+          <ol id="run-steps" class="steps"></ol>
+        </aside>
+        <section class="card detail-card">
+          <div id="run-detail"></div>
+          <details class="run-log-box">
+            <summary>Log <span id="run-log-count" class="count-badge"></span></summary>
+            <div id="run-log" class="run-log" tabindex="0" aria-label="Run log"></div>
+          </details>
+        </section>
+      </div>
+      </details>
+
     </section>
 
   </main>

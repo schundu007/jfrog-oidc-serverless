@@ -7,7 +7,7 @@ const $ = (id) => document.getElementById(id);
 // replaceChildren() would turn null children into the text "null"; drop them.
 const fill = (el, ...kids) => el.replaceChildren(...kids.flat().filter((k) => k !== null && k !== undefined && k !== false));
 
-let api, h, streamEvents, cloud, ofCloud, onRun;
+let api, h, streamEvents, cloud, ofCloud, onRun, onSimulate;
 // showAll: list problems on empty fields too. Off for a new configuration until a button is pressed.
 const st = { inv: null, schema: null, cfg: null, dirty: false, busy: false, validateTimer: null, validation: null, showAll: false, saved: null, current: null };
 
@@ -537,7 +537,7 @@ function pickWorkload() {
 }
 
 export async function initConfigure(deps) {
-  ({ api, h, streamEvents, cloud, ofCloud, onRun } = deps);
+  ({ api, h, streamEvents, cloud, ofCloud, onRun, onSimulate } = deps);
   st.schema = await api("/api/schema");
   $("cfg-kind").replaceChildren(...cloudKinds().map((k) => h("option", { value: k, text: st.schema.kinds[k].label })));
 
@@ -559,6 +559,12 @@ export async function initConfigure(deps) {
   $("cfg-workload").addEventListener("change", pickWorkload);
   $("cfg-scope").addEventListener("change", () => loadInventory($("cfg-scope").value));
   $("cfg-inv-refresh").addEventListener("click", (e) => { e.preventDefault(); loadInventory($("cfg-scope").value, true); });
+  $("cfg-sim-btn").addEventListener("click", async () => {
+    st.showAll = true;
+    await validate();
+    if (st.validation?.errors?.length) return status("Fix the validation errors first.", "error");
+    onSimulate(clone(st.cfg));
+  });
   $("cfg-preflight-btn").addEventListener("click", runPreflight);
   $("cfg-run-btn").addEventListener("click", async () => {
     st.showAll = true;
