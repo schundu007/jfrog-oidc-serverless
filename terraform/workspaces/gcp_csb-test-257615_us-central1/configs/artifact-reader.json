@@ -4,8 +4,10 @@
     "docker_host": "",
     "docker_repo": "docker-virtual",
     "integration_names": {
+      "aws": "aws-sts",
       "azure": "azure-entra",
-      "gcp": "gcp-cloudrun"
+      "gcp": "gcp-cloudrun",
+      "openshift": "openshift-knative"
     },
     "project_key": null,
     "reader_group": "serverless-readers",
@@ -41,6 +43,13 @@
     "type": "gcs"
   },
   "target": {
+    "aws": {
+      "account": "",
+      "cluster": "",
+      "name": "",
+      "profile": "",
+      "region": ""
+    },
     "azure": {
       "environment_id": "",
       "identity_type": "user_assigned",
@@ -50,8 +59,8 @@
       "subscription": ""
     },
     "discovered": {
-      "at": "2026-10-30T09:44:03Z",
-      "image": "us-central1-docker.pkg.dev/csb-test-257615/platform/artifact-reader:b6909a4746e3",
+      "at": "2026-10-31T00:22:02Z",
+      "image": "us-central1-docker.pkg.dev/csb-test-257615/platform/artifact-reader:8cb8abe2c855",
       "kind": "gcp_run_job",
       "mapping_subject": "116995768674951979623",
       "name": "artifact-reader",
@@ -65,7 +74,13 @@
       "project": "csb-test-257615",
       "region": "us-central1"
     },
-    "kind": "gcp_run_job"
+    "kind": "gcp_run_job",
+    "openshift": {
+      "cluster": "",
+      "context": "",
+      "name": "",
+      "namespace": ""
+    }
   },
   "verify": {
     "artifact_path": "generic-local/healthcheck/ping.txt",
