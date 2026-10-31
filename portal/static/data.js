@@ -24,6 +24,14 @@ export const SECTIONS = {
   eks: k8s("aws", "eks", "EKS clusters"),
   openshift: k8s("openshift", "openshift", "OpenShift clusters"),
 };
+// Serverless families: the services of one product share a heading on Home ([family, short name]).
+export const FAMILY = {
+  azure_container_app_job: ["Container Apps", "Jobs"], azure_container_app: ["Container Apps", "Apps"],
+  azure_functions_aca: ["Functions", "On Container Apps"], azure_functions_premium: ["Functions", "Premium / Dedicated"],
+  azure_functions_flex: ["Functions", "Flex Consumption"],
+  gcp_run_job: ["Cloud Run", "Jobs"], gcp_run_service: ["Cloud Run", "Services"],
+  gcp_run_function: ["Cloud Run", "Functions"], gcp_run_worker_pool: ["Cloud Run", "Worker pools"],
+};
 const sectionOfKind = (k) => (SECTIONS[k] ? k : null);
 const markOfKind = (k) => k === "gcp_run_function" ? "fn" : k.startsWith("gcp_") ? "run" : k.startsWith("azure_functions") ? "func"
   : k.startsWith("azure_") ? "aca" : k.startsWith("aws_") ? "aws_sl" : "openshift_sl";

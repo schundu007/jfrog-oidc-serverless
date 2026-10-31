@@ -1,19 +1,11 @@
 // Home: every cloud at a glance, read-only. One board per cloud; inside it Serverless and Kubernetes
 // are separate sections, each with its own tiles and table (never mixed). Then the newest runs. Data: data.js.
-import { MARK, CLOUD_NAMES, SECTIONS, LIVE_STATES, h, markEl, when, runPill, loadAll } from "./data.js";
+import { MARK, CLOUD_NAMES, SECTIONS, FAMILY, LIVE_STATES, h, markEl, when, runPill, loadAll } from "./data.js";
 
 const $ = (id) => document.getElementById(id);
 const empty = (t) => h("p", { class: "muted dash-empty", text: t });
 const CLOUDS = ["azure", "gcp"];   // Azure first, then Google Cloud
 
-// A tile: the service mark, its name, its kind and count, and a status dot. One size for all.
-function tile(href, markKey, name, line, dot) {
-  const mark = h("span", { class: "tile-mark" });
-  mark.insertAdjacentHTML("afterbegin", MARK[markKey]);  // constant SVG only
-  return h("a", { class: "tile", href }, mark,
-    h("span", { class: "tile-main" }, h("b", { text: name }), h("small", { text: line })),
-    h("span", { class: `dot ${dot || ""}` }));
-}
 const ring = (id, ok, total) => {
   $(id).style.setProperty("--p", total ? String(Math.round((100 * ok) / total)) : "0");
   $(id).title = `${ok} of ${total} working`;
@@ -46,20 +38,43 @@ function runRow(r) {
     h("td", { text: r.type || "" }), h("td", { class: "muted", text: when(r.created) }), h("td", {}, h("span", { class: `pill ${cls}`, text }))]);
 }
 
-// One section of a cloud: Serverless (workloads) or Kubernetes (clusters), its tiles then its table.
+// One section of a cloud: Serverless (workloads) or Kubernetes (clusters). First its services as a table,
+// grouped by family (Container Apps, Functions, Cloud Run), then its workloads or clusters as a table.
+function serviceRow(key, label, page, markKey, n, noun, dot) {
+  const [cls, text] = dot === "ok" ? ["ok", "Working"] : dot === "warn" ? ["warn", "Needs attention"]
+    : dot === "bad" ? ["bad", "Last run failed"] : dot === "info" ? ["info", "Running"] : ["", n ? "Not verified" : "None yet"];
+  return linkRow(page, [h("td", { class: "col-icon" }, markEl(markKey)), nameCell(label, page),
+    h("td", { text: plural(n, noun) }), h("td", {}, h("span", { class: `pill ${cls}`, text }))]);
+}
 function groupSection(cloud, group, mine, runs) {
   const noun = group === "Kubernetes" ? "cluster" : "workload";
   const here = mine.filter((it) => (it.kind === "cluster") === (group === "Kubernetes"));
-  const tiles = Object.entries(SECTIONS).filter(([, s]) => s[0] === cloud && s[4] === group).map(([key, [, label, page, mark]]) => {
+  const secs = Object.entries(SECTIONS).filter(([, s]) => s[0] === cloud && s[4] === group);
+  if (!secs.length) return null;
+  const bodies = [];
+  let fam = null, rows = [];
+  const flush = () => {
+    if (!rows.length) return;
+    const head = fam ? [h("tr", { class: "fam-row" }, h("th", { scope: "colgroup", colspan: "4", text: fam }))] : [];
+    bodies.push(h("tbody", {}, ...head, ...rows));
+    rows = [];
+  };
+  for (const [key, [, label, page, mark]] of secs) {
+    const [f, short] = FAMILY[key] || [null, label];
+    if (f !== fam) { flush(); fam = f; }
     const inSec = here.filter((it) => it.section === key);
     const last = runs.find((r) => r.section === key);
     const dot = inSec.length ? (inSec.every((it) => it.ok) ? "ok" : "warn") : last ? runPill(last.status)[0] : "";
-    return tile(page, mark, label, plural(inSec.length, noun), dot);
-  });
-  if (!tiles.length) return null;
+    rows.push(serviceRow(key, short, page, mark, inSec.length, noun, dot));
+  }
+  flush();
+  const services = h("div", { class: "table-wrap" }, h("table", { class: "list-table dash-table svc-table" },
+    h("thead", {}, h("tr", {}, ...["", "Service", noun === "cluster" ? "Clusters" : "Workloads", "Status"]
+      .map((c, i) => h("th", { scope: "col", class: i === 0 ? "col-icon" : "", text: c })))),
+    ...bodies));
   return h("div", { class: "board-group" },
     h("h3", { class: "board-sub" }, h("span", { text: group }), h("span", { class: "board-count", text: plural(here.length, noun) })),
-    h("div", { class: "tiles" }, ...tiles),
+    services,
     table(["", "Name", "Type", "Detail", "Status"], here.map(itemRow), `No ${noun}s on ${CLOUD_NAMES[cloud]} yet`));
 }
 

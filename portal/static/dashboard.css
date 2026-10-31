@@ -214,3 +214,11 @@
 .sicon .s-fill { fill: #5ba908; stroke: #4e8416; stroke-width: 1; }
 .sicon .s-soft { stroke: #c9d6bb; stroke-width: 1.8; fill: none; }
 .sicon .s-arc { stroke: #5ba908; stroke-width: 2.6; fill: none; }
+/* Services table: family header rows (Container Apps, Functions, Cloud Run) above their services. */
+#dash .svc-table .fam-row th { background: #f4f6f1; font-size: 13px; font-weight: 700; color: #2c3a1e; text-align: left;
+  padding-top: var(--s-2); padding-bottom: var(--s-2); }
+#dash .svc-table tbody + tbody { border-top: 1px solid var(--edge); }
+#dash .svc-table { table-layout: fixed; width: 100%; }
+#dash .svc-table thead th:nth-child(1) { width: 56px; }
+#dash .svc-table thead th:nth-child(3) { width: 30%; }
+#dash .svc-table thead th:nth-child(4) { width: 22%; }
