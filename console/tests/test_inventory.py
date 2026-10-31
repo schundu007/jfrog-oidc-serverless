@@ -62,9 +62,10 @@ class InventoryTests(unittest.TestCase):
     def setUp(self):
         self.repo = Path(tempfile.mkdtemp(prefix="inv-"))
         self.addCleanup(shutil.rmtree, self.repo, True)
-        (self.repo / "pipelines" / "vars").mkdir(parents=True)
-        (self.repo / "pipelines" / "vars" / "test.yml").write_text(
-            "variables:\n  JFROG_URL: https://acme.jfrog.io/\n")
+        setup = self.repo / ".console" / "setup" / "test"
+        setup.mkdir(parents=True)
+        (setup / "gcp-foundation.tfvars.json").write_text(json.dumps({"jfrog_url": "https://acme.jfrog.io/"}))
+        (setup / "azure-foundation.tfvars.json").write_text(json.dumps({"jfrog_url": "https://other.jfrog.io"}))
 
     def test_gcp(self):
         sh = Fake()
@@ -197,6 +198,9 @@ class InventoryTests(unittest.TestCase):
         self.assertFalse(any(w["onboarded"] for w in before["workloads"]))
         self.assertEqual([w["name"] for w in after["workloads"] if w["onboarded"]], ["nightly"])
         self.assertEqual(after["defaults"]["jfrog_url"], "https://acme.jfrog.io")
+        # Each cloud reads only its own foundation's inputs.
+        self.assertEqual(inventory.annotate("azure", inventory.fetch("azure", Fake(), ""), self.repo)["defaults"]["jfrog_url"],
+                         "https://other.jfrog.io")
 
     def test_only_read_commands(self):
         sh = Fake()

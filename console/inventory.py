@@ -35,16 +35,21 @@ ECS_FAMILY_CAP = 50
 LOCATION = "cloud.googleapis.com/location"
 
 
-def _jfrog_url(repo_root) -> str:
-    """JFROG_URL from pipelines/vars/test.yml, the platform the pipelines already use."""
-    if repo_root is None:
+# The foundation whose Setup inputs name the JFrog platform a cloud's pipelines use.
+FOUNDATION = {"gcp": "gcp-foundation", "azure": "azure-foundation"}
+
+
+def _jfrog_url(cloud: str, repo_root, env: str = "test") -> str:
+    """jfrog_url from this cloud's own foundation inputs (Setup page), the platform its pipelines
+    use. Never another cloud's: clouds share nothing."""
+    if repo_root is None or cloud not in FOUNDATION:
         return ""
-    p = Path(repo_root) / "pipelines" / "vars" / "test.yml"
+    p = Path(repo_root) / ".console" / "setup" / env / f"{FOUNDATION[cloud]}.tfvars.json"
     try:
-        m = re.search(r"^\s*JFROG_URL:\s*(\S+)\s*$", p.read_text(), re.M)
-    except OSError:
+        url = json.loads(p.read_text()).get("jfrog_url") or ""
+    except (OSError, ValueError, AttributeError):
         return ""
-    return m.group(1).strip("'\"").rstrip("/") if m else ""
+    return str(url).strip().rstrip("/")
 
 
 API_DISABLED = re.compile(r"SERVICE_DISABLED|has not been used in project|API has not been used", re.I)
@@ -340,7 +345,7 @@ def fetch(cloud: str, sh: Shell, scope: str | None = None) -> dict:
 def annotate(cloud: str, raw: dict, repo_root=None, configs=()) -> dict:
     """A fetched listing plus what is local and changes often: the JFrog URL and onboarded marks."""
     out = copy.deepcopy(raw)
-    out["defaults"]["jfrog_url"] = _jfrog_url(repo_root)
+    out["defaults"]["jfrog_url"] = _jfrog_url(cloud, repo_root)
     done = onboarded_keys(cloud, [*configs, *delivered_configs(repo_root)])
     for w in out["workloads"]:
         w["onboarded"] = _key(cloud, w) in done
