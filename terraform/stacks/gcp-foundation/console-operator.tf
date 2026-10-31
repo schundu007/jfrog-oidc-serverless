@@ -13,29 +13,15 @@ variable "console_operators" {
 }
 
 variable "console_jfrog_provider" {
-  description = "JFrog OIDC provider that trusts Google ID tokens (issuer https://accounts.google.com)."
+  description = "Name of the JFrog OIDC integration this stack creates for the operator (trusts Google ID tokens)."
   type        = string
-  default     = "gcp-cloudrun"
+  default     = "console-operator-google"
 }
 
 variable "console_jfrog_audience" {
-  description = "That provider's audience."
+  description = "Audience the operator's Google ID token carries."
   type        = string
-  default     = "jfrog-gcp"
-}
-
-variable "azure_console_operators" {
-  description = "Entra object IDs of people who run the Infrastructure page: read/write the Azure Terraform state (the pipelines' setup identity already can)."
-  type        = list(string)
-  default     = []
-}
-
-resource "azurerm_role_assignment" "console_operator_state" {
-  for_each             = toset(var.azure_console_operators)
-  scope                = azurerm_storage_container.tfstate.id
-  role_definition_name = "Storage Blob Data Contributor"
-  principal_id         = each.value
-  principal_type       = "User"
+  default     = "jfrog-console"
 }
 
 locals {
@@ -43,6 +29,8 @@ locals {
 }
 
 resource "google_service_account" "console_operator" {
+  depends_on = [google_project_service.apis]
+
   count        = local.console_operator ? 1 : 0
   account_id   = "jfrog-console-operator"
   display_name = "JFrog console operator (OIDC exchange, no stored token)"
@@ -55,11 +43,21 @@ resource "google_service_account_iam_member" "console_operator" {
   member             = each.value
 }
 
+# Its own integration, so it never depends on (or collides with) a workload's gcp-cloudrun one.
+resource "platform_oidc_configuration" "console_operator" {
+  count         = local.console_operator ? 1 : 0
+  name          = var.console_jfrog_provider
+  description   = "Console operator: Google ID tokens of the jfrog-console-operator service account"
+  issuer_url    = "https://accounts.google.com"
+  provider_type = "generic"
+  audience      = var.console_jfrog_audience
+}
+
 resource "platform_oidc_identity_mapping" "console_operator" {
   count         = local.console_operator ? 1 : 0
   name          = "console-operator"
   description   = "Console operator: short-lived admin token for console reads and approved writes"
-  provider_name = var.console_jfrog_provider
+  provider_name = platform_oidc_configuration.console_operator[0].name
   priority      = 1
   claims_json   = jsonencode({ sub = google_service_account.console_operator[0].unique_id, aud = var.console_jfrog_audience })
   token_spec = {

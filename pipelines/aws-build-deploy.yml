@@ -5,7 +5,7 @@
 #               revision with that image, update the service when there is one
 #   apprunner   cloud-run-service image (serves /healthz/jfrog), push to ECR, start-deployment
 # The image path brings images in at build time (JFrog -> ECR): ECR pull-through
-# cache cannot use JFrog as an upstream. Trust: terraform/stacks/ado-trust/aws.tf.
+# cache cannot use JFrog as an upstream. Trust: none yet (AWS is out of the foundations; it needs its own aws-foundation stack).
 
 trigger: none
 pr: none

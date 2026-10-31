@@ -44,7 +44,7 @@ if [ -n "${GCP_SERVICE_ACCOUNT:-}" ]; then
   gcloud config set project "$GCP_PROJECT" --quiet
 fi
 
-# AWS: the same token assumes the connection's role (terraform/stacks/ado-trust/aws.tf).
+# AWS: the same token assumes the connection's role (needs an aws-foundation stack; none today).
 # The AWS CLI and the Terraform AWS provider read these two variables themselves
 # (AssumeRoleWithWebIdentity); no keys are written anywhere.
 if [ -n "${AWS_ROLE_ARN:-}" ]; then

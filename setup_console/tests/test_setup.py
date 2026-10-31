@@ -22,7 +22,7 @@ def fake_shell(log):
 
 
 VARS = {
-    "ado-trust": '''variable "jfrog_url" {
+    "gcp-foundation": '''variable "jfrog_url" {
   description = "JFrog platform origin"
   type        = string
   validation {
@@ -31,13 +31,6 @@ VARS = {
   }
 }
 variable "ado_org" { type = string }
-variable "azure_subscription_id" { type = string }
-variable "azure_identity" {
-  type = object({
-    name           = string
-    resource_group = string
-  })
-}
 variable "gcp_project_id" { type = string }
 variable "notes" {
   description = <<-EOT
@@ -45,6 +38,15 @@ variable "notes" {
   EOT
   type    = list(string)
   default = []
+}
+''',
+    "azure-foundation": '''variable "ado_org" { type = string }
+variable "azure_subscription_id" { type = string }
+variable "azure_identity" {
+  type = object({
+    name           = string
+    resource_group = string
+  })
 }
 ''',
     "gke-cluster": '''variable "gcp_project_id" { type = string }
@@ -74,8 +76,8 @@ variable "spot" {
 ''',
 }
 BACKENDS = {"gke-cluster": "gcs", "gcp-cloud-run": "gcs", "aks-cluster": "azurerm", "azure-container-apps": "azurerm"}
-FOUNDATION = {"jfrog_url": "https://acme.jfrog.io", "ado_org": "my-org", "azure_subscription_id": "sub-1",
-              "azure_identity": {"name": "id", "resource_group": "rg-ci"}, "gcp_project_id": "proj-1"}
+GCP_FOUNDATION = {"jfrog_url": "https://acme.jfrog.io", "ado_org": "my-org", "gcp_project_id": "proj-1"}
+AZURE_FOUNDATION = {"ado_org": "my-org", "azure_subscription_id": "sub-1", "azure_identity": {"name": "id", "resource_group": "rg-ci"}}
 
 
 class Root:
@@ -95,7 +97,8 @@ class Root:
         return stacks.write_inputs(sid, "test", values, self.dir, self.state)
 
     def ready(self):
-        self.save("ado-trust", FOUNDATION)
+        self.save("gcp-foundation", GCP_FOUNDATION)
+        self.save("azure-foundation", AZURE_FOUNDATION)
         self.save("gke-cluster", {"gcp_project_id": "proj-1", "jfrog_url": "https://acme.jfrog.io"})
         self.save("aks-cluster", {"azure_subscription_id": "sub-1"})
 
@@ -119,18 +122,19 @@ class StackTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.root.dir)
 
     def test_inputs_come_from_variables_tf(self):
-        by = {v["name"]: v for v in stacks.variables("ado-trust", self.root.dir)}
-        self.assertEqual(list(by), ["jfrog_url", "ado_org", "azure_subscription_id", "azure_identity", "gcp_project_id", "notes"])
+        by = {v["name"]: v for v in stacks.variables("gcp-foundation", self.root.dir)}
+        self.assertEqual(list(by), ["jfrog_url", "ado_org", "gcp_project_id", "notes"])
         self.assertTrue(by["jfrog_url"]["required"])
         self.assertEqual(by["jfrog_url"]["description"], "JFrog platform origin")
-        self.assertEqual((by["azure_identity"]["kind"], by["notes"]["kind"], by["notes"]["default"]), ("json", "json", []))
+        self.assertEqual((by["notes"]["kind"], by["notes"]["default"]), ("json", []))
+        self.assertEqual(stacks.variables("azure-foundation", self.root.dir)[2]["kind"], "json")
         self.assertEqual(by["gcp_project_id"]["options"], "gcp_projects")
         g = {v["name"]: v for v in stacks.variables("gke-cluster", self.root.dir)}
         self.assertEqual((g["node_count"]["kind"], g["node_count"]["default"]), ("number", 1))
         self.assertTrue(g["api_token"]["sensitive"])
 
     def test_form_prefills_saved_then_shared_then_default(self):
-        self.root.save("ado-trust", FOUNDATION)
+        self.root.save("gcp-foundation", GCP_FOUNDATION)
         f = {x["name"]: x for x in stacks.form("gke-cluster", "test", self.root.dir, self.root.state)["fields"]}
         self.assertEqual((f["gcp_project_id"]["current"], f["gcp_project_id"]["source"]), ("proj-1", "shared"))
         self.assertEqual((f["name"]["current"], f["name"]["source"]), ("gke-jfrog-test", "default"))
@@ -146,7 +150,7 @@ class StackTests(unittest.TestCase):
             with self.assertRaises(stacks.StackError, msg=bad):
                 self.root.save("gke-cluster", bad)
         with self.assertRaises(stacks.StackError):
-            self.root.save("ado-trust", {"azure_identity": "{not json"})
+            self.root.save("azure-foundation", {"azure_identity": "{not json"})
 
     def test_terraform_args_from_inputs(self):
         with self.assertRaises(stacks.StackError) as e:
@@ -160,13 +164,16 @@ class StackTests(unittest.TestCase):
         init, _ = stacks.tf_args("aks-cluster", "test", self.root.dir, self.root.state)
         self.assertIn("-backend-config=storage_account_name=stmyorgtfstate", init)
         self.assertIn("-backend-config=resource_group_name=rg-ci", init)
-        self.assertEqual(stacks.tf_args("ado-trust", "test", self.root.dir, self.root.state)[0], ())
+        self.assertEqual(stacks.tf_args("gcp-foundation", "test", self.root.dir, self.root.state)[0], ())
 
-    def test_remote_state_needs_the_foundation(self):
+    def test_each_cloud_reads_only_its_own_foundation(self):
+        self.root.save("gcp-foundation", GCP_FOUNDATION)          # GCP foundation alone: GCP stacks work
+        self.root.save("gke-cluster", {"gcp_project_id": "proj-1"})
         self.root.save("aks-cluster", {"azure_subscription_id": "sub-1"})
-        with self.assertRaises(stacks.StackError) as e:
+        self.assertIn("-backend-config=bucket=proj-1-tfstate", stacks.tf_args("gke-cluster", "test", self.root.dir, self.root.state)[0])
+        with self.assertRaises(stacks.StackError) as e:           # ...and Azure ones don't borrow from it
             stacks.tf_args("aks-cluster", "test", self.root.dir, self.root.state)
-        self.assertIn("ADO trust", str(e.exception))
+        self.assertIn("azure-foundation", str(e.exception))
 
     def test_unknown_stack_refused(self):
         with self.assertRaises(stacks.StackError):
@@ -222,14 +229,14 @@ class JobTests(unittest.TestCase):
         self.assertTrue(done["result"]["destroyed"])
 
     def test_destroy_skips_jfrog_token_when_state_has_no_jfrog_resources(self):
-        state = self.root.dir / "ado-trust" / "terraform.tfstate"
+        state = self.root.dir / "gcp-foundation" / "terraform.tfstate"
         state.write_text(json.dumps({"resources": [{"type": "google_storage_bucket"}]}))
-        self._plan("ado-trust", [{"address": "a.b", "type": "x", "change": {"actions": ["delete"]}}], action="plan-destroy")
+        self._plan("gcp-foundation", [{"address": "a.b", "type": "x", "change": {"actions": ["delete"]}}], action="plan-destroy")
         self.assertEqual(self.minted, [])
         state.write_text(json.dumps({"resources": [{"type": "platform_oidc_configuration"}]}))
-        self._plan("ado-trust", [{"address": "a.b", "type": "x", "change": {"actions": ["delete"]}}], action="plan-destroy")
+        self._plan("gcp-foundation", [{"address": "a.b", "type": "x", "change": {"actions": ["delete"]}}], action="plan-destroy")
         self.assertEqual(self.minted, ["acme.jfrog.io"])
-        self._plan("ado-trust", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        self._plan("gcp-foundation", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
         self.assertEqual(len(self.minted), 2)
 
     def test_plan_refused_until_inputs_filled(self):
@@ -258,7 +265,7 @@ class ServerTests(unittest.TestCase):
     def setUp(self):
         self.root = Root()
         self.addCleanup(shutil.rmtree, self.root.dir)
-        self.root.save("ado-trust", FOUNDATION)
+        self.root.save("gcp-foundation", GCP_FOUNDATION)
         self.console = SetupServer(token=TOKEN, root=self.root.dir, state_root=self.root.state, log=open("/dev/null", "w"),
                                    jobs=Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state))
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(self.console))
@@ -302,7 +309,7 @@ class ServerTests(unittest.TestCase):
         st, body, _ = self.req("GET", "/api/stacks/gke-cluster/inputs")
         form = json.loads(body)
         self.assertEqual(st, 200)
-        self.assertEqual(form["missing"], ["gcp_project_id"])   # prefilled from ADO trust, not saved yet
+        self.assertEqual(form["missing"], ["gcp_project_id"])   # prefilled from gcp-foundation, not saved yet
         self.assertEqual({f["name"]: f.get("current") for f in form["fields"]}["gcp_project_id"], "proj-1")
         self.assertEqual(self.req("PUT", "/api/stacks/gke-cluster/inputs", {"values": {"api_token": "x"}})[0], 400)
         st, body, _ = self.req("PUT", "/api/stacks/gke-cluster/inputs", {"values": {"gcp_project_id": "proj-9", "name": "x"}})

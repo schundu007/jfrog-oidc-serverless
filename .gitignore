@@ -32,3 +32,6 @@ terraform.tfvars
 .console/
 .kcp-console/
 tfplan
+
+# console run locks
+.console.lock

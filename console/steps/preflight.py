@@ -272,7 +272,7 @@ class Preflight(AwsPreflight, OpenShiftPreflight):
         if roles:
             return self.add("pipeline_reach", "Pipeline can change this project", "ok", ", ".join(roles))
         self.add("pipeline_reach", "Pipeline can change this project", "fail", f"{sa} has no role in {project}",
-                 f"Grant it the setup roles in {project} (terraform/stacks/ado-trust), then Preflight again.")
+                 f"Grant it the setup roles in {project} (terraform/stacks/gcp-foundation), then Preflight again.")
 
     def _azure_pipeline_reach(self, sub, rg_id):
         principal = self._pipeline_identity("azure")
@@ -288,7 +288,7 @@ class Preflight(AwsPreflight, OpenShiftPreflight):
             return self.add("pipeline_reach", "Pipeline can change this resource group", "ok", ", ".join(roles))
         self.add("pipeline_reach", "Pipeline can change this resource group", "fail",
                  f"the pipeline setup identity has {', '.join(roles) or 'no role'} here",
-                 f"Grant it Contributor and RBAC Administrator on subscription {sub} (terraform/stacks/ado-trust).")
+                 f"Grant it Contributor and RBAC Administrator on subscription {sub} (terraform/stacks/azure-foundation).")
 
     # -- Azure ------------------------------------------------------------------------
 

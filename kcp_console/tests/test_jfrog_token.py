@@ -15,7 +15,7 @@ from kcp_console.shell import HttpResult, Result
 ENV = {"JFROG_OIDC_PROVIDER": "gcp-cloudrun", "JFROG_OIDC_AUDIENCE": "jfrog-gcp",
        "JFROG_OIDC_SERVICE_ACCOUNT": "jfrog-console-operator@p.iam.gserviceaccount.com"}
 STATE_DIR = tempfile.mkdtemp()
-STATE = pathlib.Path(STATE_DIR, "terraform.tfstate")  # ado-trust's state, as far as the console reads it
+STATE = pathlib.Path(STATE_DIR, "terraform.tfstate")  # gcp-foundation's state, as far as the console reads it
 STATE.write_text(json.dumps({"outputs": {"console_operator_env": {"value": ENV}}}))
 ID_TOKEN = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln"
 ACCESS = "eyJ2ZXIiOiIyIn0.eyJzdWIiOiJqZmFjIn0.YWNjZXNz"
@@ -74,7 +74,7 @@ class OperatorTokenTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, d)
         state = pathlib.Path(d, "terraform.tfstate")
         tokens = OperatorToken(state_file=state)
-        self.assertFalse(tokens.configured)   # ado-trust not deployed yet
+        self.assertFalse(tokens.configured)   # gcp-foundation not deployed yet
         shutil.copy(STATE, state)
         self.assertTrue(tokens.configured)    # deployed while the console runs
         tokens.get(FakeShell(), "x.jfrog.io")
@@ -85,9 +85,9 @@ class OperatorTokenTests(unittest.TestCase):
     def test_not_configured_names_the_settings(self):
         with self.assertRaises(TokenError) as cm:
             OperatorToken(state_file=pathlib.Path(STATE_DIR, "missing")).get(FakeShell(), "x.jfrog.io")
-        self.assertIn("ado-trust", str(cm.exception))
+        self.assertIn("gcp-foundation", str(cm.exception))
 
-    def test_the_identity_is_the_ado_trust_output(self):
+    def test_the_identity_is_the_gcp_foundation_output(self):
         self.assertEqual(operator_identity(STATE), ENV)
         self.assertEqual(operator_identity(pathlib.Path(STATE_DIR, "missing"))["JFROG_OIDC_PROVIDER"], "")
 

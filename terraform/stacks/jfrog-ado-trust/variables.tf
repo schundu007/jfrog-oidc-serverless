@@ -17,21 +17,9 @@ variable "ado_org" {
   type        = string
 }
 
-variable "azure_tenant_id" {
-  description = "Entra tenant that issues the service connections' tokens."
+variable "ado_tenant_id" {
+  description = "Entra tenant that issues the ADO service connections' tokens (issuer https://login.microsoftonline.com/<tenant>/v2.0)."
   type        = string
-}
-
-variable "azure_subscription_id" {
-  type = string
-}
-
-variable "azure_identity" {
-  description = "Managed identity behind the ADO service connections."
-  type = object({
-    name           = string
-    resource_group = string
-  })
 }
 
 variable "connections" {
@@ -48,42 +36,6 @@ variable "connections" {
     condition     = toset(keys(var.connections)) == toset(["build", "setup"])
     error_message = "connections needs exactly the keys build and setup."
   }
-}
-
-variable "gcp_project_id" {
-  type = string
-}
-
-variable "gcp_region" {
-  type    = string
-  default = "us-central1"
-}
-
-variable "gcp_image_repository" {
-  description = "Artifact Registry repository the build pipeline pushes to."
-  type        = string
-  default     = "platform"
-}
-
-variable "aws_account_id" {
-  description = "AWS account the pipelines deploy to; null leaves AWS out (no provider credentials needed)."
-  type        = string
-  default     = null
-  validation {
-    condition     = var.aws_account_id == null || can(regex("^[0-9]{12}$", var.aws_account_id))
-    error_message = "aws_account_id must be 12 digits."
-  }
-}
-
-variable "aws_region" {
-  type    = string
-  default = "us-east-1"
-}
-
-variable "aws_image_repository" {
-  description = "ECR repository the AWS build pipeline pushes to."
-  type        = string
-  default     = "platform"
 }
 
 variable "ado_token_audience" {

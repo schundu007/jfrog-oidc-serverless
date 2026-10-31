@@ -1,7 +1,7 @@
 # Source deploy for a Cloud Run function (gen2), keeping the identity and JFrog
 # settings the console wired. No image: Cloud Functions builds the source.
 # The login comes from the service connection's OIDC token (no stored secrets).
-# Trust: terraform/stacks/ado-trust. Infrastructure: pipelines/gcp-stack-setup.yml.
+# Trust: terraform/stacks/gcp-foundation and jfrog-ado-trust. Infrastructure: pipelines/gcp-stack-setup.yml.
 
 trigger:
   batch: true   # pushes during a run wait for it, so CI runs never deploy the function at once

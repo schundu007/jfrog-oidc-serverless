@@ -104,7 +104,7 @@ class GcpPreflightTests(unittest.TestCase):
         self.assertEqual(self._reach(["serviceAccount:ado-setup@ci-1234.iam.gserviceaccount.com"])["status"], "ok")
         miss = self._reach(["user:someone@example.com"])
         self.assertEqual(miss["status"], "fail")
-        self.assertIn("ado-trust", miss["fix"])
+        self.assertIn("-foundation", miss["fix"])
 
     def _code(self, remote_console, remote_modules, local_static="s1"):
         perms = preflight.GCP_PERMISSIONS_COMMON + preflight.GCP_PERMISSIONS_BY_KIND["gcp_run_service"]

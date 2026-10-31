@@ -3,7 +3,7 @@ output "workload_service_account" {
 }
 
 output "image_repository" {
-  value = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${google_artifact_registry_repository.images.repository_id}"
+  value = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/${data.google_artifact_registry_repository.images.repository_id}"
 }
 
 output "job_name" {

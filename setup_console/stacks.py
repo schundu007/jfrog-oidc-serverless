@@ -8,10 +8,11 @@ variables.tf declares; the Infrastructure page shows them as a form and saves wh
 as JSON (<state root>/<env>/<stack>.tfvars.json, outside git), passed with -var-file. A variable
 two stacks share (jfrog_url, gcp_project_id, ...) is prefilled from the last value saved for it.
 
-Remote state (a stack whose backend.tf names gcs or azurerm) is configured with -backend-config
-pairs derived from the foundation inputs, the ones ADO trust creates the state stores from:
-gcs bucket <gcp_project_id>-tfstate; azurerm account st<ado_org>tfstate in the ADO identity's
-resource group. ADO trust itself keeps local state.
+Each cloud is isolated: its own foundation stack (gcp-foundation, azure-foundation) holds that
+cloud's trust and state store, and its stacks' remote state is -backend-config derived from that
+foundation's inputs only: gcs bucket <gcp_project_id>-tfstate; azurerm account st<ado_org>tfstate
+in the ADO identity's resource group. JFrog's side of the ADO trust is its own stack. Foundation
+stacks keep local state.
 """
 
 from __future__ import annotations
@@ -27,14 +28,17 @@ STATE_ROOT = REPO_ROOT / ".console" / "setup"
 
 # id = the stack directory. Order is the order to deploy in; destroy in reverse.
 CATALOGUE = (
-    {"id": "ado-trust", "group": "Foundation", "title": "ADO trust"},
+    {"id": "jfrog-ado-trust", "group": "JFrog", "title": "ADO pipelines trust"},
+    {"id": "gcp-foundation", "group": "Google Cloud", "title": "Foundation (ADO trust, state)"},
     {"id": "gcp-cloud-run", "group": "Google Cloud", "title": "Cloud Run job"},
     {"id": "gke-cluster", "group": "Google Cloud", "title": "GKE cluster"},
+    {"id": "azure-foundation", "group": "Azure", "title": "Foundation (ADO trust, state)"},
     {"id": "azure-container-apps", "group": "Azure", "title": "Container Apps job"},
     {"id": "aks-cluster", "group": "Azure", "title": "AKS cluster"},
 )
 IDS = tuple(s["id"] for s in CATALOGUE)
-FOUNDATION = "ado-trust"
+# The foundation whose inputs a remote backend's location derives from, by backend type.
+FOUNDATION = {"gcs": "gcp-foundation", "azurerm": "azure-foundation"}
 MAX_VARS = 64 * 1024
 _SECRETISH = re.compile(r"(password|secret|(^|_)(api_)?key$|(^|_)token$)", re.I)
 # Inputs a picker can offer live choices for (read-only CLI listings).
@@ -267,9 +271,9 @@ def missing(stack_id: str, env: str, root: Path = STACKS_DIR, state_root: Path =
 
 # -- terraform arguments -------------------------------------------------------------------------------
 
-def foundation(env: str, state_root: Path = STATE_ROOT) -> dict:
-    """What remote state is derived from: ADO trust's saved inputs."""
-    f = read_inputs(FOUNDATION, env, state_root)
+def foundation(kind: str, env: str, state_root: Path = STATE_ROOT) -> dict:
+    """What a backend's location derives from: the saved inputs of that cloud's foundation only."""
+    f = read_inputs(FOUNDATION[kind], env, state_root) if kind in FOUNDATION else {}
     return {"gcp_project_id": f.get("gcp_project_id"), "azure_subscription_id": f.get("azure_subscription_id"),
             "ado_org": f.get("ado_org"), "state_resource_group": (f.get("azure_identity") or {}).get("resource_group")}
 
@@ -281,7 +285,7 @@ def backend_config(kind: str, stack_id: str, env: str, found: dict) -> tuple:
         raise StackError(f"{stack_id}: backend {kind!r} is not supported")
     gaps = [k for k in need if not found.get(k)]
     if gaps:
-        raise StackError(f"save the ADO trust inputs first ({', '.join(gaps)}): its state stores hold this stack's state")
+        raise StackError(f"save the {FOUNDATION[kind]} inputs first ({', '.join(gaps)}): its state store holds this stack's state")
     if kind == "gcs":
         pairs = {"bucket": f"{found['gcp_project_id']}-tfstate", "prefix": f"{stack_id}/{env}"}
     else:
@@ -299,7 +303,7 @@ def tf_args(stack_id: str, env: str, root: Path = STACKS_DIR, state_root: Path =
     init = ()
     kind = backend_kind(stack_id, root)
     if kind:
-        init = ("-reconfigure", *backend_config(kind, stack_id, env, foundation(env, state_root)))
+        init = ("-reconfigure", *backend_config(kind, stack_id, env, foundation(kind, env, state_root)))
     return init, (f"-var-file={inputs_file(stack_id, env, state_root)}",)
 
 

@@ -23,12 +23,11 @@ removed {
   }
 }
 
-resource "google_artifact_registry_repository" "images" {
+# Created by ADO trust (the build pipeline pushes to it before this stack deploys a job).
+data "google_artifact_registry_repository" "images" {
   project       = var.gcp_project_id
   location      = var.gcp_region
   repository_id = var.image_repository
-  format        = "DOCKER"
-  description   = "Workload images (not proxied through JFrog)"
 }
 
 resource "google_service_account" "workload" {
@@ -70,9 +69,4 @@ resource "google_cloud_run_v2_job" "workload" {
     # The build pipeline owns the image tag; the console's wire step owns JFROG_*.
     ignore_changes = [template[0].template[0].containers[0].image, template[0].template[0].containers[0].env]
   }
-}
-
-moved {
-  from = google_artifact_registry_repository.platform
-  to   = google_artifact_registry_repository.images
 }

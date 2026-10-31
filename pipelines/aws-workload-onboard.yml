@@ -2,7 +2,7 @@
 # The console opens a pull request; merging it is the approval. For each
 # workspace changed by the merge: terraform plan and apply as ado-setup
 # (AssumeRoleWithWebIdentity with the setup connection's OIDC token), then wire
-# every target with the console's Wire step. Trust: terraform/stacks/ado-trust/aws.tf.
+# every target with the console's Wire step. Trust: none yet (AWS is out of the foundations; it needs its own aws-foundation stack).
 
 trigger:
   branches:

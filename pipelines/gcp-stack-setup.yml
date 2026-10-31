@@ -25,7 +25,7 @@ parameters:
   - name: inputs
     type: object
     default: {}
-  # Where state lives: the ADO trust inputs it derives from (gcp_project_id; azure_subscription_id, ado_org, state_resource_group).
+  # Where state lives: this cloud's foundation inputs it derives from (gcp_project_id; azure_subscription_id, ado_org, state_resource_group).
   - name: state
     type: object
     default: {}

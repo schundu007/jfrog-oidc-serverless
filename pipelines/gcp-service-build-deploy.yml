@@ -2,7 +2,7 @@
 # pipelines are gcp-build-deploy and gcp-function-deploy).
 # The base image comes through JFrog and the image goes to Artifact Registry;
 # both logins come from the service connection's OIDC token (no stored secrets).
-# Trust: terraform/stacks/ado-trust. Infrastructure: pipelines/gcp-stack-setup.yml.
+# Trust: terraform/stacks/gcp-foundation and jfrog-ado-trust. Infrastructure: pipelines/gcp-stack-setup.yml.
 
 trigger:
   branches:
