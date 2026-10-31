@@ -22,6 +22,8 @@ resource "google_project_service" "apis" {
     "sts.googleapis.com",
     "artifactregistry.googleapis.com",
     "run.googleapis.com",
+    "cloudfunctions.googleapis.com", # gcp-function-deploy (gen2 source deploys)
+    "cloudbuild.googleapis.com",     # builds those sources
   ])
 
   project            = var.gcp_project_id
