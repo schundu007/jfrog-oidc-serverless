@@ -36,3 +36,12 @@ resource "azuredevops_check_approval" "stack" {
   requester_can_approve      = true
   timeout                    = 43200
 }
+
+# Pipelines may use the environments without a one-time "Permit" in ADO (a run otherwise waits on
+# an authorization checkpoint before its approval). The approval check above still gates every apply.
+resource "azuredevops_pipeline_authorization" "stack" {
+  for_each    = azuredevops_environment.stack
+  project_id  = data.azuredevops_project.this.id
+  resource_id = each.value.id
+  type        = "environment"
+}
