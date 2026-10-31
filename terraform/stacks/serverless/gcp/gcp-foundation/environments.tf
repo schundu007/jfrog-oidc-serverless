@@ -2,10 +2,10 @@
 # only after approval on <stack>-<pipeline_environment>. Approvers: ado_approvers (user principal
 # names); empty leaves the environments without a check.
 
-variable "workload_stacks" {
-  description = "This cloud's stacks with a stack-setup pipeline: serverless workloads and the test cluster (one ADO environment each)."
-  type        = list(string)
-  default     = ["gcp-cloud-run", "gcp-cloud-run-service", "gcp-cloud-run-function", "gke-cluster"]
+# The stacks with a stack-setup pipeline (serverless workloads and the test cluster). Fixed by the
+# repo, not a target input: pipelines/<kind>/gcp/<stack>/stack-setup.yml exists for each.
+locals {
+  pipeline_stacks = ["gcp-cloud-run", "gcp-cloud-run-service", "gcp-cloud-run-function", "gke-cluster"]
 }
 
 variable "ado_approvers" {
@@ -20,7 +20,7 @@ data "azuredevops_identity_user" "approver" {
 }
 
 resource "azuredevops_environment" "stack" {
-  for_each    = toset(var.workload_stacks)
+  for_each    = toset(local.pipeline_stacks)
   project_id  = data.azuredevops_project.this.id
   name        = "${each.value}-${var.pipeline_environment}"
   description = "Approval for terraform/stacks/${each.value == "gke-cluster" ? "kubernetes" : "serverless"}/gcp/${each.value} (${var.pipeline_environment})."

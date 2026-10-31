@@ -199,6 +199,16 @@ class StackTests(unittest.TestCase):
         f = {x["name"]: x for x in stacks.form("gke-cluster", "test", self.root.dir, self.root.state)["fields"]}
         self.assertNotIn("current", f.get("gcp_project_id", {}))
 
+    def test_foundation_environments_cover_every_stack_setup_pipeline(self):
+        # Each foundation makes the approval environment for exactly the stacks of its cloud that
+        # have a stack-setup pipeline (pipelines/<kind>/<cloud>/<stack>/stack-setup.yml).
+        import re as _re
+        for cloud in ("gcp", "azure"):
+            tf = (stacks.STACKS_DIR / "serverless" / cloud / f"{cloud}-foundation" / "environments.tf").read_text()
+            listed = set(_re.findall(r'"([a-z0-9-]+)"', _re.search(r"pipeline_stacks = \[([^\]]*)\]", tf).group(1)))
+            have = {p.parent.name for p in (stacks.REPO_ROOT / "pipelines").glob(f"*/{cloud}/*/stack-setup.yml")}
+            self.assertEqual(listed, have, cloud)
+
     def test_each_serverless_type_is_its_own_stack(self):
         # The real stacks: one per workload type, each standing only on its cloud's foundation.
         types = {s["id"]: s for s in stacks.CATALOGUE if s["kind"] == "Serverless" and "foundation" not in s["id"]}
