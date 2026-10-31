@@ -13,6 +13,7 @@ import { mountList } from "./list.js";
 import { mountWorkload } from "./workload.js";
 import { mountRun } from "./runs.js";
 import { mountConfig } from "./configure.js";
+import { NOT_YET, mountNotYet } from "./notyet.js";
 
 const RUN_ID = /^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$/;
 const NAME = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -29,7 +30,8 @@ function route() {
 
 // Where you are; every level above the current page is a link.
 function renderTrail(r) {
-  const steps = [["Serverless", null], [CLOUDS[CLOUD], null], ["Workloads", r.page === "list" ? null : href.list()]];
+  const steps = [["Serverless", null], [CLOUDS[CLOUD], null]];
+  if (r.page !== "not-yet") steps.push(["Workloads", r.page === "list" ? null : href.list()]);
   if (r.page === "new") steps.push(["New workload", null]);
   if (r.name) steps.push([r.name, r.page === "run" ? href.workload(r.name, "runs") : null]);
   if (r.page === "run") steps.push([`Run ${r.id}`, null]);
@@ -106,12 +108,14 @@ async function start() {
   const schema = await connect();
   if (!schema || mounted) return;
   mounted = true;
-  const r = route();
+  // AWS and OpenShift: not set up live yet, every path shows what they will need.
+  const r = NOT_YET[CLOUD] ? { page: "not-yet" } : route();
   if (r.legacy) history.replaceState(null, "", href.list() + location.search);
   renderTrail(r);
   const page = $("page");
   try {
-    if (r.page === "new") await mountNew(page, { schema });
+    if (r.page === "not-yet") mountNotYet(page, CLOUD);
+    else if (r.page === "new") await mountNew(page, { schema });
     else if (r.page === "workload") await mountWorkload(page, { name: r.name, schema });
     else if (r.page === "run") await mountRun(page, { name: r.name, id: r.id });
     else await mountList(page, { schema });
