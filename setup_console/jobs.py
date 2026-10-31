@@ -20,6 +20,9 @@ from console.steps.terraform import ApplyRefused, Terraform, TerraformError
 from . import stacks
 
 
+MAX_LOG = 5000   # lines kept per job
+
+
 class JobError(RuntimeError):
     def __init__(self, status: int, message: str):
         super().__init__(message)
@@ -86,9 +89,14 @@ class Jobs:
         return self.get(job["id"])
 
     def _terraform(self, job) -> Terraform:
+        # The plan's Terraform is reused by the apply job: its log goes to whichever job runs it now.
+        current = {"job": job}
+
         def log(line):
             with self._lock:
-                job["log"].append(redact.text(line))
+                lines = current["job"]["log"]
+                lines.append(redact.text(line))
+                del lines[:-MAX_LOG]
         sh = self.shell_factory(log)
         env = dict(self.environ)
         host = stacks.jfrog_host(job["stack"], self.env_name, self.state_root)
@@ -99,7 +107,9 @@ class Jobs:
             except Exception as exc:   # stacks without JFrog resources still plan
                 log(f"no JFrog token: {redact.text(str(exc))[:200]}")
         init, plan = stacks.tf_args(job["stack"], self.env_name, self.root, self.state_root)
-        return Terraform(sh, stacks.stack_dir(job["stack"], self.root), env=env, init_args=init, plan_args=plan)
+        tf = Terraform(sh, stacks.stack_dir(job["stack"], self.root), env=env, init_args=init, plan_args=plan)
+        tf.log_to = current
+        return tf
 
     def _work(self, job, approval):
         sid, action = job["stack"], job["action"]
@@ -107,6 +117,7 @@ class Jobs:
             if action == "apply":
                 with self._lock:
                     plan = self._plans.pop(sid)
+                    plan["_tf"].log_to["job"] = job
                 result = plan["_tf"].apply(plan, approval)
                 result = {"applied": True, "destroyed": plan["action"] == "destroy", "outputs": result["outputs"]}
                 self._set_status(sid, {"deployed": plan["action"] != "destroy", "outputs": {} if plan["action"] == "destroy" else result["outputs"]})

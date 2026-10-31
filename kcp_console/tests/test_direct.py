@@ -31,7 +31,7 @@ class FakeShell:
         self.pod_phase, self.pod_reason = pod_phase, pod_reason
         self.env_seen = []
 
-    def run(self, argv, timeout=60.0, sensitive=False, extra_env=None):
+    def run(self, argv, timeout=60.0, sensitive=False, extra_env=None, stream=False):
         self.calls.append(list(argv))
         self.env_seen.append(extra_env or {})
         out = ""

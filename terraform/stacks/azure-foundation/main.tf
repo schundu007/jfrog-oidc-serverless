@@ -46,6 +46,8 @@ resource "azurerm_federated_identity_credential" "ado" {
   issuer                    = local.issuer
   subject                   = each.value.subject
   audience                  = [local.audience]
+
+  depends_on = [time_sleep.credential_propagation]
 }
 
 # AzureCLI@2 logs in before any script runs, so the build identity must see the

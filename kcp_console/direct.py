@@ -180,8 +180,8 @@ class Runner:
         self.pull_timeout = pull_timeout
         self.clock = clock
 
-    def _run(self, argv, timeout=300, ok_rcs=(0,)):
-        r = self.sh.run(argv, timeout=timeout, extra_env=self.kenv)
+    def _run(self, argv, timeout=300, ok_rcs=(0,), stream=False):
+        r = self.sh.run(argv, timeout=timeout, extra_env=self.kenv, stream=stream)
         if r.rc not in ok_rcs:
             raise StepError(redact.text((r.stderr or r.stdout or f"exit {r.rc}").strip().splitlines()[-1] if (r.stderr or r.stdout) else f"exit {r.rc}"))
         return r
@@ -224,7 +224,7 @@ class Runner:
             return "ok", "already enabled"
         if self.dry:
             return "skipped", "dry run: would enable it"
-        self._run(platforms.enable(self.cfg), timeout=1800)
+        self._run(platforms.enable(self.cfg), timeout=1800, stream=True)
         self.s_cluster()
         return "done", "enabled"
 
@@ -343,7 +343,7 @@ class Runner:
         k, v = self.cfg["k8s"], self.cfg["values"]
         self._run(["helm", "upgrade", "--install", k["release"], CHART, "--repo", CHART_REPO, "--version", v["chart_version"],
                    "--namespace", k["namespace"], "--create-namespace", "-f", str(self.p["values"]),
-                   *(["--dry-run=server"] if self.dry else [])], timeout=600)
+                   *(["--dry-run=server"] if self.dry else [])], timeout=600, stream=not self.dry)
         if self.dry:
             return "ok", f"{CHART} {v['chart_version']} rendered and validated by the API server"
         # An upgrade with the same pod template leaves the old pods in place, so the nodes keep the old
@@ -352,7 +352,7 @@ class Runner:
         names = [x["metadata"]["name"] for x in d.get("items", []) if "jfrog" in x["metadata"]["name"]]
         for n in names:
             self._run(["kubectl", "rollout", "restart", f"daemonset/{n}", "-n", k["namespace"]])
-            self._run(["kubectl", "rollout", "status", f"daemonset/{n}", "-n", k["namespace"], "--timeout=300s"], timeout=320)
+            self._run(["kubectl", "rollout", "status", f"daemonset/{n}", "-n", k["namespace"], "--timeout=300s"], timeout=320, stream=True)
         return "done", f"{CHART} {v['chart_version']} installed; provider pods restarted"
 
     def s_daemonset(self):
@@ -513,7 +513,7 @@ class Runner:
 
     def s_uninstall(self):
         k = self.cfg["k8s"]
-        self._run(["helm", "uninstall", k["release"], "--namespace", k["namespace"], *(["--dry-run"] if self.dry else [])], ok_rcs=(0, 1))
+        self._run(["helm", "uninstall", k["release"], "--namespace", k["namespace"], *(["--dry-run"] if self.dry else [])], ok_rcs=(0, 1), stream=True)
         return ("ok" if self.dry else "done"), "release removed" if not self.dry else "dry run"
 
     def s_unlabel(self):

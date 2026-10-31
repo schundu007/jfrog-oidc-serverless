@@ -26,7 +26,7 @@ class FakeShell:
         self.id_rc, self.status = id_rc, status
         self.calls, self.http_calls = [], []
 
-    def run(self, argv, timeout=60.0, sensitive=False, extra_env=None):
+    def run(self, argv, timeout=60.0, sensitive=False, extra_env=None, stream=False):
         self.calls.append((list(argv), sensitive))
         return Result(list(argv), self.id_rc, ID_TOKEN + "\n" if self.id_rc == 0 else "", "denied", 0.0)
 

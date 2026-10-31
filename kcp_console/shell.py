@@ -34,6 +34,7 @@ import json
 import os
 import shutil
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -142,14 +143,16 @@ class Shell:
 
     # -- commands ----------------------------------------------------------------
 
-    def run(self, argv: list, timeout: float = 60.0, sensitive: bool = False, extra_env: dict | None = None) -> Result:
+    def run(self, argv: list, timeout: float = 60.0, sensitive: bool = False, extra_env: dict | None = None,
+            stream: bool = False) -> Result:
+        """stream: log each output line as it is printed (long commands; never sensitive output)."""
         if not isinstance(argv, (list, tuple)) or not argv or not all(isinstance(a, str) for a in argv):
             raise TypeError("argv must be a non-empty list of strings")
         argv = list(argv)
         if self.mode == "replay":
             res = self._replay_cmd(argv)
         else:
-            res = self._exec(argv, timeout, extra_env)
+            res = self._exec(argv, timeout, extra_env, self._log if stream and not sensitive and self.log else None)
             if self.mode == "record":
                 self.recorded.append({"argv": [Path(argv[0]).name, *redact.argv(argv[1:])], "rc": res.rc,
                                       "stdout": REDACTED_OUTPUT if sensitive else redact.text(res.stdout),
@@ -157,12 +160,14 @@ class Shell:
         self._log(f"$ {' '.join(redact.argv(argv))} → exit {res.rc} ({res.seconds:.1f}s)")
         return res
 
-    def _exec(self, argv, timeout, extra_env) -> Result:
+    def _exec(self, argv, timeout, extra_env, on_line=None) -> Result:
         env = child_env(extra_env)
         exe = self.which(argv[0]) or (shutil.which(argv[0], path=env.get("PATH")) if self.which is shutil.which else None)
         started = time.monotonic()
         if not exe:
             return Result(argv, 127, "", f"{argv[0]}: command not found on PATH", 0.0)
+        if on_line:
+            return _exec_streaming([exe, *argv[1:]], argv, timeout, env, on_line, started)
         try:
             proc = subprocess.run([exe, *argv[1:]], capture_output=True, text=True, timeout=timeout,
                                   env=env, stdin=subprocess.DEVNULL, check=False)
@@ -236,6 +241,40 @@ class Shell:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(self.recorded, indent=2) + "\n")
+
+
+def _exec_streaming(cmd, argv, timeout, env, on_line, started) -> Result:
+    """subprocess.run(capture_output=True) that also hands each line to on_line as it is printed."""
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
+                                text=True, errors="replace", env=env)
+    except OSError as exc:
+        return Result(argv, 126, "", f"{argv[0]}: {exc}", time.monotonic() - started)
+    out, err = [], []
+
+    def pump(pipe, buf):
+        for line in pipe:
+            buf.append(line)
+            try:
+                on_line(line.rstrip("\n")[:2000])
+            except Exception:   # a broken listener never stops the command
+                pass
+
+    readers = [threading.Thread(target=pump, args=(proc.stdout, out), daemon=True),
+               threading.Thread(target=pump, args=(proc.stderr, err), daemon=True)]
+    for t in readers:
+        t.start()
+    try:
+        rc = proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        rc = 124
+    for t in readers:
+        t.join(5)
+    if rc == 124:
+        return Result(argv, 124, "".join(out), f"{argv[0]} timed out after {timeout:.0f}s", time.monotonic() - started)
+    return Result(argv, rc, "".join(out), "".join(err), time.monotonic() - started)
 
 
 def load_fixtures(path) -> list:

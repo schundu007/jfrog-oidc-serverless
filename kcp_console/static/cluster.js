@@ -443,6 +443,10 @@ export function approvalBox(name, run, dry, done) {
     h("p", { class: "small muted" }, "Request ", h("code", {}, run.request_sha256.slice(0, 12)), dry ? ` · dry run ${dry.status} ${when(dry.created)}` : ""),
     h("div", { class: "approve" }, run.needs_typed_cluster ? [h("label", { class: "small" }, `Type ${run.cluster} to confirm`), typed] : null, yes, no), msg);
   const box = { el, done };
+  // A tear down needs the cluster name typed: Approve stays greyed out until it matches.
+  const ready = () => !run.needs_typed_cluster || typed.value.trim() === run.cluster;
+  typed.addEventListener("input", () => { yes.disabled = !ready(); });
+  yes.disabled = !ready();
   const act = async (path, body) => {
     yes.disabled = no.disabled = true;
     try {
@@ -450,7 +454,8 @@ export function approvalBox(name, run, dry, done) {
       delete boxes[run.id];
       box.done();
     } catch (err) {
-      yes.disabled = no.disabled = false;
+      no.disabled = false;
+      yes.disabled = !ready();
       msg.textContent = brief(err.message);
     }
   };

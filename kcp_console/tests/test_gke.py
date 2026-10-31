@@ -38,7 +38,7 @@ class GkeShell(FakeShell):
         self.env_seen.append(extra_env or {})
         return Result(list(argv), rc, out, err, 0.0)
 
-    def run(self, argv, timeout=60.0, sensitive=False, extra_env=None):
+    def run(self, argv, timeout=60.0, sensitive=False, extra_env=None, stream=False):
         head = argv[:4]
         if head == ["gcloud", "container", "clusters", "describe"]:
             d = {"currentMasterVersion": "1.33.5-gke.1000", "location": "us-central1", "currentNodeCount": 2}
@@ -99,7 +99,7 @@ class ListTest(unittest.TestCase):
 
     def test_lists_standard_and_autopilot_clusters_across_projects(self):
         class Sh:
-            def run(self, argv, timeout=60.0, sensitive=False, extra_env=None):
+            def run(self, argv, timeout=60.0, sensitive=False, extra_env=None, stream=False):
                 if argv[:3] == ["gcloud", "projects", "list"]:
                     return Result(argv, 0, json.dumps([{"projectId": "proj-a", "name": "Proj A"}, {"projectId": "proj-b", "name": "B"}]), "", 0.0)
                 if argv[:4] == ["gcloud", "container", "clusters", "list"] and "proj-a" in argv:
@@ -119,7 +119,7 @@ class ListTest(unittest.TestCase):
 
     def test_no_projects_is_an_error(self):
         class Sh:
-            def run(self, argv, timeout=60.0, sensitive=False, extra_env=None):
+            def run(self, argv, timeout=60.0, sensitive=False, extra_env=None, stream=False):
                 return Result(argv, 1, "", "ERROR: (gcloud.projects.list) You do not currently have an active account selected.", 0.0)
         self.assertIn("active account", platforms.gke_list(Sh(), set())["error"])
 
@@ -203,7 +203,7 @@ class RunTest(unittest.TestCase):
 
     def test_missing_auth_plugin_is_named(self):
         class NoPlugin(GkeShell):
-            def run(self, argv, timeout=60.0, sensitive=False, extra_env=None):
+            def run(self, argv, timeout=60.0, sensitive=False, extra_env=None, stream=False):
                 if argv[:1] == ["gke-gcloud-auth-plugin"]:
                     return Result(list(argv), 127, "", "not found", 0.0)
                 return super().run(argv, timeout, sensitive, extra_env)

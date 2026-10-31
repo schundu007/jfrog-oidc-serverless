@@ -222,6 +222,13 @@ class JobTests(unittest.TestCase):
         self.assertTrue([s for s in self.jobs.stacks() if s["id"] == "gke-cluster"][0]["status"]["deployed"])
         self.assertEqual(self.minted, ["acme.jfrog.io", "acme.jfrog.io"][:len(self.minted)])
 
+    def test_apply_logs_to_its_own_job(self):
+        j = self._plan("gke-cluster", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        planned = len(j["log"])
+        done = wait(self.jobs, self.jobs.start("gke-cluster", "apply", {"plan_sha256": j["result"]["sha256"]}))
+        self.assertTrue(any("terraform" in line and "apply" in line for line in done["log"]), done["log"])
+        self.assertEqual(len(self.jobs.get(j["id"])["log"]), planned)
+
     def test_destroy_needs_the_stack_name(self):
         j = self._plan("gke-cluster", [{"address": "google_container_cluster.cluster", "type": "x", "change": {"actions": ["delete"]}}],
                        action="plan-destroy")

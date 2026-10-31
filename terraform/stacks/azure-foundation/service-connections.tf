@@ -17,6 +17,13 @@ resource "azuredevops_serviceendpoint_azurerm" "ado" {
   }
 }
 
+# ADO refuses to delete a connection while Entra still lists a federated credential for its
+# subject, and Entra takes a while to forget a deleted one: destroy waits here between the two.
+resource "time_sleep" "credential_propagation" {
+  depends_on       = [azuredevops_serviceendpoint_azurerm.ado]
+  destroy_duration = "120s"
+}
+
 # The azure-* pipelines may use them without a manual "Permit" on first run.
 resource "azuredevops_pipeline_authorization" "ado" {
   for_each = azuredevops_serviceendpoint_azurerm.ado
