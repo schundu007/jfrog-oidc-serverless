@@ -35,3 +35,6 @@ tfplan
 
 # console run locks
 .console.lock
+# modules are not roots: no lock files; Claude Code worktrees
+terraform/modules/**/.terraform.lock.hcl
+.claude/worktrees/

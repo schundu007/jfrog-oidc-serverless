@@ -284,7 +284,7 @@ Lessons from the AKS sandbox kubelet-provider pilot, carried over. `docs/aks-pil
 
 ## Open / deferred
 
-- **No real `plan`/`apply` has run.** It needs `JFROG_ACCESS_TOKEN`, a deployed workload and your explicit go-ahead (approval-gated). The first real apply will also settle the remaining CLAUDE.md unverified items.
+- Real plans and applies have run since (live runs below; latest: end to end on both clouds, 2026-10-31). In the 2026-10-31 run only the two jobs (Cloud Run job, Container Apps job) were rebuilt from nothing; services, functions, GKE and AKS were not redeployed. The remaining CLAUDE.md unverified items stay open.
 - GCP alert notification channels and the Azure alert's action group are not exposed in the console config yet.
 - Bicep/ARM snippets for the wire step are deferred. The IaC snippet is a JSON settings map.
 - The azuread provider takes its tenant from the az CLI default. Pass `AZURE_CONFIG_DIR` for an isolated login.
