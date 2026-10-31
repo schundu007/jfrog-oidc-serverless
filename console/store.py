@@ -30,6 +30,20 @@ def default_root() -> Path:
     return Path(os.environ.get("CONSOLE_HOME") or Path.cwd() / ".console")
 
 
+def summary(cfg: dict, name: str, updated: str = "") -> dict:
+    """One Workloads row: where the target runs and the identity Discover found."""
+    kind = model.get_path(cfg, "target.kind") or ""
+    cloud = model.KINDS.get(kind, {}).get("cloud") or ("azure" if kind.startswith("azure") else "gcp")
+    t = model.get_path(cfg, f"target.{cloud}") or {}
+    where = {"gcp": ["project", "region", "name"], "azure": ["resource_group", "name"],
+             "aws": ["account", "region", "name"], "openshift": ["context", "namespace", "name"]}[cloud]
+    disc = model.get_path(cfg, "target.discovered") or {}
+    return {"name": name, "kind": kind, "discovered": bool(disc),
+            "workload": " / ".join(str(t[k]) for k in where if t.get(k)),
+            "identity": disc.get("service_account") or disc.get("principal_id") or "",
+            "updated": updated}
+
+
 class Store:
     def __init__(self, root: Path | None = None):
         self.root = Path(root) if root else default_root()
@@ -49,17 +63,7 @@ class Store:
                 cfg = json.loads(p.read_text())
             except (OSError, ValueError):
                 continue
-            kind = model.get_path(cfg, "target.kind") or ""
-            cloud = "azure" if kind.startswith("azure") else "gcp"
-            t = model.get_path(cfg, f"target.{cloud}") or {}
-            where = ([t.get("project"), t.get("region"), t.get("name")] if cloud == "gcp"
-                     else [t.get("resource_group"), t.get("name")])
-            disc = model.get_path(cfg, "target.discovered") or {}
-            out.append({"name": p.stem, "kind": kind,
-                        "discovered": bool(disc),
-                        "workload": " / ".join(w for w in where if w),
-                        "identity": disc.get("service_account") or disc.get("principal_id") or "",
-                        "updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(p.stat().st_mtime))})
+            out.append(summary(cfg, p.stem, time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(p.stat().st_mtime))))
         return out
 
     def get(self, name: str) -> dict:

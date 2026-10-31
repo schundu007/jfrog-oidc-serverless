@@ -191,9 +191,9 @@ export async function mountWorkload(page, { name, schema }) {
   page.replaceChildren(template("tpl-workload"));
   $("wl-title").textContent = name;
   document.title = `${name} · Workloads`;
-  let config;
+  let config, source;
   try {
-    ({ config } = await api(`/api/configs/${encodeURIComponent(name)}`));
+    ({ config, source } = await api(`/api/configs/${encodeURIComponent(name)}`));
   } catch (e) {
     config = null;
     if (e.status !== 404) throw e;
@@ -204,13 +204,19 @@ export async function mountWorkload(page, { name, schema }) {
     return;
   }
   ws.kind = config.target.kind;
-  fill($("wl-menu"), menu("More actions", [
-    { text: "Delete workload", danger: true, confirm: `Delete ${name} and its runs?`, onSelect: removeWorkload },
-  ]));
+  // Onboarded but not saved here: the form holds the config its git workspace applied; Save keeps a copy.
+  if (source === "git") {
+    $("wl-menu").hidden = true;
+  } else {
+    fill($("wl-menu"), menu("More actions", [
+      { text: "Delete workload", danger: true, confirm: `Delete ${name} and its runs?`, onSelect: removeWorkload },
+    ]));
+  }
   $("wl-run").addEventListener("click", runPipeline);
   $("runs-refresh").addEventListener("click", () => loadRuns().then(() => runsNote("", "")).catch((e) => runsNote(e.message, "error")));
   $("runs-clear").addEventListener("click", clearFinished);
   await mountConfig($("cfg-mount"), { schema, mode: "edit", name, config, onChange: renderFacts });
+  if (source === "git") cfgStatus("Read from git (onboarded). Save keeps a copy here.", "");
   setupTabs();
   window.addEventListener("beforeunload", (e) => { if (isDirty()) e.preventDefault(); });
   const first = () => showTab(new URLSearchParams(location.search).get("tab"));

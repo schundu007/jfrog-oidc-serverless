@@ -1,5 +1,6 @@
-// Workloads (/<cloud>): every saved configuration of this cloud with its last run.
-// The whole row opens the workload; "⋯" holds Delete.
+// Workloads (/<cloud>): every saved configuration of this cloud and every one its git workspaces
+// onboarded, with the last run. The whole row opens the workload; "⋯" holds Delete (saved only: an
+// onboarded config lives in git, where only offboarding removes it).
 
 import { $, api, h, fill, ofCloud, href, statusIcon, statusText, template, menu, ago, dur, runDuration, stamp,
   status as setStatus } from "./core.js";
@@ -18,12 +19,13 @@ function row(c) {
   const open = href.workload(c.name);
   const tr = h("tr", { class: "row-link", "data-name": c.name },
     h("td", { class: "col-icon" }, statusIcon(c.run ? c.run.status : "notrun", c.run ? `Last run ${statusText(c.run.status)}` : "No runs")),
-    h("th", { scope: "row" }, h("a", { href: open, text: c.name })),
+    h("th", { scope: "row" }, h("a", { href: open, text: c.name }),
+      c.onboarded ? h("span", { class: "pill pill-onboarded", title: c.source === "git" ? "Onboarded; configuration read from git" : "Onboarded", text: "Onboarded" }) : null),
     h("td", { text: kindLabel(ls.schema, c.kind) }),
     h("td", { class: "mono small", text: c.workload || "—" }),
     h("td", {}, c.identity ? h("span", { class: "mono small", text: c.identity }) : h("span", { class: "muted small", text: "not discovered" })),
     h("td", { class: "small", title: c.run ? stamp(c.run.created) : null, text: lastRunText(c.run, c.snap) }),
-    h("td", { class: "col-menu" }, menu(`Actions for ${c.name}`, [
+    h("td", { class: "col-menu" }, c.source === "git" ? null : menu(`Actions for ${c.name}`, [
       { text: "Delete", danger: true, confirm: `Delete ${c.name} and its runs?`, onSelect: () => remove(c.name) },
     ])));
   tr.addEventListener("click", (e) => {

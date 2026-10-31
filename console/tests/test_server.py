@@ -210,3 +210,57 @@ class BindTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OnboardedWorkloadTests(unittest.TestCase):
+    """The Workloads list shows what the git workspaces onboarded, saved here or not."""
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+        from pathlib import Path
+
+        from console import model
+        from console.store import Store
+        cls.tmp = tempfile.TemporaryDirectory()
+        root = Path(cls.tmp.name)
+        ws = root / "repo" / "terraform" / "workspaces" / "gcp_p_us-central1" / "configs"
+        ws.mkdir(parents=True)
+        for name in ("from-git", "both"):
+            (ws / f"{name}.json").write_text(json.dumps(model.default_config("gcp_run_service", name)))
+        (ws / "bad.json").write_text("{not json")
+        cls.store = Store(root / "store")
+        cls.store.put("both", model.default_config("gcp_run_service", "both"))
+        cls.store.put("local-only", model.default_config("gcp_run_job", "local-only"))
+        cls.console = srv.ConsoleServer(port=0, store=cls.store, repo_root=root / "repo")
+        cls.console.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.console.stop()
+        cls.tmp.cleanup()
+
+    def get(self, path):
+        conn = http.client.HTTPConnection("127.0.0.1", self.console.port, timeout=30)
+        conn.request("GET", path, headers={"Host": f"127.0.0.1:{self.console.port}", "X-Console-Token": self.console.token})
+        resp = conn.getresponse()
+        body = json.loads(resp.read() or b"{}")
+        conn.close()
+        return resp.status, body
+
+    def test_list_merges_saved_and_git(self):
+        status, body = self.get("/api/configs")
+        self.assertEqual(status, 200)
+        rows = {c["name"]: c for c in body["configs"]}
+        self.assertEqual(set(rows), {"both", "local-only", "from-git"})
+        self.assertEqual((rows["both"]["source"], rows["both"]["onboarded"]), ("saved", True))
+        self.assertEqual((rows["local-only"]["source"], rows["local-only"]["onboarded"]), ("saved", False))
+        self.assertEqual((rows["from-git"]["source"], rows["from-git"]["onboarded"]), ("git", True))
+        self.assertEqual(rows["from-git"]["kind"], "gcp_run_service")
+        self.assertEqual(rows["from-git"]["workload"], "my-project / us-central1 / from-git")
+
+    def test_git_only_config_opens_from_git(self):
+        status, body = self.get("/api/configs/from-git")
+        self.assertEqual((status, body["source"], body["config"]["name"]), (200, "git", "from-git"))
+        self.assertEqual(self.get("/api/configs/both")[1]["source"], "saved")
+        self.assertEqual(self.get("/api/configs/nowhere")[0], 404)

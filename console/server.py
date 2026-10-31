@@ -35,7 +35,7 @@ from .shell import Shell, load_fixtures
 from .sim import scenario as sc
 from .sim.engine import Simulation
 from .steps import discover, preflight
-from .store import Store, StoreError
+from .store import Store, StoreError, summary as store_summary
 
 STATIC_DIR = Path(__file__).parent / "static"
 # Page URLs: /gcp and /azure, and each tab under them; all serve index.html.
@@ -211,6 +211,25 @@ class ConsoleServer:
         self._catalogue = None
         self._httpd = None
         self.port = None
+
+    def delivered(self) -> dict:
+        """Configs committed with the delivered workspaces, by name (inventory.delivered_configs)."""
+        out = {}
+        for cfg in inventory.delivered_configs(self.repo_root):
+            name = cfg.get("name") if isinstance(cfg, dict) else None
+            if isinstance(name, str) and model.NAME_RE.match(name) and model.get_path(cfg, "target.kind") in model.KINDS:
+                out.setdefault(name, cfg)
+        return out
+
+    def workloads(self) -> list:
+        """Saved configs plus every onboarded one from git; source: saved or git, onboarded: in a workspace."""
+        git = self.delivered()
+        rows = [{**c, "source": "saved", "onboarded": git.get(c["name"], {}).get("target", {}).get("kind") == c["kind"]}
+                for c in self.store.list()]
+        saved = {c["name"] for c in rows}
+        rows += [{**store_summary(cfg, name), "source": "git", "onboarded": True}
+                 for name, cfg in sorted(git.items()) if name not in saved]
+        return rows
 
     def shell(self, on_line=None) -> Shell:
         def log(line):
@@ -474,12 +493,19 @@ def _make_handler(console: ConsoleServer):
         def _configs(self, method: str, rest: list):
             try:
                 if method == "GET" and not rest:
-                    return self._json(200, {"configs": console.store.list()})
+                    return self._json(200, {"configs": console.workloads()})
                 if len(rest) != 1:
                     raise HttpError(404, "no such endpoint")
                 name = rest[0]
                 if method == "GET":
-                    return self._json(200, {"config": console.store.get(name)})
+                    try:
+                        return self._json(200, {"config": console.store.get(name), "source": "saved"})
+                    except FileNotFoundError:
+                        # Not saved here but onboarded: Terraform's workspace holds the config it applied.
+                        cfg = console.delivered().get(name)
+                        if cfg is None:
+                            raise
+                        return self._json(200, {"config": cfg, "source": "git"})
                 if method == "PUT":
                     cfg = console.store.put(name, self._config_from_body())
                     return self._json(200, {"config": cfg, "validation": model.validate(cfg)})
