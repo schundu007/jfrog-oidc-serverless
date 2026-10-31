@@ -164,7 +164,26 @@ workload stack (`azure-container-apps-test`, `azure-container-app-test`,
 
 ## 4. Google Cloud workloads
 
-**not run yet**
+Every workload stack deploys **in Azure DevOps**, not on your machine: Deploy on its row queues the
+stack's `<type> - Infrastructure` pipeline, the console shows the plan that run made, and
+**Approve and deploy** answers that run's approval, so ADO applies exactly that plan file.
+
+### 4.1 Cloud Run job
+
+Run on 2026-10-31 after §2. Stack `gcp-cloud-run`, ADO pipelines `Cloud Run job - Infrastructure`
+and `Cloud Run job - Build and deploy`.
+
+| # | Step | Where | Result in the run |
+|---|---|---|---|
+| 1 | Inputs: `gcp_project_id` `unioxe`, `workload` `artifact-reader`, `deploy_job` off, `job_image` empty (the deployer account and region come prefilled from §2) | Serverless → Google Cloud → Cloud Run job → Inputs | saved |
+| 2 | Deploy → Approve | same row | ADO run 102: 2 added (the job's service account `artifact-reader@unioxe…`, the deployer's actAs on it) |
+| 3 | Build the first image | ADO → `Cloud Run job - Build and deploy` → Run | run 103: base image pulled from JFrog with the pipeline's OIDC token; warning names the pushed image `us-central1-docker.pkg.dev/unioxe/platform/artifact-reader:<commit>` |
+| 4 | Inputs: `job_image` = that image, `deploy_job` on → Deploy → Approve | Infrastructure row | ADO run 104: 1 added (the Cloud Run job) |
+| 5 | JFrog OIDC for the job | §6 | |
+
+Shortcut: in the Serverless console, a run for a workload that does not exist yet stops at
+Discover and asks **"Deploy it? Yes / No"** with the plan; Yes does steps 1 to 4 for you (one Yes
+per plan shown), No ends the run. The foundation must already be deployed.
 
 ## 5. Azure workloads
 
@@ -172,7 +191,14 @@ workload stack (`azure-container-apps-test`, `azure-container-app-test`,
 
 ## 6. JFrog OIDC for a workload
 
-**not run yet**
+Run on 2026-10-31 for the Cloud Run job of §4.1.
+
+| # | Step | Where | Result in the run |
+|---|---|---|---|
+| 1 | Open the workload (or **New workload**: type, project, region, name) | Serverless → Google Cloud → the workload | config `artifact-reader` |
+| 2 | **Run pipeline** | workload page | Preflight (tools, sign-ins, APIs, JFrog reachable, ADO main has this console's code), Discover (the job's identity), Simulate, Deliver: commits the workspace `terraform/workspaces/gcp_unioxe_us-central1` to ADO main |
+| 3 | The push starts `Google Cloud - Onboard workloads to JFrog` | ADO | run 105: Terraform applies the JFrog integration and the identity mapping, then wires the job's `JFROG_*` settings |
+| 4 | Run the workload | ADO → `Cloud Run job - Build and deploy` | run 106; the job's log: `exchanged identity for a JFrog token valid 3599s`, `read demo-generic/hello.txt: Hello from JFrog…` |
 
 ## 7. Kubernetes clusters
 
@@ -201,6 +227,9 @@ DevOps no service connection and no variable group. The saved inputs
 
 | Seen | Cause | Fix (in the code now) |
 |---|---|---|
+| Deliver hung 17 minutes on the push | Git Credential Manager waited on a sign-in window; the timeout killed git but not the helper | Commands run in their own process group and the whole group is killed; GCM never prompts; any sign-in failure tries the next (az token) |
+| A stack pipeline run waited forever before its approval | A freshly created ADO environment needs a one-time pipeline permission | The foundations authorize their environments for pipelines |
+| A stack pipeline failed: `"deploy_job": "False"` is not a bool | ADO passes object parameters' scalars as text | The pipeline converts inputs back to the stack's declared types |
 | GCP foundation destroy would fail on the state bucket | The bucket still holds the destroyed stacks' (empty) state files | Teardown step 5 empties it first |
 | A new GCP foundation cannot reuse the pool id `azure-devops` after a destroy | GCP keeps a deleted workload identity pool for 30 days and refuses its id | The pool id now gets a random suffix (`azure-devops-<4 hex>`) on each deploy |
 | The Azure foundation left `ado-cicd-rg` and `id-ado-cdoazure` behind | They were created by hand before the first deploy and only read by the foundation | The foundation now creates the resource group and the build identity itself (names from the `azure_identity` input) |
