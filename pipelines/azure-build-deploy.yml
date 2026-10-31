@@ -18,7 +18,8 @@ parameters:
     values: [test]
 
 variables:
-  - template: vars/${{ parameters.environment }}.yml
+  - template: vars/azure-${{ parameters.environment }}.yml
+  - group: jfrog-oidc-azure-${{ parameters.environment }}
   - name: APP
     value: artifact-reader
   - name: WORKLOAD

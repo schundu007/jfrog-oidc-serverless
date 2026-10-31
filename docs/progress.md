@@ -479,3 +479,7 @@ Tests: setup 15, portal 14, console 374 (9 skipped), KCP 221.
 ## 2026-10-31: GCP test project moved to UniOxe
 
 Slurm-Clusters (csb-test-257615) deleted with everything in it; all old JFrog OIDC integrations removed. GCP test project is now `unioxe` (stack tfvars, backends, pipelines/vars/test.yml, delivery.json, ado-trust tfvars). Nothing deployed there yet: ado-trust must be applied first (it creates `unioxe-tfstate` and the ADO identities).
+
+## 2026-10-31: Clouds completely separate
+
+`gcp-foundation` and `azure-foundation` each own their cloud's ADO trust, JFrog integration (`ado-cdoazure-gcp`, `ado-cdoazure-azure`) and mappings, ADO variable group (`jfrog-oidc-<cloud>-test`, written by Terraform via the azuredevops provider) and state store. The shared `ado-trust` stack and the shared `ado-cdoazure` integration are gone (resources moved with `terraform state mv`, then the shared JFrog trust destroyed through the console gate). AWS trust removed. Pipelines load `vars/<cloud>-<env>.yml` + their cloud's variable group; `delivery.json` keeps only the ADO repo, identities and state backends come from foundation outputs. Deployed live in UniOxe and Azure test subscription.

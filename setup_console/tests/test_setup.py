@@ -145,6 +145,14 @@ class StackTests(unittest.TestCase):
         self.assertEqual(f["name"]["source"], "default")    # blank optional input: the default applies
         self.assertEqual(f["node_count"]["current"], 3)
 
+    def test_clouds_never_prefill_from_each_other(self):
+        self.root.save("gcp-foundation", GCP_FOUNDATION)      # ado_org saved on the GCP side
+        f = {x["name"]: x for x in stacks.form("azure-foundation", "test", self.root.dir, self.root.state)["fields"]}
+        self.assertNotIn("current", f["ado_org"])
+        self.root.save("azure-foundation", AZURE_FOUNDATION)
+        f = {x["name"]: x for x in stacks.form("aks-cluster", "test", self.root.dir, self.root.state)["fields"]}
+        self.assertEqual((f["azure_subscription_id"]["current"], f["azure_subscription_id"]["source"]), ("sub-1", "shared"))
+
     def test_inputs_are_checked(self):
         for bad in ({"nope": "x"}, {"api_token": "x"}, {"node_count": "many"}, {"gcp_project_id": 5}):
             with self.assertRaises(stacks.StackError, msg=bad):

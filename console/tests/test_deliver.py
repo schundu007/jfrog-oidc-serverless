@@ -226,6 +226,23 @@ class LoadTests(unittest.TestCase):
         with self.assertRaises(deliver.DeliveryError):
             deliver.load_settings(d / "bad.json")
 
+    def test_identity_and_state_come_from_the_foundations(self):
+        d = Path(tempfile.mkdtemp(prefix="deliver-cfg-"))
+        self.addCleanup(shutil.rmtree, d, True)
+        (d / "delivery.json").write_text(json.dumps({"ado": DELIVERY["ado"]}))
+        stacks = d / "stacks"
+        for name, outs in (("gcp-foundation", {"tfstate_bucket": "p-tfstate", "gcp_service_accounts": {"setup": "ado-setup@p.iam"}}),
+                           ("azure-foundation", {"azure_setup_identity_principal_id": "pid",
+                                                 "azure_tfstate": {"resource_group": "rg", "storage_account": "st", "container": "tfstate"}})):
+            (stacks / name).mkdir(parents=True)
+            (stacks / name / "terraform.tfstate").write_text(json.dumps({"outputs": {k: {"value": v} for k, v in outs.items()}}))
+        s = deliver.load_settings(d / "delivery.json", stacks)
+        self.assertEqual(s["pipeline_identity"], {"gcp": "ado-setup@p.iam", "azure": "pid"})
+        self.assertEqual(s["state"]["gcp"], {"type": "gcs", "bucket": "p-tfstate"})
+        self.assertEqual(s["state"]["azure"]["storage_account_name"], "st")
+        (stacks / "azure-foundation" / "terraform.tfstate").unlink()    # not deployed: that cloud is left out
+        self.assertNotIn("azure", deliver.load_settings(d / "delivery.json", stacks)["state"])
+
 
 class WireWorkspaceTests(unittest.TestCase):
     def setUp(self):

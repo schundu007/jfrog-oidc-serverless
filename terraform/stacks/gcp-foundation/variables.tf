@@ -53,3 +53,19 @@ variable "gcp_image_repository" {
   type        = string
   default     = "platform"
 }
+
+variable "ado_project" {
+  description = "Azure DevOps project whose pipelines read this stack's variable group."
+  type        = string
+}
+
+variable "pipeline_environment" {
+  description = "Environment name the pipelines pass (parameters.environment); names the variable group."
+  type        = string
+  default     = "test"
+}
+
+variable "jfrog_reader_group" {
+  description = "Group the build mapping gets (read, plus cache on remote repos)."
+  type        = string
+}

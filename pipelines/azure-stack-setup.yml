@@ -31,7 +31,8 @@ parameters:
     default: {}
 
 variables:
-  - template: vars/${{ parameters.environment }}.yml
+  - template: vars/azure-${{ parameters.environment }}.yml
+  - group: jfrog-oidc-azure-${{ parameters.environment }}
   - name: PLAN_FILE
     value: $(Pipeline.Workspace)/plan/tfplan
   - name: PLAN_ACTION

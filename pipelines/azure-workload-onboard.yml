@@ -17,7 +17,8 @@ parameters:
     default: ' '
 
 variables:
-  - template: vars/test.yml
+  - template: vars/azure-test.yml
+  - group: jfrog-oidc-azure-test
 
 pool:
   vmImage: ubuntu-24.04

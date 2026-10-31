@@ -1,5 +1,5 @@
-# Non-secret settings for the test environment. Nothing here is a credential:
-# every job authenticates with its service connection's OIDC token.
+# Only for the AWS and Knative pipelines, which are out of use (no foundation stack).
+# GCP and Azure pipelines use vars/gcp-<env>.yml and vars/azure-<env>.yml.
 variables:
   ENVIRONMENT: test
   BUILD_SERVICE_CONNECTION: jfrog-oidc-wif
@@ -8,16 +8,7 @@ variables:
   SETUP_SERVICE_CONNECTION_ID: ebe9d5e5-c476-4ede-9a9f-053f91c5319b # jfrog-oidc-setup-v2
   TERRAFORM_VERSION: 1.17.1
 
-  JFROG_URL: https://trial9hnw59.jfrog.io
-  JFROG_OIDC_PROVIDER: ado-cdoazure
   JFROG_DOCKER_REMOTE: docker-remote
-
-  GCP_PROJECT: unioxe
-  GCP_REGION: us-central1
-  GCP_WIF_PROVIDER: projects/382389965689/locations/global/workloadIdentityPools/azure-devops/providers/cdoazure
-  GCP_BUILD_SERVICE_ACCOUNT: ado-build@unioxe.iam.gserviceaccount.com
-  GCP_SETUP_SERVICE_ACCOUNT: ado-setup@unioxe.iam.gserviceaccount.com
-  IMAGE_REPOSITORY: platform
 
   # Knative (OpenShift Serverless or any Knative cluster): a Kubernetes service connection.
   # No cluster in the test environment yet; the names are what the pipeline expects.

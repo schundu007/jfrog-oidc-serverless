@@ -9,3 +9,7 @@ output "gcp_service_accounts" {
 output "tfstate_bucket" {
   value = google_storage_bucket.tfstate.name
 }
+
+output "jfrog_provider_name" {
+  value = platform_oidc_configuration.ado.name
+}

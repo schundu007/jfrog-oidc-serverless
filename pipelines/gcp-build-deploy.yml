@@ -19,7 +19,8 @@ parameters:
     values: [test]
 
 variables:
-  - template: vars/${{ parameters.environment }}.yml
+  - template: vars/gcp-${{ parameters.environment }}.yml
+  - group: jfrog-oidc-gcp-${{ parameters.environment }}
   - name: KIND
     value: job
   - name: APP

@@ -17,7 +17,8 @@ parameters:
     default: ' '
 
 variables:
-  - template: vars/test.yml
+  - template: vars/gcp-test.yml
+  - group: jfrog-oidc-gcp-test
 
 pool:
   vmImage: ubuntu-24.04

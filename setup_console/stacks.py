@@ -6,13 +6,14 @@ already there and only the Serverless and Kubernetes consoles' configure steps r
 Nothing about a target is written into the stacks. Each stack's inputs are the variables its
 variables.tf declares; the Infrastructure page shows them as a form and saves what is filled in
 as JSON (<state root>/<env>/<stack>.tfvars.json, outside git), passed with -var-file. A variable
-two stacks share (jfrog_url, gcp_project_id, ...) is prefilled from the last value saved for it.
+two stacks of the same cloud share (jfrog_url, gcp_project_id, ...) is prefilled from the last
+value saved for it in that cloud; clouds never prefill from each other.
 
-Each cloud is isolated: its own foundation stack (gcp-foundation, azure-foundation) holds that
-cloud's trust and state store, and its stacks' remote state is -backend-config derived from that
-foundation's inputs only: gcs bucket <gcp_project_id>-tfstate; azurerm account st<ado_org>tfstate
-in the ADO identity's resource group. JFrog's side of the ADO trust is its own stack. Foundation
-stacks keep local state.
+Clouds are completely separate, as in production: each has its own foundation stack
+(gcp-foundation, azure-foundation) with its own ADO trust, its own JFrog integration and
+mappings, its own pipeline variable group and its own state store. Its stacks' remote state is
+-backend-config derived from that foundation's inputs only: gcs bucket <gcp_project_id>-tfstate;
+azurerm account st<ado_org>tfstate in the ADO identity's resource group. Foundations keep local state.
 """
 
 from __future__ import annotations
@@ -28,7 +29,6 @@ STATE_ROOT = REPO_ROOT / ".console" / "setup"
 
 # id = the stack directory. Order is the order to deploy in; destroy in reverse.
 CATALOGUE = (
-    {"id": "jfrog-ado-trust", "group": "JFrog", "title": "ADO pipelines trust"},
     {"id": "gcp-foundation", "group": "Google Cloud", "title": "Foundation (ADO trust, state)"},
     {"id": "gcp-cloud-run", "group": "Google Cloud", "title": "Cloud Run job"},
     {"id": "gke-cluster", "group": "Google Cloud", "title": "GKE cluster"},
@@ -171,8 +171,10 @@ def inputs_file(stack_id: str, env: str, state_root: Path = STATE_ROOT) -> Path:
     return Path(state_root) / env / f"{stack_id}.tfvars.json"
 
 
-def _shared_file(env: str, state_root: Path) -> Path:
-    return Path(state_root) / env / "shared.json"
+def _shared_file(env: str, state_root: Path, stack_id: str) -> Path:
+    """Prefill values are kept per cloud (catalogue group), never across clouds."""
+    group = re.sub(r"[^a-z0-9]+", "-", get(stack_id)["group"].lower()).strip("-")
+    return Path(state_root) / env / f"shared-{group}.json"
 
 
 def _load(p: Path) -> dict:
@@ -190,7 +192,7 @@ def read_inputs(stack_id: str, env: str, state_root: Path = STATE_ROOT) -> dict:
 def form(stack_id: str, env: str, root: Path = STACKS_DIR, state_root: Path = STATE_ROOT) -> dict:
     """The stack's variables with what to show: the saved value, else the last value saved for a
     shared name, else the default."""
-    saved, shared = read_inputs(stack_id, env, state_root), _load(_shared_file(env, state_root))
+    saved, shared = read_inputs(stack_id, env, state_root), _load(_shared_file(env, state_root, stack_id))
     fields = []
     for v in variables(stack_id, root):
         if v["sensitive"]:
@@ -250,10 +252,12 @@ def write_inputs(stack_id: str, env: str, values: dict, root: Path = STACKS_DIR,
             continue
         out[name] = _coerce(v, raw)
     _write(inputs_file(stack_id, env, state_root), out)
-    others = {x["name"] for s in IDS if s != stack_id for x in variables(s, root)}
-    shared = _load(_shared_file(env, state_root))
+    group = get(stack_id)["group"]
+    others = {x["name"] for s in CATALOGUE if s["id"] != stack_id and s["group"] == group
+              for x in variables(s["id"], root)}
+    shared = _load(_shared_file(env, state_root, stack_id))
     shared.update({k: val for k, val in out.items() if k in others})
-    _write(_shared_file(env, state_root), shared)
+    _write(_shared_file(env, state_root, stack_id), shared)
     return out
 
 

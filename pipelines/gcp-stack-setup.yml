@@ -31,7 +31,8 @@ parameters:
     default: {}
 
 variables:
-  - template: vars/${{ parameters.environment }}.yml
+  - template: vars/gcp-${{ parameters.environment }}.yml
+  - group: jfrog-oidc-gcp-${{ parameters.environment }}
   - name: PLAN_FILE
     value: $(Pipeline.Workspace)/plan/tfplan
   - name: PLAN_ACTION

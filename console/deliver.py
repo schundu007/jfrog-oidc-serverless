@@ -45,8 +45,34 @@ class DeliveryError(RuntimeError):
     pass
 
 
-def load_settings(path) -> dict | None:
-    """pipelines/delivery.json, or None when the console applies locally."""
+def foundation_settings(stacks_dir) -> dict:
+    """Each cloud's pipeline identity and state backend, from its foundation stack's outputs
+    (terraform/stacks/<cloud>-foundation, local state). A cloud whose foundation isn't deployed
+    is left out."""
+    def outputs(stack):
+        try:
+            return {k: v.get("value") for k, v in
+                    json.loads((Path(stacks_dir) / stack / "terraform.tfstate").read_text())["outputs"].items()}
+        except (OSError, ValueError, KeyError, AttributeError):
+            return {}
+
+    found = {"pipeline_identity": {}, "state": {}}
+    g = outputs("gcp-foundation")
+    if g.get("tfstate_bucket") and (g.get("gcp_service_accounts") or {}).get("setup"):
+        found["pipeline_identity"]["gcp"] = g["gcp_service_accounts"]["setup"]
+        found["state"]["gcp"] = {"type": "gcs", "bucket": g["tfstate_bucket"]}
+    a = outputs("azure-foundation")
+    t = a.get("azure_tfstate") or {}
+    if a.get("azure_setup_identity_principal_id") and t.get("storage_account"):
+        found["pipeline_identity"]["azure"] = a["azure_setup_identity_principal_id"]
+        found["state"]["azure"] = {"type": "azurerm", "resource_group_name": t["resource_group"],
+                                   "storage_account_name": t["storage_account"], "container_name": t["container"]}
+    return found
+
+
+def load_settings(path, stacks_dir=None) -> dict | None:
+    """pipelines/delivery.json (the ADO repository and merge mode), or None when the console
+    applies locally. Pipeline identities and state backends come from the foundation stacks."""
     path = Path(path)
     if not path.is_file():
         return None
@@ -55,9 +81,9 @@ def load_settings(path) -> dict | None:
         missing = [k for k in keys if not (data.get(section) or {}).get(k)]
         if missing:
             raise DeliveryError(f"{path.name}: {section} needs {', '.join(missing)}")
-    if not data.get("state"):
-        raise DeliveryError(f"{path.name}: state needs a backend per cloud "
-                            f"({', '.join(f'{c}: {t}' for c, t in STATE_TYPES.items())})")
+    found = foundation_settings(stacks_dir or path.resolve().parent.parent / "terraform" / "stacks")
+    for key in ("pipeline_identity", "state"):
+        data[key] = {**(data.get(key) or {}), **found[key]}
     return data
 
 
