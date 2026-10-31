@@ -100,7 +100,8 @@ class Terraform:
     # -- operations -------------------------------------------------------------------
 
     def init(self):
-        return self._run("init", "-input=false", "-no-color", *self.init_args)
+        # Streamed: a first init downloads providers, the slowest quiet stretch of a Setup job.
+        return self._run("init", "-input=false", "-no-color", *self.init_args, stream=True)
 
     def validate(self) -> dict:
         res = self._run("validate", "-json", "-no-color", ok=(0, 1))

@@ -39,7 +39,11 @@ function stackStatus(s) {
   if (s.busy) return statusPill("running", "Running");
   if (s.plan) return statusPill("waiting_approval", s.plan.action === "destroy" ? "Destroy planned" : "Deploy planned");
   if (!s.status) return statusPill("notrun", "Not checked");
-  return s.status.deployed ? statusPill("succeeded", "Deployed") : statusPill("notrun", "Not deployed");
+  if (s.status.deployed) return statusPill("succeeded", "Deployed");
+  // A status read that failed (e.g. no state bucket yet) also means nothing is deployed; the reason is the tooltip.
+  const pill = statusPill("notrun", "Not deployed");
+  if (s.status.error) pill.title = s.status.error;
+  return pill;
 }
 
 // Readable names for the stacks' outputs; the Terraform name stays as the row's tooltip.
@@ -195,13 +199,19 @@ function row(s) {
   destroy.onclick = () => { if (armed(destroy, "Plan destroy?")) run(s, "plan-destroy"); };
   const plan = s.plan ? h("button", { type: "button", class: "primary", text: "Review plan" }) : null;
   if (plan) plan.onclick = () => { const p = flyout(`${s.group} · ${s.title}`); fill(p.body, planView(s, s.plan, p)); };
+  // A running job keeps going when its drawer is closed or the page reloads: this reopens its live log.
+  const progress = s.job ? h("button", { type: "button", class: "primary", text: "Progress" }) : null;
+  if (progress) {
+    const verb = { status: "Check", "plan-apply": "Deploy", "plan-destroy": "Destroy", apply: "Apply" }[s.job.action];
+    progress.onclick = () => follow(s, s.job, flyout(`${s.group} · ${s.title}: ${verb}`));
+  }
   return h("tr", {},
     h("td", { title: `terraform/stacks/${s.id}` }, h("b", { text: s.title })),
     h("td", {}, stackStatus(s)),
     h("td", { class: "setup-row-actions" },
+      progress,
       plan,
       h("button", { type: "button", class: "secondary", text: "Inputs", onclick: () => editInputs(s) }),
-      h("button", { type: "button", class: "secondary", text: "Check", disabled: s.busy, onclick: () => run(s, "status") }),
       h("button", { type: "button", class: "primary", text: "Deploy", disabled: s.busy, onclick: () => run(s, "plan-apply") }),
       destroy));
 }
@@ -214,6 +224,9 @@ async function load() {
   fill($("groups"), Object.entries(groups).map(([g, list]) => h("section", { class: "card" },
     h("div", { class: "card-head" }, h("h2", { text: g })),
     h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, list.map(row)))))));
+  // While a job runs, keep the rows current so Running turns into its result without a reload.
+  clearTimeout(load.timer);
+  if (data.stacks.some((s) => s.busy)) load.timer = setTimeout(() => load().catch(() => {}), POLL_MS * 2);
 }
 
 $("flyout-close").onclick = closeFlyout;
