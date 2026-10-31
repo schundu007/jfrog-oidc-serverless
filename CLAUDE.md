@@ -35,7 +35,7 @@ PYTHONPATH=client/src:rotator:. python -m console
 # KCP console: tests, simulator, run (replay fixtures)
 python3 -m unittest discover -s kcp_console/tests -t .
 python3 -m kcp_console.sim check-all
-python3 -m kcp_console --fixtures kcp_console/tests/fixtures/sandbox
+PYTHONPATH=client/src:rotator:. python3 -m portal --kcp-fixtures kcp_console/tests/fixtures/sandbox
 # portal: both consoles on one port, Serverless at /serverless, Kubernetes at /k8s
 PYTHONPATH=client/src:rotator:. python3 -m unittest discover -s portal/tests -t .
 PYTHONPATH=client/src:rotator:. python -m portal
