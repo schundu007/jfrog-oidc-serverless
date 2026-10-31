@@ -3,15 +3,20 @@ for the operator service account → /access/api/v1/oidc/token), caches it in me
 never puts it in argv or a log line."""
 
 import json
+import os
 import pathlib
 import tempfile
 import unittest
+from unittest import mock
 
-from kcp_console.jfrog import Jfrog, OperatorToken, TokenError, operator_env
+from kcp_console.jfrog import Jfrog, OperatorToken, TokenError, operator_identity
 from kcp_console.shell import HttpResult, Result
 
 ENV = {"JFROG_OIDC_PROVIDER": "gcp-cloudrun", "JFROG_OIDC_AUDIENCE": "jfrog-gcp",
        "JFROG_OIDC_SERVICE_ACCOUNT": "jfrog-console-operator@p.iam.gserviceaccount.com"}
+STATE_DIR = tempfile.mkdtemp()
+STATE = pathlib.Path(STATE_DIR, "terraform.tfstate")  # ado-trust's state, as far as the console reads it
+STATE.write_text(json.dumps({"outputs": {"console_operator_env": {"value": ENV}}}))
 ID_TOKEN = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln"
 ACCESS = "eyJ2ZXIiOiIyIn0.eyJzdWIiOiJqZmFjIn0.YWNjZXNz"
 
@@ -36,7 +41,7 @@ class FakeShell:
 class OperatorTokenTests(unittest.TestCase):
     def test_mints_by_exchange_and_sends_it_as_a_header(self):
         sh = FakeShell()
-        jf = Jfrog(sh, "x.jfrog.io", tokens=OperatorToken(ENV))
+        jf = Jfrog(sh, "x.jfrog.io", tokens=OperatorToken(state_file=STATE))
         jf.providers()
         argv, sensitive = sh.calls[0]
         self.assertEqual(argv[:3], ["gcloud", "auth", "print-identity-token"])
@@ -54,7 +59,7 @@ class OperatorTokenTests(unittest.TestCase):
 
     def test_cached_until_shortly_before_expiry(self):
         now = [1000.0]
-        tokens = OperatorToken(ENV, clock=lambda: now[0])
+        tokens = OperatorToken(clock=lambda: now[0], state_file=STATE)
         sh = FakeShell()
         tokens.get(sh, "x.jfrog.io")
         tokens.get(sh, "x.jfrog.io")
@@ -65,33 +70,29 @@ class OperatorTokenTests(unittest.TestCase):
 
     def test_not_configured_names_the_settings(self):
         with self.assertRaises(TokenError) as cm:
-            OperatorToken({}, state_file=None).get(FakeShell(), "x.jfrog.io")
-        self.assertIn("JFROG_OIDC_SERVICE_ACCOUNT", str(cm.exception))
+            OperatorToken(state_file=pathlib.Path(STATE_DIR, "missing")).get(FakeShell(), "x.jfrog.io")
+        self.assertIn("ado-trust", str(cm.exception))
 
-    def test_unset_settings_come_from_the_ado_trust_output(self):
-        with tempfile.TemporaryDirectory() as d:
-            state = pathlib.Path(d, "terraform.tfstate")
-            state.write_text(json.dumps({"outputs": {"console_operator_env": {"value": ENV}}}))
-            self.assertEqual(operator_env({}, state), ENV)
-            self.assertEqual(operator_env({"JFROG_OIDC_AUDIENCE": "other"}, state)["JFROG_OIDC_AUDIENCE"], "other")
-            self.assertTrue(OperatorToken({}, state_file=state).configured)
-            self.assertFalse(OperatorToken({}, state_file=pathlib.Path(d, "missing")).configured)
+    def test_the_identity_is_the_ado_trust_output(self):
+        self.assertEqual(operator_identity(STATE), ENV)
+        self.assertEqual(operator_identity(pathlib.Path(STATE_DIR, "missing"))["JFROG_OIDC_PROVIDER"], "")
 
     def test_a_failed_exchange_says_so_and_the_call_goes_out_anonymous(self):
         sh = FakeShell(status=401)
-        jf = Jfrog(sh, "x.jfrog.io", tokens=OperatorToken(ENV))
+        jf = Jfrog(sh, "x.jfrog.io", tokens=OperatorToken(state_file=STATE))
         self.assertIn("HTTP 401", jf.token_error())
         jf.providers()
         self.assertNotIn("Authorization", sh.http_calls[-1][2])
 
     def test_gcloud_refusal_names_the_role(self):
-        jf = Jfrog(FakeShell(id_rc=1), "x.jfrog.io", tokens=OperatorToken(ENV))
+        jf = Jfrog(FakeShell(id_rc=1), "x.jfrog.io", tokens=OperatorToken(state_file=STATE))
         self.assertIn("serviceAccountTokenCreator", jf.token_error())
 
     def test_the_stored_token_variable_is_ignored(self):
         sh = FakeShell()
-        jf = Jfrog(sh, "x.jfrog.io", tokens=OperatorToken({"JFROG_ACCESS_TOKEN": "stored-admin-token"}, state_file=None))
-        jf.providers()
+        with mock.patch.dict(os.environ, {"JFROG_ACCESS_TOKEN": "stored-admin-token"}):
+            jf = Jfrog(sh, "x.jfrog.io", tokens=OperatorToken(state_file=pathlib.Path(STATE_DIR, "missing")))
+            jf.providers()
         self.assertNotIn("Authorization", sh.http_calls[-1][2])
 
 

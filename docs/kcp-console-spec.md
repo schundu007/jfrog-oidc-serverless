@@ -57,9 +57,10 @@ these places, and `docs/kcp-progress.md` §Traceability says which:
     the read-only pipeline scenario instead;
   - calls Artifactory REST directly for reads with a short-lived token it mints by OIDC
     exchange (no stored token): `gcloud auth print-identity-token
-    --impersonate-service-account=$JFROG_OIDC_SERVICE_ACCOUNT --audiences=$JFROG_OIDC_AUDIENCE`,
-    exchanged at `/access/api/v1/oidc/token` with `$JFROG_OIDC_PROVIDER` (`jfrog.OperatorToken`,
-    in memory only, renewed 2 min before expiry). The trust is `terraform/stacks/ado-trust/console-operator.tf`.
+    --impersonate-service-account=<operator SA> --audiences=<audience>`, exchanged at
+    `/access/api/v1/oidc/token` with the provider (`jfrog.OperatorToken`, in memory only, renewed
+    2 min before expiry). The trust is `terraform/stacks/ado-trust/console-operator.tf`; the console
+    reads the provider, audience and SA from that stack's `console_operator_env` output (nothing to set).
     `JFROG_ACCESS_TOKEN` is ignored. JFrog writes are approval-gated.
 
 ## 2. Ground rules

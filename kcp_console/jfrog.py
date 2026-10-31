@@ -8,18 +8,14 @@ No JFrog token is stored anywhere. The console mints a short-lived one by OIDC e
 shortly before it expires, is sent only as an Authorization header to the configured
 host (redirects are never followed), and is never logged, stored or returned.
 
-Configuration (not secrets), from the console's environment:
-  JFROG_OIDC_PROVIDER         the JFrog OIDC provider that trusts Google ID tokens
-  JFROG_OIDC_AUDIENCE         that provider's audience
-  JFROG_OIDC_SERVICE_ACCOUNT  the operator service account the identity mapping matches
-Unset, they come from the ado-trust stack's `console_operator_env` output (its local state),
-so the console needs no setup once ado-trust is applied.
+The identity (configuration, not secrets) is the ado-trust stack's `console_operator_env` output,
+read from its state: the JFrog provider that trusts Google ID tokens, its audience, and the operator
+service account the identity mapping matches. Nothing to set before starting the console.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import pathlib
 import threading
 import time
@@ -27,22 +23,19 @@ import urllib.parse
 
 from . import logic
 
-CONFIG_ENV = ("JFROG_OIDC_PROVIDER", "JFROG_OIDC_AUDIENCE", "JFROG_OIDC_SERVICE_ACCOUNT")
+IDENTITY_KEYS = ("JFROG_OIDC_PROVIDER", "JFROG_OIDC_AUDIENCE", "JFROG_OIDC_SERVICE_ACCOUNT")
 EXCHANGE_PATH = "/access/api/v1/oidc/token"
 REFRESH_BEFORE = 120  # seconds: mint a new token this long before the old one expires
 ADO_TRUST_STATE = pathlib.Path(__file__).resolve().parent.parent / "terraform/stacks/ado-trust/terraform.tfstate"
 
 
-def operator_env(env, state_file=ADO_TRUST_STATE) -> dict:
-    """The operator identity: the environment's values, else ado-trust's console_operator_env output."""
-    vals = {k: env.get(k, "") for k in CONFIG_ENV}
-    if all(vals.values()) or not state_file:
-        return vals
+def operator_identity(state_file=ADO_TRUST_STATE) -> dict:
+    """ado-trust's console_operator_env output, or empty values when the stack has none."""
     try:
         out = json.loads(pathlib.Path(state_file).read_text())["outputs"]["console_operator_env"]["value"] or {}
     except (OSError, ValueError, KeyError, TypeError):
-        return vals
-    return {k: vals[k] or str(out.get(k) or "") for k in CONFIG_ENV}
+        out = {}
+    return {k: str(out.get(k) or "") for k in IDENTITY_KEYS}
 
 
 class TokenError(RuntimeError):
@@ -52,9 +45,8 @@ class TokenError(RuntimeError):
 class OperatorToken:
     """Short-lived JFrog tokens by OIDC exchange, one cached per host in memory only."""
 
-    def __init__(self, env=None, clock=time.time, state_file=ADO_TRUST_STATE):
-        env = os.environ if env is None else env
-        self.provider, self.audience, self.service_account = operator_env(env, state_file).values()
+    def __init__(self, clock=time.time, state_file=ADO_TRUST_STATE):
+        self.provider, self.audience, self.service_account = operator_identity(state_file).values()
         self.clock = clock
         self._cache = {}  # host -> (token, expires_at)
         self._lock = threading.Lock()
@@ -63,12 +55,9 @@ class OperatorToken:
     def configured(self) -> bool:
         return bool(self.provider and self.audience and self.service_account)
 
-    def missing(self) -> str:
-        return ", ".join(k for k, v in zip(CONFIG_ENV, (self.provider, self.audience, self.service_account)) if not v)
-
     def get(self, shell, host: str) -> str:
         if not self.configured:
-            raise TokenError(f"no JFrog OIDC identity: set {self.missing()} for the console")
+            raise TokenError("no console operator identity: apply terraform/stacks/ado-trust with console_operators set")
         with self._lock:
             tok, exp = self._cache.get(host, ("", 0.0))
             if tok and exp - REFRESH_BEFORE > self.clock():
@@ -105,9 +94,9 @@ class StaticToken:
 
 
 class Jfrog:
-    def __init__(self, shell, host: str, env=None, tokens=None):
+    def __init__(self, shell, host: str, tokens=None):
         self.sh, self.host = shell, host
-        self.tokens = tokens if tokens is not None else OperatorToken(env)
+        self.tokens = tokens if tokens is not None else OperatorToken()
 
     @property
     def token_present(self) -> bool:

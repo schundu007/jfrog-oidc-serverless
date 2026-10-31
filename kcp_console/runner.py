@@ -238,7 +238,7 @@ class RunManager:
     def __init__(self, runs_store, shell_factory, env=None, sleep=time.sleep, poll_seconds=10.0, on_change=None, root=".kcp-console",
                  tokens=None):
         self.store, self.shell_factory, self.env, self.root = runs_store, shell_factory, env, root
-        self.tokens = tokens if tokens is not None else OperatorToken(env)  # one in-memory cache for every run
+        self.tokens = tokens if tokens is not None else OperatorToken()  # one in-memory cache for every run
         self.sleep, self.poll_seconds = sleep, poll_seconds
         self.lock = threading.Lock()
         self.cond = threading.Condition(self.lock)

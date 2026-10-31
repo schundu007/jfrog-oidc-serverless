@@ -39,8 +39,7 @@ python3 -m kcp_console --fixtures kcp_console/tests/fixtures/sandbox
 # portal: both consoles on one port, Serverless at /serverless, Kubernetes at /k8s
 PYTHONPATH=client/src:rotator:. python3 -m unittest discover -s portal/tests -t .
 PYTHONPATH=client/src:rotator:. python -m portal
-# KCP JFrog access: no stored token; set the operator identity (terraform -chdir=terraform/stacks/ado-trust output console_operator_env)
-# JFROG_OIDC_PROVIDER=gcp-cloudrun JFROG_OIDC_AUDIENCE=jfrog-gcp JFROG_OIDC_SERVICE_ACCOUNT=jfrog-console-operator@csb-test-257615.iam.gserviceaccount.com
+# KCP JFrog access: no stored token and nothing to set; the console reads its operator identity from ado-trust's console_operator_env output
 ```
 
 ## Rules

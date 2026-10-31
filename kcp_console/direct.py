@@ -175,7 +175,7 @@ class Runner:
         self.p = paths(root, self.cfg["name"])
         self.p["dir"].mkdir(parents=True, exist_ok=True, mode=0o700)
         self.kenv = {"KUBECONFIG": str(self.p["kubeconfig"])}
-        self.jf = Jfrog(sh, self.cfg["jfrog"]["host"], env=env, tokens=tokens)
+        self.jf = Jfrog(sh, self.cfg["jfrog"]["host"], tokens=tokens)
         self.facts = {}
         self.pull_timeout = pull_timeout
         self.clock = clock

@@ -91,7 +91,7 @@ class KcpServer:
         self.mode = "replay" if fixtures else "live"
         self.env = {} if self.mode == "replay" else (env if env is not None else os.environ)
         # No stored JFrog token: live mode mints short-lived ones by OIDC exchange (jfrog.OperatorToken).
-        self.tokens = StaticToken("replay-mode-placeholder") if self.mode == "replay" else OperatorToken(self.env)
+        self.tokens = StaticToken("replay-mode-placeholder") if self.mode == "replay" else OperatorToken()
         self.status = StatusStore(self.store.root)
         self.run_store = RunStore(self.store.root)
         self.runs = RunManager(self.run_store, self.shell, env=self.env, sleep=sleep, poll_seconds=poll_seconds,

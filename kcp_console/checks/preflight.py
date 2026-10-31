@@ -61,7 +61,7 @@ def discover(cfg: dict, shell, env=None, kubeconfig=None, tokens=None) -> dict:
             out["reads"].append({k2: r.get(k2) for k2 in ("what", "ok", "forbidden", "fallback", "user_principal", "error")
                                  if r.get(k2) is not None})
 
-    jf = Jfrog(shell, cfg["jfrog"]["host"], env=env, tokens=tokens)
+    jf = Jfrog(shell, cfg["jfrog"]["host"], tokens=tokens)
     out["jfrog_token_error"] = jf.token_error()
     out["jfrog_token_present"] = not out["jfrog_token_error"]
     prov = jf.providers()

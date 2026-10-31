@@ -4,8 +4,7 @@
 # at JFrog for a short-lived admin token (kcp_console/jfrog.py OperatorToken). Only members
 # of var.console_operators can mint it (Token Creator on the service account).
 #
-# Start the console with the outputs:
-#   JFROG_OIDC_PROVIDER, JFROG_OIDC_AUDIENCE, JFROG_OIDC_SERVICE_ACCOUNT
+# The console reads console_operator_env from this stack's state: nothing to set before starting it.
 
 variable "console_operators" {
   description = "Who may act as the console operator, as IAM members (user:<email>). Empty: no operator identity."
