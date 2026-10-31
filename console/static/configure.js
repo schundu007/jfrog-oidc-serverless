@@ -47,13 +47,14 @@ const SCOPE_FIELDS = { gcp: ["project", "region"], azure: ["subscription", "reso
 function freshConfig(kind) {
   const cfg = clone(st.schema.defaults[kind]);
   cfg.name = "";  // set from the picked workload or the Name typed below
-  // Every identifying field starts empty; a region keeps its default.
-  for (const f of st.schema.target_fields[cloud]) if (f !== "region") cfg.target[cloud][f] = "";
+  // Every target field starts empty: no sample values.
+  for (const f of Object.keys(cfg.target[cloud])) if (typeof cfg.target[cloud][f] === "string" && f !== "identity_type") cfg.target[cloud][f] = "";
   cfg.jfrog.url = "";
-  // What the logged-in account and the pipelines already use.
-  const d = st.inv?.defaults || {};
+  // What the logged-in account and the pipelines already use, only when the listing worked.
+  const inv = st.inv;
+  const d = inv && (!inv.errors?.length || inv.workloads?.length) ? inv.defaults || {} : {};
   for (const [k, v] of Object.entries(d)) if (v && k !== "name" && Object.hasOwn(cfg.target[cloud], k)) cfg.target[cloud][k] = v;
-  if (d.jfrog_url) cfg.jfrog.url = d.jfrog_url;
+  if (inv?.defaults?.jfrog_url) cfg.jfrog.url = inv.defaults.jfrog_url;
   // Images come from Artifact Registry / ACR with the platform's own identity; JFrog
   // serves artifacts to the app's code. The JFrog image-pull path is opt-in.
   cfg.pull_path.enabled = false;
@@ -464,6 +465,8 @@ async function loadInventory(scope = "", refresh = false) {
     st.inv = await api(`/api/inventory/${cloud}${q ? `?${q}` : ""}`);
   } catch (e) {
     fill(sel, h("option", { value: "", text: `Could not list workloads: ${e.message}` }));
+    $("cfg-scope-label").textContent = SCOPE_LABEL[cloud];
+    fill($("cfg-scope"), h("option", { value: "", text: "" }));
     return;
   }
   // Listings are cached server side; the time says how old this one is.

@@ -189,11 +189,13 @@ def aws(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, list]:
     """Lambda functions, ECS services (and task families no service runs) and App Runner services
     of one profile's account, in the profile's default region."""
     prof = ["--profile", scope] if scope else []
-    region = _value(sh, ["aws", "configure", "get", "region", *prof]) or AWS_DEFAULT_REGION
+    # Listing needs a region; only a configured one becomes a default for the form.
+    configured = _value(sh, ["aws", "configure", "get", "region", *prof])
+    region = configured or AWS_DEFAULT_REGION
     o = ["--region", region, *prof, "--output", "json"]
     res = sh.run(["aws", "sts", "get-caller-identity", *o], timeout=60)
     account = ((res.json() or {}) if res.ok else {}).get("Account", "")
-    defaults = {"profile": scope or "", "account": account, "region": region}
+    defaults = {"profile": scope or "", "account": account, "region": configured}
     out: list = []
     if not account:
         errors.append(f"aws is not logged in{f' for profile {scope}' if scope else ''}: {_first_error(res, 160)} "
