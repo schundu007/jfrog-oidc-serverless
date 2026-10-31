@@ -36,7 +36,7 @@
       "repositories": {},
       "runtime_enabled": true,
       "runtime_ttl": 3600,
-      "subject": ""
+      "subject": "116263319707315339738"
     },
     "jfrog-svc-demo": {
       "dedicated_identity": "jfrog-jfrog-svc-demo",
