@@ -59,7 +59,7 @@
       "subscription": ""
     },
     "discovered": {
-      "at": "2026-10-31T01:58:29Z",
+      "at": "2026-10-31T01:59:07Z",
       "image": "us-central1-docker.pkg.dev/csb-test-257615/platform/artifact-reader:8cb8abe2c855",
       "kind": "gcp_run_job",
       "mapping_subject": "116995768674951979623",
