@@ -209,23 +209,25 @@ const linkTo = (id) => h("button", { type: "button", class: "link", text: titleO
 const joinLinks = (ids) => ids.flatMap((id, i) => (i ? [", ", linkTo(id)] : [linkTo(id)]));
 const ACTION_NAME = { status: "State read", "plan-apply": "Deploy plan", "plan-destroy": "Destroy plan", apply: "Apply" };
 
+// Terraform's error, cut to its point: no "terraform x failed (exit 1): Error:" prefix, one short line.
+function brief(text, max = 140) {
+  const t = String(text || "").replace(/^terraform \S+ failed \(exit \d+\):\s*/, "").replace(/^Error:\s*/, "").split("\n")[0];
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+}
+
 // What stops or failed this stack, each with where to go: the foundation it needs, the stacks that
-// stand on it, the last run that failed, a state read that failed for another reason.
+// stand on it, the last run that failed. A failed state read is left out when the missing foundation
+// already explains it.
 function warnings(s) {
   const out = [];
-  if (s.needs?.length) {
-    out.push(h("div", { class: "setup-note warn" }, "Needs ", joinLinks(s.needs), " deployed first: its Terraform state and pipeline trust live there."));
-  }
-  if (s.dependents?.length) {
-    out.push(h("div", { class: "setup-note warn" }, "Stands under ", joinLinks(s.dependents), ": destroy ",
-      s.dependents.length > 1 ? "those" : "that", " first."));
-  }
-  if (s.failed && !s.busy) {
-    const log = h("button", { type: "button", class: "link", text: "Show log" });
-    log.onclick = () => follow(s, s.failed, flyout(`${s.group} · ${s.title}: ${ACTION_NAME[s.failed.action] || s.failed.action}`));
-    out.push(h("div", { class: "setup-note fail" }, `${ACTION_NAME[s.failed.action] || "Last run"} failed: ${s.failed.error || "see the log"} `, log));
-  } else if (s.status?.error && !s.needs?.length && !(s.depends_on && !byId[s.depends_on]?.status)) {
-    out.push(h("div", { class: "setup-note fail" }, `Could not read the state: ${s.status.error}`));
+  if (s.needs?.length) out.push(h("div", { class: "setup-note warn" }, "Deploy ", joinLinks(s.needs), " first."));
+  if (s.dependents?.length) out.push(h("div", { class: "setup-note warn" }, "Destroy ", joinLinks(s.dependents), " first."));
+  const failed = s.failed && !s.busy && !(s.failed.action === "status" && s.needs?.length) ? s.failed : null;
+  if (failed) {
+    const log = h("button", { type: "button", class: "link", text: "Log" });
+    log.onclick = () => follow(s, failed, flyout(`${s.group} · ${s.title}: ${ACTION_NAME[failed.action] || failed.action}`));
+    out.push(h("div", { class: "setup-note fail", title: failed.error || "" },
+      `${ACTION_NAME[failed.action] || "Last run"} failed: ${brief(failed.error) || "see the log"} `, log));
   }
   return out;
 }
@@ -243,8 +245,9 @@ function row(s) {
     progress.onclick = () => follow(s, s.job, flyout(`${s.group} · ${s.title}: ${verb}`));
   }
   const blockedDeploy = s.needs?.length ? `Deploy ${s.needs.map(titleOf).join(", ")} first` : "";
-  return h("tr", { id: `stack-${s.id}` },
-    h("td", { title: `terraform/stacks/${s.id}` }, h("b", { text: s.title }), warnings(s)),
+  const notes = warnings(s);
+  const main = h("tr", { id: `stack-${s.id}`, class: notes.length ? "has-notes" : "" },
+    h("td", { title: `terraform/stacks/${s.id}` }, h("b", { text: s.title })),
     h("td", {}, stackStatus(s)),
     h("td", { class: "setup-row-actions" },
       progress,
@@ -253,6 +256,8 @@ function row(s) {
       h("button", { type: "button", class: "primary", text: "Deploy", disabled: s.busy || !!blockedDeploy, title: blockedDeploy,
         onclick: () => run(s, "plan-apply") }),
       destroy));
+  // Warnings get their own full-width line under the row, so the row keeps one height.
+  return notes.length ? [main, h("tr", { class: "setup-notes" }, h("td", { colspan: 3 }, notes))] : main;
 }
 
 let byId = {};
@@ -265,7 +270,7 @@ async function load() {
   for (const s of data.stacks) (groups[s.group] ||= []).push(s);
   fill($("groups"), Object.entries(groups).map(([g, list]) => h("section", { class: "card" },
     h("div", { class: "card-head" }, h("h2", { text: g })),
-    h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, list.map(row)))))));
+    h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, list.flatMap(row)))))));
   // While a job runs, keep the rows current so Running turns into its result without a reload.
   clearTimeout(load.timer);
   if (data.stacks.some((s) => s.busy)) load.timer = setTimeout(() => load().catch(() => {}), POLL_MS * 2);

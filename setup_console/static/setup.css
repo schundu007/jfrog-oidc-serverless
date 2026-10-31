@@ -10,10 +10,12 @@
 .setup-outputs th { text-align: left; font-weight: 500; padding: var(--s-2) var(--s-3) var(--s-2) 0; width: 40%; vertical-align: top; }
 .setup-outputs td { padding: var(--s-2) 0; color: var(--fg-2); font-size: var(--t-sm); overflow-wrap: anywhere; }
 .setup-outputs tr + tr > * { border-top: 1px solid var(--border); }
-.setup-note { margin-top: var(--s-2); padding: var(--s-1) var(--s-2); border-left: 3px solid; border-radius: var(--r-sm);
-  font-size: var(--t-sm); font-weight: 400; line-height: 1.4; overflow-wrap: anywhere; }
+#groups tr.has-notes > td { border-bottom: none; padding-bottom: var(--s-1); }
+#groups tr.setup-notes > td { padding-top: 0; }
+.setup-note { display: inline-flex; align-items: baseline; gap: var(--s-1); margin: 0 var(--s-2) var(--s-1) 0; padding: 2px var(--s-2);
+  border-left: 3px solid; border-radius: var(--r-sm); font-size: var(--t-sm); line-height: 1.4; max-width: 100%; }
 .setup-note.warn { color: var(--warn-fg); background: var(--warn-bg); border-color: var(--warn-line); }
 .setup-note.fail { color: var(--bad-fg); background: var(--bad-bg); border-color: var(--bad-line); }
-.setup-note button.link { padding: 0; font-weight: 600; }
+.setup-note button.link { padding: 0; font-weight: 600; white-space: nowrap; }
 @keyframes setup-flash { from { background: var(--warn-bg); } to { background: transparent; } }
 tr.setup-flash > td { animation: setup-flash 1.6s ease-out; }
