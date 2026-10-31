@@ -252,3 +252,66 @@ class CleanupTests(Base):
         self.assertEqual(self.mgr.clear("azure"), {"runs_deleted": 0, "runs_kept": 0})
         self.assertEqual(self.mgr.clear("gcp"), {"runs_deleted": 1, "runs_kept": 0})
         self.assertEqual(self.mgr.list(), [])
+
+
+class DeployMissingTests(Base):
+    """Discover finds no workload: the run asks Yes/No and deploys it through the provisioner (spec: Setup)."""
+
+    def setUp(self):
+        super().setUp()
+        from unittest import mock
+        from console.steps import discover
+        self.found = {"errors": [{"code": "not_found", "message": "Cloud Run service 'orders' not found", "fix": ""}],
+                      "warnings": [], "corrections": [], "config_patch": {}}
+        ok = {"errors": [], "warnings": [], "corrections": [], "config_patch": {"target.discovered.image": "img"}}
+        self.calls = []
+        patcher = mock.patch.object(discover, "run", side_effect=lambda c, sh: self.calls.append(1) or (self.found if len(self.calls) == 1 else ok))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        test = self
+
+        class Prov:
+            asked = []
+
+            def stack_for(self, c):
+                return "gcp-cloud-run-service"
+
+            def run(self, c, ask, log):
+                a = ask({"kind": "deploy_missing", "question": "Deploy it?", "stack": "gcp-cloud-run-service",
+                         "plan_sha256": "f" * 64, "summary": {"create": 2}, "changes": [], "destructive": []})
+                Prov.asked.append(a)
+                if a["answer"] != "yes":
+                    from setup_console.provision import Declined
+                    raise Declined()
+                log("deployed")
+        self.prov = Prov
+        self.mgr.provisioner = Prov()
+
+    def test_yes_deploys_then_discovers_again(self):
+        run = self.mgr.start(cfg(), steps=["discover"])
+        snap = self.wait(run, "waiting_approval")
+        d = self.step(snap, "discover")
+        self.assertEqual((d["status"], d["approval"]["kind"]), ("needs_approval", "deploy_missing"))
+        with self.assertRaises(RunError):
+            self.mgr.approve(run.id, "discover", {"answer": "yes", "plan_sha256": "0" * 64})   # not the plan shown
+        with self.assertRaises(RunError):
+            self.mgr.approve(run.id, "discover", {"answer": "maybe"})
+        self.mgr.approve(run.id, "discover", {"answer": "yes", "plan_sha256": "f" * 64})
+        snap = self.wait(run, "succeeded")
+        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(self.prov.asked[-1]["answer"], "yes")
+
+    def test_no_ends_the_run(self):
+        run = self.mgr.start(cfg(), steps=["discover"])
+        self.wait(run, "waiting_approval")
+        self.mgr.approve(run.id, "discover", {"answer": "no"})
+        snap = self.wait(run, "failed")
+        self.assertIn("No", self.step(snap, "discover")["error"])
+        self.assertEqual(len(self.calls), 1)
+
+    def test_without_a_provisioner_not_found_fails_as_before(self):
+        self.mgr.provisioner = None
+        run = self.mgr.start(cfg(), steps=["discover"])
+        snap = self.wait(run, "failed")
+        self.assertIn("not found", self.step(snap, "discover")["error"])

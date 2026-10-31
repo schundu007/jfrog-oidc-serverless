@@ -49,6 +49,10 @@ class Jobs:
         self._lock = threading.Lock()
         self.ado, self.repo_root, self.sleep = ado, repo_root, sleep
 
+    def deployed(self, stack_id: str) -> bool:
+        with self._lock:
+            return bool((self._status.get(stack_id) or {}).get("deployed"))
+
     def pipeline_path(self, stack_id: str) -> str | None:
         """The stack's ADO stack-setup pipeline (repo-relative), when changes to it run in ADO."""
         if self.ado is None or stacks.depends_on(stack_id, self.root) is None:

@@ -162,7 +162,8 @@ class Run:
 
 
 class RunManager:
-    def __init__(self, root, cloud_shell, tf_shell, env=None, simulate=None, store=None, delivery=None, repo_root=None):
+    def __init__(self, root, cloud_shell, tf_shell, env=None, simulate=None, store=None, delivery=None, repo_root=None,
+                 provisioner=None):
         self.root = Path(root)
         self.cloud_shell, self.tf_shell = cloud_shell, tf_shell
         self.env = os.environ if env is None else env
@@ -172,6 +173,9 @@ class RunManager:
         # Azure DevOps pull request; the <cloud>-workload-onboard pipeline plans, applies and wires.
         self.delivery = delivery
         self.repo_root = Path(repo_root) if repo_root else None
+        # Deploys a workload Discover did not find, after the operator's Yes (the portal passes Setup's;
+        # standalone there is none and a missing workload fails Discover as before).
+        self.provisioner = provisioner
         self.runs: dict = self._load()
         self.lock = threading.Lock()
         self.threads: list = []
@@ -398,6 +402,13 @@ class RunManager:
 
     def _step_discover(self, run, ctx):
         res = discover.run(run.cfg, self._shell(run, ctx))
+        missing = any(e.get("code") == "not_found" for e in res["errors"])
+        if missing and self.provisioner is not None and self.provisioner.stack_for(run.cfg):
+            self._evidence(run, "discover", result=res)
+            run.log("The workload does not exist: asking whether to deploy it.")
+            self.provisioner.run(run.cfg, ask=lambda info: self._ask_deploy(run, info), log=run.log)
+            run.log("Deployed: looking for it again.")
+            res = discover.run(run.cfg, self._shell(run, ctx))
         self._evidence(run, "discover", result=res)
         if res["errors"]:
             raise RuntimeError("discover failed: " + "; ".join(e["message"] for e in res["errors"]))
@@ -410,6 +421,20 @@ class RunManager:
                 return
             self.store.put(run.name, run.cfg)
             run.log(f"saved the discovered facts to config {run.name}")
+
+    def _ask_deploy(self, run, info: dict) -> dict:
+        """Yes/No on deploying a missing workload. Yes names the plan shown (and the typed name if it deletes)."""
+        def check(p):
+            if p.get("answer") not in ("yes", "no"):
+                raise tf.ApplyRefused("answer_required", "answer yes or no")
+            if p["answer"] == "yes" and p.get("plan_sha256") != info["plan_sha256"]:
+                raise tf.ApplyRefused("plan_hash_mismatch", "the answer is for a different plan; review the current one")
+            if p["answer"] == "yes" and info.get("destructive") and p.get("typed_confirmation") != info.get("confirmation_phrase"):
+                raise tf.ApplyRefused("typed_confirmation_required", f"type '{info.get('confirmation_phrase')}' to confirm")
+        payload = self._wait_approval(run, "discover", info, check)
+        with run.cond:
+            run.steps["discover"]["approval"] = None
+        return payload
 
     def _step_simulate(self, run, ctx):
         if self.simulate is None:

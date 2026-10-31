@@ -23,6 +23,7 @@ from kcp_console.store import Store as KcpStore, replay_store
 from console.shell import Shell
 from setup_console.ado import Ado
 from setup_console.jobs import Jobs
+from setup_console.provision import Provisioner
 from setup_console.server import SetupServer
 
 from .server import K8S, SERVERLESS, SETUP, Portal
@@ -76,6 +77,8 @@ def main(argv=None) -> int:
                          branch=delivery["ado"].get("target_branch") or "main")
     setup = SetupServer(token=token, base=SETUP, env_name=env_name,
                         jobs=Jobs(env_name=env_name, token_source=operator.get, ado=ado_client))
+    if ado_client:   # a Serverless run that finds no workload offers to deploy it through these pipelines
+        serverless.runs.provisioner = Provisioner(setup.jobs, ado_client)
     portal = Portal(serverless, k8s, host=args.host, port=args.port, setup_console=setup)
     try:
         portal.start()
