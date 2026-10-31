@@ -586,6 +586,8 @@ def _make_handler(console: KcpServer):
                         run = console.runs.prepare(console.config(name), str(body.get("kind") or ""), str(body.get("name") or ""),
                                                    params, console.status.get(name))
                         return self._json(200, run)
+                    if method == "DELETE":
+                        return self._json(200, console.runs.prune(self._name(self._query("config"))))
                     raise HttpError(405, "method not allowed")
                 if not RUN_ID_RE.match(rest[0]):
                     raise HttpError(404, "no such run")

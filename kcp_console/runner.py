@@ -260,6 +260,26 @@ class RunManager:
                 raise RunError(404, "no such run")
             return dict(r)
 
+    def prune(self, config: str) -> dict:
+        """Clear old runs of one cluster. The newest finished run of each action stays: it is the evidence the
+        cluster page reads. Active runs (prepared, queued, running) stay; refused requests and older runs go."""
+        active = ("prepared", "queued", "running")
+        newest, deleted, kept = set(), [], 0
+        with self.lock:
+            mine = sorted((r for r in self.runs.values() if r.get("config") == config),
+                          key=lambda r: r.get("created", ""), reverse=True)
+            for r in mine:
+                key = (r.get("kind"), r.get("name"))
+                if r.get("status") in active or (r.get("status") != "refused" and key not in newest):
+                    if r.get("status") not in active:
+                        newest.add(key)
+                    kept += 1
+                    continue
+                deleted.append(self.runs.pop(r["id"])["id"])
+        for rid in deleted:
+            self.store.delete(rid)
+        return {"runs_deleted": len(deleted), "runs_kept": kept}
+
     def _event(self, run, kind, text, **extra):
         ev = {"t": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "kind": kind, "text": redact.text(text), **extra}
         with self.cond:

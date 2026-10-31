@@ -435,3 +435,24 @@ class ProofTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PruneTest(unittest.TestCase):
+    """Clear old runs: the newest finished run of each action per cluster stays (it is the cluster's evidence)."""
+
+    def test_keeps_newest_per_action_and_active_runs(self):
+        root = Path(tempfile.mkdtemp())
+        store = RunStore(root)
+        m = RunManager(store, lambda log: FakeShell(), env={}, sleep=lambda s: None, root=root, tokens=StaticToken(TOKEN))
+        rows = [("20261030-100000-aaaaa1", "aks-1", "Verify", "failed"), ("20261030-110000-aaaaa2", "aks-1", "Verify", "succeeded"),
+                ("20261030-120000-aaaaa3", "aks-1", "setup", "succeeded"), ("20261030-130000-aaaaa4", "aks-1", "setup", "running"),
+                ("20261030-140000-aaaaa5", "aks-1", "setup", "refused"), ("20261030-150000-aaaaa6", "aks-2", "Verify", "failed")]
+        for rid, conf, name, status in rows:
+            run = {"id": rid, "created": f"2026-10-30T{rid[9:11]}:00:00Z", "config": conf, "kind": "direct", "name": name, "status": status}
+            m.runs[rid] = run
+            store.save(run)
+        self.assertEqual(m.prune("aks-1"), {"runs_deleted": 2, "runs_kept": 3})
+        self.assertEqual(sorted(m.runs), ["20261030-110000-aaaaa2", "20261030-120000-aaaaa3", "20261030-130000-aaaaa4",
+                                          "20261030-150000-aaaaa6"])
+        self.assertFalse((root / "runs" / "20261030-100000-aaaaa1").exists())
+        self.assertTrue((root / "runs" / "20261030-110000-aaaaa2").exists())

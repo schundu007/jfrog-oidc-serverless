@@ -12,6 +12,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -153,6 +154,9 @@ class RunStore:
     def events(self, run_id: str) -> list:
         p = self._d(run_id) / "events.jsonl"
         return [json.loads(l) for l in p.read_text().splitlines() if l.strip()] if p.is_file() else []
+
+    def delete(self, run_id: str) -> None:
+        shutil.rmtree(self._d(run_id), ignore_errors=True)
 
     def all(self) -> list:
         if not self.dir.is_dir():

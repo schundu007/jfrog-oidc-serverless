@@ -168,6 +168,14 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.req("PUT", "/api/configs/Bad..Name", body={"config": {}})[0].status, 400)
         self.assertEqual(self.req("DELETE", "/api/configs/sandbox-pilot")[0].status, 200)
 
+    def test_clear_old_runs(self):
+        self.assertEqual(self.req("DELETE", "/api/runs")[0].status, 400)
+        self.assertEqual(self.req("DELETE", "/api/runs?config=no-such")[0].status, 404)
+        self.assertEqual(self.req("PUT", "/api/configs/prune-me", body={"config": {}})[0].status, 200)
+        r, raw = self.req("DELETE", "/api/runs?config=prune-me")
+        self.assertEqual((r.status, json.loads(raw)), (200, {"runs_deleted": 0, "runs_kept": 0}))
+        self.assertEqual(self.req("DELETE", "/api/configs/prune-me")[0].status, 200)
+
     def test_validate(self):
         r, raw = self.req("POST", "/api/validate", body={"config": {"values": {"artifactory_url": "https://example.jfrog.io"}}})
         issues = json.loads(raw)["issues"]

@@ -268,6 +268,7 @@ function clusterView(c) {
       h("div", { class: "cl-actions" },
         h("button", { class: "ghost", disabled: s.loading || busy, onclick: () => readStatus(c.name) }, s.loading ? "Reading…" : "Refresh"),
         h("button", { class: "ghost", disabled: busy, onclick: () => selectTab("configure") }, "Edit"),
+        h("button", { class: "ghost", disabled: busy, onclick: (e) => clearRuns(e.currentTarget, c.name) }, "Clear old runs"),
         rel ? h("button", { class: "ghost danger", disabled: busy, onclick: () => start("teardown") }, "Tear down") : null,
         rel ? h("button", { class: "secondary", disabled: busy, onclick: () => start("setup") }, "Set up again") : null,
         h("button", { class: "primary", disabled: busy, onclick: () => start(rel ? "verify" : "setup") }, rel ? "Verify" : "Set up"))),
@@ -363,6 +364,25 @@ function isBusy(name) {
   if (!a) return false;
   if (a.dry && !a.real && (a.dry.status === "prepared" || ACTIVE.includes(a.dry.status) || (a.dry.status === "succeeded" && fresh(a.dry)))) return true;
   return !!(a.real && (a.real.status === "prepared" || ACTIVE.includes(a.real.status)));
+}
+
+// Clear old runs: two clicks. The newest finished run of each action stays, so the page reads the same.
+async function clearRuns(btn, name) {
+  if (btn.dataset.armed !== "1") {
+    btn.dataset.armed = "1";
+    btn.textContent = "Click again to clear";
+    setTimeout(() => { if (btn.isConnected) { btn.dataset.armed = ""; btn.textContent = "Clear old runs"; } }, 4000);
+    return;
+  }
+  btn.disabled = true;
+  try {
+    const r = await api(`/api/runs?config=${encodeURIComponent(name)}`, { method: "DELETE" });
+    btn.textContent = `${r.runs_deleted} cleared`;
+  } catch (e) {
+    btn.textContent = "Could not clear";
+    btn.title = e.message;
+  }
+  await refreshAction(name);
 }
 
 async function refreshAction(name) {
