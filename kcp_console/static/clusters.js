@@ -95,7 +95,7 @@ function view() {
         built && n ? h("button", { class: adding ? "secondary" : "primary", onclick: () => { adding = !adding; render(); } }, adding ? "Close" : "Add a cluster") : null,
         built ? h("button", { class: "ghost", disabled: fleetLoading, onclick: () => { fleet = null; render(); } }, "Refresh") : null)),
     d.error ? h("div", { class: "callout fail" }, brief(d.error)) : null,
-    !built ? h("div", { class: "empty" }, h("p", {}, `${label} is not supported yet`)) : null,
+    !built ? notYet(k, label) : null,
     open ? addPanel(state.configs || [], k) : null,
     !built ? null
       : !fleet ? muted("Loading…")
@@ -253,4 +253,32 @@ async function add(c, k) {
   fleet = null;
   await refreshConfigs(name);
   go(clusterPath(name, cfg.jfrog.host ? "summary" : "config"));
+}
+
+// A platform the console can't read yet: what it will do there, what it needs, and where to go now.
+const NOT_YET = {
+  eks: {
+    will: "List your EKS clusters, trust each cluster's OIDC issuer in JFrog, install the JFrog credential provider on the nodes and prove a pull with no pull secret: the same Set up and Verify as AKS and GKE.",
+    needs: ["The AWS CLI signed in to the account (aws sts get-caller-identity works)",
+      "kubectl access to the cluster (aws eks update-kubeconfig)",
+      "The cluster's OIDC issuer, which EKS turns on for every cluster",
+      "A Kubernetes version whose kubelet hands service account tokens to credential providers"],
+  },
+  openshift: {
+    will: "Read your OpenShift clusters, trust each cluster's service account issuer in JFrog, roll the JFrog credential provider out to the nodes and prove a pull with no pull secret.",
+    needs: ["oc logged in to the cluster with cluster-admin (the provider is a node change)",
+      "The cluster's service account issuer published where JFrog can reach it (OIDC discovery)",
+      "A machine config pool the console may update, since nodes restart to pick the provider up"],
+  },
+};
+
+function notYet(k, label) {
+  const info = NOT_YET[k] || { will: "", needs: [] };
+  const ready = Object.entries(CLOUD).filter(([c]) => !NOT_YET[c] && c !== k);
+  return h("section", { class: "card not-yet" },
+    h("div", { class: "card-head" }, h("h2", {}, `${label} isn't available yet`)),
+    info.will ? h("p", {}, info.will) : null,
+    info.needs.length ? [h("h3", {}, "What it will need"), h("ul", {}, info.needs.map((n) => h("li", {}, n)))] : null,
+    h("h3", {}, "Available now"),
+    h("p", { class: "ready-links" }, ready.map(([c, name]) => link(go, url, `/clusters/${c}`, markOf(c), name))));
 }
