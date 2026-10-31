@@ -28,14 +28,13 @@ variables:
     ${{ else }}:
       value: plan
 
-pool:
-  vmImage: ubuntu-24.04
-
 stages:
   - stage: plan
     displayName: Plan ${{ parameters.action }} ${{ parameters.stack }}
     jobs:
       - job: plan
+        pool:
+          vmImage: ubuntu-24.04
         timeoutInMinutes: 30
         steps:
           - checkout: self
@@ -73,6 +72,8 @@ stages:
     condition: and(succeeded(), eq(dependencies.plan.outputs['plan.tf.hasChanges'], 'true'))
     jobs:
       - deployment: apply
+        pool:
+          vmImage: ubuntu-24.04
         environment: ${{ parameters.stack }}-${{ parameters.environment }}
         timeoutInMinutes: 60
         strategy:

@@ -19,11 +19,10 @@ variables:
   - name: WORKLOAD
     value: ${{ parameters.workload }}
 
-pool:
-  vmImage: ubuntu-24.04
-
 jobs:
   - job: build_deploy
+    pool:
+      vmImage: ubuntu-24.04
     displayName: Roll out ${{ parameters.kind }} ${{ parameters.workload }}
     timeoutInMinutes: 30
     steps:

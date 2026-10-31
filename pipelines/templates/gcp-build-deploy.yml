@@ -17,11 +17,10 @@ variables:
   - name: BASE_IMAGE
     value: library/python:3.12-slim
 
-pool:
-  vmImage: ubuntu-24.04
-
 jobs:
   - job: rollout
+    pool:
+      vmImage: ubuntu-24.04
     displayName: Cloud Run ${{ parameters.kind }} ${{ parameters.workload }}
     timeoutInMinutes: 30
     variables:
