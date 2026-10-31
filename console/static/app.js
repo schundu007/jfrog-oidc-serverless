@@ -1,596 +1,146 @@
-// JFrog OIDC console UI. Vanilla ES module, no build step, no CDN.
-// The session token comes from the URL fragment and is sent only as the X-Console-Token header.
-// It is kept in localStorage for this origin (127.0.0.1:<port>) so reloads and new tabs work:
-// never in a cookie or the URL. The console keeps the same token across restarts (--new-token replaces it).
+// JFrog OIDC console UI (Serverless). Vanilla ES module, no build step, no CDN.
+// The session token comes from the URL fragment (or the page) and is sent only as the X-Console-Token
+// header; see core.js. Pages, modelled on Azure DevOps Pipelines (docs/ui-pattern.md):
+//   /<cloud>                        Workloads (list.js)
+//   /<cloud>/new                    New workload: the configuration form; Save creates it and opens it
+//   /<cloud>/w/<name>?tab=…         Workload: Runs · Configuration · Simulator (workload.js)
+//   /<cloud>/w/<name>/runs/<id>     Run: step tree, step detail and log (runs.js)
+// Old paths (/<cloud>/configure, /runs, /simulate, /configs) land on Workloads.
 
-import { renderTimeline, hhmm, LEGEND } from "./timeline.js";
-import { initConfigure } from "./configure.js";
-import { initRuns } from "./runs.js";
+import { $, api, h, BASE, CLOUD, CLOUDS, REDIRECTING, localPath, href, hasToken, setToken, takeTokenFromHash, forgetToken,
+  closeFlyout, template } from "./core.js";
+import { mountList } from "./list.js";
+import { mountWorkload } from "./workload.js";
+import { mountRun } from "./runs.js";
+import { mountConfig } from "./configure.js";
 
-const $ = (id) => document.getElementById(id);
+const RUN_ID = /^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$/;
+const NAME = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
-// One origin only: the saved sign-in lives in 127.0.0.1's storage, so send localhost there.
-// Nothing else runs on localhost, so the token in the fragment travels with the redirect.
-const REDIRECTING = location.hostname === "localhost";
-if (REDIRECTING) location.replace(location.href.replace("//localhost", "//127.0.0.1"));
-
-// Inside the portal this console lives under a prefix (/serverless): the server says so in a meta tag.
-// Every API call, static file and page link carries it; localPath() is the path without it.
-const BASE = document.querySelector('meta[name="console-base"]')?.content || "";
-const localPath = () => (BASE && location.pathname.startsWith(BASE) ? location.pathname.slice(BASE.length) || "/" : location.pathname);
-
-// Google Cloud and Azure are separate pages (/gcp, /azure; ?cloud= still works); nothing on one
-// shows the other. Each tab has its own path: /<cloud>/configs|configure|runs|simulate.
-const CLOUDS = { gcp: "Google Cloud", azure: "Azure", aws: "AWS", openshift: "OpenShift" };
-const CLOUD = [localPath().split("/")[1], new URLSearchParams(location.search).get("cloud")]
-  .find((c) => Object.hasOwn(CLOUDS, c)) || null;
-const ofCloud = (kind) => !!kind && String(kind).startsWith(`${CLOUD}_`);
-
-// replaceChildren() would turn null children into the text "null"; drop them.
-const fill = (el, ...kids) => el.replaceChildren(...kids.flat().filter((k) => k !== null && k !== undefined && k !== false));
-
-// ----------------------------------------------------------------- session
-
-// Read the token from the fragment and drop the fragment from the address bar
-// and history straight away. Also runs on hashchange: pasting the URL into an
-// open tab (e.g. after a console restart) is a same-document navigation.
-function takeTokenFromHash() {
-  const m = location.hash.match(/(?:^#|&)t=([A-Za-z0-9_-]+)/);
-  if (location.hash) history.replaceState(null, "", location.pathname + location.search);
-  return m ? m[1] : null;
+// Which page this path is. Anything else under the cloud (old tabs) is the list.
+function route() {
+  const parts = localPath().split("/").filter(Boolean).map(decodeURIComponent);
+  const [, a, name, r, id] = parts;
+  if (a === "new" && parts.length === 2) return { page: "new" };
+  if (a === "w" && NAME.test(name || "") && parts.length === 3) return { page: "workload", name };
+  if (a === "w" && NAME.test(name || "") && r === "runs" && RUN_ID.test(id || "") && parts.length === 5) return { page: "run", name, id };
+  return { page: "list", legacy: parts.length > 1 };
 }
 
-// Keep it so a reload or a new tab does not lock the operator out. It is only valid while
-// this console process runs. A token from the URL always wins (console restart).
-const TOKEN_KEY = "console-session-token";
-function rememberToken(t) {
-  try { if (t) localStorage.setItem(TOKEN_KEY, t); } catch { /* storage blocked: memory only */ }
-  return t;
-}
-function storedToken() {
-  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
-}
-
-// The server puts the token in the page when the operator opened it directly (no #t= needed).
-function pageToken() {
-  const m = document.querySelector('meta[name="console-token"]');
-  const t = m ? m.content : null;
-  if (m) m.remove();
-  return t;
-}
-
-let TOKEN = REDIRECTING ? null : rememberToken(takeTokenFromHash() || pageToken()) || storedToken();
-
-class ApiError extends Error {
-  constructor(status, message, code) { super(code ? `${message} (${code})` : message); this.status = status; this.code = code; }
-}
-
-async function api(path, { method = "GET", body } = {}) {
-  const headers = { "X-Console-Token": TOKEN };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  const resp = await fetch(BASE + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body),
-    credentials: "omit", cache: "no-store" });
-  const text = await resp.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch { data = { error: text }; }
-  if (!resp.ok) throw new ApiError(resp.status, (data && data.error) || `HTTP ${resp.status}`, data && data.code);
-  return data;
-}
-
-// Server-sent events over fetch, so the token stays in a header (EventSource can't set headers).
-// A POST stream (Preflight) passes { method: "POST", body }.
-async function streamEvents(path, onFrame, signal, { method = "GET", body } = {}) {
-  const headers = { "X-Console-Token": TOKEN };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  const resp = await fetch(BASE + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body),
-    credentials: "omit", cache: "no-store", signal });
-  if (!resp.ok || !resp.body) {
-    let msg = `event stream failed: HTTP ${resp.status}`;
-    try { msg = (await resp.json()).error || msg; } catch { /* not JSON */ }
-    throw new ApiError(resp.status, msg);
-  }
-  const reader = resp.body.pipeThrough(new TextDecoderStream()).getReader();
-  let buf = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += value;
-    let i;
-    while ((i = buf.indexOf("\n\n")) >= 0) {
-      const frame = buf.slice(0, i);
-      buf = buf.slice(i + 2);
-      let kind = "message";
-      const data = [];
-      for (const line of frame.split("\n")) {
-        if (line.startsWith("event: ")) kind = line.slice(7);
-        else if (line.startsWith("data: ")) data.push(line.slice(6));
-      }
-      if (data.length) onFrame(kind, JSON.parse(data.join("\n")));
-    }
-  }
-}
-
-// ----------------------------------------------------------------- dom helpers
-
-function h(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (v === undefined || v === null || v === false) continue;
-    if (k === "class") node.className = v;
-    else if (k === "text") node.textContent = v;
-    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
-    else node.setAttribute(k, v === true ? "" : String(v));
-  }
-  for (const c of children.flat()) {
-    if (c === null || c === undefined || c === false) continue;
-    node.append(c instanceof Node ? c : document.createTextNode(String(c)));
-  }
-  return node;
-}
-
-function showError(msg) {
-  const e = $("form-error");
-  e.textContent = msg || "";
-  e.hidden = !msg;
-}
-
-// ----------------------------------------------------------------- page
-
-// One page per cloud: Workloads, with the Simulator and Pipeline runs as sections below the form.
-// Every section and step starts collapsed on each load; nothing remembers what was open.
-// Open a section (sec-sim, sec-runs) and bring it into view: Simulate opens the Simulator, Run pipeline opens Pipeline runs.
-function showSection(id) {
-  const sec = $(id);
-  sec.open = true;
-  sec.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
-}
-
-// Where you are: Serverless / <cloud> / Workloads. Only the cloud is a link.
-function renderTrail() {
-  const steps = [["Serverless", null], [CLOUDS[CLOUD], `${BASE}/${CLOUD}`], ["Workloads", null]];
+// Where you are; every level above the current page is a link.
+function renderTrail(r) {
+  const steps = [["Serverless", null], [CLOUDS[CLOUD], null], ["Workloads", r.page === "list" ? null : href.list()]];
+  if (r.page === "new") steps.push(["New workload", null]);
+  if (r.name) steps.push([r.name, r.page === "run" ? href.workload(r.name, "runs") : null]);
+  if (r.page === "run") steps.push([`Run ${r.id}`, null]);
   const parts = [];
-  steps.forEach(([label, href], i) => {
+  steps.forEach(([label, link], i) => {
     if (i) parts.push(h("span", { class: "trail-sep", "aria-hidden": "true", text: "/" }));
-    parts.push(href ? h("a", { href, "data-section": "", text: label })
+    parts.push(link ? h("a", { href: link, text: label })
       : h("span", { "aria-current": i === steps.length - 1 ? "page" : null, text: label }));
   });
   $("trail").replaceChildren(...parts);
 }
 
-// ----------------------------------------------------------------- simulate form
-
-const LOAD_SPEC = {
-  cold_starts_per_hour: { label: "Cold starts / hour", min: 0, max: 120, step: 1 },
-  requests_per_minute: { label: "Requests / minute", min: 0, max: 120, step: 1 },
-  uncached_pull_ratio: { label: "Uncached pull ratio (GCP AR)", min: 0, max: 1, step: 0.05 },
-  instance_lifetime_minutes: { label: "Instance lifetime (min)", min: 5, max: 240, step: 5 },
-};
-
-const SETTING_LABELS = {
-  "pull_path.ttl_seconds": "Pull TTL (s)",
-  "pull_path.rotation_cron": "Rotation cron",
-  "pull_path.alert_after_seconds": "Alert after (s)",
-  "pull_path.min_ttl_seconds": "MIN_TTL_SECONDS",
-  "runtime.ttl_seconds": "Runtime TTL (s)",
-};
-
-// Plain names for the simulator's fault types; each page lists only its cloud's faults.
-const FAULT_LABELS = {
-  jfrog_outage: "JFrog outage", rotator_down: "Rotator can't get its identity",
-  identity_recreated: "App identity recreated", sa_recreated: "Service account recreated",
-  arm_refresh_forbidden: "Key Vault refresh forbidden", mapping_revoked: "JFrog mapping removed",
-  integration_misconfigured: "JFrog trust has the wrong issuer",
-  federation_disabled: "AWS outbound federation off",
-};
-const CLOUD_ONLY_FAULTS = { arm_refresh_forbidden: ["azure"], sa_recreated: ["gcp"], rotator_down: ["gcp", "azure"],
-  federation_disabled: ["aws"] };
-const faultLabel = (t) => FAULT_LABELS[t] || t.replaceAll("_", " ");
-const ACRONYMS = { jfrog: "JFrog", gcp: "GCP", aws: "AWS", sa: "SA", aca: "ACA", ecs: "ECS", arm: "ARM" };
-const scenarioLabel = (s) => {
-  const words = s.name.split("-").map((w) => ACRONYMS[w] || w).join(" ");
-  return `${words[0].toUpperCase()}${words.slice(1)}`;
-};
-
-const state = { catalogue: null, scenario: null, running: false, events: [], result: null };
-
-function scenarioByName(name) {
-  return state.catalogue.scenarios.find((s) => s.name === name);
-}
-
-function renderOverrides(s) {
-  const box = $("overrides");
-  box.replaceChildren();
-  for (const [key, value] of Object.entries(s.settings)) {
-    const numeric = typeof value === "number";
-    const input = h("input", {
-      id: `ov-${key}`, "data-key": key, "data-default": String(value), value: String(value),
-      type: numeric ? "number" : "text", spellcheck: "false", ...(numeric ? { min: 0, step: 60 } : {}),
-    });
-    box.append(h("label", { class: "field" }, h("span", { text: SETTING_LABELS[key] || key }), input));
+// Keep only this cloud's links; inside the portal, links to this console's pages carry the prefix.
+function applyShell() {
+  if (BASE) {
+    // The switch to the Kubernetes section (a different console) is a full page load.
+    for (const a of document.querySelectorAll('a[href^="/"]:not([data-section])')) a.setAttribute("href", BASE + a.getAttribute("href"));
+    for (const el of document.querySelectorAll("[data-portal]")) el.hidden = false;
   }
+  document.title = `JFrog OIDC Console · ${CLOUDS[CLOUD]}`;
+  document.querySelector(`[data-cloud-link="${CLOUD}"]`)?.setAttribute("aria-current", "page");
+  $("cloud-switch").hidden = false;
+  $("flyout-close").addEventListener("click", closeFlyout);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("flyout").hidden && !document.querySelector(".menu:not([hidden])")) closeFlyout(); });
 }
 
-function faultRow(f = {}) {
-  const types = Object.keys(state.catalogue.fault_types);
-  const type = h("select", { "aria-label": "Fault type" },
-    types.map((t) => h("option", { value: t, text: faultLabel(t), selected: t === f.type, title: state.catalogue.fault_types[t] })));
-  const start = h("input", { type: "text", value: f.start ?? "03:00", placeholder: "HH:MM", "aria-label": "Fault start (HH:MM)", size: 6 });
-  const end = h("input", { type: "text", value: f.end ?? "", placeholder: "end", "aria-label": "Fault end (HH:MM, empty = until the end)", size: 6 });
-  const params = h("input", { type: "text", value: f.params && Object.keys(f.params).length ? JSON.stringify(f.params) : "",
-    placeholder: "params JSON", "aria-label": "Fault params as JSON", spellcheck: "false", class: "params" });
-  const row = h("div", { class: "fault-row" }, type, start, h("span", { class: "muted", text: "→" }), end, params,
-    h("button", { type: "button", class: "icon", "aria-label": "Remove fault", text: "✕", onclick: () => row.remove() }));
-  row.collect = () => {
-    const out = { type: type.value, start: start.value.trim() || "00:00" };
-    if (end.value.trim()) out.end = end.value.trim();
-    if (params.value.trim()) {
-      try { out.params = JSON.parse(params.value); } catch { throw new Error(`fault ${type.value}: params is not valid JSON`); }
-    }
-    return out;
-  };
-  return row;
-}
+// ----------------------------------------------------------------- session
 
-function renderFaults(s) {
-  $("faults").replaceChildren(...(s.faults || []).map(faultRow));
-}
-
-function renderLoad(s) {
-  const box = $("load");
-  box.replaceChildren();
-  const load = { ...state.catalogue.default_load, ...(s.load || {}) };
-  for (const [key, spec] of Object.entries(LOAD_SPEC)) {
-    const out = h("output", { text: String(load[key]) });
-    const input = h("input", { type: "range", id: `ld-${key}`, "data-key": key, min: spec.min, max: spec.max, step: spec.step, value: load[key],
-      oninput: () => { out.textContent = input.value; } });
-    out.setAttribute("for", input.id);
-    box.append(h("label", { class: "slider" }, h("span", { text: spec.label }), input, out));
-  }
-}
-
-function selectScenario(name) {
-  const s = scenarioByName(name);
-  state.scenario = s;
-  const exp = (s.expect && s.expect.verdict) || "—";
-  $("scenario").title = s.description || "";
-  $("scenario-meta").replaceChildren(h("span", { class: "field-label", text: "Expected" }),
-    h("span", { class: `pill v-${exp}`, text: exp }));
-  renderOverrides(s);
-  renderFaults(s);
-  renderLoad(s);
-  const dur = $("duration");
-  const want = s.duration || "24h";
-  if (![...dur.options].some((o) => o.value === want)) dur.append(h("option", { value: want, text: want }));
-  dur.value = want;
-  $("seed").value = "1";
-  showError("");
-}
-
-function collectRequest() {
-  const body = { scenario: state.scenario.name, overrides: {}, load: {}, faults: [] };
-  for (const input of $("overrides").querySelectorAll("input")) {
-    const raw = input.value.trim();
-    if (raw === input.dataset.default) continue;
-    const numeric = input.type === "number";
-    if (numeric && (raw === "" || !Number.isFinite(Number(raw)))) throw new Error(`${input.dataset.key} must be a number`);
-    body.overrides[input.dataset.key] = numeric ? Number(raw) : raw;
-  }
-  for (const input of $("load").querySelectorAll("input")) body.load[input.dataset.key] = Number(input.value);
-  for (const row of $("faults").children) body.faults.push(row.collect());
-  body.duration = $("duration").value;
-  const seed = $("seed").value.trim();
-  if (seed !== "") body.seed = Number.parseInt(seed, 10);
-  return body;
-}
-
-// ----------------------------------------------------------------- run + results
-
-function setRunning(on) {
-  state.running = on;
-  $("run").disabled = on;
-  $("run").textContent = on ? "Running…" : "Run simulation";
-  $("progress").hidden = !on;
-}
-
-function progress(frac, text) {
-  // CSSOM writes are allowed under the CSP; inline style attributes are not.
-  $("progress-bar").style.width = `${Math.round(Math.min(1, Math.max(0, frac)) * 100)}%`;
-  $("progress-text").textContent = text;
-}
-
-async function runSimulation(ev) {
-  ev.preventDefault();
-  if (state.running) return;
-  showError("");
-  let body;
-  try { body = collectRequest(); } catch (e) { showError(e.message); return; }
-  await startSim(body);
-}
-
-async function startSim(body) {
-  setRunning(true);
-  state.events = [];
-  progress(0, "queued");
-  let duration = 1;
-  try {
-    const { sim_id } = await api("/api/sim", { method: "POST", body });
-    let final = null;
-    let failure = null;
-    await streamEvents(`/api/sim/${encodeURIComponent(sim_id)}/events`, (kind, data) => {
-      if (kind === "status") { duration = data.duration_s || 1; progress(0, data.status); }
-      else if (kind === "event") {
-        state.events.push(data);
-        if (state.events.length % 25 === 0) progress(data.t / duration, `${hhmm(Math.max(0, data.t))} simulated · ${state.events.length} events`);
-      } else if (kind === "done") final = data;
-      else if (kind === "failed") failure = data.error;
-    });
-    if (failure) throw new Error(`simulation failed: ${failure}`);
-    if (!final) throw new Error("event stream ended before the simulation finished");
-    const { result } = await api(`/api/sim/${encodeURIComponent(sim_id)}`);
-    state.result = result;
-    renderResult(result);
-  } catch (e) {
-    showError(e.status === 401 ? "Session token rejected. Open the URL the console printed." : e.message);
-  } finally {
-    setRunning(false);
-  }
-}
-
-function stat(label, value, cls = "") {
-  return h("div", { class: `stat ${cls}` }, h("span", { class: "stat-v", text: value }), h("span", { class: "stat-l", text: label }));
-}
-
-function renderVerdict(r) {
-  const s = r.summary;
-  const m = r.ttl_math || {};
-  const expected = state.scenario && state.scenario.name === r.scenario ? state.scenario.expect?.verdict : null;
-  const box = $("verdict");
-  box.className = `card verdict v-${r.verdict}`;
-  const failCls = (n) => (n > 0 ? "bad" : "");
-  fill(box,
-    h("div", { class: "verdict-head" },
-      h("span", { class: `badge big ${r.verdict}`, text: r.verdict.toUpperCase() }),
-      h("div", {},
-        h("h2", { text: r.scenario }),
-        h("p", { class: "muted small" }, `${Math.round(r.duration_s / 3600)} h · seed ${r.seed}`,
-          expected ? h("span", { class: expected === r.verdict ? "match" : "mismatch",
-            text: expected === r.verdict ? " · as expected" : ` · expected ${expected}` }) : null))),
-    h("div", { class: "stats" },
-      stat("Rotations ok / failed", `${s.rotations_ok} / ${s.rotations_failed}`, failCls(s.rotations_failed)),
-      stat("Pulls ok / cached / failed", `${s.pulls_ok} / ${s.pulls_cached} / ${s.pulls_failed}`, failCls(s.pulls_failed)),
-      stat("Requests ok / failed", `${s.requests_ok + s.requests_ok_cached} / ${s.requests_failed + s.requests_unavailable}`,
-        failCls(s.requests_failed + s.requests_unavailable)),
-      stat("Exposure", `${Math.round(s.exposure_s / 60)} min`, failCls(s.exposure_s)),
-      stat("Alert", s.alert_first_fired_s == null ? "—" : hhmm(s.alert_first_fired_s)),
-      m.pull_ttl_seconds ? stat("Pull TTL / min safe", `${m.pull_ttl_seconds} / ${m.min_safe_ttl_seconds} s`,
-        m.pull_ttl_seconds < m.min_safe_ttl_seconds ? "bad" : "") : null,
-      m.pull_ttl_seconds ? stat("Missed rotations survived", String(m.survives_missed_rotations)) : null),
-    r.root_cause ? h("div", { class: "root-cause" }, h("h3", { text: "Root cause" }), h("p", { text: r.root_cause })) : null,
-    r.chain && r.chain.length ? h("details", {}, h("summary", { text: "Causal chain" }),
-      h("ol", { class: "chain" }, r.chain.map((c) => h("li", { text: c })))) : null);
-}
-
-function renderEvents() {
-  const type = $("ev-type").value;
-  const q = $("ev-search").value.trim().toLowerCase();
-  const rows = state.events.filter((e) => (!type || e.type === type) && (!q || e.message.toLowerCase().includes(q)));
-  const shown = rows.slice(0, 2000);
-  $("events").tBodies[0].replaceChildren(...shown.map((e) =>
-    h("tr", { class: `ev-${e.type}${/fail|error|401|403|refus|FIRING|expired/i.test(e.message) ? " ev-bad" : ""}` },
-      h("td", { class: "mono", text: hhmm(e.t) }), h("td", { text: e.type }), h("td", { class: "msg", text: e.message }))));
-  $("ev-title").textContent = `Events (${state.events.length})`;
-  $("ev-count").textContent = `${rows.length} of ${state.events.length} events` + (rows.length > shown.length ? ` (first ${shown.length} shown)` : "");
-}
-
-function renderResult(r) {
-  $("sim-results").hidden = false;
-  renderVerdict(r);
-  renderTimeline($("timeline"), r);
-  state.events = r.events || state.events;
-  const types = [...new Set(state.events.map((e) => e.type))].sort();
-  const sel = $("ev-type");
-  const keep = sel.value;
-  sel.replaceChildren(h("option", { value: "", text: "All kinds" }), ...types.map((t) => h("option", { value: t, text: t })));
-  sel.value = types.includes(keep) ? keep : "";
-  renderEvents();
-}
-
-// ----------------------------------------------------------------- boot
-
-// Shown only when something is wrong.
 function sessionState(text, ok) {
   const pill = $("session-state");
   pill.textContent = text;
   pill.hidden = ok;
 }
 
-// Load the catalogue with the current token. Returns false (and says why) on failure.
-async function connect() {
-  if (!TOKEN) {
-    $("auth-banner").hidden = false;
-    sessionState("no token", false);
-    $("run").disabled = true;
-    return false;
-  }
-  try {
-    state.catalogue = await api("/api/sim/scenarios");
-  } catch (e) {
-    sessionState(e.status === 401 ? "token rejected" : "offline", false);
-    $("auth-banner").hidden = e.status !== 401;
-    if (e.status === 401) { try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ } }
-    showError(e.message);
-    $("run").disabled = true;
-    return false;
-  }
-  $("auth-banner").hidden = true;
-  showError("");
-  $("run").disabled = false;
-  sessionState("local session", true);
-  return true;
+function authError(msg) {
+  $("auth-banner").hidden = false;
+  let p = $("auth-error");
+  if (!p) $("auth-form").after(p = h("p", { id: "auth-error", class: "error small", role: "alert" }));
+  p.textContent = msg || "";
+  p.hidden = !msg;
 }
 
-// Keep only this cloud's fields and links. Old page paths (/<cloud>/runs, /simulate, /configure) land here too.
-function applyCloud() {
-  if (BASE) {
-    // Portal: this console is the Serverless section; links to its own pages carry the prefix,
-    // and the switch to the Kubernetes section (a different console) is a full page load.
-    for (const a of document.querySelectorAll('a[href^="/"]:not([data-section])')) a.setAttribute("href", BASE + a.getAttribute("href"));
-    for (const el of document.querySelectorAll("[data-portal]")) el.hidden = false;
+// Load the schema with the current token. Returns it, or null (and says why).
+async function connect() {
+  if (!hasToken()) {
+    $("auth-banner").hidden = false;
+    sessionState("no token", false);
+    return null;
   }
-  document.title = CLOUD ? `JFrog OIDC Console · ${CLOUDS[CLOUD]}` : "JFrog OIDC Console";
+  try {
+    const schema = await api("/api/schema");
+    $("auth-banner").hidden = true;
+    sessionState("local session", true);
+    return schema;
+  } catch (e) {
+    sessionState(e.status === 401 ? "token rejected" : "offline", false);
+    if (e.status === 401) { forgetToken(); authError("Session token rejected. Paste the URL the console printed."); }
+    else authError(e.message);
+    return null;
+  }
+}
+
+// ----------------------------------------------------------------- pages
+
+async function mountNew(page, { schema }) {
+  page.replaceChildren(template("tpl-new"));
+  document.title = "New workload · Workloads";
+  $("new-cancel").setAttribute("href", href.list());
+  await mountConfig($("cfg-mount"), { schema, mode: "new", onSaved: (name) => location.assign(href.workload(name)) });
+}
+
+let mounted = false;
+async function start() {
+  const schema = await connect();
+  if (!schema || mounted) return;
+  mounted = true;
+  const r = route();
+  if (r.legacy) history.replaceState(null, "", href.list() + location.search);
+  renderTrail(r);
+  const page = $("page");
+  try {
+    if (r.page === "new") await mountNew(page, { schema });
+    else if (r.page === "workload") await mountWorkload(page, { name: r.name, schema });
+    else if (r.page === "run") await mountRun(page, { name: r.name, id: r.id });
+    else await mountList(page, { schema });
+  } catch (e) {
+    page.append(h("p", { class: "error-box", role: "alert", text: e.message }));
+  }
+}
+
+function boot() {
   // No picker page: the console opens on Google Cloud; the sidebar switches clouds.
   if (!CLOUD) {
     location.replace(`${BASE}/gcp${location.search}`);
     return;
   }
-  for (const el of document.querySelectorAll("[data-cloud]")) if (el.dataset.cloud !== CLOUD) el.remove();
-  document.querySelector(`[data-cloud-link="${CLOUD}"]`)?.setAttribute("aria-current", "page");
-  $("cloud-switch").hidden = false;
-  const path = `${BASE}/${CLOUD}`;
-  if (location.pathname !== path) history.replaceState(null, "", path + location.search);
-}
-
-// Help: a circled "?" after a heading or field label; its explanation pops up on hover or keyboard
-// focus. Clicking it never toggles the checkbox or collapses the step it sits in.
-let tips = 0;
-function help(text) {
-  const id = `tip-${++tips}`;
-  return h("span", { class: "help", tabindex: "0", role: "button", "aria-label": "What is this?", "aria-describedby": id,
-    onclick: (e) => { e.preventDefault(); e.stopPropagation(); } },
-  "?", h("span", { class: "tip", role: "tooltip", id, "aria-hidden": "true" }, text));
-}
-const HELP = {
-  "#step-app > h2": "The serverless workload that gets JFrog tokens. Pick it from the list or fill the fields.",
-  "#cfg-scope": "The project or subscription to list workloads from.",
-  "#cfg-workload": "An existing workload. Choosing one fills the fields below and finds its identity.",
-  '[data-path="target.kind"]': "How the workload runs. It decides which Terraform module and wiring the pipeline uses.",
-  '[data-path="name"]': "The name this configuration is saved under. Defaults to the workload's name.",
-  '[data-path="target.gcp.project"]': "The Google Cloud project that hosts the workload.",
-  '[data-path="target.gcp.region"]': "The region the workload runs in, for example us-central1.",
-  '[data-path="target.gcp.name"]': "The Cloud Run service, job or function name.",
-  '[data-path="target.azure.subscription"]': "The Azure subscription that holds the workload.",
-  '[data-path="target.azure.resource_group"]': "The resource group the workload is in.",
-  '[data-path="target.azure.name"]': "The Container App or Function App name.",
-  "#step-jfrog > h2": "The JFrog instance that trusts the workload's identity and issues its short-lived tokens.",
-  '[data-path="jfrog.url"]': "Your JFrog Platform address, for example yourcompany.jfrog.io.",
-  '[data-path="jfrog.reader_group"]': "The JFrog group the issued tokens belong to. It decides what the workload can read.",
-  "#step-needs > h2": "How the workload gets JFrog tokens. Turn on one or both.",
-  '[data-path="pull_path.enabled"]': "The platform pulls the container image from JFrog. A rotator keeps a short-lived pull token in Secret Manager or Key Vault and points the registry at it.",
-  '[data-path="runtime.enabled"]': "The running code swaps its cloud identity for a JFrog token whenever it needs one, for example to download packages. Nothing is stored.",
-  '[data-path="jfrog.docker_repo"]': "The JFrog Docker repository the images are pulled from.",
-  '[data-path="pull_path.rotator_image"]': "The rotator job's image in Artifact Registry or ACR, pinned by digest.",
-  '[data-path="target.azure.key_vault_id"]': "The Key Vault that holds the rotated pull token. The app reads it by reference.",
-  "#scenario": "A recorded situation to rehearse, such as a token expiring or JFrog being down.",
-  "#duration": "How much simulated time to run. The clock is simulated, so a day takes seconds.",
-  "#seed": "Makes the random parts repeatable: the same seed gives the same run.",
-};
-function setupHelp() {
-  for (const [sel, text] of Object.entries(HELP)) {
-    const el = document.querySelector(sel);
-    if (!el) continue;
-    const target = el.matches("h2") ? el
-      : el.closest("label.choice")?.querySelector("b") || el.closest("label")?.querySelector(":scope > span");
-    if (target && !target.querySelector(".help")) target.append(help(text));
-  }
-}
-
-// Collapse and expand, one pattern everywhere: the chevron leads the header, the whole header toggles,
-// a collapsed header still carries its status and a one-line summary. Everything starts collapsed;
-// Expand all and Collapse all act on the whole page.
-function setupCollapsibles() {
-  for (const step of document.querySelectorAll(".rail-step")) {
-    const head = step.querySelector(":scope > h2"), body = step.querySelector(":scope > .step-body");
-    if (!head || !body) continue;
-    body.id ||= `${step.id}-body`;
-    const name = head.textContent.trim().replace(/^\d+\s*/, "");
-    const btn = h("button", { type: "button", class: "step-toggle", "aria-controls": body.id });
-    head.prepend(btn);
-    head.append(h("span", { class: "head-sum" }));
-    step.setOpen = (open) => {
-      step.classList.toggle("collapsed", !open);
-      btn.setAttribute("aria-expanded", String(open));
-      btn.setAttribute("aria-label", `${open ? "Collapse" : "Expand"} ${name}`);
-    };
-    step.setOpen(false);
-    // The steps are an accordion: opening one closes the others, so the form stays one screen tall.
-    head.addEventListener("click", (e) => {
-      if (e.target.closest("a, input, select, label, .help")) return;
-      const opening = step.classList.contains("collapsed");
-      if (opening) for (const other of document.querySelectorAll(".rail-step")) if (other !== step) other.setOpen?.(false);
-      step.setOpen(opening);
-    });
-  }
-  const all = (open) => {
-    for (const step of document.querySelectorAll(".rail-step")) step.setOpen?.(open);
-    for (const d of document.querySelectorAll("#panel-configure details.section:not([hidden])")) d.open = open;
-  };
-  $("expand-all")?.addEventListener("click", () => all(true));
-  $("collapse-all")?.addEventListener("click", () => all(false));
-}
-
-async function boot() {
-  applyCloud();
-  setupHelp();
-  setupCollapsibles();
-  renderTrail();
-  $("legend").replaceChildren(...LEGEND.map(([cls, label]) => h("span", { class: "lg" }, h("i", { class: `sw ${cls}` }), label)));
-  let wired = false;
-  window.addEventListener("hashchange", async () => {
+  applyShell();
+  window.addEventListener("hashchange", () => {
     const t = takeTokenFromHash();
-    if (!t) return;
-    TOKEN = rememberToken(t);
-    if (await connect() && CLOUD && !wired) wired = wire();
+    if (t) { setToken(t); start(); }
   });
-  $("auth-form").addEventListener("submit", async (e) => {
+  $("auth-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const raw = $("auth-input").value.trim();
     const m = raw.match(/(?:#|&|^)t=([A-Za-z0-9_-]+)/) || raw.match(/^([A-Za-z0-9_-]{20,})$/);
     $("auth-input").value = "";
-    if (!m) return showError("That isn't the console URL or token. Copy the whole line that ends in #t=…");
-    TOKEN = rememberToken(m[1]);
-    if (await connect() && CLOUD && !wired) wired = wire();
+    if (!m) return authError("That isn't the console URL or token. Copy the whole line that ends in #t=…");
+    setToken(m[1]);
+    start();
   });
-  if (await connect() && CLOUD) wired = wire();
-}
-
-// Populate the form and attach handlers, once, after the first successful connect.
-function wire() {
-  state.catalogue.scenarios = state.catalogue.scenarios.filter((s) => ofCloud(s.target_kind));
-  const sel = $("scenario");
-  // The Simulator rehearses the workload type in the form above; other types' scenarios are not offered.
-  const listScenarios = () => {
-    const kind = $("cfg-kind").value;
-    const mine = state.catalogue.scenarios.filter((s) => !kind || s.target_kind === kind);
-    const shown = mine.length ? mine : state.catalogue.scenarios;
-    const keep = sel.value;
-    sel.replaceChildren(...shown.map((s) => h("option", { value: s.name, text: scenarioLabel(s) })));
-    if (shown.some((s) => s.name === keep)) sel.value = keep;
-    if (sel.value !== state.scenario?.name) selectScenario(sel.value);
-  };
-  $("sec-sim").addEventListener("toggle", () => $("sec-sim").open && listScenarios());
-  sel.replaceChildren(...state.catalogue.scenarios.map((s) =>
-    h("option", { value: s.name, text: scenarioLabel(s) })));
-  for (const [t, only] of Object.entries(CLOUD_ONLY_FAULTS)) if (!only.includes(CLOUD)) delete state.catalogue.fault_types[t];
-  $("add-fault-type").replaceChildren(...Object.entries(state.catalogue.fault_types).map(([t, d]) => h("option", { value: t, text: faultLabel(t), title: d })));
-  sel.addEventListener("change", () => selectScenario(sel.value));
-  $("add-fault").addEventListener("click", () => $("faults").append(faultRow({ type: $("add-fault-type").value })));
-  $("reset").addEventListener("click", () => selectScenario(sel.value));
-  $("sim-form").addEventListener("submit", runSimulation);
-  $("ev-type").addEventListener("change", renderEvents);
-  $("ev-search").addEventListener("input", renderEvents);
-  let resizeTimer = null;
-  window.addEventListener("resize", () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => state.result && renderTimeline($("timeline"), state.result), 150);
-  });
-  const initial = new URLSearchParams(location.search).get("scenario");
-  if (initial && scenarioByName(initial)) sel.value = initial;
-  selectScenario(sel.value);
-  const runs = initRuns({ api, h, streamEvents, showSection, ofCloud, cloud: CLOUD }).catch((e) => showError(`Pipeline runs: ${e.message}`));
-  initConfigure({ api, h, streamEvents, cloud: CLOUD, ofCloud, onRun: (cfg) => runs.then((r) => r && r.startRun(cfg)),
-    onSimulate: (cfg) => { showSection("sec-sim"); if (!state.running) startSim({ config: cfg, duration: $("duration").value }); } })
-    .catch((e) => showError(`Workloads: ${e.message}`));
-  return true;
+  start();
 }
 
 if (!REDIRECTING) boot();

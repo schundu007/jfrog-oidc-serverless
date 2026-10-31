@@ -51,240 +51,287 @@
       <a class="topbar-back" id="nav-home" href="/" data-section data-portal hidden title="Home"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h5v-6h4v6h5V9.5"/></svg><span>Home</span></a>
       <nav class="trail" id="trail" aria-label="You are here"></nav>
     </div>
+    <div id="page"></div>
+  </main>
 
+  <aside id="flyout" class="flyout" role="dialog" aria-labelledby="flyout-title" hidden>
+    <div class="flyout-head">
+      <h2 id="flyout-title"></h2>
+      <span id="flyout-status"></span>
+      <button type="button" id="flyout-close" class="icon-btn" aria-label="Close panel" title="Close"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></button>
+    </div>
+    <div id="flyout-body" class="flyout-body"></div>
+  </aside>
 
-    <section id="panel-configure">
-      <details class="saved section" id="cfg-saved-box">
-        <summary class="section-head"><h2>Saved <span id="cfg-saved-count" class="count-badge"></span></h2></summary>
-        <div class="saved-head"><span></span><button type="button" id="cfg-new" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>New</button></div>
-        <div class="table-card">
-        <table class="cfg-table">
-          <thead><tr><th scope="col">Name</th><th scope="col">Workload type</th><th scope="col">Workload</th>
-            <th scope="col">Identity</th><th scope="col">Updated</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
-          <tbody id="cfg-saved"></tbody>
+  <!-- Workloads (/<cloud>) -->
+  <template id="tpl-list">
+    <header class="page-header">
+      <div class="title-row"><h1>Workloads</h1><span id="wl-count" class="count-badge"></span></div>
+      <div class="actions">
+        <a id="wl-new" class="btn primary" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>New workload</a>
+        <span id="list-status" class="page-status small" role="status" aria-live="polite"></span>
+      </div>
+    </header>
+    <div id="wl-body" hidden>
+      <div class="filter-row"><input id="wl-filter" type="search" placeholder="Filter by name, type, workload or identity" aria-label="Filter workloads" spellcheck="false" autocomplete="off"></div>
+      <div class="table-card">
+        <table class="list-table">
+          <thead><tr><th scope="col" class="col-icon"><span class="sr-only">Last run status</span></th><th scope="col">Name</th>
+            <th scope="col">Workload type</th><th scope="col">Workload</th><th scope="col">Identity</th><th scope="col">Last run</th>
+            <th scope="col" class="col-menu"><span class="sr-only">Actions</span></th></tr></thead>
+          <tbody id="wl-rows"></tbody>
         </table>
       </div>
-      </details>
+      <p id="wl-none" class="muted small" hidden>No workload matches the filter.</p>
+    </div>
+    <div id="wl-empty" class="empty" hidden>
+      <h2>No workloads yet</h2>
+      <p class="muted">Pick a workload, discover its identity, save it, then run the pipeline.</p>
+      <a id="wl-empty-new" class="btn primary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>New workload</a>
+    </div>
+  </template>
 
-      <header class="page-header">
-        <div class="title-row">
-          <h1 id="cfg-title">New configuration</h1>
-          <span id="cfg-dirty" class="small muted" aria-live="polite"></span>
+  <!-- New workload (/<cloud>/new) -->
+  <template id="tpl-new">
+    <header class="page-header">
+      <div class="title-row"><h1>New workload</h1></div>
+      <div class="actions">
+        <button type="button" id="cfg-save" class="cmd primary-cmd" data-lock><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h10l3 3v11H4z"/><path d="M7 3v5h6V3M7 17v-5h7v5"/></svg>Save</button>
+        <button type="button" id="cfg-preflight" class="cmd secondary" data-lock><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5l4 4 8-9"/></svg>Preflight</button>
+        <a id="new-cancel" class="btn secondary">Cancel</a>
+        <span id="cfg-status" class="page-status small" role="status" aria-live="polite"></span>
+      </div>
+    </header>
+    <div id="cfg-mount"></div>
+  </template>
+
+  <!-- Workload (/<cloud>/w/<name>): Runs · Configuration · Simulator -->
+  <template id="tpl-workload">
+    <header class="page-header">
+      <div class="title-row"><h1 id="wl-title"></h1><span id="wl-pill"></span></div>
+      <p id="wl-facts" class="facts"></p>
+      <div class="actions" id="wl-actions">
+        <button type="button" id="wl-run" class="cmd primary-cmd" data-lock><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4l10 6-10 6z"/></svg>Run pipeline</button>
+        <button type="button" id="cfg-preflight" class="cmd secondary" data-lock><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5l4 4 8-9"/></svg>Preflight</button>
+        <span id="wl-menu"></span>
+        <span id="cfg-status" class="page-status small" role="status" aria-live="polite"></span>
+      </div>
+    </header>
+    <div id="approval-banner" class="approval" role="status" hidden></div>
+    <nav class="tabs" role="tablist" aria-label="Workload">
+      <a role="tab" id="tab-runs" data-tab="runs" aria-controls="panel-runs">Runs <span id="runs-count" class="count-badge"></span></a>
+      <a role="tab" id="tab-config" data-tab="config" aria-controls="panel-config">Configuration</a>
+      <a role="tab" id="tab-sim" data-tab="sim" aria-controls="panel-sim">Simulator</a>
+    </nav>
+    <section id="panel-runs" class="tab-panel" role="tabpanel" aria-labelledby="tab-runs" hidden>
+      <div class="toolbar" role="toolbar" aria-label="Runs">
+        <button type="button" id="runs-refresh" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10a6 6 0 11-1.8-4.3M16 3v4h-4"/></svg>Refresh</button>
+        <button type="button" id="runs-clear" class="cmd secondary">Clear finished</button>
+        <span id="runs-status" class="page-status small" role="status" aria-live="polite"></span>
+      </div>
+      <div class="table-card" id="runs-card">
+        <table class="list-table runs-table">
+          <thead><tr><th scope="col" class="col-icon"><span class="sr-only">Status</span></th><th scope="col">Run</th>
+            <th scope="col">Started</th><th scope="col" class="num">Duration</th><th scope="col">Steps</th>
+            <th scope="col" class="col-menu"><span class="sr-only">Actions</span></th></tr></thead>
+          <tbody id="runs-rows"></tbody>
+        </table>
+      </div>
+      <div id="runs-empty" class="empty" hidden>
+        <h2>No runs yet</h2>
+        <p class="muted">Run pipeline checks, simulates and plans before anything changes.</p>
+      </div>
+    </section>
+    <section id="panel-config" class="tab-panel" role="tabpanel" aria-labelledby="tab-config" hidden>
+      <div class="toolbar" role="toolbar" aria-label="Configuration">
+        <button type="button" id="cfg-save" class="cmd secondary" data-lock><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h10l3 3v11H4z"/><path d="M7 3v5h6V3M7 17v-5h7v5"/></svg>Save</button>
+        <span id="cfg-dirty" class="small" aria-live="polite"></span>
+      </div>
+      <div id="cfg-mount"></div>
+    </section>
+    <section id="panel-sim" class="tab-panel" role="tabpanel" aria-labelledby="tab-sim" hidden>
+      <p class="lead">Run pipeline already simulates before it changes anything; use this to rehearse faults by hand
+        (a JFrog outage, a removed mapping). Nothing in your cloud or JFrog changes.</p>
+      <div id="sim-mount"></div>
+    </section>
+  </template>
+
+  <!-- Run (/<cloud>/w/<name>/runs/<id>): step tree next to the step's detail and log -->
+  <template id="tpl-run">
+    <header class="page-header">
+      <div class="title-row"><h1 id="run-title"></h1><span id="run-pill"></span></div>
+      <p id="run-facts" class="facts"></p>
+      <div class="actions" id="run-actions">
+        <button type="button" id="run-cancel" class="cmd secondary danger" hidden>Cancel run</button>
+        <button type="button" id="run-delete" class="cmd secondary danger" hidden>Delete run</button>
+        <span id="run-status" class="page-status small" role="status" aria-live="polite"></span>
+      </div>
+    </header>
+    <div class="run-layout">
+      <nav class="card step-tree" aria-label="Steps">
+        <ol id="run-steps" class="steps"></ol>
+      </nav>
+      <section class="card step-pane" aria-live="polite">
+        <div id="run-detail"></div>
+        <div class="log-head">
+          <h3>Log <span id="run-log-count" class="count-badge"></span></h3>
+          <button type="button" id="run-log-copy" class="cmd secondary small-btn">Copy</button>
         </div>
-        <div class="cmdbar" id="cfg-actions" role="toolbar" aria-label="Commands">
-          <div class="row-tight">
-            <button type="button" id="cfg-save" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h10l3 3v11H4z"/><path d="M7 3v5h6V3M7 17v-5h7v5"/></svg>Save</button>
-            <button type="button" id="cfg-sim-btn" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h3l2-5 4 10 2-5h3"/></svg>Simulate</button>
-            <button type="button" id="cfg-preflight-btn" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5l4 4 8-9"/></svg>Preflight</button>
-          </div>
-          <span class="cmd-sep" aria-hidden="true"></span>
-          <button type="button" id="cfg-run-btn" class="cmd primary-cmd big"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4l10 6-10 6z"/></svg>Run pipeline</button>
-          <p id="cfg-status" class="small muted" role="status" aria-live="polite"></p>
+        <div id="run-log" class="run-log" tabindex="0" aria-label="Step log"></div>
+      </section>
+    </div>
+  </template>
+
+  <!-- The configuration form (New workload, and the Configuration tab). Step cards are always open. -->
+  <template id="tpl-config">
+    <form id="cfg-form" class="cfg-form" novalidate autocomplete="off" aria-label="Configuration">
+      <ol class="rail">
+      <li class="rail-step" id="step-app">
+        <h2><span class="step-n" aria-hidden="true">1</span> Target workload</h2>
+        <div class="step-body">
+        <div class="grid2" id="cfg-pick">
+          <label class="field"><span id="cfg-scope-label">Project</span><select id="cfg-scope"><option value="">Loading…</option></select></label>
+          <label class="field"><span>Workload <button type="button" id="cfg-inv-refresh" class="link inv-refresh">Refresh</button></span><select id="cfg-workload"><option value="">Loading workloads…</option></select></label>
         </div>
-      </header>
+        <div class="grid2">
+          <label class="field"><span>Workload type</span><select id="cfg-kind" data-path="target.kind"></select></label>
+          <label class="field"><span>Configuration name</span><input data-path="name" type="text" spellcheck="false" autocomplete="off" placeholder="from the workload"></label>
+        </div>
+        <div class="grid3" data-cloud="gcp">
+          <label class="field"><span>Project ID</span><input data-path="target.gcp.project" type="text" spellcheck="false"></label>
+          <label class="field"><span>Region</span><input data-path="target.gcp.region" type="text" spellcheck="false"></label>
+          <label class="field"><span>Name</span><input data-path="target.gcp.name" type="text" spellcheck="false"></label>
+        </div>
+        <div class="grid3" data-cloud="azure">
+          <label class="field"><span>Subscription ID</span><input data-path="target.azure.subscription" type="text" spellcheck="false"></label>
+          <label class="field"><span>Resource group</span><input data-path="target.azure.resource_group" type="text" spellcheck="false"></label>
+          <label class="field"><span>Name</span><input data-path="target.azure.name" type="text" spellcheck="false"></label>
+        </div>
+        <div class="grid3" data-cloud="aws">
+          <label class="field"><span>Account ID</span><input data-path="target.aws.account" type="text" spellcheck="false" inputmode="numeric"></label>
+          <label class="field"><span>Region</span><input data-path="target.aws.region" type="text" spellcheck="false"></label>
+          <label class="field"><span>Name</span><input data-path="target.aws.name" type="text" spellcheck="false"></label>
+        </div>
+        <div class="grid2" data-cloud="aws">
+          <label class="field"><span>AWS profile</span><input data-path="target.aws.profile" type="text" spellcheck="false" placeholder="default"></label>
+          <label class="field" data-kinds="aws_ecs_task"><span>ECS cluster</span><input data-path="target.aws.cluster" type="text" spellcheck="false" placeholder="none: register the task definition only"></label>
+        </div>
+        <div class="grid2" data-cloud="openshift">
+          <input data-path="target.openshift.context" type="hidden">
+          <label class="field"><span>Cluster name</span><input data-path="target.openshift.cluster" type="text" spellcheck="false"></label>
+          <label class="field"><span>Namespace</span><input data-path="target.openshift.namespace" type="text" spellcheck="false"></label>
+        </div>
+        <div class="grid2" data-cloud="openshift">
+          <label class="field"><span>Knative service</span><input data-path="target.openshift.name" type="text" spellcheck="false"></label>
+        </div>
+        <div class="find-row">
+          <button type="button" id="cfg-discover-btn" class="cmd secondary" data-lock><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5"/><path d="M12.5 12.5L17 17"/></svg>Discover identity</button>
+          <span id="cfg-identity" class="identity small"></span>
+        </div>
+        <div id="cfg-discover" class="result-box" hidden aria-live="polite"></div>
+        </div>
+      </li>
 
-      <div class="cfg-layout">
-      <form id="cfg-form" class="cfg-form" novalidate autocomplete="off" aria-label="Configuration">
-        <ol class="rail">
-        <li class="rail-step" id="step-app">
-          <h2><span class="step-n" aria-hidden="true">1</span> Target workload</h2>
-          <div class="step-body">
-          <div class="grid2">
-            <label class="field"><span id="cfg-scope-label">Project</span><select id="cfg-scope"><option value="">Loading…</option></select></label>
-            <label class="field"><span>Workload <button type="button" id="cfg-inv-refresh" class="link inv-refresh">Refresh</button></span><select id="cfg-workload"><option value="">Loading workloads…</option></select></label>
-          </div>
-          <div class="grid2">
-            <label class="field"><span>Workload type</span><select id="cfg-kind" data-path="target.kind"></select></label>
-            <label class="field"><span>Configuration name</span><input data-path="name" type="text" spellcheck="false" autocomplete="off" placeholder="from the workload"></label>
-          </div>
-          <div class="grid3" data-cloud="gcp">
-            <label class="field"><span>Project ID</span><input data-path="target.gcp.project" type="text" spellcheck="false"></label>
-            <label class="field"><span>Region</span><input data-path="target.gcp.region" type="text" spellcheck="false"></label>
-            <label class="field"><span>Name</span><input data-path="target.gcp.name" type="text" spellcheck="false"></label>
-          </div>
-          <div class="grid3" data-cloud="azure">
-            <label class="field"><span>Subscription ID</span><input data-path="target.azure.subscription" type="text" spellcheck="false"></label>
-            <label class="field"><span>Resource group</span><input data-path="target.azure.resource_group" type="text" spellcheck="false"></label>
-            <label class="field"><span>Name</span><input data-path="target.azure.name" type="text" spellcheck="false"></label>
-          </div>
-          <div class="grid3" data-cloud="aws">
-            <label class="field"><span>Account ID</span><input data-path="target.aws.account" type="text" spellcheck="false" inputmode="numeric"></label>
-            <label class="field"><span>Region</span><input data-path="target.aws.region" type="text" spellcheck="false"></label>
-            <label class="field"><span>Name</span><input data-path="target.aws.name" type="text" spellcheck="false"></label>
-          </div>
-          <div class="grid2" data-cloud="aws">
-            <label class="field"><span>AWS profile</span><input data-path="target.aws.profile" type="text" spellcheck="false" placeholder="default"></label>
-            <label class="field" data-kinds="aws_ecs_task"><span>ECS cluster</span><input data-path="target.aws.cluster" type="text" spellcheck="false" placeholder="none: register the task definition only"></label>
-          </div>
-          <div class="grid2" data-cloud="openshift">
-            <input data-path="target.openshift.context" type="hidden">
-            <label class="field"><span>Cluster name</span><input data-path="target.openshift.cluster" type="text" spellcheck="false"></label>
-            <label class="field"><span>Namespace</span><input data-path="target.openshift.namespace" type="text" spellcheck="false"></label>
-          </div>
-          <div class="grid2" data-cloud="openshift">
-            <label class="field"><span>Knative service</span><input data-path="target.openshift.name" type="text" spellcheck="false"></label>
-          </div>
-          <div class="find-row">
-            <button type="button" id="cfg-discover-btn" class="secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5"/><path d="M12.5 12.5L17 17"/></svg>Discover identity</button>
-          </div>
-          <div id="cfg-discovered"></div>
-          <div id="cfg-discover" class="result-box" hidden aria-live="polite"></div>
-          </div>
-        </li>
+      <li class="rail-step" id="step-jfrog">
+        <h2><span class="step-n" aria-hidden="true">2</span> JFrog platform</h2>
+        <div class="step-body">
+        <div class="grid2">
+          <label class="field"><span>Platform URL</span><input data-path="jfrog.url" type="url" spellcheck="false" placeholder="https://yourcompany.jfrog.io"></label>
+          <label class="field"><span>Reader group</span><input data-path="jfrog.reader_group" type="text" spellcheck="false"></label>
+        </div>
+        </div>
+      </li>
 
-        <li class="rail-step" id="step-jfrog">
-          <h2><span class="step-n" aria-hidden="true">2</span> JFrog platform</h2>
-          <div class="step-body">
-          <div class="grid2">
-            <label class="field"><span>Platform URL</span><input data-path="jfrog.url" type="url" spellcheck="false" placeholder="https://yourcompany.jfrog.io"></label>
-            <label class="field"><span>Reader group</span><input data-path="jfrog.reader_group" type="text" spellcheck="false"></label>
-          </div>
-          </div>
-        </li>
+      <li class="rail-step" id="step-needs">
+        <h2><span class="step-n" aria-hidden="true">3</span> Token paths</h2>
+        <div class="step-body">
+        <label class="choice">
+          <input data-path="pull_path.enabled" type="checkbox">
+          <span><b>Image pull path</b></span>
+        </label>
+        <div class="grid2 indent" id="cfg-pull-fields">
+          <label class="field"><span>JFrog Docker repository key</span><input data-path="jfrog.docker_repo" type="text" spellcheck="false" placeholder="docker-virtual"></label>
+          <label class="field"><span>Rotator image (AR/ACR, pinned by digest)</span><input data-path="pull_path.rotator_image" type="text" spellcheck="false" placeholder="registry/path/rotator@sha256:…"></label>
+          <label class="field" data-cloud="azure"><span>Key Vault resource ID</span><input data-path="target.azure.key_vault_id" type="text" spellcheck="false" placeholder="/subscriptions/…/vaults/kv-name"></label>
+        </div>
+        <label class="choice">
+          <input data-path="runtime.enabled" type="checkbox">
+          <span><b>Runtime token exchange</b></span>
+        </label>
+        </div>
+      </li>
+      </ol>
+    </form>
+    <section id="cfg-problems" class="card problems" hidden aria-live="polite"></section>
+  </template>
 
-        <li class="rail-step" id="step-needs">
-          <h2><span class="step-n" aria-hidden="true">3</span> Token paths</h2>
-          <div class="step-body">
-          <label class="choice">
-            <input data-path="pull_path.enabled" type="checkbox">
-            <span><b>Image pull path</b></span>
+  <!-- Simulator tab -->
+  <template id="tpl-sim">
+    <div class="sim-layout">
+      <form id="sim-form" class="controls card" novalidate aria-label="Simulation settings">
+        <div class="sim-bar">
+          <label class="field"><span>Scenario</span><select id="scenario" required></select></label>
+          <label class="field"><span>Duration</span>
+            <select id="duration"><option>6h</option><option>12h</option><option selected>24h</option><option>48h</option></select>
           </label>
-          <div class="grid2 indent" id="cfg-pull-fields">
-            <label class="field"><span>JFrog Docker repository key</span><input data-path="jfrog.docker_repo" type="text" spellcheck="false" placeholder="docker-virtual"></label>
-            <label class="field"><span>Rotator image (AR/ACR, pinned by digest)</span><input data-path="pull_path.rotator_image" type="text" spellcheck="false" placeholder="registry/path/rotator@sha256:…"></label>
-            <label class="field" data-cloud="azure"><span>Key Vault resource ID</span><input data-path="target.azure.key_vault_id" type="text" spellcheck="false" placeholder="/subscriptions/…/vaults/kv-name"></label>
+          <div id="scenario-meta" class="small"></div>
+        </div>
+        <details class="advanced" id="sim-advanced">
+          <summary>Advanced</summary>
+          <div class="sim-adv-grid">
+          <fieldset>
+            <legend>Overrides</legend>
+            <div id="overrides" class="grid2"></div>
+          </fieldset>
+          <fieldset>
+            <legend>Faults</legend>
+            <div id="faults" class="faults"></div>
+            <div class="row">
+              <select id="add-fault-type" aria-label="Fault type to add"></select>
+              <button type="button" id="add-fault" class="secondary">Add fault</button>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Load</legend>
+            <div id="load"></div>
+            <label class="field"><span>Seed</span><input id="seed" type="number" min="0" step="1" value="1"></label>
+          </fieldset>
           </div>
-          <label class="choice">
-            <input data-path="runtime.enabled" type="checkbox">
-            <span><b>Runtime token exchange</b></span>
-          </label>
-          </div>
-        </li>
-        </ol>
+        </details>
+        <div class="row sim-actions">
+          <button id="run" type="submit" class="primary">Run simulation</button>
+          <button id="reset" type="button" class="secondary">Reset</button>
+        </div>
+        <div id="progress" class="progress" hidden aria-live="polite">
+          <div class="track"><div class="bar" id="progress-bar"></div></div>
+          <span id="progress-text" class="small muted"></span>
+        </div>
+        <p id="form-error" class="error small" role="alert" hidden></p>
       </form>
 
-      <aside class="cfg-side" aria-label="Summary">
-        <section class="summary panel">
-          <h2 class="panel-title">Essentials</h2>
-          <dl class="essentials one-col" id="cfg-essentials"></dl>
+      <div class="results" id="sim-results" hidden>
+        <section id="verdict" class="card verdict" aria-live="polite"></section>
+        <section class="card">
+          <div class="card-head"><h2>Timeline</h2><div id="legend" class="legend" aria-label="Legend"></div></div>
+          <div id="timeline" class="timeline"></div>
         </section>
-      </aside>
-      </div>
-      <section id="cfg-problems" class="side-box problems wide-box" hidden aria-live="polite"></section>
-      <section id="cfg-preflight" class="side-box wide-box" hidden aria-live="polite"></section>
-
-      <details class="section" id="sec-sim">
-        <summary class="section-head"><h2>Simulator</h2></summary>
-        <p class="section-lead">Run pipeline already simulates the workload before it changes anything (step 3). Use this to
-          rehearse by hand: it replays a day of token refreshes in seconds with the real client and rotator against emulated
-          cloud and JFrog endpoints, so you can add faults (a JFrog outage, a removed mapping) and see whether tokens keep
-          working and when the alert fires. Nothing in your cloud or JFrog changes.</p>
-      <div class="sim-layout">
-        <form id="sim-form" class="controls card" novalidate aria-label="Simulation settings">
-          <div class="sim-bar">
-            <label class="field">
-              <span>Scenario</span>
-              <select id="scenario" required></select>
-            </label>
-            <label class="field"><span>Duration</span>
-              <select id="duration"><option>6h</option><option>12h</option><option selected>24h</option><option>48h</option></select>
-            </label>
-            <div id="scenario-meta" class="small"></div>
-            <div class="row sim-actions">
-              <button id="run" type="submit" class="primary">Run simulation</button>
-              <button id="reset" type="button" class="secondary">Reset</button>
-            </div>
+        <section class="card events-box" id="events-box">
+          <div class="card-head">
+            <h2 id="ev-title">Events</h2>
+            <select id="ev-type" aria-label="Filter by event kind"><option value="">All kinds</option></select>
+            <input id="ev-search" type="search" placeholder="Filter text" aria-label="Filter events by text">
+            <span id="ev-count" class="small muted"></span>
           </div>
-
-          <details class="advanced" id="sim-advanced">
-            <summary>Advanced</summary>
-            <div class="sim-adv-grid">
-            <fieldset>
-              <legend>Overrides</legend>
-              <div id="overrides" class="grid2"></div>
-            </fieldset>
-
-            <fieldset>
-              <legend>Faults</legend>
-              <div id="faults" class="faults"></div>
-              <div class="row">
-                <select id="add-fault-type" aria-label="Fault type to add"></select>
-                <button type="button" id="add-fault" class="secondary">Add fault</button>
-              </div>
-            </fieldset>
-
-            <fieldset>
-              <legend>Load</legend>
-              <div id="load"></div>
-              <label class="field"><span>Seed</span><input id="seed" type="number" min="0" step="1" value="1"></label>
-            </fieldset>
-            </div>
-          </details>
-          <div id="progress" class="progress" hidden aria-live="polite">
-            <div class="track"><div class="bar" id="progress-bar"></div></div>
-            <span id="progress-text" class="small muted"></span>
+          <div class="table-wrap">
+            <table id="events">
+              <thead><tr><th scope="col">Time</th><th scope="col">Kind</th><th scope="col">Detail</th></tr></thead>
+              <tbody></tbody>
+            </table>
           </div>
-          <p id="form-error" class="error small" role="alert" hidden></p>
-        </form>
-
-        <div class="results" id="sim-results" hidden>
-          <section id="verdict" class="card verdict" aria-live="polite">
-          </section>
-          <section class="card">
-            <div class="card-head">
-              <h2>Timeline</h2>
-              <div id="legend" class="legend" aria-label="Legend"></div>
-            </div>
-            <div id="timeline" class="timeline"></div>
-          </section>
-          <details class="card events-box" id="events-box">
-            <summary><h2 id="ev-title">Events</h2></summary>
-            <div class="card-head">
-              <span></span>
-              <div class="row">
-                <select id="ev-type" aria-label="Filter by event kind"><option value="">All kinds</option></select>
-                <input id="ev-search" type="search" placeholder="Filter text" aria-label="Filter events by text">
-              </div>
-            </div>
-            <div class="table-wrap">
-              <table id="events">
-                <thead><tr><th scope="col">Time</th><th scope="col">Kind</th><th scope="col">Detail</th></tr></thead>
-                <tbody></tbody>
-              </table>
-            </div>
-            <p id="ev-count" class="small muted"></p>
-          </details>
-        </div>
-      </div>
-      </details>
-      <details class="section" id="sec-runs">
-        <summary class="section-head"><h2>Pipeline runs <span id="runs-count" class="count-badge"></span></h2></summary>
-        <div class="cmdbar runs-bar" role="toolbar" aria-label="Commands">
-          <label class="field inline-field"><span>Run</span><select id="runs-list"></select></label>
-          <button type="button" id="runs-refresh" class="cmd secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10a6 6 0 11-1.8-4.3M16 3v4h-4"/></svg>Refresh</button>
-          <button type="button" id="runs-delete" class="cmd secondary">Delete run</button>
-          <button type="button" id="runs-clear" class="cmd secondary">Clear finished</button>
-          <span id="runs-status" class="small" role="status" aria-live="polite"></span>
-        </div>
-      <div id="run-head" class="run-head panel"><p class="muted">No run selected.</p></div>
-      <div class="runs-layout">
-        <aside class="card steps-card" aria-label="Steps">
-          <h2 class="panel-title">Steps</h2>
-          <ol id="run-steps" class="steps"></ol>
-        </aside>
-        <section class="card detail-card">
-          <div id="run-detail"></div>
-          <details class="run-log-box">
-            <summary>Log <span id="run-log-count" class="count-badge"></span></summary>
-            <div id="run-log" class="run-log" tabindex="0" aria-label="Run log"></div>
-          </details>
         </section>
       </div>
-      </details>
-
-    </section>
-
-  </main>
+    </div>
+  </template>
   </div>
 </div>
 </body>

@@ -40,7 +40,10 @@ from .store import Store, StoreError
 STATIC_DIR = Path(__file__).parent / "static"
 # Page URLs: /gcp and /azure, and each tab under them; all serve index.html.
 CLOUDS = ("gcp", "azure", "aws", "openshift")
-PAGE_ROUTES = {f"/{c}" for c in CLOUDS} | {f"/{c}/{t}" for c in CLOUDS for t in ("configs", "configure", "runs", "simulate")}
+# Pages (all served by index.html; the UI routes): /<cloud> (Workloads), /<cloud>/new, /<cloud>/w/<name>,
+# /<cloud>/w/<name>/runs/<run id>. The old tabs (/<cloud>/configs|configure|runs|simulate) land on Workloads.
+PAGE_ROUTES = re.compile(r"^/(?:" + "|".join(CLOUDS) + r")(?:/(?:configs|configure|runs|simulate|new)"
+                         r"|/w/[a-z0-9][a-z0-9-]{0,62}(?:/runs/[0-9]{8}-[0-9]{6}-[0-9a-f]{6})?)?/?$")
 # Replay mode never runs the real terraform: plans and applies go to this fake,
 # which writes nothing outside the workspace and touches no provider.
 FAKE_TERRAFORM = Path(__file__).parent / "tests" / "fixtures" / "fake_terraform"
@@ -401,7 +404,7 @@ def _make_handler(console: ConsoleServer):
             if path == "/favicon.ico":
                 self._headers(204, "text/plain", 0)
                 return
-            name = "index.html" if path.rstrip("/") in PAGE_ROUTES or path == "/" else path[len("/static/"):] if path.startswith("/static/") else None
+            name = "index.html" if PAGE_ROUTES.match(path) or path == "/" else path[len("/static/"):] if path.startswith("/static/") else None
             if name not in console.static_files:  # allow-list: no request path ever reaches the filesystem
                 raise HttpError(404, "not found")
             data = (STATIC_DIR / name).read_bytes()

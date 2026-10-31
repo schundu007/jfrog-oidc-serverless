@@ -73,9 +73,12 @@ class ServerTests(unittest.TestCase):
         nav = {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"}
         self.assertEqual(self.req("GET", "/?cloud=gcp", token=False, headers=nav)[0], 200)
         for p in ("/gcp", "/azure/runs", "/gcp/configure", "/azure/simulate", "/gcp/configs", "/aws",
-                  "/aws/runs", "/openshift/configure"):
+                  "/aws/runs", "/openshift/configure", "/gcp/new", "/azure/w/orders-legacy", "/gcp/w/jfrog-fn-demo/",
+                  "/gcp/w/jfrog-fn-demo/runs/20261030-052550-1d8dac"):
             self.assertEqual(self.req("GET", p, token=False, headers=nav)[0], 200, p)
-        self.assertEqual(self.req("GET", "/oci/runs", token=False, headers=nav)[0], 404)
+        for p in ("/oci/runs", "/gcp/w", "/gcp/w/Bad_Name", "/gcp/w/x/runs", "/gcp/w/x/runs/nope", "/gcp/w/x/y",
+                  "/gcp/new/x", "/gcpx"):
+            self.assertEqual(self.req("GET", p, token=False, headers=nav)[0], 404, p)
         self.assertEqual(self.req("GET", "/api/schema", headers=nav)[0], 403)
         fetch = {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "cors"}
         self.assertEqual(self.req("GET", "/", token=False, headers=fetch)[0], 403)
