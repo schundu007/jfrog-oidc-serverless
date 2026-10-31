@@ -583,9 +583,16 @@ def _make_handler(console: ConsoleServer):
                             raise HttpError(400, "unknown target kind")
                         run = console.runs.start(cfg, steps)
                         return self._json(202, {"run_id": run.id})
+                    if method == "DELETE":
+                        cloud = (self._query().get("cloud") or [""])[0]
+                        if cloud not in CLOUDS:
+                            raise HttpError(400, "cloud must be one of " + ", ".join(CLOUDS))
+                        return self._json(200, console.runs.clear(cloud))
                     raise HttpError(405, "method not allowed")
                 if not RUN_ID.match(rest[0]):
                     raise HttpError(404, "no such run")
+                if method == "DELETE" and len(rest) == 1:
+                    return self._json(200, console.runs.delete(rest[0]))
                 run = console.runs.get(rest[0])
                 if method == "GET" and len(rest) == 1:
                     return self._json(200, run.snapshot())

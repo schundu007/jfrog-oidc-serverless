@@ -571,7 +571,7 @@ function wire() {
   const initial = new URLSearchParams(location.search).get("scenario");
   if (initial && scenarioByName(initial)) sel.value = initial;
   selectScenario(sel.value);
-  const runs = initRuns({ api, h, streamEvents, showSection, ofCloud }).catch((e) => showError(`Pipeline runs: ${e.message}`));
+  const runs = initRuns({ api, h, streamEvents, showSection, ofCloud, cloud: CLOUD }).catch((e) => showError(`Pipeline runs: ${e.message}`));
   initConfigure({ api, h, streamEvents, cloud: CLOUD, ofCloud, onRun: (cfg) => runs.then((r) => r && r.startRun(cfg)) })
     .catch((e) => showError(`Workloads: ${e.message}`));
   return true;

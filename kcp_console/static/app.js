@@ -40,16 +40,15 @@ export const url = (path) => BASE + path;
 
 let TOKEN = REDIRECTING ? null : rememberToken(takeTokenFromHash() || pageToken()) || storedToken();
 
-// Shared state: the selected config and a tiny event bus ("config", "runs", "status").
+// Shared state: the selected config and a tiny event bus ("config", "tab").
 export const state = {
-  get token() { return TOKEN; },
-  config: null, configs: [], started: false, session: null,
+  config: null, configs: [], started: false,
   listeners: {},
   on(evt, fn) { (this.listeners[evt] ||= []).push(fn); },
   emit(evt, data) { for (const fn of this.listeners[evt] || []) { try { fn(data); } catch (e) { console.error(e); } } },
 };
 
-export class ApiError extends Error {
+class ApiError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 
@@ -90,12 +89,6 @@ export function help(text) {
   return h("span", { class: "help", tabindex: "0", role: "button", "aria-label": "What is this?", "aria-describedby": id,
     onclick: (e) => { e.preventDefault(); e.stopPropagation(); } },
   "?", h("span", { class: "tip", role: "tooltip", id, "aria-hidden": "true" }, text));
-}
-
-// Inline `code` spans in runbook text, as text nodes only (never parsed as HTML).
-export function rich(text) {
-  return String(text ?? "").split(/(`[^`]+`)/).map((p) => (p.startsWith("`") && p.endsWith("`") && p.length > 2
-    ? h("code", {}, p.slice(1, -1)) : document.createTextNode(p)));
 }
 
 function showAuth() {
@@ -181,12 +174,16 @@ function renderTrail(r) {
   $("trail").replaceChildren(...parts);
 }
 
-// The open platform's clusters, as a band under it in the sidebar.
+// The open platform's clusters, as a band under it in the sidebar. It starts collapsed on every page
+// load; clicking the open platform toggles it.
+let bandOpen = false;
 function renderBand(r) {
   const band = $("k8s-sub");
   const item = r.cloud && document.querySelector(`#sidenav [data-cloud="${r.cloud}"]`);
   const mine = state.configs.filter((c) => (c.platform || "aks") === r.cloud);
-  band.hidden = !item || !mine.length;
+  document.querySelectorAll("#sidenav [data-cloud]").forEach((a) => a.removeAttribute("aria-expanded"));
+  if (item && mine.length) item.setAttribute("aria-expanded", String(bandOpen));
+  band.hidden = !item || !mine.length || !bandOpen;
   if (band.hidden) return;
   item.after(band);
   fill(band, mine.map((c) => h("a", { class: "nav-item", href: url(clusterPath(c.name)),
@@ -238,6 +235,12 @@ function wireTabs() {
     a.addEventListener("click", (e) => {
       if (e.metaKey || e.ctrlKey || e.shiftKey) return;
       e.preventDefault();
+      if (route().cloud === a.dataset.cloud && a.hasAttribute("aria-expanded")) {
+        bandOpen = !bandOpen;
+        renderBand(route());
+        return;
+      }
+      bandOpen = false;
       go(path);
     });
   });
@@ -273,12 +276,9 @@ async function start() {
   pill.hidden = session.mode !== "replay";
   pill.textContent = "replay";
   state.started = true;
-  state.session = session;
   await refreshConfigs();
   initOverview();
-  for (const init of [initConfigure]) {
-    try { init(); } catch (e) { console.error(e); }
-  }
+  initConfigure();
   state.emit("config", state.config);
   show();
   window.addEventListener("popstate", () => transition(show));

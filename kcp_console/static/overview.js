@@ -11,6 +11,7 @@ const acts = {};            // config name -> the newest action: {which, dry, re
 const boxes = {};           // real run id -> its approval box (kept, so a re-render keeps what was typed)
 const causes = {};          // failed run id -> the diagnosed cause
 const driving = {};         // config name -> true while this page creates or approves a run
+const opened = new Set();   // panels opened since the page loaded: re-renders keep them open, a reload closes them
 let timer = null;
 
 const TITLES = { setup: "Set up", verify: "Verify", teardown: "Tear down" };
@@ -77,7 +78,7 @@ function render() {
     : h("div", { class: "empty" }, h("p", {}, `No cluster named ${name}`), h("button", { class: "secondary", onclick: openFleet }, `${CLOUD[cloud()]} clusters`)));
 }
 
-export function openCluster(name) {
+function openCluster(name) {
   go(clusterPath(name));
 }
 
@@ -254,9 +255,8 @@ function clusterView(c) {
     ["Service account", pill(sa ? sa.exists && sa.annotation === "true" : undefined, "Allowed", sa?.exists ? "Not allowed" : "Missing")],
     ["Mapped user", map ? `${map.token_spec?.username || "—"}${ttl ? ` · ${Math.round(ttl / 60)} min tokens` : ""}` : muted("—")],
   ].filter(Boolean);
-  const facts = f.cluster || rel ? h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, h("h2", {}, "Essentials", help(PANEL_HELP.Essentials))),
-    h("dl", { class: "essentials" }, essentials.filter(Boolean).map(([k, v]) => h("div", {}, h("dt", {}, k, help(ESS_HELP[k])), h("dd", {}, v))))) : null;
+  const facts = f.cluster || rel ? panel("Essentials", null,
+    h("dl", { class: "essentials" }, essentials.map(([k, v]) => h("div", {}, h("dt", {}, k, help(ESS_HELP[k])), h("dd", {}, v))))) : null;
   return h("div", { class: "cluster" },
     h("header", { class: "cl-head" },
       h("div", {},
@@ -273,14 +273,25 @@ function clusterView(c) {
         h("button", { class: "primary", disabled: busy, onclick: () => start(rel ? "verify" : "setup") }, rel ? "Verify" : "Set up"))),
     s.error ? h("div", { class: "callout fail" }, brief(s.error)) : null,
     facts,
-    problems.length ? panel("Problems", null, checklist(problems)) : null,
+    problems.length ? panel("Problems", h("span", { class: "badge fail" }, String(problems.length)), checklist(problems)) : null,
     actionEl(c.name),
     // The proof's run already shows above as the latest action: its steps are the proof, not shown twice.
     busy || (s.proof && acts[c.name]?.real?.created === s.proof.at) ? null : proofBlock(s.proof));
 }
 
-const panel = (title, aside, ...body) => h("section", { class: "panel" },
-  h("div", { class: "panel-head" }, h("h2", {}, title, help(PANEL_HELP[title])), aside), ...body);
+// A collapsible panel: closed on every page load, open once the operator opens it (or when forced,
+// as for an approval waiting on them). The summary carries the panel's status so a closed one still reads.
+function panel(title, aside, ...body) {
+  return collapsible(title, false, aside, body);
+}
+
+function collapsible(title, force, aside, body) {
+  const key = `${state.config}|${title}`;
+  const d = h("details", { class: "panel", open: force || opened.has(key) },
+    h("summary", { class: "panel-head" }, h("h2", {}, title, help(PANEL_HELP[title])), aside), ...body);
+  d.addEventListener("toggle", () => { if (d.open) opened.add(key); else opened.delete(key); });
+  return d;
+}
 
 // Steps or checks as a list with a status mark: {status, title, detail}.
 const MARK = { running: "", pending: "", ok: "✓", done: "✓", pass: "✓", failed: "✕", fail: "✕", error: "✕", warn: "!", skipped: "–" };
@@ -307,9 +318,7 @@ function latestProof(runs, name) {
 function proofBlock(p) {
   if (!p) return null;
   const tag = p.proven ? ["ok", "Working"] : !p.complete ? ["warn", "Incomplete"] : ["fail", "Not proven"];
-  return h("details", { class: "panel proof", open: !p.proven },
-    h("summary", { class: "panel-head" }, h("h2", {}, "OIDC", help(PANEL_HELP.OIDC)), h("span", { class: `badge ${tag[0]}` }, tag[1]), muted(when(p.at))),
-    checklist(p.steps));
+  return panel("OIDC", [h("span", { class: `badge ${tag[0]}` }, tag[1]), muted(when(p.at))], checklist(p.steps));
 }
 
 // One read per cluster at a time: a second call while one is in flight joins it.
@@ -446,9 +455,8 @@ function actionEl(name) {
     }
   }
   if (a.error) parts.push(h("p", { class: "error small" }, brief(a.error)));
-  return panel(TITLES[a.which], muted(when((r || d || {}).created)),
-    h("ol", { class: "stages" }, stages.map(([t, cls]) => h("li", { class: cls }, t))),
-    ...parts);
+  return collapsible(TITLES[a.which], r?.status === "prepared",
+    [muted(when((r || d || {}).created)), h("ol", { class: "stages" }, stages.map(([t, cls]) => h("li", { class: cls }, t)))], parts);
 }
 
 // The steps as they run: one row per plan step, updated in place from the run's own record.
@@ -531,8 +539,10 @@ function causeEl(name, run) {
 const SOURCES = { aks: { api: "/api/aks", short: "AKS" }, gke: { api: "/api/gke", short: "GKE" } };
 const found = {};           // cloud -> {clusters, loading, error}
 
+// Opened by Add a cluster (or the empty list), so it is a plain section, not a collapsed panel.
 function addPanel(configs, cloud) {
-  return panel(`Add a ${SOURCES[cloud].short} cluster`, null, foundTable(configs, cloud));
+  return h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, h("h2", {}, `Add a ${SOURCES[cloud].short} cluster`)), foundTable(configs, cloud));
 }
 
 function foundTable(configs, cloud) {

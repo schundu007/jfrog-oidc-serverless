@@ -225,3 +225,30 @@ class RestoreTests(Base):
         (self.root / "runs" / "20261030-130000-badbad").mkdir(parents=True)
         (self.root / "runs" / "20261030-130000-badbad" / "run.json").write_text("{not json")
         self.assertEqual(self.fresh().list(), [])
+
+
+class CleanupTests(Base):
+    def test_delete_one_finished_run(self):
+        run = self.mgr.start(cfg(), steps=["plan", "apply"])
+        self.wait(run, "waiting_approval")
+        with self.assertRaises(RunError) as cm:
+            self.mgr.delete(run.id)                      # active: may be mid-change
+        self.assertEqual((cm.exception.status, cm.exception.code), (409, "run_active"))
+        self.mgr.cancel(run.id)
+        self.wait(run, "cancelled")
+        self.assertEqual(self.mgr.delete(run.id), {"deleted": run.id})
+        self.assertFalse(run.dir.exists())
+        self.assertEqual(self.mgr.list(), [])
+        with self.assertRaises(RunError) as cm:
+            self.mgr.delete(run.id)
+        self.assertEqual(cm.exception.status, 404)
+
+    def test_clear_finished_runs_of_one_cloud(self):
+        run = self.mgr.start(cfg(), steps=["plan", "apply"])
+        self.wait(run, "waiting_approval")
+        self.assertEqual(self.mgr.clear("gcp"), {"runs_deleted": 0, "runs_kept": 1})
+        self.mgr.cancel(run.id)
+        self.wait(run, "cancelled")
+        self.assertEqual(self.mgr.clear("azure"), {"runs_deleted": 0, "runs_kept": 0})
+        self.assertEqual(self.mgr.clear("gcp"), {"runs_deleted": 1, "runs_kept": 0})
+        self.assertEqual(self.mgr.list(), [])

@@ -244,6 +244,33 @@ class RunManager:
             shutil.rmtree(run.dir, ignore_errors=True)
         return {"runs_deleted": len(deleted), "runs_kept": kept}
 
+    def delete(self, run_id: str) -> dict:
+        """Forget one finished run and remove its folder. An active run must be cancelled first."""
+        with self.lock:
+            run = self.runs.get(run_id)
+            if run is None:
+                raise RunError(404, "no_such_run", "no such run")
+            if run.status in ("running", "waiting_approval"):
+                raise RunError(409, "run_active", "the run is still active; cancel it first")
+            del self.runs[run_id]
+        shutil.rmtree(run.dir, ignore_errors=True)
+        return {"deleted": run_id}
+
+    def clear(self, cloud: str) -> dict:
+        """Forget every finished run of one cloud (kinds start with '<cloud>_'). Active runs are kept."""
+        deleted, kept = [], 0
+        with self.lock:
+            for rid, run in list(self.runs.items()):
+                if not str(model.get_path(run.cfg, "target.kind") or "").startswith(f"{cloud}_"):
+                    continue
+                if run.status in ("running", "waiting_approval"):
+                    kept += 1
+                    continue
+                deleted.append(self.runs.pop(rid))
+        for run in deleted:
+            shutil.rmtree(run.dir, ignore_errors=True)
+        return {"runs_deleted": len(deleted), "runs_kept": kept}
+
     def approve(self, run_id: str, step: str, payload: dict) -> dict:
         run = self.get(run_id)
         with run.cond:

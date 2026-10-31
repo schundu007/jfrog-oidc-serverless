@@ -38,6 +38,16 @@ class ServerTests(unittest.TestCase):
         conn.close()
         return resp.status, dict(resp.getheaders()), raw
 
+    # -- run cleanup (no runs touched: only the refusals) -----------------------
+
+    def test_clear_runs_needs_a_known_cloud(self):
+        self.assertEqual(self.req("DELETE", "/api/runs")[0], 400)
+        self.assertEqual(self.req("DELETE", "/api/runs?cloud=mars")[0], 400)
+
+    def test_delete_unknown_run_is_404(self):
+        self.assertEqual(self.req("DELETE", "/api/runs/20000101-000000-abcdef")[0], 404)
+        self.assertEqual(self.req("DELETE", "/api/runs/..%2Fetc")[0], 404)
+
     # -- security ---------------------------------------------------------------
 
     def test_no_token_is_401(self):

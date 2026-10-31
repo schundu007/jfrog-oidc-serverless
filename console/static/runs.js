@@ -34,6 +34,7 @@ async function refreshList() {
   // No runs: one empty state instead of empty Steps and Log cards.
   document.querySelector(".runs-layout").hidden = !rs.runs.length;
   $("runs-count").textContent = rs.runs.length || "";
+  $("runs-delete").hidden = $("runs-clear").hidden = !rs.runs.length;
   if (!rs.runs.length) fill($("run-head"), h("p", { class: "muted", text: "No runs yet. Run pipeline above starts one." }));
 }
 
@@ -122,6 +123,7 @@ function render() {
   const listed = rs.runs.find((r) => r.id === snap.id);
   if (listed && listed.status !== snap.status) refreshList();
   rs.selected = pickStep(snap);
+  $("runs-delete").disabled = LIVE.has(snap.status);
   const shown = snap.steps.filter((s) => !s.planned);
   const done = shown.filter((s) => s.status === "succeeded").length;
   fill($("run-head"),
@@ -392,14 +394,22 @@ function renderLog() {
     : h("p", { class: "log-empty", text: "No log lines yet." }));
 }
 
-async function cancel(ev) {
-  const btn = ev.currentTarget;
-  if (btn.dataset.armed !== "1") {
-    btn.dataset.armed = "1";
-    btn.textContent = "Click again to cancel";
-    setTimeout(() => { btn.dataset.armed = ""; btn.textContent = "Cancel run"; }, 4000);
-    return;
+// Two clicks for anything destructive: the first arms the button for four seconds.
+function armed(btn, prompt) {
+  if (btn.dataset.armed === "1") {
+    btn.dataset.armed = "";
+    btn.textContent = btn.dataset.label;
+    return true;
   }
+  btn.dataset.label ||= btn.textContent;
+  btn.dataset.armed = "1";
+  btn.textContent = prompt;
+  setTimeout(() => { btn.dataset.armed = ""; btn.textContent = btn.dataset.label; }, 4000);
+  return false;
+}
+
+async function cancel(ev) {
+  if (!armed(ev.currentTarget, "Click again to cancel")) return;
   try {
     await api(`/api/runs/${rs.id}/cancel`, { method: "POST", body: {} });
   } catch (e) {
@@ -407,11 +417,45 @@ async function cancel(ev) {
   }
 }
 
+// Delete the open run, or every finished run of this cloud. Active runs are never removed.
+async function removeRun(ev) {
+  if (!rs.id || !armed(ev.currentTarget, "Click again to delete")) return;
+  try {
+    await api(`/api/runs/${rs.id}`, { method: "DELETE" });
+  } catch (e) {
+    return note(e.message, "error");
+  }
+  await afterCleanup("Run deleted.");
+}
+
+async function clearRuns(ev) {
+  if (!armed(ev.currentTarget, "Click again to clear")) return;
+  let res;
+  try {
+    res = await api(`/api/runs?cloud=${encodeURIComponent(rs.cloud)}`, { method: "DELETE" });
+  } catch (e) {
+    return note(e.message, "error");
+  }
+  await afterCleanup(`${res.runs_deleted} run${res.runs_deleted === 1 ? "" : "s"} cleared`
+    + (res.runs_kept ? `, ${res.runs_kept} still active` : "") + ".");
+}
+
+async function afterCleanup(message) {
+  if (rs.abort) rs.abort.abort();
+  Object.assign(rs, { id: null, snap: null, log: [] });
+  await refreshList();
+  if (rs.runs.length) await openRun(rs.runs[0].id);
+  note(message, "ok");
+}
+
 // ----------------------------------------------------------------- init
 
 export async function initRuns(deps) {
   ({ api, h, streamEvents, showSection, ofCloud } = deps);
+  rs.cloud = deps.cloud;
   $("runs-list").addEventListener("change", (e) => openRun(e.target.value));
+  $("runs-delete").addEventListener("click", removeRun);
+  $("runs-clear").addEventListener("click", clearRuns);
   $("runs-refresh").addEventListener("click", refreshList);
   await refreshList();
   if (rs.runs.length) await openRun(rs.runs[0].id);
