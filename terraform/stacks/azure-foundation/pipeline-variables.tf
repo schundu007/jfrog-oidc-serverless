@@ -18,6 +18,14 @@ resource "azuredevops_variable_group" "azure" {
     value = platform_oidc_configuration.ado.name
   }
   variable {
+    name  = "BUILD_SERVICE_CONNECTION_ID"
+    value = local.connections.build.id
+  }
+  variable {
+    name  = "SETUP_SERVICE_CONNECTION_ID"
+    value = local.connections.setup.id
+  }
+  variable {
     name  = "AZURE_SUBSCRIPTION_ID"
     value = var.azure_subscription_id
   }

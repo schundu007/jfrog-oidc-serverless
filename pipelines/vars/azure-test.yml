@@ -1,12 +1,11 @@
 # Azure pipelines, test environment: ADO settings only, nothing shared with other clouds.
 # Not credentials: every job authenticates with its service connection's OIDC token.
 # Target values (JFrog URL and integration, project or subscription, identities) are not
-# here: terraform/stacks/azure-foundation writes them to the variable group jfrog-oidc-azure-<env>.
+# here: terraform/stacks/azure-foundation writes them (and the connection IDs) to the
+# variable group jfrog-oidc-azure-<env>. Connection names are read at compile time, so they stay here.
 variables:
   ENVIRONMENT: test
-  BUILD_SERVICE_CONNECTION: jfrog-oidc-wif
-  SETUP_SERVICE_CONNECTION: jfrog-oidc-setup-v2
-  BUILD_SERVICE_CONNECTION_ID: 00d00a9a-4216-46c9-bfb7-718d75d629d8 # jfrog-oidc-wif
-  SETUP_SERVICE_CONNECTION_ID: ebe9d5e5-c476-4ede-9a9f-053f91c5319b # jfrog-oidc-setup-v2
+  BUILD_SERVICE_CONNECTION: jfrog-oidc-azure-build   # created by azure-foundation
+  SETUP_SERVICE_CONNECTION: jfrog-oidc-azure-setup   # created by azure-foundation
   TERRAFORM_VERSION: 1.17.1
   JFROG_DOCKER_REMOTE: docker-remote

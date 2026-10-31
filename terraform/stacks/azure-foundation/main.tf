@@ -31,15 +31,15 @@ resource "azurerm_user_assigned_identity" "setup" {
 
 locals {
   azure_identity = {
-    build = { id = data.azurerm_user_assigned_identity.ado.id, principal_id = data.azurerm_user_assigned_identity.ado.principal_id }
-    setup = { id = azurerm_user_assigned_identity.setup.id, principal_id = azurerm_user_assigned_identity.setup.principal_id }
+    build = { id = data.azurerm_user_assigned_identity.ado.id, principal_id = data.azurerm_user_assigned_identity.ado.principal_id, client_id = data.azurerm_user_assigned_identity.ado.client_id }
+    setup = { id = azurerm_user_assigned_identity.setup.id, principal_id = azurerm_user_assigned_identity.setup.principal_id, client_id = azurerm_user_assigned_identity.setup.client_id }
   }
   # AcrPull, AcrPush, Contributor
   assignable_roles = "7f951dda-4ed3-4680-a7ca-43fe172d538d, 8311e382-0749-4cb8-b61a-304f252e45ec, b24988ac-6180-42a0-ab88-20f7382dd24c"
 }
 
 resource "azurerm_federated_identity_credential" "ado" {
-  for_each = var.connections
+  for_each = local.connections
 
   name                      = "ado-${each.value.name}"
   user_assigned_identity_id = local.azure_identity[each.key].id
