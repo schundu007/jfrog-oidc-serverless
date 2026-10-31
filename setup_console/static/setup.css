@@ -99,3 +99,21 @@
 /* Blocked by a missing bootstrap: dimmed until it can be deployed. */
 #groups tr.blocked .stack-name b { color: var(--fg-3); font-weight: 500; }
 #groups tr.blocked .stack-icon { opacity: 0.55; filter: grayscale(0.4); }
+
+/* ---- Cloud as the root: one column per cloud; Common, Serverless and Kubernetes as folders under it ---- */
+#groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-6, 32px); align-items: start; }
+@media (max-width: 1100px) { #groups { grid-template-columns: minmax(0, 1fr); } }
+.cloud-root { --cloud: var(--navy); }
+.cloud-root[data-cloud="gcp"] { --cloud: #1a73e8; }
+.cloud-root[data-cloud="azure"] { --cloud: #0078d4; }
+#groups .cloud-root > .cloud-head { display: flex; align-items: center; gap: var(--s-2); padding: 0 0 var(--s-2); margin: 0;
+  border-bottom: 2px solid var(--cloud); background: none; }
+#groups .cloud-root .cloud-title h3 { font-size: var(--t-lg); }
+/* A folder: a guide line down its left, like a directory under the cloud. */
+#groups .kind-folder { margin: var(--s-4) 0 0 11px; padding-left: var(--s-4); border-left: 2px solid var(--border); }
+#groups .kind-folder-title { display: flex; align-items: baseline; gap: var(--s-2); margin: 0 0 2px; font-size: var(--t-xs); font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-2); }
+#groups .kind-folder:hover { border-left-color: var(--cloud); }
+#groups .kind-folder .table-wrap { border: 0; background: none; overflow: visible; border-radius: 0; }
+#groups .kind-folder td:first-child { padding-left: 0; }
+#groups .kind-folder td:last-child { padding-right: 0; }

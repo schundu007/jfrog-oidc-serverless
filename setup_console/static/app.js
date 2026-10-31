@@ -302,12 +302,12 @@ async function load() {
   const data = await api("/api/stacks");
   byId = Object.fromEntries(data.stacks.map((s) => [s.id, s]));
   $("env").textContent = data.env;
-  // Common, Serverless and Kubernetes are separate sections, each with its own card per cloud:
-  // Serverless and Kubernetes never share a card or a table.
-  // The CI/CD bootstraps serve both kinds, so they lead in a Common section of their own.
-  const kinds = { Common: {} };
+  // The cloud is the root: one column per cloud, and under it Common (the CI/CD bootstrap, used by
+  // both kinds), Serverless and Kubernetes, each its own table. The kinds never share a table.
+  const ORDER = ["Common", "Serverless", "Kubernetes"];
   const sectionOf = (s) => (s.id.endsWith("-foundation") ? "Common" : s.kind);
-  for (const s of data.stacks) ((kinds[sectionOf(s)] ||= {})[s.group] ||= []).push(s);
+  const clouds = {};
+  for (const s of data.stacks) ((clouds[s.group] ||= {})[sectionOf(s)] ||= []).push(s);
   const done = (list) => list.filter((x) => x.status?.deployed).length;
   // A thin meter of deployed / total: the count at a glance, no extra words.
   const meter = (n, of) => {
@@ -315,15 +315,15 @@ async function load() {
     fillEl.style.width = `${of ? Math.round((100 * n) / of) : 0}%`;   // CSSOM, allowed by the CSP
     return h("span", { class: "meter", role: "img", "aria-label": `${n} of ${of} deployed`, title: `${n} of ${of} deployed` }, fillEl);
   };
-  fill($("groups"), Object.entries(kinds).map(([k, clouds]) => {
-    const all = Object.values(clouds).flat();
-    return h("section", { class: "setup-kind", "data-kind": k },
-      h("h2", { class: "setup-kind-title" }, h("span", { text: k }), h("span", { class: "kind-count", text: `${done(all)}/${all.length}` })),
-      ...Object.entries(clouds).map(([g, list]) => h("section", { class: "card cloud-card", "data-cloud": CLOUD_ID[g] || "" },
-        h("div", { class: "card-head cloud-head" }, iconEl(CLOUD_ID[g], "cloud-badge"),
-          h("div", { class: "cloud-title" }, h("h3", { text: g }), h("span", { class: "cloud-sub", text: `${done(list)} of ${list.length} deployed` })),
-          meter(done(list), list.length)),
-        h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, list.map(row)))))));
+  fill($("groups"), Object.entries(clouds).map(([g, kinds]) => {
+    const all = Object.values(kinds).flat();
+    return h("section", { class: "cloud-root", "data-cloud": CLOUD_ID[g] || "" },
+      h("div", { class: "cloud-head" }, iconEl(CLOUD_ID[g], "cloud-badge"),
+        h("div", { class: "cloud-title" }, h("h3", { text: g }), h("span", { class: "cloud-sub", text: `${done(all)} of ${all.length} deployed` })),
+        meter(done(all), all.length)),
+      ...ORDER.filter((k) => kinds[k]).map((k) => h("div", { class: "kind-folder", "data-kind": k },
+        h("h4", { class: "kind-folder-title" }, h("span", { text: k }), h("span", { class: "kind-count", text: `${done(kinds[k])}/${kinds[k].length}` })),
+        h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, kinds[k].map(row)))))));
   }));
   // While a job runs, keep the rows current so Running turns into its result without a reload.
   clearTimeout(load.timer);
