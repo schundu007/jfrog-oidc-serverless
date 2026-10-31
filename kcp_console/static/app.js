@@ -94,7 +94,6 @@ export function help(text) {
 
 function showAuth() {
   $("auth-banner").hidden = false;
-  $("sidenav").hidden = true;
   $("k8s-sub").hidden = true;
   document.querySelectorAll("[role=tabpanel]").forEach((p) => { p.hidden = true; });
 }
@@ -163,10 +162,14 @@ function parent(r) {
 // A product mark (aks, gke, eks, openshift, k8s) or the arrow icon, cloned from the page's template.
 export const markOf = (k) => $("marks").content.querySelector(`[data-mark="${k}"] svg`).cloneNode(true);
 
-// Where you are: Kubernetes > <platform> > <cluster> > Run <id>. Names come from the path.
+// Where you are: <cloud> > Kubernetes > <platform>'s clusters > <cluster> > Run <id>, as the menu
+// nests them (each cloud holds Serverless and Kubernetes). Names come from the path.
+const TRAIL = { aks: ["Azure", "AKS clusters"], gke: ["Google Cloud", "GKE clusters"], eks: ["AWS", "EKS clusters"],
+  openshift: ["OpenShift", "Clusters"] };
 function renderTrail(r) {
-  const steps = [["Kubernetes", null]];
-  if (r.cloud) steps.push([CLOUDS[r.cloud], `/clusters/${r.cloud}`]);
+  const [cloud, section] = TRAIL[r.cloud] || [null, "Clusters"];
+  const steps = cloud ? [[cloud, null], ["Kubernetes", null]] : [["Kubernetes", null]];
+  steps.push([section, r.cloud && (r.name || r.page === "run") ? `/clusters/${r.cloud}` : null]);
   if (r.name) steps.push([r.name, r.page === "run" ? clusterPath(r.name, "runs") : clusterPath(r.name)]);
   if (r.page === "run") steps.push([`Run ${r.run}`, null]);
   const parts = [];
@@ -250,7 +253,6 @@ function wireTabs() {
       go(path);
     });
   });
-  $("sidenav").classList.add("k8s-nav");
 }
 
 $("auth-form").addEventListener("submit", (e) => {
@@ -273,7 +275,6 @@ async function start() {
     return;
   }
   $("auth-banner").hidden = true;
-  $("sidenav").hidden = false;
   const pill = $("mode-pill");
   pill.hidden = session.mode !== "replay";
   pill.textContent = "replay";

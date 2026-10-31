@@ -106,3 +106,11 @@
 .chip .dot.warn { background: #999999; box-shadow: none; }
 .chip .dot.bad { background: #333333; box-shadow: none; }
 .chip:hover { background: #ffffff; border-color: #5ba908; box-shadow: var(--glow); }
+.board-wide { margin-top: var(--s-5); }
+.board .dash-list + .board-sub { margin-top: var(--s-4); }
+.runs-filters { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.runs-filters input { flex: 1; min-width: 200px; }
+.run-what { display: inline-flex; align-items: center; gap: var(--s-2); }
+.run-what .dash-mark { width: 28px; height: 28px; border-radius: 8px; }
+.run-what .dash-mark svg { width: 18px; height: 18px; }
+.board .chips + .board-sub { margin-top: var(--s-4); }

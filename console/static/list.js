@@ -2,7 +2,7 @@
 // onboarded, with the last run. The whole row opens the workload; "⋯" holds Delete (saved only: an
 // onboarded config lives in git, where only offboarding removes it).
 
-import { $, api, h, fill, ofCloud, href, CLOUD, statusIcon, statusText, template, menu, ago, dur, runDuration, stamp,
+import { $, api, h, fill, inSection, href, CLOUD, TYPE, statusIcon, statusText, template, menu, ago, dur, runDuration, stamp,
   status as setStatus } from "./core.js";
 import { kindLabel } from "./configure.js";
 
@@ -58,8 +58,8 @@ function render() {
 
 async function load() {
   const [{ configs }, { runs }] = await Promise.all([api("/api/configs"), api("/api/runs")]);
-  const mine = runs.filter((r) => ofCloud(r.kind));
-  ls.rows = configs.filter((c) => ofCloud(c.kind)).map((c) => ({ ...c, run: mine.find((r) => r.name === c.name) || null, snap: null }));
+  const mine = runs.filter((r) => inSection(r.kind));
+  ls.rows = configs.filter((c) => inSection(c.kind)).map((c) => ({ ...c, run: mine.find((r) => r.name === c.name) || null, snap: null }));
   render();
   api(`/api/live?cloud=${CLOUD}`).then(({ status }) => {
     for (const c of ls.rows) c.live = status[c.name] || { state: "unknown" };
@@ -86,6 +86,12 @@ async function remove(name) {
 export async function mountList(page, { schema }) {
   ls.schema = schema;
   page.replaceChildren(template("tpl-list"));
+  // Titled after its menu item (one service, e.g. Cloud Run jobs), or Serverless for all of the cloud's.
+  const section = window.consoleNav?.section(TYPE || `serverless-${CLOUD}`);
+  if (section) {
+    page.querySelector(".page-header h1").textContent = section.label;
+    document.title = `${section.label} · ${section.cloud}`;
+  }
   $("wl-new").setAttribute("href", href.create());
   $("wl-empty-new").setAttribute("href", href.create());
   $("wl-filter").addEventListener("input", render);

@@ -18,10 +18,16 @@ export const CLOUDS = { gcp: "Google Cloud", azure: "Azure", aws: "AWS", openshi
 export const CLOUD = [localPath().split("/")[1], new URLSearchParams(location.search).get("cloud")]
   .find((c) => Object.hasOwn(CLOUDS, c)) || null;
 export const ofCloud = (kind) => !!kind && String(kind).startsWith(`${CLOUD}_`);
+// Each workload kind is its own item under the cloud's Serverless group in the menu (shell.js):
+// ?type=<kind> lists that kind only; without it the list holds every kind of this cloud.
+export const sectionOf = (kind) => window.consoleNav?.sectionOfKind(kind) || null;
+const ofThisCloud = (kind) => !!kind && String(kind).startsWith(`${CLOUD}_`);
+export const TYPE = ofThisCloud(new URLSearchParams(location.search).get("type")) ? new URLSearchParams(location.search).get("type") : null;
+export const inSection = (kind) => ofCloud(kind) && (!TYPE || kind === TYPE);
 
 // Page links. Names and run IDs are URL-safe (server-side patterns); encode anyway.
 export const href = {
-  list: () => `${BASE}/${CLOUD}`,
+  list: (section = TYPE) => `${BASE}/${CLOUD}${ofThisCloud(section) ? `?type=${encodeURIComponent(section)}` : ""}`,
   create: () => `${BASE}/${CLOUD}/new`,
   workload: (name, tab) => `${BASE}/${CLOUD}/w/${encodeURIComponent(name)}${tab ? `?tab=${tab}` : ""}`,
   run: (name, id) => `${BASE}/${CLOUD}/w/${encodeURIComponent(name)}/runs/${encodeURIComponent(id)}`,

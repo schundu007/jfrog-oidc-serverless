@@ -2,7 +2,7 @@
 // an approval banner, and the tabs Runs · Configuration · Simulator (?tab=runs|config|sim).
 
 import { $, api, h, fill, CLOUD, ofCloud, href, statusIcon, statusPill, statusText, template, menu, armed, ago, dur, stamp,
-  runDuration, LIVE, closeFlyout, status as setStatus } from "./core.js";
+  runDuration, LIVE, closeFlyout, sectionOf, status as setStatus } from "./core.js";
 import { mountConfig, validateNow, runPreflight, currentConfig, isDirty, isBusy, identityOf, kindLabel, SCOPE_FIELDS,
   status as cfgStatus } from "./configure.js";
 import { mountSim, redrawSim } from "./sim.js";
@@ -200,10 +200,11 @@ export async function mountWorkload(page, { name, schema }) {
   }
   if (!config || !ofCloud(config.target?.kind)) {
     fill(page, h("div", { class: "empty" }, h("h2", { text: `No workload named ${name}` }),
-      h("a", { class: "btn secondary", href: href.list(), text: "Back to Workloads" })));
+      h("a", { class: "btn secondary", href: href.list(), text: "Back to workloads" })));
     return;
   }
   ws.kind = config.target.kind;
+  document.dispatchEvent(new CustomEvent("console:section", { detail: sectionOf(ws.kind) }));
   // Onboarded but not saved here: the form holds the config its git workspace applied; Save keeps a copy.
   if (source === "git") {
     $("wl-menu").hidden = true;

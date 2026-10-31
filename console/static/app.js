@@ -7,7 +7,7 @@
 //   /<cloud>/w/<name>/runs/<id>     Run: step tree, step detail and log (runs.js)
 // Old paths (/<cloud>/configure, /runs, /simulate, /configs) land on Workloads.
 
-import { $, api, h, BASE, CLOUD, CLOUDS, REDIRECTING, localPath, href, hasToken, setToken, takeTokenFromHash, forgetToken,
+import { $, api, h, BASE, CLOUD, CLOUDS, TYPE, REDIRECTING, localPath, href, hasToken, setToken, takeTokenFromHash, forgetToken,
   closeFlyout, template } from "./core.js";
 import { mountList } from "./list.js";
 import { mountWorkload } from "./workload.js";
@@ -28,10 +28,25 @@ function route() {
   return { page: "list", legacy: parts.length > 1 };
 }
 
-// Where you are; every level above the current page is a link.
+// Where you are: <cloud> / Serverless / <service> / <workload> / Run <id>, as the menu nests them;
+// every level above the current page is a link. A workload or run page learns its service (its kind)
+// once loaded: that page sends "console:section" and the trail and menu follow.
+let trailRoute = null, trailSection = TYPE;
+document.addEventListener("console:section", (e) => {
+  if (!e.detail) return;
+  trailSection = e.detail;
+  window.consoleNav?.select(e.detail);
+  if (trailRoute) renderTrail(trailRoute);
+});
 function renderTrail(r) {
-  const steps = [["Serverless", null], [CLOUDS[CLOUD], null]];
-  if (r.page !== "not-yet") steps.push(["Workloads", r.page === "list" ? null : href.list()]);
+  trailRoute = r;
+  const section = trailSection && window.consoleNav?.section(trailSection);
+  const steps = [[CLOUDS[CLOUD], null]];
+  if (r.page !== "not-yet") {
+    const top = r.page === "list" && !section;
+    steps.push(["Serverless", top ? null : href.list(null)]);
+    if (section) steps.push([section.label, r.page === "list" ? null : href.list(trailSection)]);
+  }
   if (r.page === "new") steps.push(["New workload", null]);
   if (r.name) steps.push([r.name, r.page === "run" ? href.workload(r.name, "runs") : null]);
   if (r.page === "run") steps.push([`Run ${r.id}`, null]);
@@ -52,8 +67,6 @@ function applyShell() {
     for (const el of document.querySelectorAll("[data-portal]")) el.hidden = false;
   }
   document.title = `JFrog OIDC Console · ${CLOUDS[CLOUD]}`;
-  document.querySelector(`[data-cloud-link="${CLOUD}"]`)?.setAttribute("aria-current", "page");
-  $("cloud-switch").hidden = false;
   $("flyout-close").addEventListener("click", closeFlyout);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("flyout").hidden && !document.querySelector(".menu:not([hidden])")) closeFlyout(); });
 }

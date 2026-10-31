@@ -87,7 +87,8 @@ function matches(r) {
 function view() {
   if (!fleet && !fleetLoading) loadFleet();
   const d = fleet || { clusters: [], platforms: {} };
-  const k = cloud(), label = CLOUD[k];
+  // Titled as the sidebar names it (AKS clusters, GKE clusters).
+  const k = cloud(), label = window.consoleNav?.section(k)?.label || CLOUD[k];
   const built = (d.platforms || {})[k] !== false && !!SOURCES[k];
   const mine = d.clusters.filter((r) => (r.cloud || "aks") === k);
   const counts = {};

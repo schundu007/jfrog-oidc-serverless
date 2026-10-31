@@ -140,6 +140,10 @@ a.brand, a.brand:hover { color: #ffffff; text-decoration: none; }
 }
 /* The open platform while one of its clusters is open: named, not highlighted. */
 .nav-item[aria-current="true"] { font-weight: 600; }
+/* Under each cloud: Serverless and Kubernetes, each with its services (console/static/shell.js). */
+.nav-sub { padding: var(--s-2) 24px 2px 24px; font-size: 12px; font-weight: 600; color: var(--fg-3); }
+.nav-item.nested { padding-left: 40px; min-height: 36px; font-size: 14px; }
+.nav-item.nested svg.mark { width: 18px; height: 18px; }
 .nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .nav-item[aria-expanded]::after {
   content: "›"; margin-left: auto; font-size: 18px; line-height: 1; color: var(--fg-3); transition: transform 150ms;

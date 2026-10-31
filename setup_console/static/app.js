@@ -128,7 +128,7 @@ async function follow(stack, job, panel) {
 }
 
 async function run(stack, action) {
-  const panel = flyout(`${stack.kind} · ${stack.group} · ${stack.title}: ${{ status: "Check", "plan-apply": "Deploy", "plan-destroy": "Destroy" }[action]}`);
+  const panel = flyout(`${stack.group} · ${stack.title}: ${{ status: "Check", "plan-apply": "Deploy", "plan-destroy": "Destroy" }[action]}`);
   try { await follow(stack, await api(`/api/stacks/${stack.id}/jobs`, { method: "POST", body: { action } }), panel); }
   catch (e) { fill(panel.status, statusPill("failed", e.message)); }
 }
@@ -167,7 +167,7 @@ function readField(f) {
 }
 
 async function editInputs(stack) {
-  const panel = flyout(`${stack.kind} · ${stack.group} · ${stack.title}: Inputs`);
+  const panel = flyout(`${stack.group} · ${stack.title}: Inputs`);
   const draw = (form) => {
     const fields = form.fields.map((f) => h("label", { class: "field" },
       h("span", {}, h("span", { class: "field-label", text: f.name }), f.required ? h("span", { class: "small", text: "required" }) : null),
@@ -226,7 +226,7 @@ function warnings(s) {
   const failed = s.failed && !s.busy && !(s.failed.action === "status" && s.needs?.length) ? s.failed : null;
   if (failed) {
     const log = h("button", { type: "button", class: "link", text: "Log" });
-    log.onclick = () => follow(s, failed, flyout(`${s.kind} · ${s.group} · ${s.title}: ${ACTION_NAME[failed.action] || failed.action}`));
+    log.onclick = () => follow(s, failed, flyout(`${s.group} · ${s.title}: ${ACTION_NAME[failed.action] || failed.action}`));
     out.push(h("div", { class: "setup-note fail", title: failed.error || "" },
       `${ACTION_NAME[failed.action] || "Last run"} failed: ${brief(failed.error) || "see the log"} `, log));
   }
@@ -238,12 +238,12 @@ function row(s) {
   const destroy = h("button", { type: "button", class: "secondary", text: "Destroy", disabled: s.busy || !!blockedDestroy, title: blockedDestroy });
   destroy.onclick = () => { if (armed(destroy, "Plan destroy?")) run(s, "plan-destroy"); };
   const plan = s.plan ? h("button", { type: "button", class: "primary", text: "Review plan" }) : null;
-  if (plan) plan.onclick = () => { const p = flyout(`${s.kind} · ${s.group} · ${s.title}`); fill(p.body, planView(s, s.plan, p)); };
+  if (plan) plan.onclick = () => { const p = flyout(`${s.group} · ${s.title}`); fill(p.body, planView(s, s.plan, p)); };
   // A running job keeps going when its drawer is closed or the page reloads: this reopens its live log.
   const progress = s.job ? h("button", { type: "button", class: "primary", text: "Progress" }) : null;
   if (progress) {
     const verb = { status: "Check", "plan-apply": "Deploy", "plan-destroy": "Destroy", apply: "Apply" }[s.job.action];
-    progress.onclick = () => follow(s, s.job, flyout(`${s.kind} · ${s.group} · ${s.title}: ${verb}`));
+    progress.onclick = () => follow(s, s.job, flyout(`${s.group} · ${s.title}: ${verb}`));
   }
   const blockedDeploy = s.needs?.length ? `Deploy ${s.needs.map(titleOf).join(", ")} first` : "";
   const notes = warnings(s);
@@ -267,14 +267,13 @@ async function load() {
   const data = await api("/api/stacks");
   byId = Object.fromEntries(data.stacks.map((s) => [s.id, s]));
   $("env").textContent = data.env;
-  // Serverless and Kubernetes are separate kinds of infrastructure: one section each, one card per cloud.
-  const kinds = {};
-  for (const s of data.stacks) ((kinds[s.kind] ||= {})[s.group] ||= []).push(s);
-  fill($("groups"), Object.entries(kinds).map(([kind, clouds]) => h("section", { class: "setup-kind" },
-    h("h2", { class: "setup-kind-title", text: kind }),
-    Object.entries(clouds).map(([g, list]) => h("section", { class: "card" },
-      h("div", { class: "card-head" }, h("h3", { text: g })),
-      h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, list.flatMap(row)))))))));
+  // One card per cloud, as the sidebar groups the console: its foundation, workload stacks and
+  // cluster together, in catalogue order. (They still never depend on each other across kinds.)
+  const clouds = {};
+  for (const s of data.stacks) (clouds[s.group] ||= []).push(s);
+  fill($("groups"), Object.entries(clouds).map(([g, list]) => h("section", { class: "card" },
+    h("div", { class: "card-head" }, h("h3", { text: g })),
+    h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, list.flatMap(row)))))));
   // While a job runs, keep the rows current so Running turns into its result without a reload.
   clearTimeout(load.timer);
   if (data.stacks.some((s) => s.busy)) load.timer = setTimeout(() => load().catch(() => {}), POLL_MS * 2);

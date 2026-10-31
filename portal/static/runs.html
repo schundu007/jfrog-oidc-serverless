@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Runs · JFrog OIDC Console</title>
+  <link rel="stylesheet" href="/serverless/static/styles.css">
+  <link rel="stylesheet" href="/dashboard.css">
+  <script type="module" src="/runs-page.js"></script>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <a class="brand" href="/"><svg class="logo" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.5l7.4 4.25v8.5L10 18.5l-7.4-4.25v-8.5z"/><path class="logo-in" d="M10 6l3.5 2v4L10 14l-3.5-2V8z"/></svg><span>JFrog OIDC <b class="brand-accent">Console</b></span></a>
+    <span class="pill bad" id="session-state" hidden></span>
+  </header>
+  <aside class="sidenav"><script src="/serverless/static/shell.js"></script></aside>
+  <div class="main-col">
+  <main>
+    <div class="page-top"><nav class="trail" aria-label="You are here"><span aria-current="page">Runs</span></nav></div>
+    <header class="page-header">
+      <div class="title-row"><h1>Runs</h1><span id="runs-count" class="count-badge"></span></div>
+      <div class="actions"><button type="button" id="runs-refresh" class="btn secondary">Refresh</button></div>
+    </header>
+    <p id="runs-errors" class="error-box" role="alert" hidden></p>
+    <!-- Every run of every workload and cluster, newest first: one list for the whole console. -->
+    <div class="filter-row runs-filters">
+      <select id="runs-cloud" aria-label="Cloud"><option value="">All clouds</option><option value="gcp">Google Cloud</option><option value="azure">Azure</option></select>
+      <select id="runs-status" aria-label="Status"><option value="">Any status</option><option value="active">In progress</option><option value="succeeded">Succeeded</option><option value="failed">Failed</option></select>
+      <input id="runs-filter" type="search" placeholder="Filter by name or type" aria-label="Filter runs" spellcheck="false" autocomplete="off">
+    </div>
+    <div class="table-card">
+      <table class="list-table">
+        <thead><tr><th scope="col">Status</th><th scope="col">Workload or cluster</th><th scope="col">Type</th><th scope="col">Cloud</th><th scope="col">Started</th></tr></thead>
+        <tbody id="runs-rows"></tbody>
+      </table>
+    </div>
+    <p id="runs-none" class="muted small" hidden>No run matches.</p>
+  </main>
+  </div>
+</div>
+</body>
+</html>

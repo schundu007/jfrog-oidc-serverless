@@ -73,8 +73,7 @@ class PortalTests(unittest.TestCase):
         st, hd, raw = self.req("GET", "/", token=False, headers={"Sec-Fetch-Site": "none"})
         self.assertEqual(st, 200)
         self.assertIn(b'src="/dashboard.js"', raw)
-        self.assertIn(b'href="/serverless/gcp"', raw)
-        self.assertIn(b'href="/k8s/clusters/aks"', raw)
+        self.assertIn(b'src="/serverless/static/shell.js"', raw)
         self.assertIn(self.token.encode(), raw)
         self.assertIn("frame-ancestors 'none'", hd["Content-Security-Policy"])
         # Opened from another site: no token in the page.
@@ -108,9 +107,34 @@ class PortalTests(unittest.TestCase):
         stacks = json.loads(self.req("GET", "/setup/api/stacks")[2])["stacks"]
         self.assertIn("aks-cluster", [s["id"] for s in stacks])
         self.assertEqual(self.req("GET", "/serverless/api/stacks")[0], 404)
-        for p in ("/", "/serverless/gcp", "/k8s/clusters/aks"):
-            raw = self.req("GET", p, token=False, headers={"Sec-Fetch-Site": "none"})[2]
-            self.assertIn(b'href="/setup"', raw, p)
+    def test_one_menu_for_every_page(self):
+        # Serverless and Kubernetes are one product: every page, whichever console serves it, loads the
+        # same sidebar (console/static/shell.js): each cloud holds its Serverless services (one item per
+        # workload kind) and its Kubernetes clusters.
+        for p in ("/", "/runs", "/setup", "/serverless/gcp", "/serverless/azure", "/k8s/clusters/aks", "/k8s/clusters/gke"):
+            st, _, raw = self.req("GET", p, token=False, headers={"Sec-Fetch-Site": "none"})
+            self.assertEqual(st, 200, p)
+            self.assertIn(b'<aside class="sidenav"><script src="/serverless/static/shell.js"></script></aside>', raw, p)
+            self.assertNotIn(b'class="nav-item"', raw, p)
+        st, _, shell = self.req("GET", "/serverless/static/shell.js", token=False)
+        self.assertEqual(st, 200)
+        text = shell.decode()
+        for s in ('"/"', '"/setup"', '"/runs"', "`/serverless/${cloud}?type=${kind}`", "`/k8s/clusters/${p}`"):
+            self.assertIn(s, text)
+        order = ['"Google Cloud"', '"Serverless"', '"gcp_run_job"', '"gcp_run_service"', '"gcp_run_function"', '"Kubernetes"',
+                 'k8s("gke"', '"Azure"', '"Serverless"', '"azure_container_app_job"', '"azure_container_app"',
+                 '"azure_functions_aca"', '"azure_functions_premium"', '"azure_functions_flex"', '"Kubernetes"', 'k8s("aks"']
+        at = 0
+        for s in order:
+            at = text.index(s, at) + len(s)
+
+    def test_runs_page(self):
+        st, _, raw = self.req("GET", "/runs", token=False, headers={"Sec-Fetch-Site": "none"})
+        self.assertEqual(st, 200)
+        self.assertIn(b'src="/runs-page.js"', raw)
+        self.assertIn(self.token.encode(), raw)
+        for p in ("/runs-page.js", "/data.js"):
+            self.assertEqual(self.req("GET", p, token=False)[0], 200, p)
 
     def test_a_section_does_not_serve_the_others_pages(self):
         self.assertEqual(self.req("GET", "/serverless/clusters/aks", token=False)[0], 404)

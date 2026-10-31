@@ -23,8 +23,10 @@ from setup_console import server as setup
 
 SERVERLESS, K8S, SETUP = "/serverless", "/k8s", "/setup"
 STATIC_DIR = Path(__file__).parent / "static"
-# Home is a read-only dashboard over both sections; every other page belongs to one section.
-STATIC = {"/": "index.html", "/dashboard.js": "dashboard.js", "/dashboard.css": "dashboard.css"}
+# Home and Runs read both sections (every cloud's workloads, clusters and runs); every other page
+# belongs to one section.
+STATIC = {"/": "index.html", "/dashboard.js": "dashboard.js", "/dashboard.css": "dashboard.css", "/data.js": "data.js",
+          "/runs": "runs.html", "/runs-page.js": "runs-page.js"}
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
 
 
@@ -133,7 +135,7 @@ def _make_handler(portal: Portal):
                     return self._send(404, "text/plain; charset=utf-8", b"not found")
                 data = (STATIC_DIR / name).read_bytes()
                 # Like the consoles: the page carries the token only when the operator opened it directly.
-                if name == "index.html" and self.headers.get("Sec-Fetch-Site") in ("none", "same-origin"):
+                if name.endswith(".html") and self.headers.get("Sec-Fetch-Site") in ("none", "same-origin"):
                     data = data.replace(b'<meta charset="utf-8">', b'<meta charset="utf-8">\n  <meta name="console-token" content="'
                                         + portal.token.encode() + b'">', 1)
                 self._send(200, CONTENT_TYPES[Path(name).suffix], data)
