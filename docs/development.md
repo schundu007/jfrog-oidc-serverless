@@ -12,10 +12,7 @@ export JFROG_ACCESS_TOKEN=$(jf eot <provider> <oidc-token> ...)  # or a short-li
 claude
 ```
 
-Optional: review `docs/claude-settings.example.json` and, if it suits you, copy
-it to `.claude/settings.json`. It auto-allows tests, `terraform fmt`/`validate`
-and read-only git. It asks before plan/apply or any gcloud/az change, and denies
-commands that would print secret values.
+Optional: review `docs/claude-settings.example.json` and, if it suits you, copy it to `.claude/settings.json`. It auto-allows tests, `terraform fmt`/`validate` and read-only git. It asks before plan/apply or any gcloud/az change, and denies commands that would print secret values.
 
 ## First prompt
 
@@ -40,12 +37,10 @@ Paste this into Claude Code:
 /milestone M6     # hardening
 ```
 
-Clear the context between milestones (`/clear`). The spec and `docs/progress.md`
-carry the state from one session to the next.
+Clear the context between milestones (`/clear`). The spec and `docs/progress.md` carry the state from one session to the next.
 
 ## Before using it on production
 
 - Run M5 end to end on non-prod for one GCP function and one Container App.
-- Run `python -m console.sim run .console/configs/<prod-config>.json` and confirm
-  the verdict is `pass` with your real TTLs and cron.
+- Run `python -m console.sim run .console/configs/<prod-config>.json` and confirm the verdict is `pass` with your real TTLs and cron.
 - Point `state_backend` at your GCS or azurerm backend; don't use local state.
