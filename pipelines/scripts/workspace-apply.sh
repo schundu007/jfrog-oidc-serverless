@@ -35,6 +35,12 @@ else
   mapfile -t workspaces < <(git diff --name-only HEAD~1 HEAD -- "terraform/workspaces/${cloud}_*" \
     | cut -d/ -f1-3 | sort -u)
 fi
+# A workspace removed from git (its cloud resources cleaned up) has nothing left to apply.
+present=()
+for ws in "${workspaces[@]}"; do
+  if [ -d "$ws" ]; then present+=("$ws"); else echo "$ws was removed: skipped"; fi
+done
+workspaces=("${present[@]}")
 [ "${#workspaces[@]}" -gt 0 ] || { echo "no $cloud workspace changed"; exit 0; }
 for ws in "${workspaces[@]}"; do
   case "$(basename "$ws")" in "${cloud}"_*) ;; *) echo "$ws is not a $cloud workspace" >&2; exit 2 ;; esac
