@@ -30,7 +30,8 @@ docker build --pull \
 docker push "$image"
 
 if ! az containerapp job show --name "$job" --resource-group "$rg" --only-show-errors >/dev/null 2>&1; then
-  echo "pushed ${image}; ${job} is not deployed yet (deploy_job = true in the stack's env tfvars)"
+  echo "##vso[task.logissue type=warning]Container Apps job ${job} does not exist yet: pushed ${image}. In Setup, set job_image to it and deploy_job on, deploy, then run this pipeline again."
+  echo "##vso[build.addbuildtag]first-image"
   exit 0
 fi
 
