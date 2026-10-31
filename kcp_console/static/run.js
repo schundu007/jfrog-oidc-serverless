@@ -129,7 +129,7 @@ function tree(list, sel) {
   return h("nav", { class: "card tree-card", "aria-label": "Run steps" }, ul);
 }
 
-// The log shows what happened, not how: command lines ("$ …") and HTTP calls ("GET https://…") stay
+// The log shows what happened, not how: command lines ("$ …") and HTTP calls ("GET <url>") stay
 // in the stored run, off the screen and out of Copy.
 const COMMAND = /^\s*(\$ |(GET|POST|PUT|PATCH|DELETE|HEAD) https?:\/\/)/;
 
