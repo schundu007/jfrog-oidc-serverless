@@ -59,8 +59,8 @@
       "subscription": ""
     },
     "discovered": {
-      "at": "2026-10-31T08:31:01Z",
-      "image": "us-central1-docker.pkg.dev/unioxe/platform/artifact-reader:79a0965ad522",
+      "at": "2026-10-31T08:35:49Z",
+      "image": "us-central1-docker.pkg.dev/unioxe/platform/artifact-reader:46c67d177d4a",
       "kind": "gcp_run_job",
       "mapping_subject": "101387327773533814002",
       "name": "artifact-reader",
@@ -83,7 +83,7 @@
     }
   },
   "verify": {
-    "artifact_path": "generic-local/healthcheck/ping.txt",
+    "artifact_path": "demo-generic/hello.txt",
     "probe_image_pull": "jfrog-oidc-probe:0.1.0",
     "probe_image_runtime": ""
   }
