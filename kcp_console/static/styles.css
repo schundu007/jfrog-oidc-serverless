@@ -773,3 +773,86 @@ thead th, .fleet-table th {
 .cl-head::after, .cfg-head::after { margin-top: -10px; }
 @media (max-width: 860px) { .shell { background: #ffffff; } }
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) { border-radius: 3px; }
+
+/* ================================================================== Serverless parity */
+/* The rest of the Serverless console's look (console/static/styles.css: "cards and run log" and
+   "Humana DevPortal"): the same shell metrics, one flat card system with a tinted header band,
+   a 30px title over the green bar, white title-case table headers and square pills. */
+:root {
+  --top-h: 64px; --rail-w: 240px;
+  --page-max: 1360px; --page-pad: clamp(16px, 3.2vw, 48px);
+  --card-gap: 20px; --card-pad-y: 16px; --card-pad-x: 20px; --card-r: 6px;
+  --card-line: var(--hum-line); --card-line-hover: #c8c8c8; --card-head: #f7f7f7;
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); --card-shadow-hover: 0 2px 8px -2px rgba(0, 0, 0, 0.12);
+  --r-sm: 3px; --r-md: 3px; --r-lg: 6px; --r-glass: 6px;
+}
+main { max-width: var(--page-max); margin-inline: auto; padding: clamp(16px, 2.4vw, 32px) var(--page-pad) clamp(32px, 4vw, 64px); }
+@media (max-width: 860px) { main { padding: var(--s-4); } }
+
+/* Shell: the wordmark sits 24px in; the sidebar items run edge to edge. */
+.brand { padding-left: 24px; }
+.sidenav { padding-top: var(--s-4); }
+.nav-group { padding: var(--s-4) 24px 8px; }
+.nav-item { margin: 0; width: 100%; padding-left: 24px; min-height: 42px; font-size: 15px; border-radius: 0; }
+.nav-item[aria-current="page"]::before, .nav-item[aria-selected="true"]::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+}
+.subnav .nav-item { padding-left: 52px; min-height: 36px; font-size: 14px; }
+.sidenav .mark .cut, .subnav .mark .cut, .nav-item[aria-current="page"] .mark .cut { stroke: var(--hum-side); }
+.trail, .trail a { font-size: 14px; }
+.topbar-back { border-radius: 3px; }
+
+/* Title: 30px regular over the green bar; the product mark is a flat bordered square, no halo. */
+.cl-title h1, .cfg-head h1 { font-size: 30px; font-weight: 500; letter-spacing: -0.005em; }
+.head-mark { background: #ffffff; border: 1px solid var(--card-line); border-radius: var(--card-r); box-shadow: none; }
+.head-mark::before { display: none; }
+
+/* One card system: hairline border, 6px corners, a soft shadow that lifts on hover, 20px apart. */
+.panel, details.panel, .stat, .pick-card, .fleet-table, .empty, .approve-box,
+.cfg-form > .tgrid, .cfg-form .block, .cfg-form .advanced {
+  background: var(--surface); border: 1px solid var(--card-line); border-radius: var(--card-r);
+  box-shadow: var(--card-shadow); backdrop-filter: none; -webkit-backdrop-filter: none;
+  transition: box-shadow 160ms ease, border-color 160ms ease;
+}
+.panel:hover, .stat:hover, .pick-card:hover:not(:disabled), .cfg-form .block:hover {
+  background: var(--surface); border-color: var(--card-line-hover); box-shadow: var(--card-shadow-hover); transform: none;
+}
+.stat.on { background: var(--surface); border-color: var(--hum-green-dk); box-shadow: inset 0 -3px 0 var(--hum-green); }
+.cluster, .fleet, .cfg-form { gap: var(--card-gap); }
+.panel, details.panel, .cfg-form .block, .cfg-form > .tgrid, .cfg-form .advanced { padding: var(--card-pad-y) var(--card-pad-x); }
+.empty { border-style: dashed; }
+
+/* Panel headings are a tinted band across the card's top; a closed panel is just its band. */
+.panel > .panel-head:first-child, details.panel > summary.panel-head {
+  margin: calc(-1 * var(--card-pad-y)) calc(-1 * var(--card-pad-x)) var(--card-pad-y); padding: 12px var(--card-pad-x);
+  background: var(--card-head); border-bottom: 1px solid var(--card-line); border-radius: var(--card-r) var(--card-r) 0 0;
+}
+details.panel:not([open]) > summary.panel-head { margin-bottom: calc(-1 * var(--card-pad-y)); border-bottom: 0; border-radius: var(--card-r); }
+.panel-head h2 { font-size: 15px; font-weight: 650; }
+.cfg-form .block h2 { font-size: 15px; font-weight: 650; }
+
+/* Tiles and check lists: flat, hairline, square-ish. */
+.essentials > div, ul.checks { background: #ffffff; border-color: var(--card-line); border-radius: var(--card-r); }
+.essentials dt { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: var(--hum-muted); }
+ul.checks li { border-top-color: var(--card-line); }
+ul.checks li.head { background: #ffffff; color: var(--hum-text); font-size: 14px; font-weight: 600; text-transform: none; letter-spacing: 0;
+  border-bottom: 1px solid #bdbdbd; }
+ul.checks li.head + li { border-top: 0; }
+ul.checks li:not(.head):hover { background: #f3f8ec; }
+
+/* Tables: no header fill, title-case headers, hairline rows, green hover. */
+.fleet-table th { background: #ffffff; }
+.fleet-table td { border-bottom-color: var(--hum-line); }
+.fleet-table tbody tr:hover td { background: #f3f8ec; }
+.fleet-table .nm { color: var(--hum-green-dk); }
+
+/* Search and pick cards: square controls, flat marks. */
+.fleet-bar .search { border-radius: 3px; padding-left: 12px; }
+.pick-mark { border-radius: var(--card-r); background: #ffffff; border-color: var(--card-line); }
+.pick-go { border-top-color: var(--card-line); color: var(--hum-green-dk); }
+
+/* Pills and badges: square-ish, no blur or shimmer. */
+.badge, .pill, .pill-s { border-radius: 3px; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.badge.info, .st-running .t { animation: none; background-image: none; }
+.tip, .stat[data-tip]::after { border-radius: var(--card-r); }
+* { scrollbar-color: #c8c8c8 transparent; }
