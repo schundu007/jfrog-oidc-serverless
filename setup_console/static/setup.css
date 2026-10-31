@@ -42,3 +42,15 @@
 .setup-next input { height: 32px; padding: 0 var(--s-2); }
 
 .stack-status { display: inline-flex; align-items: center; gap: var(--s-2); }
+/* Fewer boxes: a cloud is a heading over divider-lined rows, not a framed card; status is icon and
+   word without a pill outline; only an enabled Deploy is a solid button, the rest are text buttons. */
+#groups .cloud-card { border: 0; border-radius: 0; background: none; padding: 0; }
+#groups .cloud-card .cloud-head { padding: 0 0 var(--s-2); border-bottom: 2px solid var(--cloud); background: none; }
+#groups .cloud-card .table-wrap { border: 0; background: none; }
+#groups .cloud-card td:first-child { padding-left: 0; }
+#groups .cloud-card td:last-child { padding-right: 0; }
+#groups .pill { border: 0; background: none; padding: 0; color: var(--fg-2); }
+#groups .setup-row-actions button.secondary, #groups .setup-row-actions button.primary:disabled {
+  background: none; border-color: transparent; color: var(--accent); padding-left: var(--s-2); padding-right: var(--s-2); }
+#groups .setup-row-actions button.secondary:hover:not(:disabled) { text-decoration: underline; }
+#groups .setup-row-actions button.primary:disabled, #groups .setup-row-actions button.secondary:disabled { color: var(--fg-3); }
