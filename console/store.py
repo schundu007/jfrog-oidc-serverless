@@ -40,6 +40,7 @@ def summary(cfg: dict, name: str, updated: str = "") -> dict:
     disc = model.get_path(cfg, "target.discovered") or {}
     return {"name": name, "kind": kind, "discovered": bool(disc),
             "workload": " / ".join(str(t[k]) for k in where if t.get(k)),
+            "where": t.get("region") or t.get("resource_group") or t.get("namespace") or "",
             "identity": disc.get("service_account") or disc.get("principal_id") or "",
             "updated": updated}
 
