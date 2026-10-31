@@ -248,20 +248,32 @@ function row(s) {
   const blockedDeploy = s.needs?.length ? `Deploy ${s.needs.map(titleOf).join(", ")} first` : "";
   const notes = warnings(s);
   const main = h("tr", { id: `stack-${s.id}`, class: notes.length ? "has-notes" : "" },
-    h("td", { title: s.dir }, h("b", { text: s.title })),
+    h("td", { title: s.dir }, h("div", { class: "stack-name" }, iconEl(STACK_ICON[s.id], "stack-icon"),
+      h("div", {}, h("b", { text: s.title }), h("div", { class: "stack-id", text: s.id })))),
     h("td", {}, stackStatus(s)),
-    h("td", { class: "setup-row-actions" },
+    h("td", {}, h("div", { class: "setup-row-actions" },
       progress,
       plan,
       h("button", { type: "button", class: "secondary", text: "Inputs", onclick: () => editInputs(s) }),
       h("button", { type: "button", class: "primary", text: "Deploy", disabled: s.busy || !!blockedDeploy, title: blockedDeploy,
         onclick: () => run(s, "plan-apply") }),
-      destroy));
+      destroy)));
   // Warnings get their own full-width line under the row, so the row keeps one height.
   return notes.length ? [main, h("tr", { class: "setup-notes" }, h("td", { colspan: 3 }, notes))] : main;
 }
 
 let byId = {};
+
+// Each stack's service icon (the sidebar's), and each cloud's logo: constant SVG from shell.js.
+const STACK_ICON = { "gcp-foundation": "boot", "azure-foundation": "boot", "gcp-cloud-run": "run", "gcp-cloud-run-service": "run",
+  "gcp-cloud-run-function": "fn", "gke-cluster": "gke", "azure-container-apps": "aca", "azure-container-app": "aca",
+  "azure-functions-aca": "func", "azure-functions-premium": "func", "azure-functions-flex": "func", "aks-cluster": "aks" };
+const CLOUD_ID = { "Google Cloud": "gcp", Azure: "azure" };
+function iconEl(key, cls) {
+  const span = h("span", { class: cls });
+  span.innerHTML = window.consoleNav?.icon(key) || "";  // constant SVG only, never data
+  return span;
+}
 
 async function load() {
   const data = await api("/api/stacks");
@@ -271,8 +283,10 @@ async function load() {
   // cluster together, in catalogue order. (They still never depend on each other across kinds.)
   const clouds = {};
   for (const s of data.stacks) (clouds[s.group] ||= []).push(s);
-  fill($("groups"), Object.entries(clouds).map(([g, list]) => h("section", { class: "card" },
-    h("div", { class: "card-head" }, h("h3", { text: g })),
+  fill($("groups"), Object.entries(clouds).map(([g, list]) => h("section", { class: "card cloud-card", "data-cloud": CLOUD_ID[g] || "" },
+    h("div", { class: "card-head cloud-head" }, iconEl(CLOUD_ID[g], "cloud-badge"),
+      h("div", { class: "cloud-title" }, h("h3", { text: g }), h("span", { class: "cloud-sub",
+        text: `${list.length} stacks · ${list.filter((x) => x.status?.deployed).length} deployed` }))),
     h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, list.flatMap(row)))))));
   // While a job runs, keep the rows current so Running turns into its result without a reload.
   clearTimeout(load.timer);

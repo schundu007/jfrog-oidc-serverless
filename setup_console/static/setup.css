@@ -21,3 +21,32 @@
 tr.setup-flash > td { animation: setup-flash 1.6s ease-out; }
 .setup-kind + .setup-kind { margin-top: var(--s-6, 32px); }
 .setup-kind-title { margin: 0 0 var(--s-3); }
+
+/* Cloud cards: logo, name and a deployed count over a brand-coloured top edge; each row leads with its
+   service icon and the stack's folder name. */
+.cloud-card { --cloud: var(--navy); border-top: 4px solid var(--cloud); border-radius: 10px; overflow: hidden;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px rgba(16, 24, 40, 0.05); }
+.cloud-card[data-cloud="gcp"] { --cloud: #1a73e8; }
+.cloud-card[data-cloud="azure"] { --cloud: #0078d4; }
+.cloud-card + .cloud-card { margin-top: var(--s-5); }
+.cloud-head { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-4) var(--s-5);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--cloud) 9%, #fff), #fff 70%); }
+.cloud-badge { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 12px; background: #fff;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cloud) 25%, transparent), 0 2px 6px rgba(16, 24, 40, 0.08); }
+.cloud-badge svg { width: 28px; height: 28px; }
+.cloud-title { display: flex; flex-direction: column; gap: 2px; }
+.cloud-title h3 { margin: 0; font-size: var(--t-lg); font-weight: 800; color: var(--fg); }
+.cloud-sub { font-size: var(--t-sm); font-weight: 600; color: var(--cloud); }
+.stack-name { display: flex; align-items: center; gap: var(--s-3); }
+.stack-icon { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 8px;
+  background: color-mix(in srgb, var(--cloud) 7%, #fff); border: 1px solid color-mix(in srgb, var(--cloud) 18%, transparent); }
+.stack-icon svg { width: 20px; height: 20px; }
+.stack-icon svg.ico { fill: none; stroke: var(--cloud); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.stack-id { font-family: var(--mono); font-size: 12px; color: var(--fg-3); margin-top: 1px; }
+#groups tbody tr:not(.setup-notes) > td { vertical-align: middle; }
+#groups tbody tr:hover > td { background: color-mix(in srgb, var(--cloud) 4%, #fff); }
+.cloud-card { padding: 0; }
+.cloud-card .cloud-head { margin: 0; border-bottom: 1px solid var(--border); }
+.cloud-card .table-wrap { border: 0; border-radius: 0; }
+.cloud-card td:first-child { padding-left: var(--s-5); }
+.cloud-card td:last-child { padding-right: var(--s-5); }
