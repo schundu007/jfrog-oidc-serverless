@@ -14,12 +14,12 @@ Modelled on Azure DevOps Pipelines: a list page, a detail page with tabs, a run 
 Old paths (`/<cloud>/configure`, `/runs`, `/simulate`) land on the list. The breadcrumb walks up the levels.
 
 ## List page
-- Header: title (h1 over the green bar), a count, the primary action on the right ("New workload", "Add a cluster").
+- Header: title (h1 over the green bar), a count, the primary action in a row under the title ("New workload", "Add a cluster").
 - One table. First column: status icon of the last run. Then name (link), type, scope, **Last run** ("succeeded · 2 h ago · 1 m 32 s"). The whole row opens the detail page. Row actions in a trailing "⋯" menu (Delete).
 - A filter box over the table. The Kubernetes KPI tiles stay.
 
 ## Detail page
-- Header: name (h1), status pill of the last run, key facts on one muted line (type · scope · identity). Actions on the right: primary **Run pipeline** / **Verify**, secondary **Preflight** / **Set up again**, and a "⋯" menu for Delete, Clear old runs, Tear down. Destructive actions live in the menu, never as plain buttons, and confirm with a second click.
+- Header: name (h1), status pill of the last run, key facts on one muted line (type · scope · identity). Actions in a row under the title, from the left: primary **Run pipeline** / **Verify**, secondary **Preflight** / **Set up again**, and a "⋯" menu for Delete, Clear old runs, Tear down. Destructive actions live in the menu, never as plain buttons, and confirm with a second click.
 - Text tabs under the header with a green underline on the active one. The URL carries the tab (`?tab=runs|config|sim|summary`). Default: Runs when there are runs (Summary on Kubernetes), otherwise Configuration.
 - **Approval banner**: when a run waits for approval, a banner under the header on every tab: "1 approval needs review" + Review.
 - **Runs tab**: this item's runs, newest first: status icon, run ID (link to the run page), started, duration, a pip strip (one small segment per step, coloured by status). Toolbar: Refresh, Clear finished; per-row "⋯": Delete run.
@@ -33,6 +33,9 @@ Old paths (`/<cloud>/configure`, `/runs`, `/simulate`) land on the list. The bre
 
 ## Status icons (one set everywhere)
 Filled circle + glyph: succeeded green check, failed dark-grey cross, running green spinner ring, waiting grey clock, cancelled grey slash, skipped grey dash, not run hollow ring. Humana palette: green for good, greys for everything else.
+
+## Alignment
+Everything is left-aligned: no right-pushed action groups or text anywhere (no `margin-left: auto`, `justify-content: flex-end` or `space-between` used to push actions or summaries right). Page actions sit in a row under the title, starting at the left edge. Section and card headers read left to right: chevron, title, status, then the muted summary right after them. Form actions (Run simulation, Reset) follow the last field on the same left edge. Numeric table cells may right-align.
 
 ## Collapse rules
 Only secondary detail collapses: Advanced simulator settings, long evidence blocks, raw logs inside a step. Primary content (forms, tables, the run tree) never collapses. Nothing remembers open state across reloads.
