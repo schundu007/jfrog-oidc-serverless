@@ -94,16 +94,17 @@ class RedactPathsTest(unittest.TestCase):
         from kcp_console.server import KcpServer
         from kcp_console.store import Store
         log = io.StringIO()
-        srv = KcpServer(port=0, log=log, store=Store(self.root))
-        srv.start()
+        from kcp_console.tests.mount import TOKEN, Mounted, path
+        srv = KcpServer(TOKEN, log=log, store=Store(self.root))
+        m = Mounted(srv)
         try:
             import http.client
             c = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=5)
-            c.request("GET", "/api/session?x=" + REF, headers={"Host": f"127.0.0.1:{srv.port}", "Authorization": f"Bearer {BEARER}"})
+            c.request("GET", path("/api/session?x=" + REF), headers={"Host": f"127.0.0.1:{srv.port}", "Authorization": f"Bearer {BEARER}"})
             c.getresponse().read()
             c.close()
         finally:
-            srv.stop()
+            m.stop()
         self.assertClean(log.getvalue(), "server log")
         self.assertNotIn(srv.token, log.getvalue())
 

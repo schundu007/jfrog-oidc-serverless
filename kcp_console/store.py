@@ -1,4 +1,4 @@
-""".kcp-console/ persistence: saved configs and the session token. Never secrets.
+""".kcp-console/ persistence: saved configs, runs and status. Never secrets.
 
 Configs live in <root>/configs/<name>.json, written atomically with mode 0600
 in a 0700 directory. A config the redactor would change (a JWT, a PAT, a
@@ -19,7 +19,6 @@ from pathlib import Path
 
 from . import model, redact
 
-SESSION_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{40,}$")
 
 
 class StoreError(ValueError):
@@ -101,21 +100,6 @@ class Store:
             path.unlink()
             return True
         return False
-
-    def session_token(self, renew: bool = False) -> str:
-        """The console's sign-in token, kept in <root>/session-token (0600) so a restart
-        doesn't sign the browser out. It only unlocks this local console."""
-        path = self.root / "session-token"
-        if not renew:
-            try:
-                token = path.read_text().strip()
-                if SESSION_TOKEN_RE.match(token):
-                    return token
-            except OSError:
-                pass
-        token = secrets.token_urlsafe(32)
-        _atomic_write(path, token + "\n")
-        return token
 
 
 RUN_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
@@ -199,3 +183,23 @@ class StatusStore:
             raise StoreError("status contains a value that looks like a secret")
         _atomic_write(self._p(name), json.dumps(cur, indent=2) + "\n")
         return cur
+
+
+def replay_store(fixtures: str, root: Path | None = None) -> "Store":
+    """Replay mode keeps its own store (.kcp-console/replay), seeded once from the fixtures'
+    *.seed.json files: the saved config and the recorded run history."""
+    store = Store(Path(root) if root else Store().root / "replay")
+    fx = Path(fixtures)
+    cfg_file, hist_file = fx / "config.seed.json", fx / "history.seed.json"
+    if cfg_file.is_file() and not store.list():
+        cfg = json.loads(cfg_file.read_text())
+        store.put(cfg["name"], cfg)
+    runs = RunStore(store.root)
+    if hist_file.is_file() and not runs.all():
+        for item in json.loads(hist_file.read_text()):
+            runs.save(item["run"])
+            for ev in item["run"].get("events", []):
+                runs.event(item["run"]["id"], ev)
+            if item.get("log"):
+                runs.save_log(item["run"]["id"], item["log"])
+    return store

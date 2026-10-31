@@ -1,5 +1,5 @@
 """Builds kcp_console/tests/fixtures/sandbox/: the replay fixtures and seeded history for
-`python3 -m kcp_console --fixtures kcp_console/tests/fixtures/sandbox`.
+`python3 -m portal --kcp-fixtures kcp_console/tests/fixtures/sandbox`.
 
 The pipeline logs come from the simulator driven through the sandbox story (the
 doubled URL, the stale node entry, the reset, the pull of 142,944,877 bytes in

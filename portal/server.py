@@ -3,7 +3,7 @@
 The portal holds no product logic. It removes the section prefix and hands the request to that
 console's own handler, which keeps its own Host/Origin/token checks, CSP and redaction. The two
 consoles share only the session token; their stores, runs and approval gates stay separate.
-Old standalone paths (/gcp, /azure, /clusters, /configure) redirect into their section.
+Old standalone Serverless paths (/gcp, /azure) redirect into their section.
 """
 
 from __future__ import annotations
@@ -39,8 +39,6 @@ def legacy_target(path: str):
     first = path.split("/")[1] if path.startswith("/") else ""
     if first in ("gcp", "azure"):
         return SERVERLESS + path
-    if first in ("clusters", "configure"):
-        return K8S + path
     return None
 
 
@@ -78,7 +76,6 @@ class Portal:
             self._httpd.server_close()
             self._httpd = None
         self.oidc.stop()
-        self.kcp.stop()
 
 
 def _make_handler(portal: Portal):

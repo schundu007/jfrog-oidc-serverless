@@ -1,9 +1,8 @@
-"""The KCP console's local HTTP server (spec §7): static UI, JSON API and SSE.
+"""The KCP console's handler (spec §7): static UI, JSON API and SSE, served by the portal at /k8s.
 
 Same security model as console/server.py:
-- binds 127.0.0.1 unless __main__ is told otherwise;
-- every /api call needs X-Console-Token (32 random bytes, handed to the browser
-  in the URL fragment), compared with hmac.compare_digest;
+- the portal binds 127.0.0.1 and shares its session token;
+- every /api call needs X-Console-Token, compared with hmac.compare_digest;
 - Host must be 127.0.0.1:<port> or localhost:<port>; a cross-origin Origin or
   Sec-Fetch-Site is refused;
 - POST/PUT bodies are application/json, at most 1 MiB;
@@ -24,7 +23,7 @@ import sys
 import threading
 import time
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 from . import diagnose as diag, direct, fleet, knowledge, logic, model, platforms, redact, report
@@ -76,14 +75,15 @@ class HttpError(Exception):
 
 
 class KcpServer:
-    def __init__(self, host: str = "127.0.0.1", port: int = 8766, token: str | None = None, log=sys.stderr,
-                 store: Store | None = None, fixtures=None, env=None, poll_seconds: float = 10.0, sleep=time.sleep,
-                 base: str = ""):
-        self.host, self.requested_port = host, port
-        # The path the page is served under when mounted in the unified console (e.g. "/k8s"). The handler
-        # still sees unprefixed paths: the portal strips the base before delegating.
+    """The Kubernetes section of the portal (portal/, mounted at /k8s). It has no listener of its own:
+    the portal serves its handler, sets host and port, and shares its session token."""
+
+    def __init__(self, token: str, log=sys.stderr, store: Store | None = None, fixtures=None, env=None,
+                 poll_seconds: float = 10.0, sleep=time.sleep, base: str = "/k8s"):
+        self.host, self.port = "127.0.0.1", None
+        # The path the page is served under. The handler sees unprefixed paths: the portal strips the base.
         self.base = base.rstrip("/")
-        self.token = token or secrets.token_urlsafe(32)
+        self.token = token
         self.log = log
         self.store = store or Store()
         self.fixtures_path = str(fixtures) if fixtures else None
@@ -101,8 +101,6 @@ class KcpServer:
         self._reads_lock = threading.Lock()
         self.sims = collections.OrderedDict()
         self.sims_lock = threading.Lock()
-        self._httpd = None
-        self.port = None
 
     def shell(self, extra_log=None) -> Shell:
         def log(line):
@@ -339,25 +337,8 @@ class KcpServer:
             hosts.add(f"{self.host}:{self.port}")
         return hosts
 
-    def url(self) -> str:
-        return f"http://127.0.0.1:{self.port}/#t={self.token}"
 
-    def start(self) -> None:
-        self._httpd = ThreadingHTTPServer((self.host, self.requested_port), _make_handler(self))
-        self._httpd.daemon_threads = True
-        self.port = self._httpd.server_address[1]
-        self.static_files = {p.name for p in STATIC_DIR.iterdir() if p.is_file() and p.suffix in CONTENT_TYPES}
-        threading.Thread(target=self._httpd.serve_forever, kwargs={"poll_interval": 0.1},
-                         name="kcp-console-http", daemon=True).start()
-
-    def stop(self) -> None:
-        if self._httpd:
-            self._httpd.shutdown()
-            self._httpd.server_close()
-            self._httpd = None
-
-
-def _make_handler(console: KcpServer):
+def make_handler(console: KcpServer):
     class Handler(BaseHTTPRequestHandler):
         server_version = "kcp-console"
         sys_version = ""
@@ -454,7 +435,7 @@ def _make_handler(console: KcpServer):
             if name == "index.html" and self.headers.get("Sec-Fetch-Site") in ("none", "same-origin"):
                 data = data.replace(b'<meta charset="utf-8">', b'<meta charset="utf-8">\n  <meta name="console-token" content="'
                                     + console.token.encode() + b'">', 1)
-            if name == "index.html" and console.base:
+            if name == "index.html":
                 b = console.base.encode()
                 data = data.replace(b'<meta charset="utf-8">', b'<meta charset="utf-8">\n  <meta name="console-base" content="' + b + b'">', 1)
                 data = data.replace(b'"/static/', b'"' + b + b'/static/')
@@ -665,6 +646,3 @@ def _make_handler(console: KcpServer):
 
     return Handler
 
-
-# The unified console (portal/) mounts this console's handler under its base path.
-make_handler = _make_handler

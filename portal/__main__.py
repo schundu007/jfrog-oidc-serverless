@@ -16,9 +16,8 @@ from console import deliver
 from console.__main__ import EXPOSE_FLAG, REPO_ROOT, check_bind
 from console.server import ConsoleServer
 from console.store import Store
-from kcp_console.__main__ import replay_store
 from kcp_console.server import KcpServer
-from kcp_console.store import Store as KcpStore
+from kcp_console.store import Store as KcpStore, replay_store
 
 from .server import K8S, SERVERLESS, Portal
 
@@ -54,7 +53,7 @@ def main(argv=None) -> int:
             delivery = deliver.load_settings(REPO_ROOT / "pipelines" / "delivery.json")
         serverless = ConsoleServer(host=args.host, port=args.port, token=token, store=store, fixtures=args.fixtures,
                                    delivery=delivery, repo_root=REPO_ROOT, base=SERVERLESS)
-        k8s = KcpServer(host=args.host, port=args.port, token=token, fixtures=args.kcp_fixtures, base=K8S,
+        k8s = KcpServer(token=token, fixtures=args.kcp_fixtures, base=K8S,
                         store=replay_store(args.kcp_fixtures) if args.kcp_fixtures else KcpStore())
     except deliver.DeliveryError as exc:
         print(f"portal: {exc}", file=sys.stderr)

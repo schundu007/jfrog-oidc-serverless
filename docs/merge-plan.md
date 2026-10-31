@@ -18,7 +18,7 @@ KUBERNETES  /k8s/         kcp_console/   kubelet credential provider on clusters
             OpenShift     /k8s/clusters/openshift/...
 ```
 
-Both consoles still run on their own (`python -m console`, `python3 -m kcp_console`), and their behaviour there doesn't change: each seam defaults to `base=""`.
+The Serverless console still runs on its own (`python -m console`, seam default `base=""`). The KCP console runs only inside the portal at `/k8s` (standalone removed 2026-10-30).
 
 ## Separation rules
 

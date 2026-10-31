@@ -11,12 +11,13 @@ import unittest
 from pathlib import Path
 
 from kcp_console import model, redact, report
-from kcp_console.__main__ import replay_store
 from kcp_console.ado import AdoError, param_args
 from kcp_console.checks import artifactory as af, hygiene, verify as vchecks, writers
 from kcp_console.k8s import ReadOnlyError, check_helm, check_kubectl
 from kcp_console.runner import RunError, build_request
 from kcp_console.server import KcpServer
+from kcp_console.store import replay_store
+from kcp_console.tests.mount import TOKEN, Mounted, path as k8s
 from kcp_console.tests.fixtures import make_fixtures
 
 FIXTURES = Path(__file__).parent / "fixtures" / "sandbox"
@@ -174,13 +175,13 @@ class ReplayServerTest(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.log = io.StringIO()
         store = replay_store(str(FIXTURES), Path(cls.tmp.name))
-        cls.srv = KcpServer(port=0, log=cls.log, store=store, fixtures=str(FIXTURES), poll_seconds=0, sleep=lambda s: None)
-        cls.srv.start()
+        cls.srv = KcpServer(TOKEN, log=cls.log, store=store, fixtures=str(FIXTURES), poll_seconds=0, sleep=lambda s: None)
+        cls.mount = Mounted(cls.srv)
         cls.name = json.loads((FIXTURES / "config.seed.json").read_text())["name"]
 
     @classmethod
     def tearDownClass(cls):
-        cls.srv.stop()
+        cls.mount.stop()
         cls.tmp.cleanup()
 
     def call(self, method, path, body=None):
@@ -189,7 +190,7 @@ class ReplayServerTest(unittest.TestCase):
         data = json.dumps(body).encode() if body is not None else None
         if data:
             h["Content-Type"] = "application/json"
-        c.request(method, path, body=data, headers=h)
+        c.request(method, k8s(path), body=data, headers=h)
         r = c.getresponse()
         raw = r.read()
         c.close()

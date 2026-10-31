@@ -117,7 +117,7 @@ export const runPath = (name, id) => `/clusters/${cloudOf(name)}/${encodeURIComp
 
 // {page, cloud, name, tab, run} from the address; moved: an older link to rewrite.
 export function route(path = location.pathname) {
-  if (BASE && path.startsWith(BASE)) path = path.slice(BASE.length) || "/";
+  if (path.startsWith(BASE)) path = path.slice(BASE.length) || "/";
   const p = path.replace(/\/+$/, "").split("/").slice(1).map(decodeURIComponent);
   const q = new URLSearchParams(location.search).get("tab");
   const tab = TABS[q] ? q : "summary";
@@ -153,11 +153,11 @@ function transition(update) {
   for (const p of [t.ready, t.finished, t.updateCallbackDone]) p.catch(() => {});
 }
 
-// One level up: run → its cluster's Runs tab → its platform's list → (inside the unified console) Home.
+// One level up: run → its cluster's Runs tab → its platform's list → Home.
 function parent(r) {
   if (r.page === "run") return { path: clusterPath(r.name, "runs"), label: r.name };
   if (r.name) return { path: `/clusters/${r.cloud}`, label: CLOUDS[r.cloud] };
-  return BASE ? { home: true, label: "Home" } : null;
+  return { home: true, label: "Home" };
 }
 
 // A product mark (aks, gke, eks, openshift, k8s) or the arrow icon, cloned from the page's template.
@@ -250,11 +250,7 @@ function wireTabs() {
       go(path);
     });
   });
-  // Inside the unified console: its brand, Home and the Serverless clouds in the same sidebar.
-  for (const el of document.querySelectorAll("[data-portal]")) el.hidden = !BASE;
-  $("brand-portal").hidden = !BASE;
-  $("brand-own").hidden = !!BASE;
-  $("sidenav").classList.toggle("k8s-nav", !!BASE);
+  $("sidenav").classList.add("k8s-nav");
 }
 
 $("auth-form").addEventListener("submit", (e) => {

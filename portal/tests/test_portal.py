@@ -27,7 +27,7 @@ class RoutingTests(unittest.TestCase):
     def test_legacy_target(self):
         self.assertEqual(legacy_target("/gcp/runs"), "/serverless/gcp/runs")
         self.assertEqual(legacy_target("/azure"), "/serverless/azure")
-        self.assertEqual(legacy_target("/clusters/gke/c1/edit"), "/k8s/clusters/gke/c1/edit")
+        self.assertIsNone(legacy_target("/clusters/gke/c1/edit"))  # the standalone KCP console is gone
         self.assertIsNone(legacy_target("/api/configs"))
         self.assertIsNone(legacy_target("/static/app.js"))
 
@@ -40,7 +40,7 @@ class PortalTests(unittest.TestCase):
         cls.log = io.StringIO()
         token = "t" * 43
         oidc = ConsoleServer(port=0, token=token, store=Store(root / ".console"), base="/serverless", log=cls.log)
-        kcp = KcpServer(port=0, token=token, store=KcpStore(root / ".kcp-console"), base="/k8s", log=cls.log, env={})
+        kcp = KcpServer(token, store=KcpStore(root / ".kcp-console"), log=cls.log, env={})
         cls.portal = Portal(oidc, kcp, port=0, log=cls.log)
         cls.portal.start()
         cls.port, cls.token = cls.portal.port, token
@@ -118,8 +118,7 @@ class PortalTests(unittest.TestCase):
         self.assertNotEqual(self.portal.oidc.store.root, self.portal.kcp.store.root)
 
     def test_old_paths_redirect_into_their_section(self):
-        for old, new in (("/gcp/runs", "/serverless/gcp/runs"), ("/azure?x=1", "/serverless/azure?x=1"),
-                         ("/clusters/aks", "/k8s/clusters/aks"), ("/configure", "/k8s/configure")):
+        for old, new in (("/gcp/runs", "/serverless/gcp/runs"), ("/azure?x=1", "/serverless/azure?x=1")):
             st, hd, _ = self.req("GET", old, token=False)
             self.assertEqual((st, hd.get("Location")), (308, new), old)
 

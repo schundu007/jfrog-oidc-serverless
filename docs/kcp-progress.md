@@ -12,7 +12,7 @@ Spec: `docs/kcp-console-spec.md`. Code: `kcp_console/`.
 | M5 Nodes, Verify, audit, Troubleshoot, Artifactory, Mappings | done | 2026-10-29 |
 | M6 Demo, Security, Rollback, report, hardening | done | 2026-10-29: 133 tests, 23/23 scenarios; all 12 tabs in Chromium, replay, no console errors |
 
-Run: `python3 -m kcp_console` (http://127.0.0.1:8766).
+Run: `python3 -m portal` (http://127.0.0.1:8760/k8s). The standalone `python3 -m kcp_console` was removed on 2026-10-30.
 Tests: `python3 -m unittest discover -s kcp_console/tests -t .`
 Scenarios: `python3 -m kcp_console.sim check-all`
 

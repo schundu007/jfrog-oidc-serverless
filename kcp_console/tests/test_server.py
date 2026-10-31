@@ -8,9 +8,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from kcp_console import __main__ as cli, redact
+from kcp_console import redact
 from kcp_console.server import KcpServer
 from kcp_console.store import Store
+from kcp_console.tests.mount import TOKEN, Mounted, path as k8s
 
 
 class ServerTest(unittest.TestCase):
@@ -18,12 +19,12 @@ class ServerTest(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.log = io.StringIO()
-        cls.srv = KcpServer(port=0, log=cls.log, store=Store(Path(cls.tmp.name)))
-        cls.srv.start()
+        cls.srv = KcpServer(TOKEN, log=cls.log, store=Store(Path(cls.tmp.name)))
+        cls.mount = Mounted(cls.srv)
 
     @classmethod
     def tearDownClass(cls):
-        cls.srv.stop()
+        cls.mount.stop()
         cls.tmp.cleanup()
 
     def req(self, method, path, body=None, headers=None, token=True, host=None):
@@ -36,7 +37,7 @@ class ServerTest(unittest.TestCase):
             data = json.dumps(body).encode()
             h["Content-Type"] = "application/json"
         h.update(headers or {})
-        c.request(method, path, body=data, headers=h)
+        c.request(method, k8s(path), body=data, headers=h)
         r = c.getresponse()
         raw = r.read()
         c.close()
@@ -86,7 +87,7 @@ class ServerTest(unittest.TestCase):
                   "/clusters/aks/aks-prod-01/runs/20261031-003126-23e903"):
             r, raw = self.req("GET", p, token=False)
             self.assertEqual(r.status, 200, p)
-            self.assertIn(b'<script type="module" src="/static/app.js" blocking="render">', raw, p)
+            self.assertIn(b'<script type="module" src="/k8s/static/app.js" blocking="render">', raw, p)
         for p in ("/operate/nope", "/docs", "/clusters/a/b", "/clusters/..%2f", "/clusters/aks/x/delete", "/clusters/aks/..%2f/edit",
                   "/clusters/aks/x/runs/nope", "/clusters/aks/x/runs", "/clusters/aks/x/runs/20261031-003126-23e903/log"):
             self.assertEqual(self.req("GET", p, token=False)[0].status, 404, p)
@@ -99,12 +100,12 @@ class ServerTest(unittest.TestCase):
 
     def test_json_only_and_size_cap(self):
         c = http.client.HTTPConnection("127.0.0.1", self.srv.port, timeout=10)
-        c.request("POST", "/api/sim", body=b"hi", headers={"Host": f"127.0.0.1:{self.srv.port}",
+        c.request("POST", k8s("/api/sim"), body=b"hi", headers={"Host": f"127.0.0.1:{self.srv.port}",
                                                           "X-Console-Token": self.srv.token, "Content-Type": "text/plain"})
         self.assertEqual(c.getresponse().status, 415)
         c.close()
         c = http.client.HTTPConnection("127.0.0.1", self.srv.port, timeout=10)
-        c.putrequest("POST", "/api/sim")
+        c.putrequest("POST", k8s("/api/sim"))
         c.putheader("Host", f"127.0.0.1:{self.srv.port}")
         c.putheader("X-Console-Token", self.srv.token)
         c.putheader("Content-Type", "application/json")
@@ -124,11 +125,6 @@ class ServerTest(unittest.TestCase):
             text = f.read_text()
             self.assertNotRegex(text, r"https?://(?!127\.0\.0\.1|www\.w3\.org/2000/svg)", f.name)
             self.assertNotIn("innerHTML", text, f.name)
-
-    def test_bind_refuses_non_loopback(self):
-        self.assertIsNone(cli.check_bind("127.0.0.1", False))
-        self.assertIsNotNone(cli.check_bind("0.0.0.0", False))
-        self.assertIsNone(cli.check_bind("0.0.0.0", True))
 
     # -- API
 
@@ -263,7 +259,7 @@ class DiscoverRaceTest(unittest.TestCase):
         from kcp_console.checks import preflight as pf
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        srv = KcpServer(port=0, log=io.StringIO(), store=Store(Path(tmp.name)))
+        srv = KcpServer(TOKEN, log=io.StringIO(), store=Store(Path(tmp.name)))
         from kcp_console import model
         srv.store.put("a", model.default_config() | {"name": "a"})
         gate, calls = threading.Event(), []
@@ -294,38 +290,27 @@ class DiscoverRaceTest(unittest.TestCase):
 
 
 class BaseTest(unittest.TestCase):
-    """Mounted under the unified console (portal/) at /k8s: the page learns its base from a meta tag and
-    loads its static files from under it. The handler still sees unprefixed paths (the portal strips them)."""
+    """Served by the portal at /k8s: the page learns its base from a meta tag and loads its static files
+    from under it. The handler still sees unprefixed paths (the portal strips them)."""
 
-    def page(self, base):
+    def page(self):
         with tempfile.TemporaryDirectory() as d:
-            srv = KcpServer(port=0, log=io.StringIO(), store=Store(Path(d)), base=base)
-            srv.start()
+            m = Mounted(KcpServer(TOKEN, log=io.StringIO(), store=Store(Path(d))))
             try:
-                c = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=10)
-                c.request("GET", "/clusters/aks", headers={"Host": f"127.0.0.1:{srv.port}", "Sec-Fetch-Site": "none"})
+                c = http.client.HTTPConnection("127.0.0.1", m.port, timeout=10)
+                c.request("GET", k8s("/clusters/aks"), headers={"Host": f"127.0.0.1:{m.port}", "Sec-Fetch-Site": "none"})
                 r = c.getresponse()
                 raw = r.read()
                 c.close()
-                return r.status, raw.replace(srv.token.encode(), b"TOKEN")
+                return r.status, raw.replace(TOKEN.encode(), b"TOKEN")
             finally:
-                srv.stop()
-
-    def test_no_base_is_the_page_as_before(self):
-        status, raw = self.page("")
-        self.assertEqual(status, 200)
-        index = (Path(__file__).parent.parent / "static" / "index.html").read_bytes()
-        self.assertEqual(raw, index.replace(b'<meta charset="utf-8">',
-                                            b'<meta charset="utf-8">\n  <meta name="console-token" content="TOKEN">', 1))
+                m.stop()
 
     def test_base_adds_the_meta_and_prefixes_static_links(self):
-        status, raw = self.page("/k8s")
+        status, raw = self.page()
         self.assertEqual(status, 200)
         self.assertIn(b'<meta name="console-base" content="/k8s">', raw)
         self.assertNotIn(b'"/static/', raw)
         self.assertIn(b'"/k8s/static/app.js"', raw)
         self.assertIn(b"<title>KCP Console</title>", raw)
 
-    def test_make_handler_is_public(self):
-        from kcp_console import server
-        self.assertIs(server.make_handler, server._make_handler)

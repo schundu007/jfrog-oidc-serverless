@@ -1,6 +1,6 @@
 # KCP Console: build spec
 
-A local web console (`python -m kcp_console`, `http://127.0.0.1:8766/#t=<token>`)
+A local web console, served by the portal (`python -m portal`, `http://127.0.0.1:8760/k8s#t=<token>`)
 that configures, simulates, installs, verifies, troubleshoots, demos and rolls
 back the **JFrog kubelet credential provider** ("KCP") on AKS, with no
 `imagePullSecrets` and no stored JFrog credentials.
@@ -96,7 +96,6 @@ Same as `console/`:
 
 ```
 kcp_console/
-  __main__.py      python -m kcp_console [--port 8766] [--no-browser] [--fixtures DIR] [--record DIR]
   server.py        ThreadingHTTPServer, security, JSON API, SSE
   shell.py         argv-only subprocess + HTTPS client; live/replay/record
   redact.py        secret scrubbing
@@ -248,7 +247,7 @@ Discover on sandbox.
 
 - Every traceability row in `docs/kcp-progress.md` is ticked with its file or test.
 - All tests and simulator scenarios pass.
-- `python -m kcp_console --fixtures kcp_console/tests/fixtures/sandbox` shows the
+- `python -m portal --kcp-fixtures kcp_console/tests/fixtures/sandbox` shows the
   pilot story (the doubled URL, the stale node entry, the reset, the pull of
   142,944,877 bytes in 10.487 s), the open items, and no console errors.
 
