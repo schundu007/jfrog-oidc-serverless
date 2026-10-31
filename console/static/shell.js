@@ -55,10 +55,19 @@
 
   const html = [DEFS];
   html.push(`<nav aria-label="Home">${TOP.map((i) => link(i)).join("")}</nav>`);
+  // Each cloud and each Serverless/Kubernetes group folds; the operator's choice is kept per browser.
+  const FOLD_KEY = "consoleNav.folded";
+  let folded = {};
+  try { folded = JSON.parse(localStorage.getItem(FOLD_KEY) || "{}") || {}; } catch { folded = {}; }
+  const fold = (id, cls, label, body) => {
+    const open = !folded[id];
+    return `<button type="button" class="${cls} nav-fold" aria-expanded="${open}" aria-controls="nf-${id}" data-fold="${id}">`
+      + `<span>${esc(label)}</span></button><div class="nav-body" id="nf-${id}"${open ? "" : " hidden"}>${body}</div>`;
+  };
   for (const [cloud, id, groups] of CLOUDS) {
-    html.push(`<nav class="nav-cloud" data-cloud-group="${esc(id)}" aria-label="${esc(cloud)}"><div class="nav-group">${esc(cloud)}</div>`);
-    for (const [group, items] of groups) html.push(`<div class="nav-sub">${esc(group)}</div>`, ...items.map((i) => link(i, " nested")));
-    html.push("</nav>");
+    const body = groups.map(([group, items]) =>
+      fold(`${id}-${group.toLowerCase()}`, "nav-sub", group, items.map((i) => link(i, " nested")).join(""))).join("");
+    html.push(`<nav class="nav-cloud" data-cloud-group="${esc(id)}" aria-label="${esc(cloud)}">${fold(id, "nav-group", cloud, body)}</nav>`);
   }
   html.push(`<nav aria-label="Runs">${BOTTOM.map((i) => link(i)).join("")}</nav>`);
   html.push('<nav class="subnav" id="k8s-sub" aria-label="Clusters" hidden></nav>');
@@ -72,6 +81,26 @@
       else a.removeAttribute("aria-current");
     }
   }
-  select(fromPath());
-  window.consoleNav = { select, SECTIONS, sectionOfKind, section: (key) => SECTIONS[key] || null, current: fromPath };
+  // Open every fold around the current page, so it is never hidden.
+  function reveal() {
+    for (const a of document.querySelectorAll(".sidenav [data-nav][aria-current]")) {
+      for (let b = a.closest(".nav-body"); b; b = b.parentElement.closest(".nav-body")) setFold(b.id.slice(3), true, false);
+    }
+  }
+  function setFold(id, open, save = true) {
+    const btn = document.querySelector(`.sidenav [data-fold="${id}"]`), body = document.getElementById(`nf-${id}`);
+    if (!btn || !body) return;
+    btn.setAttribute("aria-expanded", String(open));
+    body.hidden = !open;
+    if (!save) return;
+    if (open) delete folded[id]; else folded[id] = 1;
+    try { localStorage.setItem(FOLD_KEY, JSON.stringify(folded)); } catch { /* storage blocked: this page only */ }
+  }
+  me.parentElement.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-fold]");
+    if (btn) setFold(btn.dataset.fold, btn.getAttribute("aria-expanded") !== "true");
+  });
+  const selectAndReveal = (key) => { select(key); reveal(); };
+  selectAndReveal(fromPath());
+  window.consoleNav = { select: selectAndReveal, SECTIONS, sectionOfKind, section: (key) => SECTIONS[key] || null, current: fromPath };
 })();

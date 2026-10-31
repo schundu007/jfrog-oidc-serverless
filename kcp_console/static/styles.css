@@ -639,3 +639,27 @@ table.lt .lg { padding-left: 0; text-indent: 0; margin-top: 0; }
   .sidenav .nav-sub { display: none; }
   .sidenav .nav-item.nested { margin: 0; width: auto; border-left: 0; }
 }
+
+/* Folding: cloud and group headings are buttons with a chevron (shell.js). */
+.sidenav .nav-fold {
+  font-family: inherit; text-align: left; background: none; border-top: 0; border-right: 0; border-bottom: 0; cursor: pointer;
+  border-radius: 0; width: auto; transition: background-color 120ms;
+}
+.sidenav .nav-group.nav-fold { width: 100%; border-left: 0; }
+.sidenav .nav-sub.nav-fold { display: flex; align-items: center; width: calc(100% - 24px); }
+.sidenav .nav-fold > span { flex: 1; min-width: 0; }
+.sidenav .nav-fold::after {
+  content: ""; flex: none; width: 7px; height: 7px; margin-right: 2px; border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor; transform: rotate(45deg); transition: transform 150ms; opacity: 0.8;
+}
+.sidenav .nav-sub.nav-fold { padding-right: 26px; }
+.sidenav .nav-sub.nav-fold::after { width: 6px; height: 6px; }
+.sidenav .nav-fold[aria-expanded="false"]::after { transform: rotate(-45deg); }
+.sidenav .nav-fold:hover { background: var(--side-hover); }
+.sidenav .nav-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sidenav .nav-body { display: flex; flex-direction: column; }
+.sidenav .nav-body[hidden] { display: none; }
+@media (max-width: 860px) {
+  .sidenav .nav-fold { display: none; }
+  .sidenav .nav-body, .sidenav .nav-body[hidden] { display: contents; }
+}
