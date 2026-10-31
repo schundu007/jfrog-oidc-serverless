@@ -47,6 +47,30 @@ export JFROG_ACCESS_TOKEN
 printf 'Authorization: Bearer %s\n' "$JFROG_ACCESS_TOKEN" > "$OIDC_DIR/jfrog-auth"   # curl -H @file: not in argv
 export PYTHONPATH="$BUILD_SOURCESDIRECTORY/client/src:$BUILD_SOURCESDIRECTORY/rotator:$BUILD_SOURCESDIRECTORY"
 
+# adopt_mappings <ws> <jfrog-url> <adopt>: a mapping the plan creates that already
+# exists in JFrog (a run that failed after creating it, or one made by hand) is
+# imported, then planned again, so the apply updates it instead of failing on CONFLICT.
+adopt_mappings() {
+  local ws=$1 url=$2 adopt=$3 imported=false addr name provider
+  while read -r addr name provider; do
+    [ -n "$addr" ] || continue
+    code=$(curl -s -o /dev/null -w '%{http_code}' -H @"$OIDC_DIR/jfrog-auth" \
+      "$url/access/api/v1/oidc/$provider/identity_mappings/$name")
+    [ "$code" = 200 ] || continue
+    echo "mapping $name: exists in JFrog, importing"
+    terraform -chdir="$ws" import -input=false -no-color -lock-timeout=5m \
+      -var "adopt_jfrog_integration=$adopt" "$addr" "$name:$provider" >/dev/null 2>>"$OIDC_DIR/plan.err" || return 1
+    imported=true
+  done < <(terraform -chdir="$ws" show -json tfplan | python3 -c '
+import json, sys
+for c in json.load(sys.stdin).get("resource_changes", []):
+    if c["type"] == "platform_oidc_identity_mapping" and c["change"]["actions"] == ["create"]:
+        a = c["change"]["after"]
+        print(c["address"], a["name"], a["provider_name"])')
+  [ "$imported" = false ] || terraform -chdir="$ws" plan -input=false -no-color -lock-timeout=5m -out=tfplan \
+    -var "adopt_jfrog_integration=$adopt" 2>>"$OIDC_DIR/plan.err"
+}
+
 for ws in "${workspaces[@]}"; do
   [ -f "$ws/main.tf.json" ] || { echo "$ws: removed, skipping"; continue; }
   echo "== $ws"
@@ -73,6 +97,7 @@ for ws in "${workspaces[@]}"; do
     fi
     if terraform -chdir="$ws" plan -input=false -no-color -lock-timeout=5m -out=tfplan \
         -var "adopt_jfrog_integration=$adopt" 2>"$OIDC_DIR/plan.err" \
+      && adopt_mappings "$ws" "$url" "$adopt" \
       && terraform -chdir="$ws" apply -input=false -no-color -lock-timeout=5m tfplan 2>"$OIDC_DIR/plan.err"; then
       break
     fi
