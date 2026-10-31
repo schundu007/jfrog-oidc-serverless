@@ -60,6 +60,16 @@ class RunsApiTests(unittest.TestCase):
     def step(snap, name):
         return next(s for s in snap["steps"] if s["name"] == name)
 
+    def test_approve_passes_the_yes_no_answer(self):
+        # Discover's "Deploy the missing workload? Yes / No" answers through the same endpoint.
+        seen = []
+        self.console.runs.approve = lambda rid, step, payload: seen.append((step, payload)) or {"accepted": True}
+        st, body = self.req("POST", "/api/runs", {"config": demo_cfg(), "steps": ["preflight"]})
+        rid = body["run_id"]
+        st, body = self.req("POST", f"/api/runs/{rid}/approve", {"step": "discover", "answer": "yes", "plan_sha256": "a" * 64, "x": "y"})
+        self.assertEqual(st, 200, body)
+        self.assertEqual(seen, [("discover", {"answer": "yes", "plan_sha256": "a" * 64})])
+
     def test_full_pipeline_with_gates(self):
         st, body = self.req("POST", "/api/runs", {"config": demo_cfg()})
         self.assertEqual(st, 202, body)
