@@ -36,9 +36,14 @@ def gcp_cfg(name="orders"):
 class FakeGit(Shell):
     """Replay az/git/HTTP for publish. Temp paths vary, so commands are matched by their verb."""
 
-    def __init__(self, log=None, commit_rc=0, pr_status=201):
+    def __init__(self, log=None, commit_rc=0, pr_status=201, helper="", token_ok=True, helper_ok=True):
         super().__init__(mode="replay", log=log)
         self.calls, self.commit_rc, self.pr_status = [], commit_rc, pr_status
+        self.helper, self.token_ok, self.helper_ok, self.envs = helper, token_ok, helper_ok, []
+
+    def run(self, argv, *a, extra_env=None, **kw):
+        self.envs.append(extra_env)
+        return super().run(argv, *a, extra_env=extra_env, **kw)
 
     def _replay_cmd(self, argv):
         self.calls.append(list(argv))
@@ -46,6 +51,13 @@ class FakeGit(Shell):
             return Result(argv, 0, TOKEN + "\n", "", 0.0)
         if argv[0] == "git":
             verb = argv[3]
+            if verb == "config":   # `git config --get-urlmatch credential.helper <org>`
+                return Result(argv, 0 if self.helper else 1, self.helper + "\n" if self.helper else "", "", 0.0)
+            if verb in ("fetch", "push"):
+                env = self.envs[-1] or {}
+                ok = self.token_ok if "GIT_CONFIG_VALUE_0" in env else self.helper_ok
+                if not ok:
+                    return Result(argv, 128, "", "fatal: Authentication failed for 'https://dev.azure.com/acme/'", 0.0)
             if verb == "commit":
                 return Result(argv, self.commit_rc, "nothing to commit" if self.commit_rc else "", "", 0.0)
             if verb == "diff":   # `git diff --cached --quiet`: 1 = staged changes
@@ -84,9 +96,9 @@ class PublishTests(unittest.TestCase):
         self.assertEqual(res["pull_request"], {"id": 42, "url": f"{REPO_URL}/pullrequest/42"})
         self.assertEqual(res["branch"], "onboard/orders-01234567")
         self.assertEqual(res["workspace"], WS)
-        self.assertEqual(self.verbs(sh), ["az", "fetch", "worktree", "add", "diff", "commit", "push", "POST",
+        self.assertEqual(self.verbs(sh), ["az", "config", "fetch", "worktree", "add", "diff", "commit", "push", "POST",
                                           "worktree", "branch"])
-        fetch = sh.calls[1]
+        fetch = sh.calls[2]
         self.assertEqual(fetch[4:], ["--quiet", REPO_URL, "+refs/heads/main:refs/remotes/delivery/main"])
         add = next(c for c in sh.calls if c[0] == "git" and c[3] == "add")
         self.assertEqual(sorted(add[add.index("--") + 1:]), sorted(f"{WS}/{n}" for n in (
@@ -172,6 +184,30 @@ class PublishTests(unittest.TestCase):
         res, _ = self.publish(gcp_cfg())
         self.assertNotIn(TOKEN, json.dumps(res))
         self.assertFalse(any(TOKEN in line for line in self.lines))
+
+    def test_git_credential_helper_is_used_first(self):
+        # Git Credential Manager holds the operator's ADO sign-in; the az token can be stale for MSA accounts.
+        res, sh = self.publish(gcp_cfg(), helper="/opt/gcm/git-credential-manager")
+        self.assertTrue(res["changed"])
+        fetch_env = sh.envs[[i for i, c in enumerate(sh.calls) if c[0] == "git" and c[3] == "fetch"][0]]
+        self.assertNotIn("GIT_CONFIG_VALUE_0", fetch_env)
+        self.assertEqual(fetch_env["GIT_TERMINAL_PROMPT"], "0")
+
+    def test_falls_back_to_the_az_token_when_the_helper_fails(self):
+        res, sh = self.publish(gcp_cfg(), helper="/opt/gcm/git-credential-manager", helper_ok=False)
+        self.assertTrue(res["changed"])
+        self.assertEqual([c[3] for c in sh.calls if c[0] == "git" and c[3] == "fetch"], ["fetch", "fetch"])
+        push_env = sh.envs[[i for i, c in enumerate(sh.calls) if c[0] == "git" and c[3] == "push"][0]]
+        self.assertIn("GIT_CONFIG_VALUE_0", push_env)      # the sign-in that worked is kept for the push
+
+    def test_every_sign_in_failing_names_each_and_the_fix(self):
+        with self.assertRaises(deliver.DeliveryError) as cm:
+            self.publish(gcp_cfg(), helper="/opt/gcm/git-credential-manager", helper_ok=False, token_ok=False)
+        msg = str(cm.exception)
+        self.assertIn("git credential helper", msg)
+        self.assertIn("az token", msg)
+        self.assertIn("git push https://dev.azure.com/acme/platform/_git/serverless", msg)
+        self.assertNotIn(TOKEN, msg)
 
     def test_local_backend_settings_are_refused(self):
         bad = {**DELIVERY, "state": {"gcp": {"type": "local"}}}

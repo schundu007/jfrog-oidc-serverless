@@ -11,8 +11,9 @@ wire_workspace() runs in that pipeline after apply: it wires every target of
                  the workspace with the console's own Wire step, approving
                  exactly the diff it computed (the merged PR is the approval).
 
-The Azure DevOps access token comes from `az account get-access-token` (a
-sensitive call: never logged or recorded) and reaches git only through
+Git reaches ADO with the git credential helper (Git Credential Manager) when one
+is set for dev.azure.com, else with the token from `az account get-access-token`
+(a sensitive call: never logged or recorded), which reaches git only through
 GIT_CONFIG_* environment variables, never argv.
 
     python -m console.deliver wire <workspace-dir> <outputs.json>
@@ -112,25 +113,48 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
     cloud = model.cloud_of(c["target"]["kind"])
     c["state_backend"] = _backend(settings, cloud, ws_name)
 
+    # ADO sign-ins, tried in order; the first that works is kept for the rest of the run. Git
+    # Credential Manager (when configured for dev.azure.com) holds the operator's own sign-in; the az
+    # token is the fallback (for MSA accounts it can be stale after a sign-out, and ADO refuses it).
     tok = sh.run(["az", "account", "get-access-token", "--scope", f"{ADO_RESOURCE}/.default",
                   "--query", "accessToken", "-o", "tsv"], sensitive=True)
-    token = tok.stdout.strip()
-    if not tok.ok or not token:
-        raise DeliveryError("could not get an Azure DevOps token from az (az login to the ADO tenant)")
-    git_env = {"GIT_CONFIG_COUNT": "2",
-               "GIT_CONFIG_KEY_0": "http.extraheader", "GIT_CONFIG_VALUE_0": f"Authorization: Bearer {token}",
-               "GIT_CONFIG_KEY_1": "http.extraheader", "GIT_CONFIG_VALUE_1": "X-VSS-ForceMsaPassThrough: true",
-               "GIT_TERMINAL_PROMPT": "0"}
+    token = tok.stdout.strip() if tok.ok else ""
+    signins = []
+    helper = sh.run(["git", "-C", repo, "config", "--get-urlmatch", "credential.helper", org_url], timeout=30.0)
+    if helper.ok and helper.stdout.strip():
+        signins.append(("the git credential helper", {"GIT_TERMINAL_PROMPT": "0"}))
+    if token:
+        signins.append(("the az token", {"GIT_CONFIG_COUNT": "2",
+                        "GIT_CONFIG_KEY_0": "http.extraheader", "GIT_CONFIG_VALUE_0": f"Authorization: Bearer {token}",
+                        "GIT_CONFIG_KEY_1": "http.extraheader", "GIT_CONFIG_VALUE_1": "X-VSS-ForceMsaPassThrough: true",
+                        "GIT_TERMINAL_PROMPT": "0"}))
+    if not signins:
+        raise DeliveryError("no Azure DevOps sign-in: run `az login` to the ADO tenant, or set up Git Credential "
+                            "Manager for dev.azure.com")
+    fix = f"sign in once with `git push {repo_url} HEAD:{base}` (Git Credential Manager), or `az login`"
 
-    def git(*args, cwd=repo, timeout=120.0, auth=False):
-        return sh.run(["git", "-C", str(cwd), *args], timeout=timeout, extra_env=git_env if auth else None)
+    def git(*args, cwd=repo, timeout=120.0, env=None):
+        return sh.run(["git", "-C", str(cwd), *args], timeout=timeout, extra_env=env)
 
     def must(res, what):
         if not res.ok:
             raise DeliveryError(f"{what} failed: {redact.text(res.error_text())}")
         return res
 
-    must(git("fetch", "--quiet", repo_url, f"+refs/heads/{base}:refs/remotes/delivery/{base}", auth=True), "git fetch")
+    def remote(what, *args, cwd=repo):
+        """A fetch or push to ADO with the first sign-in that works; it is kept for later calls."""
+        errors = []
+        for name, env in list(signins):
+            res = git(*args, cwd=cwd, env=env)
+            if res.ok:
+                signins[:] = [(name, env)]
+                return res
+            errors.append(f"{name}: {redact.text(res.error_text(200))}")
+            if "Authentication failed" not in res.error_text() and "could not read Username" not in res.error_text():
+                break
+        raise DeliveryError(f"{what} failed ({'; '.join(errors)}). Fix: {fix}")
+
+    remote("git fetch", "fetch", "--quiet", repo_url, f"+refs/heads/{base}:refs/remotes/delivery/{base}")
     wt.parent.mkdir(parents=True, exist_ok=True)
     must(git("worktree", "add", "--quiet", "-b", branch, str(wt), f"refs/remotes/delivery/{base}"), "git worktree add")
     try:
@@ -144,12 +168,14 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
         must(git("commit", "--quiet", "-m", f"Onboard {cfg['name']} ({cfg['target']['kind']}) via the console",
                  cwd=wt), "git commit")
         if direct:
-            must(git("push", "--quiet", repo_url, f"{branch}:refs/heads/{base}", cwd=wt, auth=True), f"git push to {base}")
+            remote(f"git push to {base}", "push", "--quiet", repo_url, f"{branch}:refs/heads/{base}", cwd=wt)
             commit = git("rev-parse", "HEAD", cwd=wt).stdout.strip()
             log(f"pushed {commit[:12]} to {base}: {cloud}-workload-onboard applies it")
             return {"changed": True, "branch": base, "workspace": out["workspace"], "commit": commit,
                     "pipeline": {"name": f"{cloud}-workload-onboard", "url": pipeline_url}, "pull_request": None}
-        must(git("push", "--quiet", repo_url, f"{branch}:refs/heads/{branch}", cwd=wt, auth=True), "git push")
+        remote("git push", "push", "--quiet", repo_url, f"{branch}:refs/heads/{branch}", cwd=wt)
+        if not token:
+            raise DeliveryError("opening a pull request needs an Azure DevOps token: run `az login` to the ADO tenant")
         body = {"sourceRefName": f"refs/heads/{branch}", "targetRefName": f"refs/heads/{base}",
                 "title": f"Onboard {cfg['name']} to JFrog OIDC",
                 "description": (f"Workspace `{out['workspace']}`, targets: {', '.join(out['targets'])}.\n\n"

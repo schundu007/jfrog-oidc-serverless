@@ -73,13 +73,13 @@ async function openRun(id) {
       if (kind === "done" && wasLive) refreshList();
       return;
     }
-    if (data.kind === "log") {
+    if (data.kind === "log" || data.kind === "step") {
+      // Step changes are log rows too: every step shows when it started and how it ended.
       rs.log.push(data);
       if (rs.log.length > 2000) rs.log.splice(0, rs.log.length - 2000);
       renderLog();
-    } else {
-      scheduleRefetch();
     }
+    if (data.kind !== "log") scheduleRefetch();
   }, ctl.signal).catch((e) => { if (e.name !== "AbortError") note(`Event stream ended: ${e.message}`, "warn"); });
 }
 
@@ -340,7 +340,23 @@ function logEvent(event) {
     h("span", { text: m[2] }))] : [event];
 }
 
-function logRow(e, showStep) {
+const STEP_TONE = { succeeded: "ok", failed: "bad", cancelled: "bad", needs_approval: "info", running: "info", skipped: "info" };
+
+function stepRow(e, showStep, took) {
+  const title = rs.snap?.steps?.find((s) => s.name === e.name)?.title || e.name;
+  const status = e.status === "running" ? "started" : e.status.replaceAll("_", " ");
+  const tone = STEP_TONE[e.status] || "info";
+  return h("tr", { class: `log-step-row${tone === "bad" ? " log-row-bad" : ""}` },
+    h("td", { class: "log-t", text: (e.t || "").slice(11, 19) }),
+    h("td", { class: "log-step-cell" }, showStep ? h("span", { class: "log-step", text: title }) : null),
+    h("td", { class: "log-msg" }, h("b", { text: `${title} ${status}` }), e.error ? h("div", { class: "log-err", text: e.error }) : null,
+      e.note && e.status !== "running" ? h("div", { class: "log-note", text: e.note }) : null),
+    h("td", { class: "log-res-cell" }, h("span", { class: `log-res log-${tone}`, text: status })),
+    h("td", { class: "log-took", text: took || "" }));
+}
+
+function logRow(e, showStep, stepTime) {
+  if (e.kind === "step") return stepRow(e, showStep, stepTime);
   const m = LOG_LINE.exec(e.line || "");
   const [event, result, took] = m ? [m[1], m[2], m[3] || ""] : [e.line || "", "", ""];
   const tone = result ? (/^(exit 0|[23]\d\d)\b/.test(result) ? "ok" : BAD.test(result) ? "bad" : "info")
@@ -353,15 +369,25 @@ function logRow(e, showStep) {
     h("td", { class: "log-took", text: took }));
 }
 
+const stepOf = (e) => (e.kind === "step" ? e.name : e.step);
+
+// A step's end row shows how long it ran, from its "started" row.
+function stepTook(e) {
+  if (e.kind !== "step" || e.status === "running") return "";
+  const start = rs.log.find((x) => x.kind === "step" && x.name === e.name && x.status === "running");
+  const ms = start ? Date.parse(e.t) - Date.parse(start.t) : NaN;
+  return Number.isFinite(ms) && ms >= 0 ? `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)}s` : "";
+}
+
 function renderLog() {
   // Steps and outcomes only: command lines ("$ az …") stay in the server's log.
-  const lines = rs.log.filter((e) => !/^\$ /.test(e.line || ""));
+  const lines = rs.log.filter((e) => (e.kind === "step" ? e.name && e.status : !/^\$ /.test(e.line || "")));
   $("run-log-count").textContent = lines.length ? String(lines.length) : "";
   // The step shows once, where it starts: the rows below it belong to it.
   fill($("run-log"), lines.length
     ? h("table", { class: "log-table" },
       h("thead", {}, h("tr", {}, ["Time", "Step", "Event", "Result", "Took"].map((t) => h("th", { scope: "col", text: t })))),
-      h("tbody", {}, lines.map((e, i) => logRow(e, i === 0 || lines[i - 1].step !== e.step))))
+      h("tbody", {}, lines.map((e, i) => logRow(e, i === 0 || stepOf(lines[i - 1]) !== stepOf(e), stepTook(e)))))
     : h("p", { class: "log-empty", text: "No log lines yet." }));
 }
 

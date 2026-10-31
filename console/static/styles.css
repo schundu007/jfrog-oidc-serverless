@@ -1221,3 +1221,8 @@ td, th { border-bottom-color: var(--hum-line); }
 /* Pills and step chips: Humana green on light green; square-ish. */
 .log-step, .count-badge:not(:empty), .tag { border-radius: 3px; }
 .log-res { border-radius: 3px; }
+/* Step rows: where each step starts and how it ends, set off from the lines inside it. */
+tr.log-step-row td { background: #fafbf8; }
+tr.log-step-row .log-msg { font-family: var(--font); font-size: 13.5px; }
+.log-err { margin-top: 4px; font-family: var(--mono); font-size: 12px; font-weight: 400; color: #333333; white-space: pre-wrap; overflow-wrap: anywhere; }
+.log-note { margin-top: 2px; font-size: 12.5px; color: var(--hum-muted, #666666); }
