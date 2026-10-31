@@ -17,22 +17,6 @@ variable "ado_tenant_id" {
   type        = string
 }
 
-variable "connections" {
-  description = <<-EOT
-    ADO service connections (workload identity federation): build and setup.
-    subject is the connection's workloadIdentityFederationSubject
-    (az devops service-endpoint show ... --query authorization.parameters).
-  EOT
-  type = map(object({
-    name    = string
-    subject = string
-  }))
-  validation {
-    condition     = toset(keys(var.connections)) == toset(["build", "setup"])
-    error_message = "connections needs exactly the keys build and setup."
-  }
-}
-
 variable "ado_token_audience" {
   description = "aud of the token a job gets from System.OidcRequestUri (check with: python -m jfrog_oidc claims)."
   type        = string

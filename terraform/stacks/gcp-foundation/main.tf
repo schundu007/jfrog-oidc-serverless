@@ -56,7 +56,7 @@ resource "google_iam_workload_identity_pool_provider" "ado" {
   display_name                       = "ADO ${var.ado_org}"
   # google.subject is capped at 127 bytes; keep "<org-id>/<connection-id>".
   attribute_mapping   = { "google.subject" = "assertion.sub.extract('/sc/{id}')" }
-  attribute_condition = "assertion.sub in [${join(", ", [for c in var.connections : "'${c.subject}'"])}]"
+  attribute_condition = "assertion.sub in [${join(", ", [for c in local.connections : "'${c.subject}'"])}]"
   oidc {
     issuer_uri        = local.issuer
     allowed_audiences = [var.ado_token_audience]
@@ -66,7 +66,7 @@ resource "google_iam_workload_identity_pool_provider" "ado" {
 resource "google_service_account" "ado" {
   depends_on = [google_project_service.apis]
 
-  for_each = var.connections
+  for_each = local.connections
 
   project      = var.gcp_project_id
   account_id   = "ado-${each.key}"
@@ -74,7 +74,7 @@ resource "google_service_account" "ado" {
 }
 
 resource "google_service_account_iam_member" "ado_wif" {
-  for_each = var.connections
+  for_each = local.connections
 
   service_account_id = google_service_account.ado[each.key].name
   role               = "roles/iam.workloadIdentityUser"

@@ -40,13 +40,18 @@ jobs:
     steps:
       - checkout: self
         fetchDepth: 1
+      # ADO issues the connection's OIDC token only to a job that references it; this
+      # skipped task is that reference. Nothing signs in to Azure.
       - task: AzureCLI@2
-        displayName: Build, push, deploy (OIDC)
+        displayName: Reference the service connection
+        condition: false
         inputs:
           azureSubscription: ${{ variables.BUILD_SERVICE_CONNECTION }}
           scriptType: bash
-          scriptLocation: scriptPath
-          scriptPath: pipelines/scripts/gcp-build-deploy.sh
+          scriptLocation: inlineScript
+          inlineScript: 'true'
+      - bash: bash pipelines/scripts/gcp-build-deploy.sh
+        displayName: Build, push, deploy (OIDC)
         env:
           SYSTEM_ACCESSTOKEN: $(System.AccessToken)
           JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(BUILD_SERVICE_CONNECTION_ID)

@@ -18,6 +18,14 @@ resource "azuredevops_variable_group" "gcp" {
     value = platform_oidc_configuration.ado.name
   }
   variable {
+    name  = "BUILD_SERVICE_CONNECTION_ID"
+    value = local.connections.build.id
+  }
+  variable {
+    name  = "SETUP_SERVICE_CONNECTION_ID"
+    value = local.connections.setup.id
+  }
+  variable {
     name  = "GCP_PROJECT"
     value = var.gcp_project_id
   }

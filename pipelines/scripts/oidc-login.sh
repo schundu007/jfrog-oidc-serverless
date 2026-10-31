@@ -1,5 +1,6 @@
-# Sourced by the pipeline scripts, run by AzureCLI@2: the task references the
-# service connection, which Azure DevOps requires before it issues its token.
+# Sourced by the pipeline scripts. Azure DevOps issues a service connection's token
+# only to a job that references the connection: the Azure pipelines run these scripts
+# in AzureCLI@2, the GCP pipelines in a bash step after a skipped AzureCLI@2 reference.
 #
 # The service connection's OIDC token (requested from System.OidcRequestUri with
 # the job token: Entra-issued, aud api://AzureADTokenExchange, sub unique to the

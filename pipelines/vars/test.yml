@@ -2,10 +2,10 @@
 # GCP and Azure pipelines use vars/gcp-<env>.yml and vars/azure-<env>.yml.
 variables:
   ENVIRONMENT: test
-  BUILD_SERVICE_CONNECTION: jfrog-oidc-wif
-  SETUP_SERVICE_CONNECTION: jfrog-oidc-setup-v2
-  BUILD_SERVICE_CONNECTION_ID: 00d00a9a-4216-46c9-bfb7-718d75d629d8 # jfrog-oidc-wif
-  SETUP_SERVICE_CONNECTION_ID: ebe9d5e5-c476-4ede-9a9f-053f91c5319b # jfrog-oidc-setup-v2
+  # No connections: each cloud owns its own, written by its foundation stack, and
+  # AWS and Knative have none yet.
+  BUILD_SERVICE_CONNECTION: ""
+  SETUP_SERVICE_CONNECTION: ""
   TERRAFORM_VERSION: 1.17.1
 
   JFROG_DOCKER_REMOTE: docker-remote

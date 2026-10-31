@@ -57,15 +57,19 @@ stages:
             displayName: Install Terraform $(TERRAFORM_VERSION)
           - bash: mkdir -p "$(Pipeline.Workspace)/plan"
             displayName: Prepare
+          # ADO issues the connection's OIDC token only to a job that references it; this
+          # skipped task is that reference. Nothing signs in to Azure.
           - task: AzureCLI@2
-            name: tf
-            displayName: terraform ${{ parameters.action }} plan (OIDC)
+            displayName: Reference the service connection
+            condition: false
             inputs:
               azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
               scriptType: bash
-              scriptLocation: scriptPath
-              scriptPath: pipelines/scripts/terraform-stack.sh
-              arguments: $(PLAN_ACTION) ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
+              scriptLocation: inlineScript
+              inlineScript: 'true'
+          - bash: bash pipelines/scripts/terraform-stack.sh $(PLAN_ACTION) ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
+            name: tf
+            displayName: terraform ${{ parameters.action }} plan (OIDC)
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
               JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
@@ -94,14 +98,18 @@ stages:
                   artifact: plan
                 - bash: pipelines/scripts/install-terraform.sh
                   displayName: Install Terraform $(TERRAFORM_VERSION)
+                # ADO issues the connection's OIDC token only to a job that references it; this
+                # skipped task is that reference. Nothing signs in to Azure.
                 - task: AzureCLI@2
-                  displayName: terraform apply (OIDC)
+                  displayName: Reference the service connection
+                  condition: false
                   inputs:
                     azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
                     scriptType: bash
-                    scriptLocation: scriptPath
-                    scriptPath: pipelines/scripts/terraform-stack.sh
-                    arguments: apply ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
+                    scriptLocation: inlineScript
+                    inlineScript: 'true'
+                - bash: bash pipelines/scripts/terraform-stack.sh apply ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
+                  displayName: terraform apply (OIDC)
                   env:
                     SYSTEM_ACCESSTOKEN: $(System.AccessToken)
                     JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
