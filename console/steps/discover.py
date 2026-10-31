@@ -57,6 +57,9 @@ def _prop(d: dict, key: str, default=None):
     return _dig(d, "properties", key, default=default)
 
 
+BASIC_ROLES = ("roles/owner", "roles/editor", "roles/viewer")
+
+
 class Discover(AwsDiscover, OpenShiftDiscover):
     def __init__(self, cfg: dict, sh: Shell):
         self.cfg = cfg
@@ -205,12 +208,9 @@ class Discover(AwsDiscover, OpenShiftDiscover):
             self.facts["mapping_subject"] = None
             roles = self._gcp_roles(project, email)
             self.facts["replaced_service_account_roles"] = roles
-            new = f"{dedicated}@{project}.iam.gserviceaccount.com"
-            self.warn("dedicated_identity",
-                      f"runs as the default account {email}; Wire switches it to a new {new}",
-                      ("The new account has no project roles. The current one has "
-                       + (", ".join(roles) if roles else "none visible")
-                       + ": grant the new one only what the app needs before you approve Wire."))
+            # The workspace grants the new account the old one's roles, except the basic
+            # owner/editor/viewer roles: the token exchange itself needs no project role.
+            self.facts["dedicated_service_account_roles"] = [r for r in roles if r not in BASIC_ROLES]
             return
         res = self.sh.run(["gcloud", "iam", "service-accounts", "describe", email, "--project", project, "--format=json"],
                           timeout=60)

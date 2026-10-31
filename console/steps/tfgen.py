@@ -39,6 +39,7 @@ ARM_ID_RE = re.compile(r"^/subscriptions/[0-9a-f-]{36}/resourceGroups/[\w.()-]+/
 PREFIX_RE = {"gcp": re.compile(r"^[a-z][a-z0-9-]{1,13}$"), "azure": re.compile(r"^[a-z][a-z0-9-]{1,17}$"),
              "aws": re.compile(r"^[a-z][a-z0-9-]{1,17}$"), "openshift": re.compile(r"^[a-z][a-z0-9-]{1,17}$")}
 REPO_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
+ROLE_RE = re.compile(r"^(projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/)?roles/[A-Za-z0-9_.]{3,64}$")
 REPO_FORMATS = {"DOCKER", "NPM", "PYTHON", "MAVEN"}
 
 PROVIDERS = {
@@ -406,7 +407,9 @@ def _gcp_entry(cfg: dict):
         else:
             warnings.append("the function's build service account is unknown; grant it Artifact Registry Reader "
                             "on the remote repositories yourself")
-    target.update(repositories=repos if target["pull_enabled"] else {}, reader_members=readers)
+    roles = [r for r in (d.get("dedicated_service_account_roles") or []) if ROLE_RE.match(str(r))]
+    target.update(repositories=repos if target["pull_enabled"] else {}, reader_members=readers,
+                  dedicated_roles=sorted(roles) if target["dedicated_identity"] else [])
     return shared, target, warnings
 
 
@@ -581,6 +584,8 @@ def _gcp_tfvars(state: dict) -> dict:
         "reader_members": readers,
         "dedicated_service_accounts": {n: t["dedicated_identity"] for n, t in sorted(state["targets"].items())
                                        if t.get("dedicated_identity")},
+        "dedicated_service_account_roles": {n: t["dedicated_roles"] for n, t in sorted(state["targets"].items())
+                                            if t.get("dedicated_identity") and t.get("dedicated_roles")},
     }
 
 
@@ -698,6 +703,8 @@ def _gcp_main(modules: str | None = None) -> dict:
             "remote_repositories": _var("map(object({format = string, upstream_uri = string}))", {}),
             "reader_members": _var("list(string)", []),
             "dedicated_service_accounts": _var("map(string)", {}, "Existing apps on a default account: <config> => new SA ID"),
+            "dedicated_service_account_roles": _var("map(list(string))", {},
+                                                    "<config> => project roles the new SA takes over from the default one"),
         },
         "resource": {
             "google_service_account": {
@@ -709,6 +716,14 @@ def _gcp_main(modules: str | None = None) -> dict:
                     "description": "Dedicated runtime identity for ${each.key}, created by the JFrog OIDC console",
                 },
             },
+            "google_project_iam_member": {
+                "dedicated": {
+                    "for_each": "${local.dedicated_role_grants}",
+                    "project": "${var.gcp_project_id}",
+                    "role": "${each.value.role}",
+                    "member": "serviceAccount:${google_service_account.dedicated[each.value.config].email}",
+                },
+            },
         },
         "provider": {
             "platform": {"url": "${var.jfrog_url}"},
@@ -718,6 +733,9 @@ def _gcp_main(modules: str | None = None) -> dict:
             "pull_workloads": _pull_workload_local("gcp", "module.gcp_pull_path[0].rotator_unique_id",
                                                    "Artifact Registry upstream credential (rotated)"),
             "dedicated_subjects": "${{ for n, sa in google_service_account.dedicated : n => sa.unique_id }}",
+            "dedicated_role_grants": ("${merge({}, [for n, roles in var.dedicated_service_account_roles : "
+                                      "{ for r in roles : \"${n} ${r}\" => { config = n, role = r } } "
+                                      "if contains(keys(var.dedicated_service_accounts), n)]...)}"),
             "runtime_workloads": RUNTIME_WORKLOADS,
         },
         "module": {

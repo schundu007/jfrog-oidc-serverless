@@ -196,10 +196,13 @@ class Wire(AwsWire, OpenShiftWire):
     def _gcp_notes(self):
         notes = []
         if self.dedicated:
-            roles = self.d.get("replaced_service_account_roles") or []
-            notes.append(f"The app moves to {self.dedicated['id']}, which has no project roles"
-                         + (f" (the old account had {', '.join(roles)})" if roles else "")
-                         + ". Grant it what the app needs, and pass --service-account in your next deploy.")
+            old = self.d.get("replaced_service_account_roles") or []
+            kept = self.d.get("dedicated_service_account_roles") or []
+            dropped = [r for r in old if r not in kept]
+            notes.append(f"The app moves to {self.dedicated['id']}"
+                         + (f", which the workspace granted {', '.join(kept)}" if kept else "")
+                         + (f"; not carried over: {', '.join(dropped)}" if dropped else "")
+                         + ". Pass --service-account in your next deploy.")
         if self.kind == "gcp_run_function":
             notes.append("The variables are set on the function's Cloud Run service. A later `gcloud functions deploy` "
                          "replaces them unless it passes the same --set-env-vars, so add them to your deploy or IaC.")

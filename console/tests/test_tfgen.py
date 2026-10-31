@@ -338,6 +338,17 @@ class DedicatedIdentityTests(Base):
         self.assertIn("dedicated", m["resource"]["google_service_account"])
         self.assertIn("local.runtime_workloads", m["module"]["jfrog_oidc"]["workloads"])
         self.assertIn("dedicated_service_accounts", m["output"])
+        self.assertEqual(t["dedicated_service_account_roles"], {})
+
+    def test_gcp_new_service_account_takes_over_roles(self):
+        cfg = gcp_cfg(subject=None)
+        cfg["target"]["discovered"].update(dedicated_identity="jfrog-orders",
+                                           dedicated_service_account_roles=["roles/storage.objectViewer", "bad role"])
+        f = self.files(self.render(cfg))
+        t, m = f["terraform.tfvars.json"], f["main.tf.json"]
+        self.assertEqual(t["dedicated_service_account_roles"], {"orders": ["roles/storage.objectViewer"]})
+        grant = m["resource"]["google_project_iam_member"]["dedicated"]
+        self.assertEqual(grant["for_each"], "${local.dedicated_role_grants}")
 
     def test_azure_no_identity_gets_a_user_assigned_one(self):
         cfg = azure_cfg(principal=None)

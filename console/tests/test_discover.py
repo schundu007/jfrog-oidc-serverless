@@ -113,19 +113,19 @@ class CorrectionTests(unittest.TestCase):
 
 
 class WarningAndErrorTests(unittest.TestCase):
-    def test_default_compute_sa_warns(self):
+    def test_default_compute_sa_gets_a_new_account_without_warning(self):
         res, sh = run(gcp_cfg("gcp_run_service", "orders"), "gcp_run_service_default_sa")
         self.assertEqual(sh.misses, [])
         self.assertEqual(res["facts"]["service_account"], "123456789012-compute@developer.gserviceaccount.com")
         self.assertTrue(res["facts"]["service_account_implicit"])
-        warning = {w["code"]: w for w in res["warnings"]}["dedicated_identity"]
-        self.assertIn("jfrog-t@demo-nonprod-1234.iam.gserviceaccount.com", warning["message"])
-        self.assertIn("roles/editor", warning["fix"])
-        self.assertEqual(res["status"], "warn")
+        self.assertNotIn("dedicated_identity", [w["code"] for w in res["warnings"]])
+        self.assertEqual(res["status"], "ok")
         # Existing app on a default account: the workspace creates jfrog-<name>, no mapping on the default one.
         self.assertIsNone(res["facts"]["mapping_subject"])
         self.assertEqual(res["facts"]["dedicated_identity"], "jfrog-t")
         self.assertEqual(res["facts"]["replaced_service_account_roles"], ["roles/editor"])
+        # Basic roles are never carried over to the new account.
+        self.assertEqual(res["facts"]["dedicated_service_account_roles"], [])
         self.assertIn("target.discovered", res["config_patch"])
 
     def test_identity_created_earlier_is_kept(self):
