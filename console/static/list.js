@@ -1,12 +1,12 @@
-// Workloads (/<cloud>): every saved configuration of this cloud and every one its git workspaces
-// onboarded, with the last run. The whole row opens the workload; "⋯" holds Delete (saved only: an
+// Workloads (/<cloud>): only what exists in the cloud right now. A saved or onboarded configuration is
+// listed once the cloud confirms its workload exists (wired or not); missing or unreadable ones are not shown. The whole row opens the workload; "⋯" holds Delete (saved only: an
 // onboarded config lives in git, where only offboarding removes it).
 
 import { $, api, h, fill, inSection, href, CLOUD, TYPE, statusIcon, statusText, template, menu, ago, dur, runDuration, stamp,
   status as setStatus } from "./core.js";
 import { kindLabel } from "./configure.js";
 
-const ls = { rows: [], schema: null };
+const ls = { rows: [], schema: null, checked: false };
 
 // "succeeded · 2 h ago · 1 m 32 s"
 function lastRunText(run, snap) {
@@ -43,28 +43,39 @@ function row(c) {
   return tr;
 }
 
+const REAL = new Set(["wired", "not_wired"]);
+
 function render() {
   const q = $("wl-filter").value.trim().toLowerCase();
-  const shown = ls.rows.filter((c) => !q || [c.name, kindLabel(ls.schema, c.kind), c.workload, c.identity]
+  const real = ls.checked ? ls.rows.filter((c) => REAL.has(c.live?.state)) : [];
+  const shown = real.filter((c) => !q || [c.name, kindLabel(ls.schema, c.kind), c.workload, c.identity]
     .some((v) => String(v || "").toLowerCase().includes(q)));
   fill($("wl-rows"), shown.map(row));
-  $("wl-none").hidden = shown.length > 0 || !ls.rows.length;
-  $("wl-count").textContent = ls.rows.length || "";
-  $("wl-body").hidden = !ls.rows.length;
-  $("wl-empty").hidden = !!ls.rows.length;
+  $("wl-none").hidden = shown.length > 0 || !real.length;
+  $("wl-count").textContent = real.length || "";
+  $("wl-body").hidden = !real.length;
+  $("wl-empty").hidden = !ls.checked || !!real.length;
   // Empty: the empty state carries New workload.
-  $("wl-new").hidden = !ls.rows.length;
+  $("wl-new").hidden = !real.length;
 }
 
 async function load() {
   const [{ configs }, { runs }] = await Promise.all([api("/api/configs"), api("/api/runs")]);
   const mine = runs.filter((r) => inSection(r.kind));
   ls.rows = configs.filter((c) => inSection(c.kind)).map((c) => ({ ...c, run: mine.find((r) => r.name === c.name) || null, snap: null }));
+  ls.checked = false;
   render();
-  api(`/api/live?cloud=${CLOUD}`).then(({ status }) => {
+  setStatus($("list-status"), "Checking the cloud", "busy");
+  try {
+    const { status } = await api(`/api/live?cloud=${CLOUD}`);
     for (const c of ls.rows) c.live = status[c.name] || { state: "unknown" };
-    render();
-  }).catch((e) => { for (const c of ls.rows) c.live = { state: "unknown", detail: e.message }; render(); });
+    setStatus($("list-status"), "");
+  } catch (e) {
+    for (const c of ls.rows) c.live = { state: "unknown", detail: e.message };
+    setStatus($("list-status"), `Could not read the cloud: ${e.message}`, "error");
+  }
+  ls.checked = true;
+  render();
   // Durations need each last run's steps.
   await Promise.all(ls.rows.filter((c) => c.run).map(async (c) => {
     try { c.snap = await api(`/api/runs/${encodeURIComponent(c.run.id)}`); } catch { /* the row keeps status and time */ }
