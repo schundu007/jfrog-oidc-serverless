@@ -4,8 +4,10 @@
     "docker_host": "",
     "docker_repo": "docker-virtual",
     "integration_names": {
+      "aws": "aws-sts",
       "azure": "azure-entra",
-      "gcp": "gcp-cloudrun"
+      "gcp": "gcp-cloudrun",
+      "openshift": "openshift-knative"
     },
     "project_key": null,
     "reader_group": "serverless-readers",
@@ -41,6 +43,13 @@
     "type": "gcs"
   },
   "target": {
+    "aws": {
+      "account": "",
+      "cluster": "",
+      "name": "",
+      "profile": "",
+      "region": ""
+    },
     "azure": {
       "environment_id": "",
       "identity_type": "user_assigned",
@@ -50,20 +59,17 @@
       "subscription": ""
     },
     "discovered": {
-      "at": "2026-10-30T10:12:47Z",
+      "at": "2026-10-31T01:13:47Z",
       "build_service_account": "382389965689-compute@developer.gserviceaccount.com",
       "dedicated_identity": "jfrog-jfrog-fn-demo",
-      "default_service_account": true,
       "kind": "gcp_run_function",
-      "mapping_subject": null,
+      "mapping_subject": "116263319707315339738",
       "name": "jfrog-fn-demo",
       "project": "csb-test-257615",
       "region": "us-central1",
-      "replaced_service_account_roles": [
-        "roles/editor"
-      ],
       "run_service": "jfrog-fn-demo",
-      "service_account": "382389965689-compute@developer.gserviceaccount.com",
+      "service_account": "jfrog-jfrog-fn-demo@csb-test-257615.iam.gserviceaccount.com",
+      "service_account_unique_id": "116263319707315339738",
       "url": "https://jfrog-fn-demo-rrjfjw2jsq-uc.a.run.app"
     },
     "gcp": {
@@ -71,7 +77,13 @@
       "project": "csb-test-257615",
       "region": "us-central1"
     },
-    "kind": "gcp_run_function"
+    "kind": "gcp_run_function",
+    "openshift": {
+      "cluster": "",
+      "context": "",
+      "name": "",
+      "namespace": ""
+    }
   },
   "verify": {
     "artifact_path": "generic-local/healthcheck/ping.txt",
