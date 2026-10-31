@@ -69,3 +69,33 @@
 #groups td:nth-child(2) { width: 150px; }
 #groups td:last-child { width: 48px; text-align: right; }
 @media (max-width: 1100px) { #groups .setup-kind { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- Refined: calm at rest, detail on hover ---- */
+/* Section labels: small caps with a deployed count. */
+#groups .setup-kind-title { display: flex; align-items: baseline; gap: var(--s-2); font-size: var(--t-xs); font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-2); }
+#groups .kind-count { font-weight: 600; letter-spacing: 0; color: var(--fg-3); font-variant-numeric: tabular-nums; }
+#groups .setup-kind + .setup-kind { margin-top: var(--s-6, 32px); }
+/* Cloud heading: logo, name, count, then a thin meter pushed to the right. */
+#groups .cloud-head { padding-bottom: var(--s-2); border-bottom-width: 2px; }
+#groups .cloud-sub { font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+#groups .meter { margin-left: auto; width: 72px; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
+#groups .meter-fill { display: block; height: 100%; background: var(--cloud); }
+/* Rows: even height, quiet hairlines. */
+#groups tbody td { padding-top: 11px; padding-bottom: 11px; border-bottom: 1px solid var(--border); }
+#groups tbody tr:last-child td { border-bottom: 0; }
+#groups .stack-name b { font-weight: 600; }
+/* The "?" and "⋯" stay faint until the row is hovered or focused. */
+#groups tbody .help { opacity: 0.3; }
+#groups tbody .icon-btn { opacity: 0.45; }
+#groups tbody tr:hover .help, #groups tbody tr:focus-within .help, #groups tbody .help:focus-visible { opacity: 0.85; }
+#groups tbody tr:hover .icon-btn, #groups tbody tr:focus-within .icon-btn { opacity: 1; }
+@media (hover: none) { #groups tbody .help, #groups tbody .icon-btn { opacity: 0.85; } }
+/* Status tone by the row's state. */
+#groups tr[data-state="ok"] .pill { color: var(--ok-fg); font-weight: 700; }
+#groups tr[data-state="attention"] .pill { color: var(--fg); font-weight: 700; }
+#groups tr[data-state="idle"] .pill { color: var(--fg-3); font-weight: 500; }
+#groups tr[data-state="busy"] .pill { color: var(--brand); font-weight: 700; }
+/* Blocked by a missing bootstrap: dimmed until it can be deployed. */
+#groups tr.blocked .stack-name b { color: var(--fg-3); font-weight: 500; }
+#groups tr.blocked .stack-icon { opacity: 0.55; filter: grayscale(0.4); }

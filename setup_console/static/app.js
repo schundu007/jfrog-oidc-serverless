@@ -266,7 +266,9 @@ function row(s) {
   const failed = lastFailure(s);
   const log = failed ? h("button", { type: "button", class: "secondary", text: "Log",
     onclick: () => follow(s, failed, flyout(`${s.group} · ${s.title}: ${ACTION_NAME[failed.action] || failed.action}`)) }) : null;
-  return h("tr", { id: `stack-${s.id}` },
+  // The row's state tones its status (green deployed, dark needs you, grey idle); blocked rows are dimmed.
+  const state = s.busy || s.plan ? "busy" : s.status?.deployed ? "ok" : partlyDeleted(s) || lastFailure(s) ? "attention" : "idle";
+  return h("tr", { id: `stack-${s.id}`, "data-state": state, class: s.needs?.length ? "blocked" : null },
     h("td", { title: s.dir }, h("div", { class: "stack-name" }, iconEl(STACK_ICON[s.id], "stack-icon"),
       h("b", { text: s.title }), s.about ? help(s.about) : null)),
     h("td", {}, h("div", { class: "stack-status" }, stackStatus(s), notes.length ? help(notes.join(" ")) : null)),
@@ -306,13 +308,23 @@ async function load() {
   const kinds = { Common: {} };
   const sectionOf = (s) => (s.id.endsWith("-foundation") ? "Common" : s.kind);
   for (const s of data.stacks) ((kinds[sectionOf(s)] ||= {})[s.group] ||= []).push(s);
-  fill($("groups"), Object.entries(kinds).map(([k, clouds]) => h("section", { class: "setup-kind", "data-kind": k },
-    h("h2", { class: "setup-kind-title", text: k }),
-    ...Object.entries(clouds).map(([g, list]) => h("section", { class: "card cloud-card", "data-cloud": CLOUD_ID[g] || "" },
-      h("div", { class: "card-head cloud-head" }, iconEl(CLOUD_ID[g], "cloud-badge"),
-        h("div", { class: "cloud-title" }, h("h3", { text: g }), h("span", { class: "cloud-sub",
-          text: `${list.length} stack${list.length === 1 ? "" : "s"} · ${list.filter((x) => x.status?.deployed).length} deployed` }))),
-      h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, list.map(row)))))))));
+  const done = (list) => list.filter((x) => x.status?.deployed).length;
+  // A thin meter of deployed / total: the count at a glance, no extra words.
+  const meter = (n, of) => {
+    const fillEl = h("span", { class: "meter-fill" });
+    fillEl.style.width = `${of ? Math.round((100 * n) / of) : 0}%`;   // CSSOM, allowed by the CSP
+    return h("span", { class: "meter", role: "img", "aria-label": `${n} of ${of} deployed`, title: `${n} of ${of} deployed` }, fillEl);
+  };
+  fill($("groups"), Object.entries(kinds).map(([k, clouds]) => {
+    const all = Object.values(clouds).flat();
+    return h("section", { class: "setup-kind", "data-kind": k },
+      h("h2", { class: "setup-kind-title" }, h("span", { text: k }), h("span", { class: "kind-count", text: `${done(all)}/${all.length}` })),
+      ...Object.entries(clouds).map(([g, list]) => h("section", { class: "card cloud-card", "data-cloud": CLOUD_ID[g] || "" },
+        h("div", { class: "card-head cloud-head" }, iconEl(CLOUD_ID[g], "cloud-badge"),
+          h("div", { class: "cloud-title" }, h("h3", { text: g }), h("span", { class: "cloud-sub", text: `${done(list)} of ${list.length} deployed` })),
+          meter(done(list), list.length)),
+        h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, list.map(row)))))));
+  }));
   // While a job runs, keep the rows current so Running turns into its result without a reload.
   clearTimeout(load.timer);
   if (data.stacks.some((s) => s.busy)) load.timer = setTimeout(() => load().catch(() => {}), POLL_MS * 2);
