@@ -1,0 +1,10 @@
+{
+  "terraform": {
+    "backend": {
+      "gcs": {
+        "bucket": "unioxe-tfstate",
+        "prefix": "workspaces/gcp_unioxe_us-central1"
+      }
+    }
+  }
+}
