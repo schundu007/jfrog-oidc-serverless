@@ -1,28 +1,18 @@
-# Build and roll out ONE Azure serverless workload per run: the type (kind) and its name.
-# Each type is its own stack in Setup with its own resource group; a run never touches another.
+# Template: build and roll out ONE Azure serverless workload.
+# Used only by pipelines/serverless/azure/<stack>/build-deploy.yml, one pipeline per workload type.
 # Base images come through JFrog; every login comes from the service connection's OIDC token
-# (no stored secrets). Trust: terraform/stacks/serverless/azure/azure-foundation. Infrastructure: azure-stack-setup.yml.
-
-trigger: none
-pr: none
+# (no stored secrets).
 
 parameters:
+  - name: kind
+    type: string
+  - name: workload
+    type: string
   - name: environment
     type: string
-    default: test
-    values: [test]
-  - name: kind
-    displayName: Workload type
-    type: string
-    default: job
-    values: [job, app, functions-aca, functions-premium, functions-flex]
-  - name: workload
-    displayName: Workload name (the stack's workload input)
-    type: string
-    default: artifact-reader
 
 variables:
-  - template: vars/azure-${{ parameters.environment }}.yml
+  - template: /pipelines/vars/azure-${{ parameters.environment }}.yml
   - group: jfrog-oidc-azure-${{ parameters.environment }}
   - name: KIND
     value: ${{ parameters.kind }}

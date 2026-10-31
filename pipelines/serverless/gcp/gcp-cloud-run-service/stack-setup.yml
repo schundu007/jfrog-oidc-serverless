@@ -1,0 +1,31 @@
+# Cloud Run service: plan -> approve -> apply (or destroy) terraform/stacks/serverless/gcp/gcp-cloud-run-service only.
+# The apply waits for approval on the ADO environment gcp-cloud-run-service-<environment>.
+trigger: none
+pr: none
+
+parameters:
+  - name: action
+    type: string
+    default: apply
+    values: [apply, destroy]
+  - name: environment
+    type: string
+    default: test
+    values: [test]
+  # The stack's variables as JSON, as the Infrastructure page saves them (.console/setup/<env>/gcp-cloud-run-service.tfvars.json).
+  - name: inputs
+    type: object
+    default: {}
+  # Where state lives: this cloud's foundation inputs it derives from.
+  - name: state
+    type: object
+    default: {}
+
+extends:
+  template: /pipelines/templates/gcp-stack-setup.yml
+  parameters:
+    stack: gcp-cloud-run-service
+    action: ${{ parameters.action }}
+    environment: ${{ parameters.environment }}
+    inputs: ${{ parameters.inputs }}
+    state: ${{ parameters.state }}

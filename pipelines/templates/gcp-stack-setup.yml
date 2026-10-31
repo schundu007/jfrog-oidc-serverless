@@ -1,37 +1,24 @@
-# Plan -> apply (or destroy) for one GCP stack in terraform/stacks: one Serverless workload type per run (gcp-cloud-run, gcp-cloud-run-service, gcp-cloud-run-function), each its own stack. The cluster stacks keep local state and run from the Infrastructure page.
-# Infrastructure only (test targets); JFrog OIDC for workloads is <cloud>-workload-onboard.yml.
+# Template: plan -> apply (or destroy) for ONE Google Cloud serverless stack.
+# Used only by pipelines/serverless/gcp/<stack>/stack-setup.yml, one pipeline per stack.
 # The setup service connection's OIDC token gives a JFrog admin token (mapping
 # ado-setup) for the run only, and GCP through WIF. The apply stage targets the ADO
 # environment "<stack>-<environment>" (approval) and applies exactly the reviewed plan file;
 # action=destroy plans `terraform plan -destroy` and applies that the same way.
 
-trigger: none
-pr: none
-
 parameters:
   - name: stack
     type: string
-    default: gcp-cloud-run
-    values: [gcp-cloud-run, gcp-cloud-run-service, gcp-cloud-run-function]
   - name: action
     type: string
-    default: apply
-    values: [apply, destroy]
   - name: environment
     type: string
-    default: test
-    values: [test]
-  # The stack's variables as JSON, as the Infrastructure page saves them (.console/setup/<env>/<stack>.tfvars.json).
   - name: inputs
     type: object
-    default: {}
-  # Where state lives: this cloud's foundation inputs it derives from (gcp_project_id; azure_subscription_id, ado_org, state_resource_group).
   - name: state
     type: object
-    default: {}
 
 variables:
-  - template: vars/gcp-${{ parameters.environment }}.yml
+  - template: /pipelines/vars/gcp-${{ parameters.environment }}.yml
   - group: jfrog-oidc-gcp-${{ parameters.environment }}
   - name: PLAN_FILE
     value: $(Pipeline.Workspace)/plan/tfplan

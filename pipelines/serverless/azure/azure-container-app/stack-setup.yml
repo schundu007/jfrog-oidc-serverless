@@ -1,0 +1,31 @@
+# Container App: plan -> approve -> apply (or destroy) terraform/stacks/serverless/azure/azure-container-app only.
+# The apply waits for approval on the ADO environment azure-container-app-<environment>.
+trigger: none
+pr: none
+
+parameters:
+  - name: action
+    type: string
+    default: apply
+    values: [apply, destroy]
+  - name: environment
+    type: string
+    default: test
+    values: [test]
+  # The stack's variables as JSON, as the Infrastructure page saves them (.console/setup/<env>/azure-container-app.tfvars.json).
+  - name: inputs
+    type: object
+    default: {}
+  # Where state lives: this cloud's foundation inputs it derives from.
+  - name: state
+    type: object
+    default: {}
+
+extends:
+  template: /pipelines/templates/azure-stack-setup.yml
+  parameters:
+    stack: azure-container-app
+    action: ${{ parameters.action }}
+    environment: ${{ parameters.environment }}
+    inputs: ${{ parameters.inputs }}
+    state: ${{ parameters.state }}

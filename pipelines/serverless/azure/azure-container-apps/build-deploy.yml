@@ -1,0 +1,20 @@
+# Container Apps job: build and roll out this one workload (stack azure-container-apps). Nothing else is touched.
+trigger: none
+pr: none
+
+parameters:
+  - name: environment
+    type: string
+    default: test
+    values: [test]
+  - name: workload
+    displayName: Workload name (the stack's workload input)
+    type: string
+    default: artifact-reader
+
+extends:
+  template: /pipelines/templates/azure-build-deploy.yml
+  parameters:
+    kind: job
+    workload: ${{ parameters.workload }}
+    environment: ${{ parameters.environment }}

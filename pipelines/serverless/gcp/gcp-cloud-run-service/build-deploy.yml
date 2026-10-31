@@ -1,0 +1,20 @@
+# Cloud Run service: build and roll out this one workload (stack gcp-cloud-run-service). Nothing else is touched.
+trigger: none
+pr: none
+
+parameters:
+  - name: environment
+    type: string
+    default: test
+    values: [test]
+  - name: workload
+    displayName: Workload name (the stack's workload input)
+    type: string
+    default: cr-svc-jfrog
+
+extends:
+  template: /pipelines/templates/gcp-build-deploy.yml
+  parameters:
+    kind: service
+    workload: ${{ parameters.workload }}
+    environment: ${{ parameters.environment }}

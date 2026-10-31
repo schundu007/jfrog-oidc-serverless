@@ -43,16 +43,16 @@ CATALOGUE = (
      "next": "Deploy the workload stacks you need, each on its own."},
     {"id": "gcp-cloud-run", "kind": "Serverless", "group": "Google Cloud", "title": "Cloud Run job",
      "about": "The job's own service account, and the Cloud Run job itself once deploy_job is on.",
-     "next": "Run gcp-build-deploy (kind job) to push the first image, then set job_image, turn on "
+     "next": "Run this stack's build-deploy pipeline to push the first image, then set job_image, turn on "
              "deploy_job (Inputs) and deploy again."},
     {"id": "gcp-cloud-run-service", "kind": "Serverless", "group": "Google Cloud", "title": "Cloud Run service",
      "about": "The service's own service account, and the Cloud Run service itself once deploy_service is on.",
-     "next": "Run gcp-build-deploy (kind service) to push the first image, then set service_image, turn on "
+     "next": "Run this stack's build-deploy pipeline to push the first image, then set service_image, turn on "
              "deploy_service (Inputs) and deploy again."},
     {"id": "gcp-cloud-run-function", "kind": "Serverless", "group": "Google Cloud", "title": "Cloud Run function",
      "about": "The function's own service account and source bucket, and the function itself once "
               "deploy_function is on.",
-     "next": "Run gcp-build-deploy (kind function) to upload the first source package, then set "
+     "next": "Run this stack's build-deploy pipeline to upload the first source package, then set "
              "source_object, turn on deploy_function (Inputs) and deploy again."},
     {"id": "azure-foundation", "kind": "Serverless", "group": "Azure", "title": "Foundation (ADO trust, state)",
      "about": "Lets the Azure pipelines sign in to Azure and JFrog with their OIDC token, with no "
@@ -63,27 +63,27 @@ CATALOGUE = (
     {"id": "azure-container-apps", "kind": "Serverless", "group": "Azure", "title": "Container Apps job",
      "about": "Its own resource group with a container registry, the job's identity, a Container Apps "
               "environment, and the job itself once deploy_job is on.",
-     "next": "Run azure-build-deploy (kind job) to push the first image, then set job_image, turn on "
+     "next": "Run this stack's build-deploy pipeline to push the first image, then set job_image, turn on "
              "deploy_job (Inputs) and deploy again."},
     {"id": "azure-container-app", "kind": "Serverless", "group": "Azure", "title": "Container App",
      "about": "Its own resource group with a container registry, the app's identity, a Container Apps "
               "environment, and the container app itself once deploy_app is on.",
-     "next": "Run azure-build-deploy (kind app) to push the first image, then set app_image, turn on "
+     "next": "Run this stack's build-deploy pipeline to push the first image, then set app_image, turn on "
              "deploy_app (Inputs) and deploy again."},
     {"id": "azure-functions-aca", "kind": "Serverless", "group": "Azure", "title": "Functions on Container Apps",
      "about": "Its own resource group with a container registry, the function's identity, a Container "
               "Apps environment, host storage, and the function app (kind functionapp) once "
               "deploy_function is on.",
-     "next": "Run azure-build-deploy (kind functions-aca) to push the first image, then set "
+     "next": "Run this stack's build-deploy pipeline to push the first image, then set "
              "function_image, turn on deploy_function (Inputs) and deploy again."},
     {"id": "azure-functions-premium", "kind": "Serverless", "group": "Azure", "title": "Functions Premium / Dedicated",
      "about": "Its own resource group with the function's identity, host storage, an Elastic Premium "
               "(or Dedicated) plan and the function app.",
-     "next": "Run azure-build-deploy (kind functions-premium) to deploy the code."},
+     "next": "Run this stack's build-deploy pipeline to deploy the code."},
     {"id": "azure-functions-flex", "kind": "Serverless", "group": "Azure", "title": "Functions Flex Consumption",
      "about": "Its own resource group with the function's identity, host storage with its deployment "
               "container, a Flex Consumption plan and the function app.",
-     "next": "Run azure-build-deploy (kind functions-flex) to deploy the code."},
+     "next": "Run this stack's build-deploy pipeline to deploy the code."},
     {"id": "gke-cluster", "kind": "Kubernetes", "group": "Google Cloud", "title": "GKE cluster",
      "about": "A test GKE cluster and node pool with its OIDC issuer on.",
      "next": "Run the credentials command, then use the cluster from the Kubernetes console."},

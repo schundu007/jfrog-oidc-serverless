@@ -3,7 +3,7 @@
 # identity; JFrog holds the artifacts. No stored credentials anywhere.
 #
 # Run by the ADO setup pipeline (pipelines/gcp-setup.yml). The build pipeline
-# (pipelines/gcp-build-deploy.yml) pushes the image and rolls it out, so the job
+# (pipelines/serverless/gcp/gcp-cloud-run/build-deploy.yml) pushes the image and rolls it out, so the job
 # image is ignored here after creation.
 #
 #   apply 1 (deploy_job = false): the image repository, the service account.
