@@ -9,6 +9,7 @@ const PAGE = 25;
 const STATE = {
   approval: ["warn", "Awaiting approval"], running: ["info", "Running…"], attention: ["fail", "Needs attention"], not_proven: ["fail", "OIDC not proven"],
   unverified: ["warn", "Not verified"], working: ["ok", "OIDC working"], not_installed: ["muted", "Not set up"], unread: ["muted", "Not read"],
+  missing: ["fail", "Missing"],
 };
 const STATS = [["", "All clusters"], ["working", "OIDC working"], ["attention", "Needs attention"], ["not_proven", "Not proven"],
   ["approval", "Awaiting approval"], ["not_installed", "Not set up"]];
@@ -68,6 +69,13 @@ async function loadFleet() {
   try { fleet = await api("/api/fleet"); } catch (err) { fleet = { clusters: [], counts: {}, error: err.message }; }
   fleetLoading = false;
   render();
+  // What the cloud says now: a cluster that no longer exists is Missing, whatever its last run proved.
+  const shown = fleet;
+  try {
+    const { clusters } = await api("/api/fleet/live");
+    for (const r of shown.clusters) if (clusters[r.name] === "missing") r.state = "missing";
+    if (fleet === shown) render();
+  } catch { /* the last-read states stay */ }
 }
 
 function matches(r) {

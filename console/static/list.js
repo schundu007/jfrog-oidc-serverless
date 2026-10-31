@@ -2,7 +2,7 @@
 // onboarded, with the last run. The whole row opens the workload; "⋯" holds Delete (saved only: an
 // onboarded config lives in git, where only offboarding removes it).
 
-import { $, api, h, fill, ofCloud, href, statusIcon, statusText, template, menu, ago, dur, runDuration, stamp,
+import { $, api, h, fill, ofCloud, href, CLOUD, statusIcon, statusText, template, menu, ago, dur, runDuration, stamp,
   status as setStatus } from "./core.js";
 import { kindLabel } from "./configure.js";
 
@@ -15,12 +15,20 @@ function lastRunText(run, snap) {
   return [statusText(run.status), ago(run.created), took].filter(Boolean).join(" · ");
 }
 
+// What the cloud says now: the workload exists and carries the JFrog settings, or not.
+const LIVE = { wired: ["succeeded", "Wired"], not_wired: ["warn", "Not wired"], missing: ["failed", "Missing"] };
+function livePill(c) {
+  if (!c.live) return h("span", { class: "pill pill-onboarded", text: "Checking" });
+  const [tone, text] = LIVE[c.live.state] || ["notrun", "Unknown"];
+  return h("span", { class: `pill pill-onboarded pill-${tone}`, title: c.live.detail || null, text });
+}
+
 function row(c) {
   const open = href.workload(c.name);
   const tr = h("tr", { class: "row-link", "data-name": c.name },
     h("td", { class: "col-icon" }, statusIcon(c.run ? c.run.status : "notrun", c.run ? `Last run ${statusText(c.run.status)}` : "No runs")),
     h("th", { scope: "row" }, h("a", { href: open, text: c.name }),
-      c.onboarded ? h("span", { class: "pill pill-onboarded", title: c.source === "git" ? "Onboarded; configuration read from git" : "Onboarded", text: "Onboarded" }) : null),
+      livePill(c)),
     h("td", { text: kindLabel(ls.schema, c.kind) }),
     h("td", { class: "mono small", text: c.workload || "—" }),
     h("td", {}, c.identity ? h("span", { class: "mono small", text: c.identity }) : h("span", { class: "muted small", text: "not discovered" })),
@@ -53,6 +61,10 @@ async function load() {
   const mine = runs.filter((r) => ofCloud(r.kind));
   ls.rows = configs.filter((c) => ofCloud(c.kind)).map((c) => ({ ...c, run: mine.find((r) => r.name === c.name) || null, snap: null }));
   render();
+  api(`/api/live?cloud=${CLOUD}`).then(({ status }) => {
+    for (const c of ls.rows) c.live = status[c.name] || { state: "unknown" };
+    render();
+  }).catch((e) => { for (const c of ls.rows) c.live = { state: "unknown", detail: e.message }; render(); });
   // Durations need each last run's steps.
   await Promise.all(ls.rows.filter((c) => c.run).map(async (c) => {
     try { c.snap = await api(`/api/runs/${encodeURIComponent(c.run.id)}`); } catch { /* the row keeps status and time */ }

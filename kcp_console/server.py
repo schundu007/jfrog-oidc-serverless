@@ -126,6 +126,36 @@ class KcpServer:
         rows = fleet.rows(configs, statuses, self.runs.list())
         return {"clusters": rows, "counts": fleet.counts(rows), "platforms": fleet.platforms()}
 
+    def fleet_live(self) -> dict:
+        """Read-only: does each saved cluster still exist? {name: present|missing|unknown}.
+        One az aks list per subscription and one gcloud container clusters list per project."""
+        sh, lists, out = self.shell(), {}, {}
+
+        def listing(argv):
+            key = tuple(argv)
+            if key not in lists:
+                r = sh.run(argv, timeout=90)
+                lists[key] = {((c.get("resourceGroup") or "").lower(), c.get("name")) if argv[0] == "az"
+                              else (c.get("location"), c.get("name")) for c in r.json([]) or []} if r.ok else None
+            return lists[key]
+
+        for c in self.store.list():
+            try:
+                cl = self.config(c["name"]).get("cluster") or {}
+            except Exception:  # noqa: BLE001 - an unreadable config is just unknown
+                out[c["name"]] = "unknown"
+                continue
+            if (c.get("platform") or "aks") == "gke":
+                found = listing(["gcloud", "container", "clusters", "list", "--project", cl.get("project_id") or "-",
+                                 "--format=json"]) if cl.get("project_id") else None
+                key = (cl.get("location"), cl.get("name"))
+            else:
+                found = listing(["az", "aks", "list", "--subscription", cl.get("subscription_id"), "-o", "json"]) \
+                    if cl.get("subscription_id") else None
+                key = ((cl.get("resource_group") or "").lower(), cl.get("name"))
+            out[c["name"]] = "unknown" if found is None else ("present" if key in found else "missing")
+        return out
+
     def gke_clusters(self) -> dict:
         """The GKE clusters in every project the operator's gcloud login can see (read-only)."""
         out = platforms.gke_list(self.shell(), {(c.get("cluster") or "").lower() for c in self.store.list()})
@@ -472,6 +502,8 @@ def make_handler(console: KcpServer):
                                         "issues": model.validate(cfg), "template_issues": model.validate_template(cfg),
                                         "provider_request": model.provider_request(cfg), "mapping_request": model.mapping_request(cfg),
                                         "test_pod": model.test_pod_yaml(cfg), "provider_name": model.provider_name(cfg)})
+            if method == "GET" and parts == ["fleet", "live"]:
+                return self._json(200, {"clusters": console.fleet_live()})
             if method == "GET" and parts == ["fleet"]:
                 return self._json(200, console.fleet())
             if method == "GET" and parts == ["aks"]:

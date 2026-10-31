@@ -29,7 +29,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import inventory, model, redact
+from . import live, inventory, model, redact
 from .runner import STEPS, RunError, RunManager
 from .shell import Shell, load_fixtures
 from .sim import scenario as sc
@@ -230,6 +230,20 @@ class ConsoleServer:
         rows += [{**store_summary(cfg, name), "source": "git", "onboarded": True}
                  for name, cfg in sorted(git.items()) if name not in saved]
         return rows
+
+    def live_status(self, cloud: str) -> dict:
+        """Read-only: does each of this cloud's workloads exist and carry the JFrog settings now."""
+        git = self.delivered()
+        cfgs = []
+        for row in self.workloads():
+            if model.cloud_of(row.get("kind")) != cloud:
+                continue
+            try:
+                cfgs.append(self.store.get(row["name"]))
+            except (FileNotFoundError, StoreError):
+                if row["name"] in git:
+                    cfgs.append(git[row["name"]])
+        return live.status(cloud, cfgs, self.shell())
 
     def shell(self, on_line=None) -> Shell:
         def log(line):
@@ -456,6 +470,11 @@ def _make_handler(console: ConsoleServer):
                 return self._json(200, console.session_info())
             if parts and parts[0] == "configs":
                 return self._configs(method, parts[1:])
+            if method == "GET" and parts == ["live"]:
+                cloud = (self._query().get("cloud") or [""])[0]
+                if cloud not in CLOUDS:
+                    raise HttpError(400, "cloud must be one of " + ", ".join(CLOUDS))
+                return self._json(200, {"status": console.live_status(cloud)})
             if method == "GET" and len(parts) == 2 and parts[0] == "inventory" and parts[1] in CLOUDS:
                 q = self._query()
                 return self._inventory(parts[1], (q.get("scope") or [None])[0], (q.get("refresh") or [""])[0] == "1")
