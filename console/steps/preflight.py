@@ -40,6 +40,7 @@ GCP_PERMISSIONS_BY_KIND = {
     "gcp_run_service": ["run.services.get", "run.services.update"],
     "gcp_run_job": ["run.jobs.get", "run.jobs.update"],
     "gcp_run_function": ["cloudfunctions.functions.get", "cloudfunctions.functions.update", "run.services.update"],
+    "gcp_run_worker_pool": ["run.workerPools.get", "run.workerPools.update"],
 }
 # APIs the target itself needs (Discover and the wire step). The pull-path
 # module enables its own APIs (enable_apis = true), so those are not listed.
@@ -47,6 +48,7 @@ GCP_APIS_BY_KIND = {
     "gcp_run_service": ["run.googleapis.com"],
     "gcp_run_job": ["run.googleapis.com"],
     "gcp_run_function": ["run.googleapis.com", "cloudfunctions.googleapis.com"],
+    "gcp_run_worker_pool": ["run.googleapis.com"],
 }
 # Resource providers Terraform and the target need. Registering one is a
 # subscription-level write, so the console only shows the command.

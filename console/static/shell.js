@@ -14,7 +14,7 @@
   const CLOUDS = [
     ["Google Cloud", "gcp", [
       ["Serverless", [sl("gcp", "gcp_run_job", "Cloud Run jobs", "run"), sl("gcp", "gcp_run_service", "Cloud Run services", "run"),
-        sl("gcp", "gcp_run_function", "Cloud Run functions", "fn")]],
+        sl("gcp", "gcp_run_function", "Cloud Run functions", "fn"), sl("gcp", "gcp_run_worker_pool", "Cloud Run worker pools", "run")]],
       ["Kubernetes", [k8s("gke", "GKE clusters")]]]],
     ["Azure", "azure", [
       ["Serverless", [sl("azure", "azure_container_app_job", "Container Apps jobs", "aca"),

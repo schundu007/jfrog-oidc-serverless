@@ -20,6 +20,9 @@ OUT = {
                                                    "cloud.googleapis.com/location": "us-central1"}}}]),
     ("gcloud", "run", "jobs", "list"): json.dumps([
         {"metadata": {"name": "nightly", "labels": {"cloud.googleapis.com/location": "us-central1"}}}]),
+    # Worker pools: beta group only, v2 resource shape (no metadata; region in the resource name).
+    ("gcloud", "beta", "run", "worker-pools", "list"): json.dumps([
+        {"name": "projects/demo-nonprod-1234/locations/us-east1/workerPools/consumer"}]),
     ("gcloud", "projects", "list"): json.dumps([
         {"projectId": "demo-nonprod-1234", "name": "Demo", "lifecycleState": "ACTIVE"},
         {"projectId": "legacy-apps-5678", "name": "Legacy", "lifecycleState": "ACTIVE"},
@@ -75,7 +78,13 @@ class InventoryTests(unittest.TestCase):
                                            "jfrog_url": "https://acme.jfrog.io"})
         self.assertEqual([(w["kind"], w["name"], w["region"]) for w in res["workloads"]], [
             ("gcp_run_function", "resize", "us-central1"), ("gcp_run_job", "nightly", "us-central1"),
-            ("gcp_run_service", "orders", "europe-west1")])
+            ("gcp_run_service", "orders", "europe-west1"), ("gcp_run_worker_pool", "consumer", "us-east1")])
+
+    def test_worker_pools_skipped_quietly_without_the_beta_group(self):
+        # Older gcloud, or no beta component: services and jobs still list, and no error is shown.
+        res = inventory.run("gcp", Fake(fail={("gcloud", "beta", "run", "worker-pools", "list")}), self.repo)
+        self.assertNotIn("gcp_run_worker_pool", [w["kind"] for w in res["workloads"]])
+        self.assertEqual(res["errors"], [])
 
     def test_azure_lists_every_kind(self):
         res = inventory.run("azure", Fake(), self.repo)
@@ -88,7 +97,7 @@ class InventoryTests(unittest.TestCase):
 
     def test_list_failure_is_reported_not_raised(self):
         res = inventory.run("gcp", Fake(fail={("gcloud", "run", "jobs", "list")}), self.repo)
-        self.assertEqual([w["name"] for w in res["workloads"]], ["resize", "orders"])
+        self.assertEqual([w["name"] for w in res["workloads"]], ["resize", "orders", "consumer"])
         self.assertEqual(len(res["errors"]), 1)
 
     def test_scopes_and_picking_another_project(self):
@@ -108,7 +117,7 @@ class InventoryTests(unittest.TestCase):
     def test_scopes_without_workloads_are_hidden_unless_picked(self):
         class Empty(Fake):
             def _replay_cmd(self, argv):
-                if "legacy-apps-5678" in argv and argv[:2] == ["gcloud", "run"]:
+                if "legacy-apps-5678" in argv and (argv[:2] == ["gcloud", "run"] or argv[:3] == ["gcloud", "beta", "run"]):
                     self.calls.append(list(argv))
                     return Result(argv, 0, "[]", "", 0.0)
                 if argv[:3] == ["az", "resource", "list"] and SUB2 in argv:
@@ -135,7 +144,7 @@ class InventoryTests(unittest.TestCase):
             "project": "demo-nonprod-1234", "region": "europe-west1", "name": "orders"}}}))
         res = inventory.run("gcp", Fake(), self.repo, configs=[saved])
         self.assertEqual({w["name"]: w["onboarded"] for w in res["workloads"]},
-                         {"resize": False, "nightly": True, "orders": True})
+                         {"resize": False, "nightly": True, "orders": True, "consumer": False})
         self.assertEqual(res["workloads"][0]["name"], "resize")   # not yet onboarded first
 
     def test_other_tenant_login_failure_is_one_clear_line(self):

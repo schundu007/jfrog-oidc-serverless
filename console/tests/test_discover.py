@@ -53,6 +53,13 @@ class AllKindsTests(unittest.TestCase):
         res = self.check(gcp_cfg("gcp_run_job", "nightly"), "gcp_run_job", "gcp_run_job", "104857600000000000002")
         self.assertEqual(res["facts"]["service_account"], "nightly-batch@demo-nonprod-1234.iam.gserviceaccount.com")
 
+    def test_gcp_run_worker_pool(self):
+        # v2 shape from the beta group: template.serviceAccount, template.containers.
+        res = self.check(gcp_cfg("gcp_run_worker_pool", "consumer"), "gcp_run_worker_pool", "gcp_run_worker_pool",
+                         "104857600000000000004")
+        self.assertEqual(res["facts"]["service_account"], "pool-consumer@demo-nonprod-1234.iam.gserviceaccount.com")
+        self.assertTrue(res["facts"]["image"].endswith("consumer:1.0"))
+
     def test_gcp_run_function(self):
         res = self.check(gcp_cfg("gcp_run_function", "webhook"), "gcp_run_function", "gcp_run_function", "104857600000000000003")
         self.assertEqual(res["facts"]["run_service"], "webhook")
@@ -111,6 +118,13 @@ class CorrectionTests(unittest.TestCase):
         self.assertEqual(res["errors"], [])
         self.assertEqual(res["kind"], "gcp_run_job")
         self.assertEqual(res["facts"]["mapping_subject"], "104857600000000000002")
+
+    def test_worker_pool_type_on_a_service_is_corrected(self):
+        res, sh = run(gcp_cfg("gcp_run_worker_pool", "orders"), "gcp_worker_pool_is_service")
+        self.assertEqual(sh.misses, [])
+        self.assertEqual(res["errors"], [])
+        self.assertEqual(res["kind"], "gcp_run_service")
+        self.assertEqual(res["facts"]["mapping_subject"], "104857600000000000001")
 
     def test_cloud_run_service_managed_by_functions(self):
         res, sh = run(gcp_cfg("gcp_run_service", "webhook"), "gcp_service_is_function")

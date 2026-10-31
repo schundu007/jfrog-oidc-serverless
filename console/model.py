@@ -14,6 +14,7 @@ KINDS = {
     "gcp_run_service": {"cloud": "gcp", "label": "Cloud Run service"},
     "gcp_run_job": {"cloud": "gcp", "label": "Cloud Run job"},
     "gcp_run_function": {"cloud": "gcp", "label": "Cloud Run function"},
+    "gcp_run_worker_pool": {"cloud": "gcp", "label": "Cloud Run worker pool"},
     "azure_container_app": {"cloud": "azure", "label": "Container App"},
     "azure_container_app_job": {"cloud": "azure", "label": "Container Apps job"},
     "azure_functions_aca": {"cloud": "azure", "label": "Functions on Container Apps"},

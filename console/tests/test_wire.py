@@ -114,6 +114,20 @@ class GcpTests(unittest.TestCase):
         plan = wire.Wire(gcp_cfg("gcp_run_job", "nightly"), sh, GCP_OUT).plan()
         self.assertEqual(plan["commands"][0][:4], ["gcloud", "run", "jobs", "update"])
 
+    def test_worker_pool_v2_shape_through_the_beta_group(self):
+        # Worker pools: gcloud beta only; described in the v2 shape (template.containers, template.serviceAccount).
+        pool = json.dumps({"name": f"projects/{P}/locations/{R}/workerPools/consumer",
+                           "template": {"serviceAccount": "old@p.iam.gserviceaccount.com",
+                                        "containers": [{"image": "x", "env": [{"name": "OTHER", "value": "keep"}]}]}})
+        base = ["gcloud", "beta", "run", "worker-pools"]
+        sh = Shell(mode="replay", fixtures=[{"argv": [*base, "describe", "consumer", "--region", R, "--project", P,
+                                                      "--format=json"], "stdout": pool}])
+        plan = wire.Wire(gcp_cfg("gcp_run_worker_pool", "consumer"), sh, GCP_OUT).plan()
+        self.assertEqual(plan["commands"], [[*base, "update", "consumer", "--region", R, "--project", P,
+                                             "--update-env-vars=^@^" + "@".join(f"{k}={v}" for k, v in sorted(GCP_ENV.items())),
+                                             "--quiet"]])
+        self.assertEqual({d["setting"] for d in plan["diff"]}, set(GCP_ENV))
+
     def test_function_wires_underlying_service_and_notes_index_url(self):
         sh = Shell(mode="replay", fixtures=[describe_svc([], name="webhook")])
         plan = wire.Wire(gcp_cfg("gcp_run_function", "webhook"), sh, GCP_OUT).plan()

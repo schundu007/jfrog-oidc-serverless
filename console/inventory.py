@@ -21,6 +21,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from . import gcprun
 from .shell import Shell
 
 DEFAULT_REGION = "us-central1"
@@ -84,8 +85,8 @@ AZURE_WORKLOADS = ("[?type=='Microsoft.App/containerApps' || type=='Microsoft.Ap
 
 
 def _gcp_has_workloads(sh: Shell, project: str) -> bool:
-    for what in ("services", "jobs"):
-        res = sh.run(["gcloud", "run", what, "list", "--project", project, "--format=json"], timeout=90)
+    for what in gcprun.COLLECTIONS:
+        res = sh.run([*gcprun.group(what), "list", "--project", project, "--format=json"], timeout=90)
         if res.ok and res.json():
             return True
     return False
@@ -112,25 +113,28 @@ def gcp(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, list]:
     if not project:
         errors.append("gcloud has no project set (gcloud config set project <id>)")
         return {"project": "", "region": region}, out
-    for what in ("services", "jobs"):
-        res = sh.run(["gcloud", "run", what, "list", "--project", project, "--format=json"], timeout=90)
+    for what in gcprun.COLLECTIONS:
+        res = sh.run([*gcprun.group(what), "list", "--project", project, "--format=json"], timeout=90)
         if not res.ok:
+            if what == "worker-pools":   # beta-only group: older gcloud, or the beta component missing
+                continue
             if API_DISABLED.search(res.error_text(2000)):
                 errors.append(f"Cloud Run is not enabled in {project}: nothing to onboard there")
                 break
             errors.append(f"gcloud run {what} list: {_first_error(res)}")
             continue
         for item in res.json() or []:
-            md = item.get("metadata") or {}
-            labels = md.get("labels") or {}
+            labels = gcprun.labels(item)
             if what == "jobs":
                 kind = "gcp_run_job"
+            elif what == "worker-pools":
+                kind = "gcp_run_worker_pool"
             elif labels.get("goog-managed-by") == "cloudfunctions":
                 kind = "gcp_run_function"
             else:
                 kind = "gcp_run_service"
-            out.append({"kind": kind, "name": md.get("name", ""), "project": project,
-                        "region": labels.get(LOCATION, region), "supported": True})
+            name, where = gcprun.name_region(item, region)
+            out.append({"kind": kind, "name": name, "project": project, "region": where, "supported": True})
     return {"project": project, "region": region}, out
 
 

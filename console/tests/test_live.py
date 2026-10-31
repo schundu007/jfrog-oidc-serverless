@@ -36,6 +36,17 @@ class GcpLive(unittest.TestCase):
         self.assertEqual({k: v["state"] for k, v in got.items()},
                          {"a": "wired", "b": "not_wired", "gone": "missing", "fn": "wired"})
 
+    def test_worker_pool_from_the_beta_group_in_the_v2_shape(self):
+        pool = {"name": "projects/p1/locations/us-central1/workerPools/consumer",
+                "template": {"containers": [{"env": [{"name": "JFROG_OIDC_PROVIDER", "value": "v"}]}]}}
+        sh = Shell(mode="replay", fixtures=[
+            fx(["gcloud", "run", "services", "list", "--project", "p1", "--format=json"], []),
+            fx(["gcloud", "run", "jobs", "list", "--project", "p1", "--format=json"], []),
+            fx(["gcloud", "beta", "run", "worker-pools", "list", "--project", "p1", "--format=json"], [pool]),
+        ])
+        got = live.status("gcp", [gcp_cfg("consumer", "gcp_run_worker_pool"), gcp_cfg("other", "gcp_run_worker_pool")], sh)
+        self.assertEqual({k: v["state"] for k, v in got.items()}, {"consumer": "wired", "other": "missing"})
+
     def test_read_failure_is_unknown_not_missing(self):
         sh = Shell(mode="replay", fixtures=[fx(["gcloud", "run", "jobs", "list", "--project", "p1", "--format=json"], [], rc=1)])
         got = live.status("gcp", [gcp_cfg("a", "gcp_run_job")], sh)

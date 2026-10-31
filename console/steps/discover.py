@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 import time
 
-from .. import model
+from .. import gcprun, model
 from ..shell import Shell
 from .aws import AwsDiscover
 from .openshift import OpenShiftDiscover
@@ -121,6 +121,22 @@ class Discover(AwsDiscover, OpenShiftDiscover):
                 return self._gcp_from_service(project, svc)
             return self._gcp_from_function(project, fn)
 
+        if self.kind == "gcp_run_worker_pool":
+            res = self._gcp_worker_pool_lookup(project, region, name)
+            if res.ok:
+                return self._gcp_from_worker_pool(project, res.json() or {})
+            if not NOT_FOUND.search(res.error_text()):
+                return self._gcp_lookup_failed(res, f"Cloud Run worker pool '{name}'")
+            svc = self._gcp_service(project, region, name, quiet=True)
+            if svc is not None:
+                self.correct("gcp_run_service", "no worker pool by that name, but a Cloud Run service exists")
+                return self._gcp_service_or_function(project, region, svc)
+            job = self._gcp_job_lookup(project, region, name)
+            if job.ok:
+                self.correct("gcp_run_job", "no worker pool by that name, but a Cloud Run job exists")
+                return self._gcp_from_job(project, job.json() or {})
+            return self._gcp_lookup_failed(res, f"Cloud Run worker pool '{name}'")
+
         if self.kind == "gcp_run_job":
             res = self._gcp_job_lookup(project, region, name)
             if res.ok:
@@ -133,11 +149,15 @@ class Discover(AwsDiscover, OpenShiftDiscover):
 
         svc = self._gcp_service(project, region, name, quiet=True)
         if svc is None:
-            # Not a service: the same name may be a job (the type was picked wrong).
+            # Not a service: the same name may be a job or a worker pool (the type was picked wrong).
             job = self._gcp_job_lookup(project, region, name)
             if job.ok:
                 self.correct("gcp_run_job", "no service by that name, but a Cloud Run job exists")
                 return self._gcp_from_job(project, job.json() or {})
+            pool = self._gcp_worker_pool_lookup(project, region, name)
+            if pool.ok:
+                self.correct("gcp_run_worker_pool", "no service by that name, but a Cloud Run worker pool exists")
+                return self._gcp_from_worker_pool(project, pool.json() or {})
             self._gcp_service(project, region, name)   # records why the service lookup failed
             return
         return self._gcp_service_or_function(project, region, svc)
@@ -148,6 +168,15 @@ class Discover(AwsDiscover, OpenShiftDiscover):
 
     def _gcp_from_job(self, project, job):
         spec = _dig(job, "spec", "template", "spec", "template", "spec", default={})
+        self.facts["image"] = _dig(spec, "containers", 0, "image")
+        return self._gcp_identity(project, spec.get("serviceAccountName"))
+
+    def _gcp_worker_pool_lookup(self, project, region, name):
+        return self.sh.run([*gcprun.group("worker-pools"), "describe", name, "--region", region, "--project", project,
+                            "--format=json"], timeout=90)
+
+    def _gcp_from_worker_pool(self, project, pool):
+        spec = gcprun.pod_spec(pool, "worker-pools")
         self.facts["image"] = _dig(spec, "containers", 0, "image")
         return self._gcp_identity(project, spec.get("serviceAccountName"))
 

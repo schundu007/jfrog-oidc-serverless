@@ -1,6 +1,6 @@
 // Setup: deploy and destroy test infrastructure. Check reads the stack's outputs; Deploy and Destroy
 // plan first, show the plan, and run it only after Approve (destroy also needs the stack name typed).
-import { $, api, h, hasToken, setToken, statusPill, flyout, closeFlyout, armed } from "/serverless/static/core.js";
+import { $, api, h, hasToken, setToken, statusPill, flyout, closeFlyout, armed, help } from "/serverless/static/core.js";
 import { logBox as tableLog } from "/serverless/static/logview.js";
 
 const POLL_MS = 1000;
@@ -41,16 +41,12 @@ function stackStatus(s) {
   // Its state lives in the foundation: with the foundation missing, it cannot be deployed.
   if (!s.status) return statusPill("notrun", s.needs?.length ? "Not deployed" : "Checking…");
   if (s.status.deployed) return statusPill("succeeded", "Deployed");
-  // Deleted outside the console, validated with the cloud: the evidence is the tooltip.
+  // Deleted outside the console, validated with the cloud: the evidence is behind the row's "?".
   if (s.status.deleted) {
-    const pill = partlyDeleted(s) ? statusPill("waiting_approval", "Partly deleted") : statusPill("notrun", "Deleted");
-    pill.title = s.status.deleted;
-    return pill;
+    return partlyDeleted(s) ? statusPill("waiting_approval", "Partly deleted") : statusPill("notrun", "Deleted");
   }
-  // A status read that failed (e.g. no state bucket yet) also means nothing is deployed; the reason is the tooltip.
-  const pill = statusPill("notrun", "Not deployed");
-  if (s.status.error) pill.title = s.status.error;
-  return pill;
+  // A status read that failed (e.g. no state bucket yet) also means nothing is deployed; the reason is behind the "?".
+  return statusPill("notrun", "Not deployed");
 }
 
 // Readable names for the stacks' outputs; the Terraform name stays as the row's tooltip.
@@ -226,19 +222,7 @@ async function editInputs(stack) {
   catch (e) { fill(panel.status, statusPill("failed", e.message)); }
 }
 
-// Scroll to a stack's row and flash it: where a warning's link goes.
-function goTo(id) {
-  const tr = document.getElementById(`stack-${id}`);
-  if (!tr) return;
-  tr.scrollIntoView({ behavior: "smooth", block: "center" });
-  tr.classList.remove("setup-flash");
-  void tr.offsetWidth;
-  tr.classList.add("setup-flash");
-}
-
 const titleOf = (id) => byId[id] ? byId[id].title : id;
-const linkTo = (id) => h("button", { type: "button", class: "link", text: titleOf(id), onclick: () => goTo(id) });
-const joinLinks = (ids) => ids.flatMap((id, i) => (i ? [", ", linkTo(id)] : [linkTo(id)]));
 const ACTION_NAME = { status: "State read", "plan-apply": "Deploy plan", "plan-destroy": "Destroy plan", apply: "Apply", forget: "Forget state" };
 
 // Terraform's error, cut to its point: no "terraform x failed (exit 1): Error:" prefix, one short line.
@@ -252,24 +236,19 @@ function brief(text, max = 140) {
 // already explains it.
 const partlyDeleted = (s) => Boolean(s.status?.deleted && Object.keys(s.status.outputs || {}).length);
 
+// What stops or failed this stack, as plain sentences: shown only behind the circled "?" next to its
+// status, never as a banner. A failed state read is left out when the missing foundation explains it.
 function warnings(s) {
   const out = [];
-  if (partlyDeleted(s) && !s.busy && !s.plan) out.push(h("div", { class: "setup-note warn", text: s.status.deleted }));
-  if (s.needs?.length) out.push(h("div", { class: "setup-note warn" }, "Deploy ", joinLinks(s.needs), " first."));
-  if (s.dependents?.length) out.push(h("div", { class: "setup-note warn" }, "Destroy ", joinLinks(s.dependents), " first."));
-  const failed = s.failed && !s.busy && !(s.failed.action === "status" && s.needs?.length) ? s.failed : null;
-  if (failed) {
-    const log = h("button", { type: "button", class: "link", text: "Log" });
-    log.onclick = () => follow(s, failed, flyout(`${s.group} · ${s.title}: ${ACTION_NAME[failed.action] || failed.action}`));
-    // Forget needs the name typed: it is offered in the log's drawer, where the cause is explained.
-    const offersForget = failed.next?.actions?.some((a) => a.action === "forget");
-    out.push(h("div", { class: "setup-note fail", title: failed.next?.cause || failed.error || "" },
-      `${ACTION_NAME[failed.action] || "Last run"} failed: ${brief(failed.error) || "see the log"} `,
-      log, nextActions(s, failed.next, { withForget: false }),
-      offersForget ? h("span", { class: "small", text: " Forget state is in the log." }) : null));
-  }
+  if (s.status?.deleted && !s.busy && !s.plan) out.push(s.status.deleted);
+  else if (s.status?.error && !s.needs?.length) out.push(s.status.error);
+  if (s.needs?.length) out.push(`Deploy ${s.needs.map(titleOf).join(", ")} first.`);
+  if (s.dependents?.length) out.push(`Destroy ${s.dependents.map(titleOf).join(", ")} first.`);
+  const failed = lastFailure(s);
+  if (failed) out.push(`${ACTION_NAME[failed.action] || "Last run"} failed: ${brief(failed.error) || "see the log"}`);
   return out;
 }
+const lastFailure = (s) => (s.failed && !s.busy && !(s.failed.action === "status" && s.needs?.length) ? s.failed : null);
 
 function row(s) {
   const blockedDestroy = s.dependents?.length ? `Destroy ${s.dependents.map(titleOf).join(", ")} first` : "";
@@ -285,25 +264,28 @@ function row(s) {
   }
   const blockedDeploy = s.needs?.length ? `Deploy ${s.needs.map(titleOf).join(", ")} first` : "";
   const notes = warnings(s);
-  const main = h("tr", { id: `stack-${s.id}`, class: notes.length ? "has-notes" : "" },
+  // A failed run keeps its log one click away; what to do next is in that log's drawer.
+  const failed = lastFailure(s);
+  const log = failed ? h("button", { type: "button", class: "secondary", text: "Log",
+    onclick: () => follow(s, failed, flyout(`${s.group} · ${s.title}: ${ACTION_NAME[failed.action] || failed.action}`)) }) : null;
+  return h("tr", { id: `stack-${s.id}` },
     h("td", { title: s.dir }, h("div", { class: "stack-name" }, iconEl(STACK_ICON[s.id], "stack-icon"),
       h("div", {}, h("b", { text: s.title }), h("div", { class: "stack-id", text: s.id })))),
-    h("td", {}, stackStatus(s)),
+    h("td", {}, h("div", { class: "stack-status" }, stackStatus(s), notes.length ? help(notes.join(" ")) : null)),
     h("td", {}, h("div", { class: "setup-row-actions" },
       progress,
       plan,
+      log,
       h("button", { type: "button", class: "secondary", text: "Inputs", onclick: () => editInputs(s) }),
       h("button", { type: "button", class: "primary", text: "Deploy", disabled: s.busy || !!blockedDeploy, title: blockedDeploy,
         onclick: () => run(s, "plan-apply") }),
       destroy)));
-  // Warnings get their own full-width line under the row, so the row keeps one height.
-  return notes.length ? [main, h("tr", { class: "setup-notes" }, h("td", { colspan: 3 }, notes))] : main;
 }
 
 let byId = {};
 
 // Each stack's service icon (the sidebar's), and each cloud's logo: constant SVG from shell.js.
-const STACK_ICON = { "gcp-foundation": "boot", "azure-foundation": "boot", "gcp-cloud-run": "run", "gcp-cloud-run-service": "run",
+const STACK_ICON = { "gcp-foundation": "boot", "azure-foundation": "boot", "gcp-cloud-run": "run", "gcp-cloud-run-service": "run", "gcp-cloud-run-worker-pool": "run",
   "gcp-cloud-run-function": "fn", "gke-cluster": "gke", "azure-container-apps": "aca", "azure-container-app": "aca",
   "azure-functions-aca": "func", "azure-functions-premium": "func", "azure-functions-flex": "func", "aks-cluster": "aks" };
 const CLOUD_ID = { "Google Cloud": "gcp", Azure: "azure" };
@@ -327,7 +309,7 @@ async function load() {
       h("div", { class: "card-head cloud-head" }, iconEl(CLOUD_ID[g], "cloud-badge"),
         h("div", { class: "cloud-title" }, h("h3", { text: g }), h("span", { class: "cloud-sub",
           text: `${list.length} stack${list.length === 1 ? "" : "s"} · ${list.filter((x) => x.status?.deployed).length} deployed` }))),
-      h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, list.flatMap(row)))))))));
+      h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, list.map(row)))))))));
   // While a job runs, keep the rows current so Running turns into its result without a reload.
   clearTimeout(load.timer);
   if (data.stacks.some((s) => s.busy)) load.timer = setTimeout(() => load().catch(() => {}), POLL_MS * 2);

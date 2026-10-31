@@ -32,6 +32,8 @@ jobs:
         APP: cloud-run-service
       ${{ if eq(parameters.kind, 'function') }}:
         APP: cloud-run-function
+      ${{ if eq(parameters.kind, 'worker-pool') }}:
+        APP: cloud-run-worker-pool
     steps:
       - checkout: self
         fetchDepth: 1

@@ -13,6 +13,7 @@ export const SECTIONS = {
   gcp_run_job: sl("gcp", "gcp_run_job", "Cloud Run jobs", "run"),
   gcp_run_service: sl("gcp", "gcp_run_service", "Cloud Run services", "run"),
   gcp_run_function: sl("gcp", "gcp_run_function", "Cloud Run functions", "fn"),
+  gcp_run_worker_pool: sl("gcp", "gcp_run_worker_pool", "Cloud Run worker pools", "run"),
   gke: k8s("gcp", "gke", "GKE clusters"),
   azure_container_app_job: sl("azure", "azure_container_app_job", "Container Apps jobs", "aca"),
   azure_container_app: sl("azure", "azure_container_app", "Container Apps", "aca"),

@@ -55,6 +55,11 @@ CATALOGUE = (
               "deploy_function is on.",
      "next": "Run this stack's build-deploy pipeline to upload the first source package, then set "
              "source_object, turn on deploy_function (Inputs) and deploy again."},
+    {"id": "gcp-cloud-run-worker-pool", "kind": "Serverless", "group": "Google Cloud", "title": "Cloud Run worker pool",
+     "about": "The worker pool's own service account, and the Cloud Run worker pool itself (always on, no "
+              "HTTP endpoint) once deploy_worker_pool is on.",
+     "next": "Run this stack's build-deploy pipeline to push the first image, then set worker_pool_image, "
+             "turn on deploy_worker_pool (Inputs) and deploy again."},
     {"id": "azure-foundation", "kind": "Serverless", "group": "Azure", "title": "CI/CD bootstrap (Entra federated credentials, Blob state backend)",
      "about": "Lets the Azure pipelines sign in to Azure and JFrog with their OIDC token, with no "
               "stored secrets: the setup identity and its federated credentials, its ADO service "

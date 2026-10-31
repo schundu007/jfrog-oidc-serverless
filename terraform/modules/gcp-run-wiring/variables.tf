@@ -7,12 +7,12 @@ variable "region" {
 }
 
 variable "kind" {
-  description = "job (Cloud Run job) or service (Cloud Run service, also the service behind a Cloud Run function)."
+  description = "job (Cloud Run job), service (Cloud Run service, also the service behind a Cloud Run function) or worker_pool (Cloud Run worker pool)."
   type        = string
 
   validation {
-    condition     = contains(["job", "service"], var.kind)
-    error_message = "kind must be job or service."
+    condition     = contains(["job", "service", "worker_pool"], var.kind)
+    error_message = "kind must be job, service or worker_pool."
   }
 }
 

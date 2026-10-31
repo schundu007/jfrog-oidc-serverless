@@ -216,7 +216,7 @@ class StackTests(unittest.TestCase):
         # The real stacks: one per workload type, each standing only on its cloud's foundation.
         types = {s["id"]: s for s in stacks.CATALOGUE if s["kind"] == "Serverless" and "foundation" not in s["id"]}
         self.assertEqual(sorted(t["title"] for t in types.values() if t["group"] == "Google Cloud"),
-                         ["Cloud Run function", "Cloud Run job", "Cloud Run service"])
+                         ["Cloud Run function", "Cloud Run job", "Cloud Run service", "Cloud Run worker pool"])
         self.assertEqual(len([t for t in types.values() if t["group"] == "Azure"]), 5)
         for sid, t in types.items():
             want = {"Google Cloud": "gcp-foundation", "Azure": "azure-foundation"}[t["group"]]

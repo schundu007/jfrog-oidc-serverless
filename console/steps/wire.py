@@ -21,7 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from .. import model, redact
+from .. import gcprun, model, redact
 from ..shell import Shell
 from .aws import AwsWire
 from .openshift import OpenShiftWire
@@ -163,18 +163,17 @@ class Wire(AwsWire, OpenShiftWire):
         return (self.d.get("run_service") or name) if self.kind == "gcp_run_function" else name
 
     def _gcp_resource(self):
-        return "jobs" if self.kind == "gcp_run_job" else "services"
+        return gcprun.RESOURCE.get(self.kind, "services")
 
     def _gcp(self, env):
         g = model.get_path(self.cfg, "target.gcp")
         loc = ["--region", g["region"], "--project", g["project"]]
-        res = self.sh.run(["gcloud", "run", self._gcp_resource(), "describe", self._gcp_name(), *loc, "--format=json"],
+        res = self.sh.run([*gcprun.group(self._gcp_resource()), "describe", self._gcp_name(), *loc, "--format=json"],
                           timeout=120)
         if not res.ok:
             raise WireError(f"could not read the target: {res.error_text(300)}")
         data = res.json() or {}
-        spec = _dig(data, "spec", "template", "spec", "template", "spec") if self.kind == "gcp_run_job" \
-            else _dig(data, "spec", "template", "spec")
+        spec = gcprun.pod_spec(data, self._gcp_resource())
         cur = {e.get("name"): e["value"] if "value" in e else "[secret reference]"
                for e in _dig(spec, "containers", 0, "env") or []}
         diff = [_entry("env", k, cur.get(k), v) for k, v in env.items()]
@@ -190,7 +189,7 @@ class Wire(AwsWire, OpenShiftWire):
             diff.insert(0, e)
             if e["action"] != "same":
                 args.append(f"--service-account={self.dedicated['id']}")
-        commands = [["gcloud", "run", self._gcp_resource(), "update", self._gcp_name(), *loc, *args, "--quiet"]] if args else []
+        commands = [[*gcprun.group(self._gcp_resource()), "update", self._gcp_name(), *loc, *args, "--quiet"]] if args else []
         return diff, commands, self._gcp_notes()
 
     def _gcp_notes(self):

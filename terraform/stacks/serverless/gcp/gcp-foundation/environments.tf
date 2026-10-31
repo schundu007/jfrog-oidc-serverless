@@ -5,7 +5,7 @@
 # The stacks with a stack-setup pipeline (serverless workloads and the test cluster). Fixed by the
 # repo, not a target input: pipelines/<kind>/gcp/<stack>/stack-setup.yml exists for each.
 locals {
-  pipeline_stacks = ["gcp-cloud-run", "gcp-cloud-run-service", "gcp-cloud-run-function", "gke-cluster"]
+  pipeline_stacks = ["gcp-cloud-run", "gcp-cloud-run-service", "gcp-cloud-run-function", "gcp-cloud-run-worker-pool", "gke-cluster"]
 }
 
 variable "ado_approvers" {

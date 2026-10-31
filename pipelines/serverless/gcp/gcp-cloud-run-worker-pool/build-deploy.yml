@@ -1,0 +1,20 @@
+# Cloud Run worker pool: build and roll out this one workload (stack gcp-cloud-run-worker-pool). Nothing else is touched.
+trigger: none
+pr: none
+
+parameters:
+  - name: environment
+    type: string
+    default: test
+    values: [test]
+  - name: workload
+    displayName: Workload name (the stack's workload input)
+    type: string
+    default: crwp-jfrog
+
+extends:
+  template: /pipelines/templates/gcp-build-deploy.yml
+  parameters:
+    kind: worker-pool
+    workload: ${{ parameters.workload }}
+    environment: ${{ parameters.environment }}

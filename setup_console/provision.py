@@ -22,6 +22,7 @@ STACKS = {
     "gcp_run_job": ("gcp-cloud-run", "job_image", "deploy_job"),
     "gcp_run_service": ("gcp-cloud-run-service", "service_image", "deploy_service"),
     "gcp_run_function": ("gcp-cloud-run-function", "source_object", "deploy_function"),
+    "gcp_run_worker_pool": ("gcp-cloud-run-worker-pool", "worker_pool_image", "deploy_worker_pool"),
     "azure_container_app_job": ("azure-container-apps", "job_image", "deploy_job"),
     "azure_container_app": ("azure-container-app", "app_image", "deploy_app"),
     "azure_functions_aca": ("azure-functions-aca", "function_image", "deploy_function"),

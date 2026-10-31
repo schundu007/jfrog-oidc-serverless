@@ -14,6 +14,7 @@ In scope:
   - `gcp_run_service`
   - `gcp_run_job`
   - `gcp_run_function`
+  - `gcp_run_worker_pool` (Cloud Run worker pool: always on, no HTTP; `gcloud beta run worker-pools`)
   - `azure_container_app`
   - `azure_functions_aca` (Functions on Container Apps)
   - `azure_functions_premium` (Premium or Dedicated, custom container)

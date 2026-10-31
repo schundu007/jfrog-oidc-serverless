@@ -3,6 +3,7 @@
 #   job       build apps/$APP (base image through JFrog), push to Artifact Registry,
 #             update the job and run it to completion
 #   service   same image build, then update the service and check it is ready
+#   worker-pool  same image build, then update the worker pool (gcloud beta: no GA group yet)
 #   function  deploy apps/$APP from source (gen2) with the jfrog_oidc client in the package;
 #             before the stack has created it, upload the first package to its source bucket
 # Every login comes from the service connection's OIDC token; nothing is stored.
@@ -53,6 +54,14 @@ case "$KIND" in
     [ "$ready" = True ] || { echo "service $WORKLOAD is not ready" >&2; exit 1; }
     echo "deployed $image"
     ;;
+  worker-pool)
+    gcloud beta run worker-pools --help >/dev/null 2>&1 || { echo "gcloud on this agent has no 'beta run worker-pools'" >&2; exit 1; }
+    build_image
+    gcloud beta run worker-pools describe "$WORKLOAD" "${loc[@]}" --format='value(name)' >/dev/null 2>&1 || first_image "Cloud Run worker pool" worker_pool_image deploy_worker_pool
+    # Only the image changes: the identity and JFrog env the console wired stay.
+    gcloud beta run worker-pools update "$WORKLOAD" --image "$image" "${loc[@]}" --quiet
+    echo "deployed $image"
+    ;;
   function)
     src=$(mktemp -d)
     cp "apps/${APP}/main.py" "$src/"
@@ -98,5 +107,5 @@ print("@".join(e["name"] + "=" + e["value"] for e in env if e["name"].startswith
     done
     echo "deployed $WORKLOAD from ${BUILD_SOURCEVERSION:0:12}"
     ;;
-  *) echo "unknown KIND: $KIND (job, service or function)" >&2; exit 2 ;;
+  *) echo "unknown KIND: $KIND (job, service, worker-pool or function)" >&2; exit 2 ;;
 esac

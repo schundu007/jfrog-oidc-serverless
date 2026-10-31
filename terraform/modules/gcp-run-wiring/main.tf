@@ -1,16 +1,16 @@
-# JFrog OIDC settings on an existing Cloud Run job or service, by Terraform and nothing else.
+# JFrog OIDC settings on an existing Cloud Run job, service or worker pool, by Terraform and nothing else.
 #
 # Only the JFrog variables (and, for a dedicated identity, the service account) are ours. The
 # live resource is read at plan time and sent back with just those changed, so its image, other
 # variables, secrets and scaling stay whatever the owner deployed:
-#   service: PATCH ?updateMask=template.containers,template.serviceAccount
+#   service, worker pool: PATCH ?updateMask=template.containers,template.serviceAccount
 #   job:     PATCH of the job's input fields (jobs.patch has no updateMask), as gcloud run jobs update does
 # Destroy sends the live resource back without the JFrog variables.
 
 data "google_client_config" "this" {}
 
 locals {
-  collection = var.kind == "job" ? "jobs" : "services"
+  collection = { job = "jobs", service = "services", worker_pool = "workerPools" }[var.kind]
   path       = "/v2/projects/${var.project}/locations/${var.region}/${local.collection}/${var.name}"
 }
 
@@ -69,7 +69,7 @@ resource "restapi_object" "wiring" {
   update_path  = local.path
   destroy_path = local.path
   object_id    = var.name
-  query_string = var.kind == "service" ? "updateMask=template.containers,template.serviceAccount" : ""
+  query_string = var.kind == "job" ? "" : "updateMask=template.containers,template.serviceAccount"
 
   create_method  = "PATCH"
   update_method  = "PATCH"

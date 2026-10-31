@@ -23,7 +23,7 @@ VERBS = {"describe": "Read", "show": "Read", "get": "Read", "get-iam-policy": "R
          "version": "Checked the version of", "upgrade": "Upgraded", "install": "Installed", "uninstall": "Uninstalled"}
 
 NOUNS = {("projects",): "project", ("services",): "enabled APIs", ("run", "services"): "Cloud Run service",
-         ("run", "jobs"): "Cloud Run job", ("run", "jobs", "executions"): "Cloud Run job run",
+         ("run", "jobs"): "Cloud Run job", ("run", "worker-pools"): "Cloud Run worker pool", ("run", "jobs", "executions"): "Cloud Run job run",
          ("functions",): "Cloud Run function", ("iam", "service-accounts"): "service account",
          ("iam", "workload-identity-pools"): "workload identity pool", ("artifacts", "repositories"): "Artifact Registry repository",
          ("secrets",): "secret", ("secrets", "versions"): "secret version", ("auth",): "sign-in",
