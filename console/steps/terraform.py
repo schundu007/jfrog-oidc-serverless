@@ -69,8 +69,10 @@ def summarise(resource_changes: list) -> dict:
 
 
 class Terraform:
-    def __init__(self, sh: Shell, ws_dir, env=None, on_wait=None, lock_timeout: float = 3600.0):
+    def __init__(self, sh: Shell, ws_dir, env=None, on_wait=None, lock_timeout: float = 3600.0,
+                 init_args=(), plan_args=()):
         self.sh = sh
+        self.init_args, self.plan_args = tuple(init_args), tuple(plan_args)  # e.g. -backend-config=, -var-file=
         self.ws = Path(ws_dir)
         self.env = os.environ if env is None else env
         self.on_wait = on_wait
@@ -98,7 +100,7 @@ class Terraform:
     # -- operations -------------------------------------------------------------------
 
     def init(self):
-        return self._run("init", "-input=false", "-no-color")
+        return self._run("init", "-input=false", "-no-color", *self.init_args)
 
     def validate(self) -> dict:
         res = self._run("validate", "-json", "-no-color", ok=(0, 1))
@@ -107,12 +109,12 @@ class Terraform:
                 "diagnostics": [{"severity": d.get("severity"), "summary": d.get("summary"), "detail": d.get("detail")}
                                 for d in out.get("diagnostics") or []]}
 
-    def plan(self) -> dict:
+    def plan(self, destroy: bool = False) -> dict:
         with self._lock():
             (self.ws / PLAN_FILE).unlink(missing_ok=True)
             self.init()
             self._run("plan", f"-out={PLAN_FILE}", "-input=false", "-lock-timeout=60s", "-no-color",
-                      "-detailed-exitcode", ok=(0, 2))
+                      "-detailed-exitcode", *self.plan_args, *(("-destroy",) if destroy else ()), ok=(0, 2))
             data = self._run("show", "-json", "-no-color", PLAN_FILE, sensitive=True).json()
             if not isinstance(data, dict):
                 raise TerraformError("terraform show -json did not return JSON")

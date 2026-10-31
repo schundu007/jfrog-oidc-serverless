@@ -16,10 +16,14 @@ from console import deliver
 from console.__main__ import EXPOSE_FLAG, REPO_ROOT, check_bind
 from console.server import ConsoleServer
 from console.store import Store
+from kcp_console.jfrog import OperatorToken
 from kcp_console.server import KcpServer
 from kcp_console.store import Store as KcpStore, replay_store
 
-from .server import K8S, SERVERLESS, Portal
+from setup_console.jobs import Jobs
+from setup_console.server import SetupServer
+
+from .server import K8S, SERVERLESS, SETUP, Portal
 
 
 def main(argv=None) -> int:
@@ -61,14 +65,18 @@ def main(argv=None) -> int:
     except (OSError, ValueError) as exc:
         print(f"portal: cannot load fixtures: {exc}", file=sys.stderr)
         return 2
-    portal = Portal(serverless, k8s, host=args.host, port=args.port)
+    env_name = (delivery or {}).get("environment") or "test"
+    operator = OperatorToken()
+    setup = SetupServer(token=token, base=SETUP, env_name=env_name,
+                        jobs=Jobs(env_name=env_name, token_source=operator.get if operator.configured else None))
+    portal = Portal(serverless, k8s, host=args.host, port=args.port, setup_console=setup)
     try:
         portal.start()
     except OSError as exc:
         print(f"portal: cannot listen on {args.host}:{args.port}: {exc}", file=sys.stderr)
         return 1
     url = portal.url()
-    print(f"JFrog OIDC console (Serverless {SERVERLESS}, Kubernetes {K8S}): {url}")
+    print(f"JFrog OIDC console (Serverless {SERVERLESS}, Kubernetes {K8S}, Setup {SETUP}): {url}")
     print("Ctrl+C to stop.", flush=True)
     if not args.no_browser:
         webbrowser.open(url)

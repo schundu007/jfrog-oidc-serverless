@@ -1,4 +1,5 @@
-"""One origin for both consoles: Serverless (console/) at /serverless, Kubernetes (kcp_console/) at /k8s.
+"""One origin for the consoles: Serverless (console/) at /serverless, Kubernetes (kcp_console/) at /k8s,
+and Setup (setup_console/, test infrastructure only) at /setup.
 
 The portal holds no product logic. It removes the section prefix and hands the request to that
 console's own handler, which keeps its own Host/Origin/token checks, CSP and redaction. The two
@@ -18,8 +19,9 @@ from pathlib import Path
 from console import redact
 from console import server as oidc
 from kcp_console import server as kcp
+from setup_console import server as setup
 
-SERVERLESS, K8S = "/serverless", "/k8s"
+SERVERLESS, K8S, SETUP = "/serverless", "/k8s", "/setup"
 STATIC_DIR = Path(__file__).parent / "static"
 # Home is a read-only dashboard over both sections; every other page belongs to one section.
 STATIC = {"/": "index.html", "/dashboard.js": "dashboard.js", "/dashboard.css": "dashboard.css"}
@@ -28,7 +30,7 @@ CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; c
 
 def section_of(path: str):
     """(section, path inside it) for a portal path, or (None, path) for the portal's own pages."""
-    for prefix in (SERVERLESS, K8S):
+    for prefix in (SERVERLESS, K8S, SETUP):
         if path == prefix or path.startswith(prefix + "/"):
             return prefix, path[len(prefix):] or "/"
     return None, path
@@ -43,9 +45,11 @@ def legacy_target(path: str):
 
 
 class Portal:
-    def __init__(self, oidc_console, kcp_console, host: str = "127.0.0.1", port: int = 8760, log=sys.stderr):
-        if oidc_console.token != kcp_console.token:
-            raise ValueError("both consoles must share the portal's session token")
+    def __init__(self, oidc_console, kcp_console, host: str = "127.0.0.1", port: int = 8760, log=sys.stderr,
+                 setup_console=None):
+        self.setup = setup_console or setup.SetupServer(token=oidc_console.token, base=SETUP)
+        if not (oidc_console.token == kcp_console.token == self.setup.token):
+            raise ValueError("every console must share the portal's session token")
         self.oidc, self.kcp = oidc_console, kcp_console
         self.host, self.requested_port, self.log = host, port, log
         self.token = oidc_console.token
@@ -67,6 +71,7 @@ class Portal:
         for c, mod in ((self.oidc, oidc), (self.kcp, kcp)):
             c.host, c.port = self.host, self.port
             c.static_files = {p.name for p in mod.STATIC_DIR.iterdir() if p.is_file() and p.suffix in mod.CONTENT_TYPES}
+        self.setup.host, self.setup.port = self.host, self.port
         threading.Thread(target=self._httpd.serve_forever, kwargs={"poll_interval": 0.1},
                          name="portal-http", daemon=True).start()
 
@@ -79,7 +84,8 @@ class Portal:
 
 
 def _make_handler(portal: Portal):
-    handlers = {SERVERLESS: oidc._make_handler(portal.oidc), K8S: kcp.make_handler(portal.kcp)}
+    handlers = {SERVERLESS: oidc._make_handler(portal.oidc), K8S: kcp.make_handler(portal.kcp),
+                SETUP: setup.make_handler(portal.setup)}
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "jfrog-oidc-portal"

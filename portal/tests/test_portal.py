@@ -21,6 +21,7 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(section_of("/serverless"), ("/serverless", "/"))
         self.assertEqual(section_of("/serverless/api/schema"), ("/serverless", "/api/schema"))
         self.assertEqual(section_of("/k8s/clusters/aks"), ("/k8s", "/clusters/aks"))
+        self.assertEqual(section_of("/setup/api/stacks"), ("/setup", "/api/stacks"))
         self.assertEqual(section_of("/serverlessx/api"), (None, "/serverlessx/api"))
         self.assertEqual(section_of("/api/configs"), (None, "/api/configs"))
 
@@ -96,6 +97,20 @@ class PortalTests(unittest.TestCase):
             self.assertIn(b"<title>KCP Console</title>", raw, p)
             self.assertIn(b'<meta name="console-base" content="/k8s">', raw, p)
             self.assertNotIn(b'"/static/', raw, p)
+
+    def test_setup_section(self):
+        st, _, raw = self.req("GET", "/setup", token=False, headers={"Sec-Fetch-Site": "none"})
+        self.assertEqual(st, 200)
+        self.assertIn(b'<meta name="console-base" content="/setup">', raw)
+        self.assertIn(b'src="/setup/static/app.js"', raw)
+        self.assertEqual(self.req("GET", "/setup/static/app.js", token=False)[0], 200)
+        self.assertEqual(self.req("GET", "/setup/api/stacks", token=False)[0], 401)
+        stacks = json.loads(self.req("GET", "/setup/api/stacks")[2])["stacks"]
+        self.assertIn("aks-cluster", [s["id"] for s in stacks])
+        self.assertEqual(self.req("GET", "/serverless/api/stacks")[0], 404)
+        for p in ("/", "/serverless/gcp", "/k8s/clusters/aks"):
+            raw = self.req("GET", p, token=False, headers={"Sec-Fetch-Site": "none"})[2]
+            self.assertIn(b'href="/setup"', raw, p)
 
     def test_a_section_does_not_serve_the_others_pages(self):
         self.assertEqual(self.req("GET", "/serverless/clusters/aks", token=False)[0], 404)

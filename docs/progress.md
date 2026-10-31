@@ -457,3 +457,14 @@ New clouds in the Serverless console, runtime path only (spec §11, §12): sideb
 Tests: client 49, rotator 8, console 360 (9 skipped), scenarios 20/20.
 
 Live proof still needs: federation enabled on 365506438424; a non-root IAM/SSO login with Lambda list rights; `ado-trust` applied with `aws_account_id`; a deployed workload per kind; the JFrog admin token for the integration. Knative: a cluster with Knative Serving and a public service-account issuer.
+
+## Setup section: test infrastructure (2026-10-30)
+
+The tool is two things: **Setup** (`/setup`, test only) deploys and destroys the infrastructure to try OIDC on; **Configure** (`/serverless`, `/k8s`) enables JFrog OIDC on infrastructure that already exists, which is all production uses.
+
+- `setup_console/`: stack catalogue (`ado-trust`, `gcp-cloud-run`, `gke-cluster`, `azure-container-apps`, `aks-cluster`), Check (init + outputs), Deploy/Destroy (plan or `plan -destroy`, approve the sha256, apply the plan file; destroy needs the stack name typed), inputs editor (refuses secret-looking keys). JFrog token for stacks that name a `jfrog_url`: the console operator's OIDC exchange, never stored.
+- New stacks `aks-cluster` (OIDC issuer + workload identity) and `gke-cluster` (Workload Identity, zonal, one node); `terraform validate` on azurerm 5.12.0 / google provider (AKS needs `node_provisioning_profile`).
+- `console/steps/terraform.py`: `init_args`/`plan_args` and `plan(destroy=)` seams, defaults unchanged.
+- Live check: GKE stack Check read the GCS state (not deployed).
+
+Tests: setup 15, portal 14, console 374 (9 skipped), KCP 221.
