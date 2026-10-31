@@ -129,9 +129,13 @@ function tree(list, sel) {
   return h("nav", { class: "card tree-card", "aria-label": "Run steps" }, ul);
 }
 
+// The log shows what happened, not how: command lines ("$ …") and HTTP calls ("GET https://…") stay
+// in the stored run, off the screen and out of Copy.
+const COMMAND = /^\s*(\$ |(GET|POST|PUT|PATCH|DELETE|HEAD) https?:\/\/)/;
+
 function pane(r, sel) {
-  const lines = sel.lines.map((e) => `${clock(e.t)}  ${e.text}`);
-  if (sel.root && extra) lines.push(...extra.split("\n"));
+  const lines = sel.lines.filter((e) => !COMMAND.test(e.text || "")).map((e) => `${clock(e.t)}  ${e.text}`);
+  if (sel.root && extra) lines.push(...extra.split("\n").filter((t) => !COMMAND.test(t)));
   const copy = h("button", { class: "ghost", onclick: async () => {
     try { await navigator.clipboard.writeText(lines.join("\n")); copy.textContent = "Copied"; } catch { copy.textContent = "Copy failed"; }
     setTimeout(() => { if (copy.isConnected) copy.textContent = "Copy"; }, 2000);
