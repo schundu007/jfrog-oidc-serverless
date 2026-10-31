@@ -186,6 +186,14 @@ def backend_kind(stack_id: str, root: Path = STACKS_DIR) -> str | None:
     return m.group(1) if m else None
 
 
+def depends_on(stack_id: str, root: Path = STACKS_DIR) -> str | None:
+    """The foundation a stack stands on: its remote state, pipeline trust and JFrog integration live
+    there. None for a foundation (local state) itself."""
+    kind = backend_kind(stack_id, root)
+    dep = FOUNDATION.get(kind) if kind else None
+    return dep if dep != stack_id else None
+
+
 # -- saved inputs ------------------------------------------------------------------------------------
 
 def inputs_file(stack_id: str, env: str, state_root: Path = STATE_ROOT) -> Path:

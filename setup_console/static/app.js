@@ -194,8 +194,45 @@ async function editInputs(stack) {
   catch (e) { fill(panel.status, statusPill("failed", e.message)); }
 }
 
+// Scroll to a stack's row and flash it: where a warning's link goes.
+function goTo(id) {
+  const tr = document.getElementById(`stack-${id}`);
+  if (!tr) return;
+  tr.scrollIntoView({ behavior: "smooth", block: "center" });
+  tr.classList.remove("setup-flash");
+  void tr.offsetWidth;
+  tr.classList.add("setup-flash");
+}
+
+const titleOf = (id) => byId[id] ? byId[id].title : id;
+const linkTo = (id) => h("button", { type: "button", class: "link", text: titleOf(id), onclick: () => goTo(id) });
+const joinLinks = (ids) => ids.flatMap((id, i) => (i ? [", ", linkTo(id)] : [linkTo(id)]));
+const ACTION_NAME = { status: "State read", "plan-apply": "Deploy plan", "plan-destroy": "Destroy plan", apply: "Apply" };
+
+// What stops or failed this stack, each with where to go: the foundation it needs, the stacks that
+// stand on it, the last run that failed, a state read that failed for another reason.
+function warnings(s) {
+  const out = [];
+  if (s.needs?.length) {
+    out.push(h("div", { class: "setup-note warn" }, "Needs ", joinLinks(s.needs), " deployed first: its Terraform state and pipeline trust live there."));
+  }
+  if (s.dependents?.length) {
+    out.push(h("div", { class: "setup-note warn" }, "Stands under ", joinLinks(s.dependents), ": destroy ",
+      s.dependents.length > 1 ? "those" : "that", " first."));
+  }
+  if (s.failed && !s.busy) {
+    const log = h("button", { type: "button", class: "link", text: "Show log" });
+    log.onclick = () => follow(s, s.failed, flyout(`${s.group} · ${s.title}: ${ACTION_NAME[s.failed.action] || s.failed.action}`));
+    out.push(h("div", { class: "setup-note fail" }, `${ACTION_NAME[s.failed.action] || "Last run"} failed: ${s.failed.error || "see the log"} `, log));
+  } else if (s.status?.error && !s.needs?.length && !(s.depends_on && !byId[s.depends_on]?.status)) {
+    out.push(h("div", { class: "setup-note fail" }, `Could not read the state: ${s.status.error}`));
+  }
+  return out;
+}
+
 function row(s) {
-  const destroy = h("button", { type: "button", class: "secondary", text: "Destroy", disabled: s.busy });
+  const blockedDestroy = s.dependents?.length ? `Destroy ${s.dependents.map(titleOf).join(", ")} first` : "";
+  const destroy = h("button", { type: "button", class: "secondary", text: "Destroy", disabled: s.busy || !!blockedDestroy, title: blockedDestroy });
   destroy.onclick = () => { if (armed(destroy, "Plan destroy?")) run(s, "plan-destroy"); };
   const plan = s.plan ? h("button", { type: "button", class: "primary", text: "Review plan" }) : null;
   if (plan) plan.onclick = () => { const p = flyout(`${s.group} · ${s.title}`); fill(p.body, planView(s, s.plan, p)); };
@@ -205,19 +242,24 @@ function row(s) {
     const verb = { status: "Check", "plan-apply": "Deploy", "plan-destroy": "Destroy", apply: "Apply" }[s.job.action];
     progress.onclick = () => follow(s, s.job, flyout(`${s.group} · ${s.title}: ${verb}`));
   }
-  return h("tr", {},
-    h("td", { title: `terraform/stacks/${s.id}` }, h("b", { text: s.title })),
+  const blockedDeploy = s.needs?.length ? `Deploy ${s.needs.map(titleOf).join(", ")} first` : "";
+  return h("tr", { id: `stack-${s.id}` },
+    h("td", { title: `terraform/stacks/${s.id}` }, h("b", { text: s.title }), warnings(s)),
     h("td", {}, stackStatus(s)),
     h("td", { class: "setup-row-actions" },
       progress,
       plan,
       h("button", { type: "button", class: "secondary", text: "Inputs", onclick: () => editInputs(s) }),
-      h("button", { type: "button", class: "primary", text: "Deploy", disabled: s.busy, onclick: () => run(s, "plan-apply") }),
+      h("button", { type: "button", class: "primary", text: "Deploy", disabled: s.busy || !!blockedDeploy, title: blockedDeploy,
+        onclick: () => run(s, "plan-apply") }),
       destroy));
 }
 
+let byId = {};
+
 async function load() {
   const data = await api("/api/stacks");
+  byId = Object.fromEntries(data.stacks.map((s) => [s.id, s]));
   $("env").textContent = data.env;
   const groups = {};
   for (const s of data.stacks) (groups[s.group] ||= []).push(s);

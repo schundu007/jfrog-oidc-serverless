@@ -315,6 +315,36 @@ class JobTests(unittest.TestCase):
         self.assertTrue(all(d["action"] == "status" for d in done))
         self.assertEqual(self.jobs.refresh_all(), [])   # known now: nothing started again
 
+    def test_deploy_refused_while_its_foundation_is_not_deployed(self):
+        self.jobs._set_status("gcp-foundation", {"deployed": False, "outputs": {}})
+        row = [s for s in self.jobs.stacks() if s["id"] == "gke-cluster"][0]
+        self.assertEqual(row["depends_on"], "gcp-foundation")
+        self.assertEqual(row["needs"], ["gcp-foundation"])
+        with self.assertRaises(JobError) as e:
+            self.jobs.start("gke-cluster", "plan-apply")
+        self.assertEqual(e.exception.status, 409)
+        self.assertIn("gcp-foundation", str(e.exception))
+        self.jobs._set_status("gcp-foundation", {"deployed": True, "outputs": {}})
+        self.assertEqual(wait(self.jobs, self.jobs.start("gke-cluster", "status"))["state"], "done")
+
+    def test_foundation_destroy_refused_while_stacks_stand_on_it(self):
+        self.jobs._set_status("gke-cluster", {"deployed": True, "outputs": {}})
+        row = [s for s in self.jobs.stacks() if s["id"] == "gcp-foundation"][0]
+        self.assertEqual(row["dependents"], ["gke-cluster"])
+        with self.assertRaises(JobError) as e:
+            self.jobs.start("gcp-foundation", "plan-destroy")
+        self.assertEqual(e.exception.status, 409)
+        self.assertIn("gke-cluster", str(e.exception))
+        # Other clouds are never involved.
+        self.assertEqual([s for s in self.jobs.stacks() if s["id"] == "azure-foundation"][0]["dependents"], [])
+
+    def test_failed_job_named_on_its_stack(self):
+        (self.root.dir / "aks-cluster" / ".fake_fail_plan").write_text("")
+        j = wait(self.jobs, self.jobs.start("aks-cluster", "plan-apply"))
+        row = [s for s in self.jobs.stacks() if s["id"] == "aks-cluster"][0]
+        self.assertEqual(row["failed"]["id"], j["id"])
+        self.assertIn("plan failed", row["failed"]["error"])
+
     def test_failed_status_means_not_deployed(self):
         (self.root.dir / "aks-cluster" / ".fake_fail_init").write_text("")
         j = wait(self.jobs, self.jobs.start("aks-cluster", "status"))

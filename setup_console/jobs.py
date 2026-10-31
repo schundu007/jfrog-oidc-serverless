@@ -45,10 +45,33 @@ class Jobs:
         with self._lock:
             # The running job per stack, so a page that closed the drawer or reloaded can follow it again.
             running = {j["stack"]: {"id": j["id"], "action": j["action"]} for j in self._jobs.values() if j["state"] == "running"}
-            return [dict(s, status=self._status.get(s["id"]), busy=s["id"] in running, job=running.get(s["id"]),
-                         plan=self._public_plan(self._plans.get(s["id"])),
-                         missing=stacks.missing(s["id"], self.env_name, self.root, self.state_root))
-                    for s in stacks.CATALOGUE]
+            # The latest finished job per stack, when it failed: the row warns and links to its log.
+            last = {}
+            for j in sorted(self._jobs.values(), key=lambda j: j["started"]):
+                if j["state"] != "running":
+                    last[j["stack"]] = j
+            failed = {sid: {"id": j["id"], "action": j["action"], "error": (j["error"] or "").splitlines()[0][:300] if j["error"] else ""}
+                      for sid, j in last.items() if j["state"] == "failed"}
+            out = []
+            for s in stacks.CATALOGUE:
+                sid = s["id"]
+                needs, dependents = self._needs(sid), self._dependents(sid)
+                out.append(dict(s, status=self._status.get(sid), busy=sid in running, job=running.get(sid),
+                                plan=self._public_plan(self._plans.get(sid)), failed=failed.get(sid),
+                                depends_on=stacks.depends_on(sid, self.root), needs=needs, dependents=dependents,
+                                missing=stacks.missing(sid, self.env_name, self.root, self.state_root)))
+            return out
+
+    # Callers hold self._lock. A stack whose status is not known yet blocks nothing.
+    def _needs(self, sid) -> list:
+        """The foundation this stack stands on, when it is known not to be deployed."""
+        dep = stacks.depends_on(sid, self.root)
+        st = self._status.get(dep) if dep else None
+        return [dep] if st is not None and not st.get("deployed") else []
+
+    def _dependents(self, sid) -> list:
+        """Deployed stacks that stand on this one (destroy them first)."""
+        return [x for x in stacks.IDS if stacks.depends_on(x, self.root) == sid and (self._status.get(x) or {}).get("deployed")]
 
     def get(self, job_id: str) -> dict:
         with self._lock:
@@ -74,6 +97,12 @@ class Jobs:
         with self._lock:
             if any(j["stack"] == stack_id and j["state"] == "running" for j in self._jobs.values()):
                 raise JobError(409, f"{stack_id} is busy")
+            if action == "plan-apply" and self._needs(stack_id):
+                dep = stacks.get(self._needs(stack_id)[0])
+                raise JobError(409, f"deploy {dep['group']} · {dep['title']} ({dep['id']}) first: {stack_id} keeps its state there")
+            if action == "plan-destroy" and self._dependents(stack_id):
+                names = ", ".join(stacks.get(x)["title"] + f" ({x})" for x in self._dependents(stack_id))
+                raise JobError(409, f"destroy what stands on {stack_id} first: {names}")
             plan = self._plans.get(stack_id)
             if action == "apply":
                 if not plan:
