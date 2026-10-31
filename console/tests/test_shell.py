@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -39,6 +40,15 @@ class LiveTests(unittest.TestCase):
         res = self.sh.run([PY, "-c", "import time; time.sleep(5)"], timeout=0.3)
         self.assertEqual(res.rc, 124)
         self.assertIn("timed out", res.stderr)
+
+    def test_timeout_kills_children_that_hold_the_pipes(self):
+        # git push → credential helper waiting on a sign-in: killing git alone left the pipes open.
+        child = "import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); time.sleep(30)"
+        for stream in (False, True):
+            started = time.monotonic()
+            res = self.sh.run([PY, "-c", child], timeout=0.5, stream=stream)
+            self.assertEqual(res.rc, 124)
+            self.assertLess(time.monotonic() - started, 10)
 
     def test_missing_binary(self):
         self.assertEqual(self.sh.run(["definitely-not-a-binary-xyz"]).rc, 127)

@@ -36,10 +36,12 @@ def gcp_cfg(name="orders"):
 class FakeGit(Shell):
     """Replay az/git/HTTP for publish. Temp paths vary, so commands are matched by their verb."""
 
-    def __init__(self, log=None, commit_rc=0, pr_status=201, helper="", token_ok=True, helper_ok=True):
+    def __init__(self, log=None, commit_rc=0, pr_status=201, helper="", token_ok=True, helper_ok=True,
+                 helper_error=""):
         super().__init__(mode="replay", log=log)
         self.calls, self.commit_rc, self.pr_status = [], commit_rc, pr_status
         self.helper, self.token_ok, self.helper_ok, self.envs = helper, token_ok, helper_ok, []
+        self.helper_error = helper_error
 
     def run(self, argv, *a, extra_env=None, **kw):
         self.envs.append(extra_env)
@@ -57,7 +59,8 @@ class FakeGit(Shell):
                 env = self.envs[-1] or {}
                 ok = self.token_ok if "GIT_CONFIG_VALUE_0" in env else self.helper_ok
                 if not ok:
-                    return Result(argv, 128, "", "fatal: Authentication failed for 'https://dev.azure.com/acme/'", 0.0)
+                    return Result(argv, 128, "", self.helper_error if "GIT_CONFIG_VALUE_0" not in env and self.helper_error
+                                  else "fatal: Authentication failed for 'https://dev.azure.com/acme/'", 0.0)
             if verb == "commit":
                 return Result(argv, self.commit_rc, "nothing to commit" if self.commit_rc else "", "", 0.0)
             if verb == "diff":   # `git diff --cached --quiet`: 1 = staged changes
@@ -192,6 +195,15 @@ class PublishTests(unittest.TestCase):
         fetch_env = sh.envs[[i for i, c in enumerate(sh.calls) if c[0] == "git" and c[3] == "fetch"][0]]
         self.assertNotIn("GIT_CONFIG_VALUE_0", fetch_env)
         self.assertEqual(fetch_env["GIT_TERMINAL_PROMPT"], "0")
+        self.assertEqual(fetch_env["GCM_INTERACTIVE"], "never")   # no sign-in window nobody answers
+
+    def test_any_helper_failure_falls_back_and_the_token_goes_alone(self):
+        # GCM without interactivity says it cannot prompt, or the call times out: still try the az token.
+        res, sh = self.publish(gcp_cfg(), helper="/opt/gcm/git-credential-manager", helper_ok=False,
+                               helper_error="fatal: Cannot prompt because user interactivity has been disabled.")
+        self.assertTrue(res["changed"])
+        push_env = sh.envs[[i for i, c in enumerate(sh.calls) if c[0] == "git" and c[3] == "push"][0]]
+        self.assertEqual(push_env["GIT_CONFIG_COUNT"], "1")     # only the bearer header (ADO 401s with ForceMsaPassThrough)
 
     def test_falls_back_to_the_az_token_when_the_helper_fails(self):
         res, sh = self.publish(gcp_cfg(), helper="/opt/gcm/git-credential-manager", helper_ok=False)

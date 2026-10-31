@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import signal
 import subprocess
 import threading
 import time
@@ -117,6 +118,15 @@ def child_env(extra_env: dict | None = None, base: dict | None = None) -> dict:
     return env
 
 
+def _kill_group(proc) -> None:
+    """Kill the command and everything it started (each command runs in its own session): a child
+    that holds stdout open, such as a credential helper waiting on a sign-in, would block the read."""
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        proc.kill()
+
+
 @dataclass
 class Shell:
     mode: str = "live"                 # live | replay | record
@@ -161,20 +171,28 @@ class Shell:
         if stream:
             return self._exec_stream(argv, [exe, *argv[1:]], timeout, extra_env, started)
         try:
-            proc = subprocess.run([exe, *argv[1:]], capture_output=True, text=True, timeout=timeout,
-                                  env=child_env(extra_env), stdin=subprocess.DEVNULL, check=False)
-            return Result(argv, proc.returncode, proc.stdout, proc.stderr, time.monotonic() - started)
-        except subprocess.TimeoutExpired:
-            return Result(argv, 124, "", f"{argv[0]} timed out after {timeout:.0f}s", time.monotonic() - started)
+            proc = subprocess.Popen([exe, *argv[1:]], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    stdin=subprocess.DEVNULL, text=True, env=child_env(extra_env),
+                                    start_new_session=True)
         except OSError as exc:
             return Result(argv, 126, "", f"{argv[0]}: {exc}", time.monotonic() - started)
+        try:
+            out, err = proc.communicate(timeout=timeout)
+            return Result(argv, proc.returncode, out, err, time.monotonic() - started)
+        except subprocess.TimeoutExpired:
+            _kill_group(proc)
+            try:
+                proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+            return Result(argv, 124, "", f"{argv[0]} timed out after {timeout:.0f}s", time.monotonic() - started)
 
     def _exec_stream(self, argv, cmd, timeout, extra_env, started) -> Result:
         """As _exec, but stdout is read line by line and logged as it comes; stderr is drained by a
         thread so neither pipe fills up. The timeout kills the process, as subprocess.run would."""
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
-                                    text=True, env=child_env(extra_env))
+                                    text=True, env=child_env(extra_env), start_new_session=True)
         except OSError as exc:
             return Result(argv, 126, "", f"{argv[0]}: {exc}", time.monotonic() - started)
         err, timed_out = [], threading.Event()
@@ -183,7 +201,7 @@ class Shell:
 
         def kill():
             timed_out.set()
-            proc.kill()
+            _kill_group(proc)
         timer = threading.Timer(timeout, kill)
         timer.start()
         out = []

@@ -154,12 +154,13 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
     signins = []
     helper = sh.run(["git", "-C", repo, "config", "--get-urlmatch", "credential.helper", org_url], timeout=30.0)
     if helper.ok and helper.stdout.strip():
-        signins.append(("the git credential helper", {"GIT_TERMINAL_PROMPT": "0"}))
+        # Never interactive: a sign-in window nobody answers would hold the push until it times out.
+        signins.append(("the git credential helper", {"GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}))
     if token:
-        signins.append(("the az token", {"GIT_CONFIG_COUNT": "2",
+        # The bearer header alone: with X-VSS-ForceMsaPassThrough ADO answers 401 to an MSA account's push.
+        signins.append(("the az token", {"GIT_CONFIG_COUNT": "1",
                         "GIT_CONFIG_KEY_0": "http.extraheader", "GIT_CONFIG_VALUE_0": f"Authorization: Bearer {token}",
-                        "GIT_CONFIG_KEY_1": "http.extraheader", "GIT_CONFIG_VALUE_1": "X-VSS-ForceMsaPassThrough: true",
-                        "GIT_TERMINAL_PROMPT": "0"}))
+                        "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}))
     if not signins:
         raise DeliveryError("no Azure DevOps sign-in: run `az login` to the ADO tenant, or set up Git Credential "
                             "Manager for dev.azure.com")
@@ -181,9 +182,8 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
             if res.ok:
                 signins[:] = [(name, env)]
                 return res
+            # Any failure tries the next sign-in (a helper that cannot prompt, a stale token, a timeout).
             errors.append(f"{name}: {redact.text(res.error_text(200))}")
-            if "Authentication failed" not in res.error_text() and "could not read Username" not in res.error_text():
-                break
         raise DeliveryError(f"{what} failed ({'; '.join(errors)}). Fix: {fix}")
 
     remote("git fetch", "fetch", "--quiet", repo_url, f"+refs/heads/{base}:refs/remotes/delivery/{base}")
