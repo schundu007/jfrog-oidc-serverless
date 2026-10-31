@@ -6,11 +6,13 @@ const $ = (id) => document.getElementById(id);
 const empty = (t) => h("p", { class: "muted dash-empty", text: t });
 const CLOUDS = ["gcp", "azure"];
 
-// A chip: the service mark, its name and count, and a status dot.
-function chip(href, markKey, name, line, dot) {
-  const a = h("a", { class: "chip", href }, h("span", { class: `dot ${dot || ""}` }), h("b", { text: name }), h("small", { text: line }));
-  a.insertAdjacentHTML("afterbegin", MARK[markKey]);  // constant SVG only
-  return a;
+// A tile: the service mark, its name, its kind and count, and a status dot. One size for all.
+function tile(href, markKey, name, line, dot) {
+  const mark = h("span", { class: "tile-mark" });
+  mark.insertAdjacentHTML("afterbegin", MARK[markKey]);  // constant SVG only
+  return h("a", { class: "tile", href }, mark,
+    h("span", { class: "tile-main" }, h("b", { text: name }), h("small", { text: line })),
+    h("span", { class: `dot ${dot || ""}` }));
 }
 const ring = (id, ok, total) => {
   $(id).style.setProperty("--p", total ? String(Math.round((100 * ok) / total)) : "0");
@@ -18,39 +20,50 @@ const ring = (id, ok, total) => {
 };
 const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
+// Tables: one header row, one row per item; a row opens its page.
+function table(cols, rows, emptyText) {
+  if (!rows.length) return empty(emptyText);
+  return h("div", { class: "table-wrap" }, h("table", { class: "list-table dash-table" },
+    h("thead", {}, h("tr", {}, ...cols.map((c, i) => h("th", { scope: "col", class: i === 0 ? "col-icon" : "", text: c })))),
+    h("tbody", {}, ...rows)));
+}
+function linkRow(href, cells) {
+  const tr = h("tr", { class: href ? "row-link" : "" }, ...cells);
+  if (href) tr.addEventListener("click", () => { location.href = href; });
+  return tr;
+}
+const nameCell = (text, href) => h("th", { scope: "row" }, href ? h("a", { href, text }) : text);
+
 function itemRow(it) {
   const [cls, text] = it.state;
-  return h("a", { class: "dash-row", href: it.href }, markEl(it.mark),
-    h("span", { class: "dash-main" }, h("b", { text: it.name }), h("small", { text: [it.type, it.detail].filter(Boolean).join(" · ") })),
-    h("span", { class: `pill ${cls}`, text }));
+  return linkRow(it.href, [h("td", { class: "col-icon" }, markEl(it.mark)), nameCell(it.name, it.href),
+    h("td", { text: it.type || "" }), h("td", { class: "muted", text: it.detail || "" }), h("td", {}, h("span", { class: `pill ${cls}`, text }))]);
 }
 
 function runRow(r) {
   const [cls, text] = runPill(r.status);
-  const kids = [r.mark ? markEl(r.mark) : h("span", { class: "dash-mark" }),
-    h("span", { class: "dash-main" }, h("b", { text: r.name }), h("small", { text: `${r.type} · ${when(r.created)}` })),
-    h("span", { class: `pill ${cls}`, text })];
-  return r.href ? h("a", { class: "dash-row", href: r.href }, ...kids) : h("div", { class: "dash-row" }, ...kids);
+  return linkRow(r.href, [h("td", { class: "col-icon" }, r.mark ? markEl(r.mark) : null), nameCell(r.name, r.href),
+    h("td", { text: r.type || "" }), h("td", { class: "muted", text: when(r.created) }), h("td", {}, h("span", { class: `pill ${cls}`, text }))]);
 }
 
 function board(cloud, items, runs) {
   const mine = items.filter((it) => it.cloud === cloud);
-  // Serverless, then Kubernetes: one chip per service, as the sidebar lists them.
-  const groups = ["Serverless", "Kubernetes"].map((group) => {
-    const chips = Object.entries(SECTIONS).filter(([, s]) => s[0] === cloud && s[4] === group).map(([key, [, label, page, mark]]) => {
+  // Serverless, then Kubernetes, in one grid of same-size tiles, as the sidebar lists them.
+  const tiles = ["Serverless", "Kubernetes"].flatMap((group) =>
+    Object.entries(SECTIONS).filter(([, s]) => s[0] === cloud && s[4] === group).map(([key, [, label, page, mark]]) => {
       const here = mine.filter((it) => it.section === key);
       const last = runs.find((r) => r.section === key);
       const dot = here.length ? (here.every((it) => it.ok) ? "ok" : "warn") : last ? runPill(last.status)[0] : "";
-      return chip(page, mark, label, plural(here.length, group === "Kubernetes" ? "cluster" : "workload"), dot);
-    });
-    return [h("h3", { class: "board-sub", text: group }), h("div", { class: "chips" }, ...chips)];
-  });
+      return tile(page, mark, label, `${group} · ${plural(here.length, group === "Kubernetes" ? "cluster" : "workload")}`, dot);
+    }));
   const id = `h-${cloud}`;
+  const onboarded = mine.length;
   return h("section", { class: "board", "aria-labelledby": id },
-    h("header", { class: "board-head" }, h("h2", { id, text: CLOUD_NAMES[cloud] })),
-    ...groups.flat(),
+    h("header", { class: "board-head" }, h("h2", { id, text: CLOUD_NAMES[cloud] }),
+      h("span", { class: "board-count", text: `${onboarded} onboarded` })),
+    h("div", { class: "tiles" }, ...tiles),
     h("h3", { class: "board-sub", text: "Workloads and clusters" }),
-    h("div", { class: "dash-list" }, ...(mine.length ? mine.map(itemRow) : [empty(`Nothing onboarded on ${CLOUD_NAMES[cloud]} yet`)])));
+    table(["", "Name", "Type", "Detail", "Status"], mine.map(itemRow), `Nothing onboarded on ${CLOUD_NAMES[cloud]} yet`));
 }
 
 async function load() {
@@ -72,7 +85,7 @@ async function load() {
   $("hs-live").textContent = String(runs.filter((r) => LIVE_STATES.has(r.status)).length);
 
   $("clouds").replaceChildren(...CLOUDS.map((c) => board(c, items, runs)));
-  $("recent-runs").replaceChildren(...(runs.length ? runs.slice(0, 8).map(runRow) : [empty("No runs yet")]));
+  $("recent-runs").replaceChildren(table(["", "Name", "Type", "Started", "Status"], runs.slice(0, 8).map(runRow), "No runs yet"));
 }
 
 $("dash-refresh").addEventListener("click", load);
