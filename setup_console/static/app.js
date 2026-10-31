@@ -299,10 +299,12 @@ async function load() {
   const data = await api("/api/stacks");
   byId = Object.fromEntries(data.stacks.map((s) => [s.id, s]));
   $("env").textContent = data.env;
-  // Serverless and Kubernetes are separate sections, each with its own card per cloud: the two
-  // kinds never share a card or a table, as they never share state, pipelines or dependencies.
-  const kinds = {};
-  for (const s of data.stacks) ((kinds[s.kind] ||= {})[s.group] ||= []).push(s);
+  // Common, Serverless and Kubernetes are separate sections, each with its own card per cloud:
+  // Serverless and Kubernetes never share a card or a table.
+  // The CI/CD bootstraps serve both kinds, so they lead in a Common section of their own.
+  const kinds = { Common: {} };
+  const sectionOf = (s) => (s.id.endsWith("-foundation") ? "Common" : s.kind);
+  for (const s of data.stacks) ((kinds[sectionOf(s)] ||= {})[s.group] ||= []).push(s);
   fill($("groups"), Object.entries(kinds).map(([k, clouds]) => h("section", { class: "setup-kind", "data-kind": k },
     h("h2", { class: "setup-kind-title", text: k }),
     ...Object.entries(clouds).map(([g, list]) => h("section", { class: "card cloud-card", "data-cloud": CLOUD_ID[g] || "" },
