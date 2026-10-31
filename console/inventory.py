@@ -228,13 +228,30 @@ def aws(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, list]:
     return defaults, out
 
 
-def _k8s_scopes(sh: Shell, errors: list) -> list:
-    res = sh.run(["kubectl", "config", "get-contexts", "-o", "name"], timeout=30)
+# Contexts that point at OpenShift: an `oc login` context (namespace/api-host:6443/user) or an
+# OpenShift API server (api.<cluster>:6443, *.openshiftapps.com). AKS, GKE, EKS and local clusters are left out.
+OPENSHIFT_SERVER_RE = re.compile(r"^https://api\.[^/:]+:6443/?$|openshiftapps\.com|\.openshift\.")
+
+
+def _openshift_contexts(sh: Shell, errors: list) -> list:
+    res = sh.run(["kubectl", "config", "view", "-o", "json"], timeout=30)
     if not res.ok:
-        errors.append(f"kubectl config get-contexts: {res.error_text(200)}")
+        errors.append(f"kubectl config view: {res.error_text(200)}")
         return []
-    return [{"id": c, "name": c} for c in sorted({ln.strip() for ln in res.stdout.splitlines() if ln.strip()})
-            if SCOPE_RE["openshift"].match(c)]
+    cfg = res.json() or {}
+    servers = {c.get("name"): (c.get("cluster") or {}).get("server", "") for c in cfg.get("clusters") or []}
+    out = []
+    for c in cfg.get("contexts") or []:
+        name = c.get("name") or ""
+        server = servers.get((c.get("context") or {}).get("cluster"), "")
+        oc_name = name.count("/") >= 2 and ":6443" in name
+        if SCOPE_RE["openshift"].match(name) and (oc_name or OPENSHIFT_SERVER_RE.search(server)):
+            out.append(name)
+    return sorted(set(out))
+
+
+def _k8s_scopes(sh: Shell, errors: list) -> list:
+    return [{"id": c, "name": c} for c in _openshift_contexts(sh, [])]
 
 
 def cluster_slug(context: str) -> str:
@@ -247,9 +264,12 @@ def cluster_slug(context: str) -> str:
 
 def openshift(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, list]:
     """Knative services (ksvc) in every namespace of one kube context."""
-    ctx = scope or _value(sh, ["kubectl", "config", "current-context"])
-    if not ctx:
-        errors.append("kubectl has no current context (kubectl config use-context <name>)")
+    contexts = _openshift_contexts(sh, errors)
+    current = _value(sh, ["kubectl", "config", "current-context"])
+    ctx = scope or (current if current in contexts else contexts[0] if contexts else "")
+    if not ctx or ctx not in contexts:
+        errors.append("No OpenShift cluster in kubeconfig: log in with oc login <api-url>"
+                      if not ctx else f"{ctx} is not an OpenShift context")
         return {"context": ""}, []
     defaults = {"context": ctx, "cluster": cluster_slug(ctx)}
     res = sh.run(["kubectl", "get", "ksvc", "--all-namespaces", "-o", "json", "--context", ctx], timeout=120)

@@ -40,7 +40,7 @@ function mergeDeep(base, over) {
 // A new configuration starts with the server's defaults minus the sample names and URL,
 // so nothing on screen looks filled in when it isn't.
 const SCOPE_KEY = { gcp: "project", azure: "subscription", aws: "profile", openshift: "context" };
-const SCOPE_LABEL = { gcp: "Project", azure: "Subscription", aws: "AWS profile", openshift: "Kube context" };
+const SCOPE_LABEL = { gcp: "Project", azure: "Subscription", aws: "AWS profile", openshift: "OpenShift cluster" };
 const SCOPE_FIELDS = { gcp: ["project", "region"], azure: ["subscription", "resource_group"],
   aws: ["account", "region", "profile", "cluster"], openshift: ["context", "cluster", "namespace"] };
 

@@ -98,7 +98,15 @@ class AwsInventoryTests(unittest.TestCase):
 
 
 class KnativeInventoryTests(unittest.TestCase):
-    OUT = {("kubectl", "config", "get-contexts"): f"{CTX}\nkind-dev\n",
+    VIEW = {"clusters": [{"name": "lab", "cluster": {"server": "https://api.lab.example.com:6443"}},
+                         {"name": "aks", "cluster": {"server": "https://x.hcp.eastus2.azmk8s.io:443"}},
+                         {"name": "gke", "cluster": {"server": "https://35.0.0.1"}}],
+            "contexts": [{"name": CTX, "context": {"cluster": "lab"}},
+                         {"name": "my-ocp", "context": {"cluster": "lab"}},
+                         {"name": "trk-aks", "context": {"cluster": "aks"}},
+                         {"name": "gke_p_us-central1_c1", "context": {"cluster": "gke"}},
+                         {"name": "kind-dev", "context": {"cluster": "gke"}}]}
+    OUT = {("kubectl", "config", "view"): VIEW,
            ("kubectl", "config", "current-context"): CTX + "\n",
            ("kubectl", "get", "ksvc"): KSVC}
 
@@ -114,6 +122,19 @@ class KnativeInventoryTests(unittest.TestCase):
                                   'error: the server doesn\'t have a resource type "ksvc"'})
         res = inventory.run("openshift", sh, None)
         self.assertIn("Knative Serving is not installed", res["errors"][0])
+
+    def test_only_openshift_contexts(self):
+        res = inventory.run("openshift", Fake(self.OUT), None)
+        self.assertEqual([c["id"] for c in res["scopes"]], sorted([CTX, "my-ocp"]))
+
+    def test_no_openshift_context(self):
+        out = {**self.OUT, ("kubectl", "config", "view"): {**self.VIEW, "contexts": self.VIEW["contexts"][2:]},
+               ("kubectl", "config", "current-context"): "trk-aks\n"}
+        sh = Fake(out)
+        res = inventory.run("openshift", sh, None)
+        self.assertEqual((res["scopes"], res["workloads"], res["defaults"]["context"]), ([], [], ""))
+        self.assertIn("oc login", res["errors"][0])
+        self.assertFalse([c for c in sh.calls if c[:2] == ["kubectl", "get"]])
 
     def test_cluster_slug(self):
         self.assertEqual(inventory.cluster_slug("kind-dev"), "kind-dev")
