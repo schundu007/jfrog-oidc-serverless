@@ -1,4 +1,4 @@
-"""Test infrastructure the console can deploy and destroy (Terraform stacks under terraform/stacks).
+"""Infrastructure the console can deploy and destroy (Terraform stacks under terraform/stacks).
 
 Only for trying the credential provider where nothing exists yet. In production the targets are
 already there and only the Serverless and Kubernetes consoles' configure steps run.
