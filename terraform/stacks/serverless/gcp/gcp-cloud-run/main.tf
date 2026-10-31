@@ -14,15 +14,6 @@
 # the console's workspace (terraform/workspaces/gcp_<project>_<region>,
 # gcp-workload-onboard).
 
-# Moved to the console's workspace: the integration stays in JFrog (that
-# workspace adopted it); the stack's duplicate mapping is destroyed.
-removed {
-  from = module.jfrog_oidc.platform_oidc_configuration.gcp
-  lifecycle {
-    destroy = false
-  }
-}
-
 # Created by ADO trust (the build pipeline pushes to it before this stack deploys a job).
 data "google_artifact_registry_repository" "images" {
   project       = var.gcp_project_id
