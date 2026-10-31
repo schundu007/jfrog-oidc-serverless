@@ -354,10 +354,14 @@ def run(cloud: str, sh: Shell, repo_root=None, scope: str | None = None, configs
 
 class Cache:
     """Fetched listings by cloud and scope, kept in .console/inventory.json (IDs and names, no secrets)
-    so a page load or a restart doesn't wait on the clouds. Refresh replaces an entry."""
+    so quick page loads don't wait on the clouds. An entry older than max_age seconds is fetched again,
+    so deleted workloads drop out of the picker. Refresh replaces an entry."""
 
-    def __init__(self, path=None):
+    MAX_AGE = 60
+
+    def __init__(self, path=None, max_age: int = MAX_AGE, clock=time.time):
         self.path = Path(path) if path else None
+        self.max_age, self.clock = max_age, clock
         self._lock = threading.Lock()
         try:
             self._data = json.loads(self.path.read_text()) if self.path else {}
@@ -367,7 +371,9 @@ class Cache:
     def get(self, cloud: str, scope: str | None) -> dict | None:
         with self._lock:
             hit = self._data.get(f"{cloud}:{scope or ''}")
-            return copy.deepcopy(hit) if hit else None
+            if not hit or self.clock() - hit.get("fetched_at", 0) > self.max_age:
+                return None
+            return copy.deepcopy(hit)
 
     def put(self, cloud: str, scope: str | None, raw: dict) -> None:
         if raw.get("errors"):

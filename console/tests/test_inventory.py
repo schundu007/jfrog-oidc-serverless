@@ -176,6 +176,13 @@ class InventoryTests(unittest.TestCase):
         self.assertIsNone(cache.get("azure", ""))
         self.assertIn("fetched_at", hit)
 
+    def test_cache_expires(self):
+        path = self.repo / "inventory.json"
+        raw = inventory.fetch("gcp", Fake(), "")
+        inventory.Cache(path).put("gcp", "", raw)
+        later = lambda: raw["fetched_at"] + inventory.Cache.MAX_AGE + 1
+        self.assertIsNone(inventory.Cache(path, clock=later).get("gcp", ""))
+
     def test_cache_skips_results_with_errors(self):
         path = self.repo / "inventory.json"
         inventory.Cache(path).put("gcp", "", inventory.fetch("gcp", Fake(fail={("gcloud", "run", "jobs", "list")}), ""))
