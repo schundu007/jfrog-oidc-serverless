@@ -494,7 +494,9 @@ function setupHelp() {
   }
 }
 
-// Each form step's heading toggles its body. Steps start collapsed, like every section on the page.
+// Collapse and expand, one pattern everywhere: the chevron leads the header, the whole header toggles,
+// a collapsed header still carries its status and a one-line summary. Everything starts collapsed;
+// Expand all and Collapse all act on the whole page.
 function setupCollapsibles() {
   for (const step of document.querySelectorAll(".rail-step")) {
     const head = step.querySelector(":scope > h2"), body = step.querySelector(":scope > .step-body");
@@ -502,15 +504,28 @@ function setupCollapsibles() {
     body.id ||= `${step.id}-body`;
     const name = head.textContent.trim().replace(/^\d+\s*/, "");
     const btn = h("button", { type: "button", class: "step-toggle", "aria-controls": body.id });
-    head.append(btn);
-    const set = (open) => {
+    head.prepend(btn);
+    head.append(h("span", { class: "head-sum" }));
+    step.setOpen = (open) => {
       step.classList.toggle("collapsed", !open);
       btn.setAttribute("aria-expanded", String(open));
       btn.setAttribute("aria-label", `${open ? "Collapse" : "Expand"} ${name}`);
     };
-    set(false);
-    head.addEventListener("click", (e) => { if (!e.target.closest("a, input, select, label")) set(step.classList.contains("collapsed")); });
+    step.setOpen(false);
+    // The steps are an accordion: opening one closes the others, so the form stays one screen tall.
+    head.addEventListener("click", (e) => {
+      if (e.target.closest("a, input, select, label, .help")) return;
+      const opening = step.classList.contains("collapsed");
+      if (opening) for (const other of document.querySelectorAll(".rail-step")) if (other !== step) other.setOpen?.(false);
+      step.setOpen(opening);
+    });
   }
+  const all = (open) => {
+    for (const step of document.querySelectorAll(".rail-step")) step.setOpen?.(open);
+    for (const d of document.querySelectorAll("#panel-configure details.section:not([hidden])")) d.open = open;
+  };
+  $("expand-all")?.addEventListener("click", () => all(true));
+  $("collapse-all")?.addEventListener("click", () => all(false));
 }
 
 async function boot() {

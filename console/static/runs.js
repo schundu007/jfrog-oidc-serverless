@@ -34,6 +34,10 @@ async function refreshList() {
   // No runs: one empty state instead of empty Steps and Log cards.
   document.querySelector(".runs-layout").hidden = !rs.runs.length;
   $("runs-count").textContent = rs.runs.length || "";
+  const last = rs.runs[0];
+  const runsSum = $("sec-runs").querySelector(".head-sum");
+  if (runsSum) runsSum.textContent = last
+    ? `Latest: ${last.name} · ${last.status.replaceAll("_", " ")} · ${last.created.slice(0, 16).replace("T", " ")} UTC` : "No runs yet";
   $("runs-delete").hidden = $("runs-clear").hidden = !rs.runs.length;
   if (!rs.runs.length) fill($("run-head"), h("p", { class: "muted", text: "No runs yet. Run pipeline above starts one." }));
 }

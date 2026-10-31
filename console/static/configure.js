@@ -144,18 +144,31 @@ function renderSummary() {
   $("step-app").classList.toggle("is-done", found);
   $("step-jfrog").classList.toggle("is-done", urlOk && !!c.jfrog?.reader_group);
   $("step-needs").classList.toggle("is-done", !!(c.runtime?.enabled || c.pull_path?.enabled));
-  renderEssentials(c, d, found);
+  // A collapsed step still says what it holds.
+  const t = c.target?.[cloud] || {};
+  stepSummary("step-app", [t.name, ...SCOPE_FIELDS[cloud].filter((k) => k !== "profile").map((k) => t[k])].filter(Boolean).join(" · ")
+    || "No workload picked");
+  stepSummary("step-jfrog", [(c.jfrog?.url || "").replace(/^https?:\/\//, "").replace(/\/$/, ""), c.jfrog?.reader_group]
+    .filter(Boolean).join(" · ") || "Not set");
+  stepSummary("step-needs", [c.runtime?.enabled ? "Runtime exchange" : "", c.pull_path?.enabled ? "Image pull" : ""]
+    .filter(Boolean).join(" + ") || "None selected");
+  renderIdentity(d, found);
 }
 
-// The side panel shows only what the form doesn't: the identity Discover found.
-function renderEssentials(c, d, found) {
+function stepSummary(id, text) {
+  const el = $(id)?.querySelector(".head-sum");
+  if (el) { el.textContent = text; el.title = text; }
+}
+
+// The identity Discover found sits in the editor's header, next to its name.
+function renderIdentity(d, found) {
   const identity = d?.service_account || d?.principal_id || d?.client_id || "";
   // A dedicated identity the run creates has no ID yet: show its name.
   const planned = !identity && d?.dedicated_identity ? `${d.dedicated_identity} (new)` : "";
-  fill($("cfg-essentials"), h("div", {}, h("dt", { text: "Identity" }), h("dd", {},
-    identity || planned ? h("span", { class: "with-icon" }, statusIcon(found ? "ok" : "warn"),
-      h("span", { class: "mono", text: identity || planned }))
-      : h("span", { class: "with-icon muted" }, statusIcon("skip"), "not discovered"))));
+  if (!$("cfg-identity")) return;
+  fill($("cfg-identity"), h("span", { class: "fact-k", text: "Identity" }),
+    identity || planned ? h("span", { class: "with-icon" }, statusIcon(found ? "ok" : "warn"), h("span", { class: "mono", text: identity || planned }))
+      : h("span", { class: "with-icon muted" }, statusIcon("skip"), "not discovered"));
 }
 
 const STATUS_GLYPH = { ok: "✓", warn: "!", fail: "✕", error: "✕", warning: "!", skip: "–" };
@@ -211,7 +224,7 @@ async function validate() {
   $("cfg-problems").hidden = !items.length;
   const nErr = problems.filter((p) => p.level === "error").length;
   fill($("cfg-problems"), items.length ? h("div", { class: "panel-head" },
-    h("h3", { text: res.errors.length ? "Fix before running the pipeline" : "Warnings" }),
+    h("h2", { text: res.errors.length ? "Fix before running the pipeline" : "Warnings" }),
     h("span", { class: `pill ${nErr ? "bad" : "warn"}`, text: String(items.length) })) : null,
     items.length ? h("ul", { class: "issues" }, items) : null);
 }
@@ -248,6 +261,8 @@ function renderList() {
   // Saved configurations sit above the editor on the same page; none saved, no list.
   $("cfg-saved-box").hidden = st.saved.length === 0;
   $("cfg-saved-count").textContent = st.saved.length || "";
+  const sum = $("cfg-saved-box").querySelector(".head-sum");
+  if (sum) sum.textContent = st.current ? `Open: ${st.current}` : "";
 }
 
 function renderTitle() {
@@ -415,6 +430,11 @@ function checkItem(c) {
       c.fix && c.status !== "ok" ? h("div", { class: "fix small", text: `Fix: ${c.fix}` }) : null));
 }
 
+// A section's header: chevron, title and status on the left, a short summary on the right.
+function sectionHead(title, status, summary) {
+  return h("summary", { class: "section-head" }, h("h2", {}, title), status, h("span", { class: "head-sum", text: summary }));
+}
+
 // Preflight streams: each check and each command line shows as it happens, then the summary.
 async function runPreflight() {
   let res = null;
@@ -424,8 +444,8 @@ async function runPreflight() {
     const log = h("pre", { class: "run-log pf-log" });
     const logBox = h("details", { class: "run-log-box", open: true }, h("summary", { text: "Log" }), log);
     box.hidden = false;
-    fill(box, h("div", { class: "panel-head" }, h("h3", { text: "Preflight" }), h("span", { class: "pill", text: "running" })),
-      list, logBox);
+    box.open = true;
+    fill(box, sectionHead("Preflight", h("span", { class: "pill", text: "running" }), "Read-only checks"), list, logBox);
     let failed = null;
     await streamEvents("/api/preflight?stream=1", (kind, data) => {
       if (kind === "check") list.append(checkItem(data));
@@ -439,11 +459,7 @@ async function runPreflight() {
     renderSummary();
     logBox.open = false;
     fill(box,
-      h("div", { class: "panel-head" }, h("h3", { text: "Preflight" }), badge(res.status)),
-      h("div", { class: "counts" },
-        h("span", { class: "with-icon" }, statusIcon("ok"), `${res.counts.ok} ok`),
-        h("span", { class: "with-icon" }, statusIcon("warn"), `${res.counts.warn} warn`),
-        h("span", { class: "with-icon" }, statusIcon("fail"), `${res.counts.fail} fail`)),
+      sectionHead("Preflight", badge(res.status), `${res.counts.ok} ok · ${res.counts.warn} warn · ${res.counts.fail} fail`),
       modeNote(res),
       h("ul", { class: "checklist" }, res.checks.map(checkItem)),
       logBox);
