@@ -67,6 +67,29 @@ class LiveTests(unittest.TestCase):
         self.assertNotIn("hunter2hunter2", text)
         self.assertNotIn(JWT, text)
 
+    def test_stream_logs_each_line_as_printed(self):
+        res = self.sh.run([PY, "-u", "-c", "import sys; print('one'); print('two ' + sys.argv[1]); "
+                           "print('err', file=sys.stderr); sys.exit(2)", JWT], stream=True)
+        self.assertEqual(res.rc, 2)
+        self.assertEqual(res.stdout.split(), ["one", "two", JWT])   # the result keeps the raw output
+        self.assertEqual(res.stderr.strip(), "err")
+        self.assertEqual(self.lines[0], "one")                      # logged before the command line
+        self.assertTrue(self.lines[1].startswith("two "))
+        self.assertNotIn(JWT, self.lines[1])
+        self.assertIn("exit 2", self.lines[2])
+
+    def test_stream_timeout(self):
+        res = self.sh.run([PY, "-u", "-c", "import time; print('started'); time.sleep(5)"], timeout=0.5, stream=True)
+        self.assertEqual(res.rc, 124)
+        self.assertIn("timed out", res.stderr)
+        self.assertEqual(self.lines[0], "started")
+
+    def test_sensitive_output_is_never_streamed(self):
+        # The value is assembled in the child, so only its output (not the logged argv) could carry it.
+        res = self.sh.run([PY, "-c", "print('value-' + 'nobody-sees')"], sensitive=True, stream=True)
+        self.assertEqual(res.stdout.strip(), "value-nobody-sees")
+        self.assertNotIn("value-nobody-sees", "\n".join(self.lines))
+
     def test_https_only(self):
         with self.assertRaises(ValueError):
             self.sh.http("GET", "http://example.com/")

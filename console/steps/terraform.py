@@ -87,9 +87,9 @@ class Terraform:
             extra["JFROG_ACCESS_TOKEN"] = token
         return extra
 
-    def _run(self, *args, ok=(0,), sensitive=False):
+    def _run(self, *args, ok=(0,), sensitive=False, stream=False):
         res = self.sh.run(["terraform", f"-chdir={self.ws}", *args], timeout=TIMEOUTS.get(args[0], 600),
-                          sensitive=sensitive, extra_env=self._extra_env())
+                          sensitive=sensitive, extra_env=self._extra_env(), stream=stream)
         if res.rc not in ok:
             raise TerraformError(f"terraform {args[0]} failed (exit {res.rc}): {res.error_text(1500)}")
         return res
@@ -114,7 +114,7 @@ class Terraform:
             (self.ws / PLAN_FILE).unlink(missing_ok=True)
             self.init()
             self._run("plan", f"-out={PLAN_FILE}", "-input=false", "-lock-timeout=60s", "-no-color",
-                      "-detailed-exitcode", *self.plan_args, *(("-destroy",) if destroy else ()), ok=(0, 2))
+                      "-detailed-exitcode", *self.plan_args, *(("-destroy",) if destroy else ()), ok=(0, 2), stream=True)
             data = self._run("show", "-json", "-no-color", PLAN_FILE, sensitive=True).json()
             if not isinstance(data, dict):
                 raise TerraformError("terraform show -json did not return JSON")
@@ -143,7 +143,7 @@ class Terraform:
         with self._lock():
             self.check_approval(plan, approval)      # again, now that nobody else can touch the workspace
             try:
-                self._run("apply", "-input=false", "-lock-timeout=60s", "-no-color", PLAN_FILE)
+                self._run("apply", "-input=false", "-lock-timeout=60s", "-no-color", PLAN_FILE, stream=True)
             finally:
                 (self.ws / PLAN_FILE).unlink(missing_ok=True)
             return {"applied": True, "sha256": plan["sha256"], "outputs": self.outputs()}

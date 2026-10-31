@@ -32,6 +32,7 @@ import json
 import os
 import shutil
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -132,9 +133,11 @@ class Shell:
     # -- commands ----------------------------------------------------------------
 
     def run(self, argv: list, timeout: float = 60.0, sensitive: bool = False, extra_env: dict | None = None,
-            shown: list | None = None) -> Result:
+            shown: list | None = None, stream: bool = False) -> Result:
         """shown: what to log and record instead of argv, for an argv that carries values nobody may see
-        (e.g. a whole Lambda environment sent back with one managed change)."""
+        (e.g. a whole Lambda environment sent back with one managed change).
+        stream: log each stdout line (redacted) as the command prints it, for long commands whose
+        progress the operator watches (terraform plan and apply). Never for sensitive output."""
         if not isinstance(argv, (list, tuple)) or not argv or not all(isinstance(a, str) for a in argv):
             raise TypeError("argv must be a non-empty list of strings")
         argv = list(argv)
@@ -142,7 +145,7 @@ class Shell:
         if self.mode == "replay":
             res = self._replay_cmd(argv)
         else:
-            res = self._exec(argv, timeout, extra_env)
+            res = self._exec(argv, timeout, extra_env, stream=stream and not sensitive)
             if self.mode == "record":
                 self.recorded.append({"argv": [Path(logged[0]).name, *redact.argv(logged[1:])], "rc": res.rc,
                                       "stdout": REDACTED_OUTPUT if sensitive else redact.text(res.stdout),
@@ -150,11 +153,13 @@ class Shell:
         self._log(f"$ {' '.join(redact.argv(logged))} → exit {res.rc} ({res.seconds:.1f}s)")
         return res
 
-    def _exec(self, argv, timeout, extra_env) -> Result:
+    def _exec(self, argv, timeout, extra_env, stream=False) -> Result:
         exe = self.which(argv[0])
         started = time.monotonic()
         if not exe:
             return Result(argv, 127, "", f"{argv[0]}: command not found on PATH", 0.0)
+        if stream:
+            return self._exec_stream(argv, [exe, *argv[1:]], timeout, extra_env, started)
         try:
             proc = subprocess.run([exe, *argv[1:]], capture_output=True, text=True, timeout=timeout,
                                   env=child_env(extra_env), stdin=subprocess.DEVNULL, check=False)
@@ -163,6 +168,37 @@ class Shell:
             return Result(argv, 124, "", f"{argv[0]} timed out after {timeout:.0f}s", time.monotonic() - started)
         except OSError as exc:
             return Result(argv, 126, "", f"{argv[0]}: {exc}", time.monotonic() - started)
+
+    def _exec_stream(self, argv, cmd, timeout, extra_env, started) -> Result:
+        """As _exec, but stdout is read line by line and logged as it comes; stderr is drained by a
+        thread so neither pipe fills up. The timeout kills the process, as subprocess.run would."""
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
+                                    text=True, env=child_env(extra_env))
+        except OSError as exc:
+            return Result(argv, 126, "", f"{argv[0]}: {exc}", time.monotonic() - started)
+        err, timed_out = [], threading.Event()
+        drain = threading.Thread(target=lambda: err.append(proc.stderr.read()), daemon=True)
+        drain.start()
+
+        def kill():
+            timed_out.set()
+            proc.kill()
+        timer = threading.Timer(timeout, kill)
+        timer.start()
+        out = []
+        try:
+            for line in proc.stdout:
+                out.append(line)
+                if line.strip():
+                    self._log(line.rstrip("\n"))
+            proc.wait()
+        finally:
+            timer.cancel()
+            drain.join(5)
+        if timed_out.is_set():
+            return Result(argv, 124, "".join(out), f"{argv[0]} timed out after {timeout:.0f}s", time.monotonic() - started)
+        return Result(argv, proc.returncode, "".join(out), "".join(err), time.monotonic() - started)
 
     def _replay_cmd(self, argv) -> Result:
         want = [Path(argv[0]).name, *argv[1:]]

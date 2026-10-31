@@ -79,9 +79,18 @@ async function serverless() {
     const last = runs.find((r) => cloudOf(r.kind) === c);
     return chip(`/serverless/${c}`, mk, name, `${n} workload${n === 1 ? "" : "s"}`, last ? RUN[last.status] : "");
   }));
-  $("sl-runs").replaceChildren(...(runs.length ? runs.slice(0, 6).map((r) => row(`/serverless/${cloudOf(r.kind)}`,
-    markEl(kindMark(String(r.kind))), h("span", { class: "dash-main" }, h("b", { text: r.name }), h("small", { text: `${label(r.kind)} · ${when(r.created)}` })),
-    h("span", { class: `pill ${RUN[r.status] || ""}`, text: r.status.replaceAll("_", " ") }))) : [empty("No runs")]));
+  // A run opens its own page. One cut off before its workload was recorded has no name or kind,
+  // so there is no page to open: it shows as a plain row.
+  const runRow = (r) => {
+    const known = Boolean(r.name && r.kind);
+    const kids = [known ? markEl(kindMark(r.kind)) : h("span", { class: "dash-mark" }),
+      h("span", { class: "dash-main" }, h("b", { text: known ? r.name : "Unknown workload" }),
+        h("small", { text: `${known ? label(r.kind) : "No workload recorded"} · ${when(r.created)}` })),
+      h("span", { class: `pill ${RUN[r.status] || ""}`, text: r.status.replaceAll("_", " ") })];
+    return known ? row(`/serverless/${cloudOf(r.kind)}/w/${encodeURIComponent(r.name)}/runs/${encodeURIComponent(r.id)}`, ...kids)
+      : h("div", { class: "dash-row" }, ...kids);
+  };
+  $("sl-runs").replaceChildren(...(runs.length ? runs.slice(0, 6).map(runRow) : [empty("No runs")]));
 }
 
 async function kubernetes() {

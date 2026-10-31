@@ -274,7 +274,7 @@ class AzureTests(unittest.TestCase):
     def test_premium_settings_read_is_sensitive(self):
         settings = [{"name": "AzureWebJobsStorage", "value": "AccountKey=c2VjcmV0c2VjcmV0"}]
         sh = Shell(mode="record", fixtures=[], which=lambda n: None)
-        sh._exec = lambda argv, t, e: __import__("console.shell", fromlist=["Result"]).Result(
+        sh._exec = lambda argv, t, e, **kw: __import__("console.shell", fromlist=["Result"]).Result(
             argv, 0, json.dumps(settings) if "appsettings" in argv else json.dumps({"keyVaultReferenceIdentity": "SystemAssigned"}))
         wire.Wire(azure_cfg("azure_functions_premium", "fn"), sh, AZ_OUT).plan()
         self.assertNotIn("AccountKey", json.dumps(sh.recorded))

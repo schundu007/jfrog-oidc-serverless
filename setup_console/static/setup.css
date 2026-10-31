@@ -6,3 +6,7 @@
 #groups table { table-layout: fixed; }
 #groups td:first-child { width: 34%; }
 #groups td:nth-child(2) { width: 22%; }
+.setup-outputs { width: 100%; margin: var(--s-3) 0; border-collapse: collapse; }
+.setup-outputs th { text-align: left; font-weight: 500; padding: var(--s-2) var(--s-3) var(--s-2) 0; width: 40%; vertical-align: top; }
+.setup-outputs td { padding: var(--s-2) 0; color: var(--fg-2); font-size: var(--t-sm); overflow-wrap: anywhere; }
+.setup-outputs tr + tr > * { border-top: 1px solid var(--border); }
