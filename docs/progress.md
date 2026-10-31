@@ -491,3 +491,16 @@ Service connections are per cloud too: each foundation writes `jfrog-oidc-<cloud
 - `gcp-build-deploy` now rolls out the Cloud Run job, service and function (one ADO job per kind; parameters `kinds`, `job`, `service`, `function` name the workloads). `gcp-service-build-deploy` and `gcp-function-deploy` are gone. Pipelines per cloud: `<cloud>-stack-setup`, `<cloud>-build-deploy`, `<cloud>-workload-onboard`.
 - A workload that is not deployed is skipped with a warning (GCP job, service, function; Azure: no `rg-<workload>` registry) instead of failing the run.
 - ADO definitions live in folders `\gcp` and `\azure`.
+
+## 2026-10-31: End to end on both clouds, from nothing, through Setup and the console
+
+Order per cloud: foundation → workload stack (no job) → first image through the build pipeline (base image pulled from JFrog with the pipeline's OIDC token) → stack again with `job_image` and `deploy_job` → console onboarding in delivery mode (Preflight, Discover, Simulate, Publish) → `<cloud>-workload-onboard` applies and wires → `<cloud>-build-deploy` rolls out and runs. Result, both clouds: "exchanged identity for a JFrog token valid 3599s" and "read demo-generic/hello.txt" (Cloud Run job `artifact-reader` in unioxe; Container Apps job `caj-artifact-reader`).
+
+Problems met and fixed on the way:
+- A destroyed GCP workload identity pool and provider stay soft-deleted for 30 days and block re-creation (409): undeleted and imported into gcp-foundation's state.
+- ADC still billed the deleted project (`quota_project_id`), so the gcs backend said "project not found": `gcloud auth application-default set-quota-project unioxe`.
+- Build pipelines failed on a new project because the job did not exist yet: they now push the first image and say what to set in Setup.
+- New configurations had no JFrog URL (it moved out of `vars/test.yml`): the inventory reads it from the cloud's own foundation inputs.
+- Preflight's pipeline-code check needed `az devops login`: it uses `az rest` with the az login.
+- Destroying azure-foundation failed while Entra still listed the deleted federated credentials: destroy waits 120 s between them.
+- Setup: strict dependency order (a stack deploys only after its foundation reads as deployed; a foundation destroys only after its stacks), warnings with links, plain-words progress logs, no Check button.
