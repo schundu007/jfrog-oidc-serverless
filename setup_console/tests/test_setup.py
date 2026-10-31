@@ -319,6 +319,13 @@ class JobTests(unittest.TestCase):
         j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
         self.assertNotIn("minted-token-value", json.dumps(j))
 
+    def test_every_log_line_has_a_time(self):
+        j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        self.assertTrue(j["log"])
+        self.assertEqual(len(j["log_times"]), len(j["log"]))
+        self.assertTrue(all(isinstance(t, float) for t in j["log_times"]))
+        self.assertEqual(j["log_times"], sorted(j["log_times"]))
+
     def test_failed_plan_reported(self):
         (stacks.stack_dir("azure-container-apps", self.root.dir) / ".fake_fail_plan").write_text("")
         j = wait(self.jobs, self.jobs.start("azure-container-apps", "plan-apply"))

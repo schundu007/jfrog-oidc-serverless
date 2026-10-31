@@ -585,7 +585,7 @@ def _make_handler(console: ConsoleServer):
 
             def work():
                 try:
-                    sh = console.shell(on_line=lambda line: frames.put(("log", {"line": line})))
+                    sh = console.shell(on_line=lambda line: frames.put(("log", {"line": line, "t": time.time()})))
                     result = preflight.run(cfg, sh, env=console.step_env(), delivery=console.delivery or False,
                                            repo_root=console.repo_root, on_check=lambda c: frames.put(("check", c)))
                     console.save_recording(sh, "preflight")

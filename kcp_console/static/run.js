@@ -5,7 +5,7 @@
 import { api, h, fill, state, refreshConfigs, route, go, url, clusterPath } from "./app.js";
 import { $, muted, brief, icon, kindOf, KIND_TEXT, when, duration, link, liveSteps, ACTIVE, runTitle, runStarted } from "./ui.js";
 import { approvalBox, dryBefore } from "./cluster.js";
-import { logLine } from "./logview.js";
+import { logTable, timeToggle } from "./logview.js";
 
 const P = () => $("panel-run");
 const here = () => { const r = route(); return r.page === "run" ? r : null; };
@@ -135,8 +135,9 @@ function tree(list, sel) {
 const COMMAND = /^\s*(\$ |(GET|POST|PUT|PATCH|DELETE|HEAD) https?:\/\/)/;
 
 function pane(r, sel) {
-  const lines = sel.lines.filter((e) => !COMMAND.test(e.text || "")).map((e) => `${clock(e.t)}  ${e.text}`);
-  if (sel.root && extra) lines.push(...extra.split("\n").filter((t) => !COMMAND.test(t)));
+  const rows = sel.lines.filter((e) => !COMMAND.test(e.text || "")).map((e) => ({ t: e.t, text: e.text }));
+  if (sel.root && extra) rows.push(...extra.split("\n").filter((t) => t && !COMMAND.test(t)).map((text) => ({ t: null, text })));
+  const lines = rows.map((r) => `${clock(r.t)}  ${r.text}`.trim());
   const copy = h("button", { class: "ghost", onclick: async () => {
     try { await navigator.clipboard.writeText(lines.join("\n")); copy.textContent = "Copied"; } catch { copy.textContent = "Copy failed"; }
     setTimeout(() => { if (copy.isConnected) copy.textContent = "Copy"; }, 2000);
@@ -156,8 +157,8 @@ function pane(r, sel) {
       (run.guards || []).length && sel.root ? h("div", { class: "callout fail" }, brief(run.guards.join(" "))) : null,
       h("table", { class: "kv-table" }, h("thead", {}, h("tr", {}, facts.filter(Boolean).map(([k]) => h("th", { scope: "col" }, k)))), h("tbody", {}, h("tr", {}, facts.filter(Boolean).map(([, v]) => h("td", {}, v)))))),
     h("section", { class: "card log-card" },
-      h("div", { class: "card-head" }, h("h2", {}, "Log"), muted(`${lines.length} line${lines.length === 1 ? "" : "s"}`), copy),
-      lines.length ? h("ol", { class: "log" }, lines.map((t) => h("li", {}, logLine(t)))) : muted(run.status === "prepared" ? "Starts after the approval." : "No output.")));
+      h("div", { class: "card-head" }, h("h2", {}, "Log"), muted(`${lines.length} line${lines.length === 1 ? "" : "s"}`), timeToggle(), copy),
+      rows.length ? logTable(rows) : muted(run.status === "prepared" ? "Starts after the approval." : "No output.")));
 }
 
 async function cancel() {

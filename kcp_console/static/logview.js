@@ -64,8 +64,105 @@ export function logLine(text) {
   return row;
 }
 
-// Replace a container's children with the formatted lines.
-export function renderLog(el, lines) {
-  el.replaceChildren(...(lines || []).map(logLine));
-  return el;
+// ------------------------------------------------------------------ table view: Time | Message
+
+const TIME_KEY = "log-timestamps";
+const showTimes = () => { try { return localStorage.getItem(TIME_KEY) !== "off"; } catch { return true; } };
+const ISO_LEAD = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z)\s/;
+
+// A row is {t, text}: t is epoch seconds, an ISO string or empty. A line that starts with an ISO
+// stamp (pipeline logs) gives its own time.
+function toDate(t) {
+  if (t === null || t === undefined || t === "") return null;
+  const d = typeof t === "number" ? new Date(t * 1000) : new Date(t);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+const hhmmss = (d) => (d ? d.toLocaleTimeString([], { hour12: false }) : "");
+
+function tableRow(row) {
+  let { t, text } = typeof row === "string" ? { t: null, text: row } : row;
+  text = String(text ?? "");
+  const lead = text.match(ISO_LEAD);
+  if (lead) { t = t || lead[1]; text = text.slice(lead[0].length); }
+  const line = logLine(text);
+  const d = toDate(t);
+  const tr = document.createElement("tr");
+  tr.className = [...line.classList].filter((c) => c !== "lg").join(" ");
+  const time = document.createElement("td");
+  time.className = "lt-time";
+  time.textContent = hhmmss(d);
+  if (d) time.title = d.toLocaleString();
+  const msg = document.createElement("td");
+  msg.className = "lt-msg";
+  msg.append(line);
+  tr.append(time, msg);
+  return tr;
+}
+
+// The table, scrolled to the bottom while new rows arrive (unless the reader scrolled up).
+export function logTable(rows = []) {
+  const wrap = document.createElement("div");
+  wrap.className = "lt-wrap";
+  const table = document.createElement("table");
+  table.className = "lt" + (showTimes() ? "" : " lt-notime");
+  const head = document.createElement("thead");
+  const hr = head.insertRow();
+  for (const [cls, label] of [["lt-time", "Time"], ["", "Message"]]) {
+    const th = document.createElement("th");
+    th.scope = "col";
+    if (cls) th.className = cls;
+    th.textContent = label;
+    hr.append(th);
+  }
+  const body = document.createElement("tbody");
+  table.append(head, body);
+  wrap.append(table);
+  const keep = (fn) => {
+    const stick = wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight - 8;
+    fn();
+    if (stick) wrap.scrollTop = wrap.scrollHeight;
+  };
+  wrap.set = (next) => keep(() => body.replaceChildren(...(next || []).map(tableRow)));
+  wrap.add = (row) => keep(() => body.append(tableRow(row)));
+  wrap.count = () => body.rows.length;
+  wrap.set(rows);
+  return wrap;
+}
+
+// "Timestamps" on/off: one setting for every log table, remembered in this browser.
+export function timeToggle() {
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.checked = showTimes();
+  box.onchange = () => {
+    try { localStorage.setItem(TIME_KEY, box.checked ? "on" : "off"); } catch { /* not remembered */ }
+    document.querySelectorAll("table.lt").forEach((t) => t.classList.toggle("lt-notime", !box.checked));
+    document.querySelectorAll("input.lt-toggle").forEach((b) => { b.checked = box.checked; });
+  };
+  box.className = "lt-toggle";
+  const label = document.createElement("label");
+  label.className = "lt-toggle-label";
+  label.append(box, " Timestamps");
+  return label;
+}
+
+// A collapsible log: title, the toggle, then the table. box.set(rows) / box.add(row) update it.
+export function logBox(title, rows = [], open = true) {
+  const box = document.createElement("details");
+  box.className = "lt-box";
+  box.open = open;
+  const summary = document.createElement("summary");
+  summary.textContent = title;
+  const bar = document.createElement("div");
+  bar.className = "lt-bar";
+  const count = document.createElement("span");
+  count.className = "lt-count";
+  bar.append(timeToggle(), count);
+  const table = logTable();
+  box.append(summary, bar, table);
+  const counted = () => { const n = table.count(); count.textContent = `${n} line${n === 1 ? "" : "s"}`; box.hidden = !n; };
+  box.set = (next) => { table.set(next); counted(); };
+  box.add = (row) => { table.add(row); counted(); };
+  box.set(rows);
+  return box;
 }

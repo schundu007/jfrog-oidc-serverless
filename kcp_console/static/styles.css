@@ -583,3 +583,24 @@ table.kv-table td { overflow-wrap: anywhere; }
 .lg-summary, .lg-heading { font-weight: 600; margin-top: 0.4em; }
 .lg-key { color: #1f4e8c; }
 .lg-val { color: var(--fg); }
+
+/* Log tables (logview.js): Time | Message, readable size, a rule above each step. */
+.lt-box { margin-top: var(--s-4); }
+.lt-box > summary { font-weight: 600; cursor: pointer; }
+.lt-bar { display: flex; align-items: center; gap: var(--s-4); margin: var(--s-2) 0; font-size: 13px; color: var(--fg-3); }
+.lt-toggle-label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--fg-2); }
+.lt-wrap { max-height: 60vh; overflow: auto; border: 1px solid var(--border); border-radius: var(--r-md); background: #fbfbfb; }
+table.lt { width: 100%; border-collapse: collapse; font: 13px/1.55 var(--mono); }
+table.lt thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-3); color: var(--fg-2); text-align: left;
+  font: 600 12px/1.4 var(--font, inherit); padding: 6px 10px; border-bottom: 1px solid var(--border); }
+table.lt td { padding: 3px 10px; vertical-align: top; border-bottom: 1px solid #f0f0f0; }
+table.lt td.lt-time, table.lt th.lt-time { width: 1%; white-space: nowrap; color: var(--fg-3); }
+table.lt.lt-notime .lt-time { display: none; }
+table.lt td.lt-msg { white-space: pre-wrap; overflow-wrap: anywhere; }
+table.lt tr:hover td { background: #f3f6fa; }
+table.lt tr.lg-step td { border-top: 2px solid #d6e2f2; background: #f5f8fc; }
+table.lt tr.lg-error td { background: #fdf1f0; }
+table.lt tr.lg-warn td { background: #fdf7ec; }
+table.lt .lg { padding-left: 0; text-indent: 0; margin-top: 0; }
+
+.log-card .lt-wrap { border: 0; border-radius: 0; border-top: 1px solid var(--border); max-height: 70vh; }

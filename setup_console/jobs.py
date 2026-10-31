@@ -78,7 +78,7 @@ class Jobs:
             j = self._jobs.get(job_id)
             if not j:
                 raise JobError(404, "no such job")
-            return {k: (list(v) if k == "log" else v) for k, v in j.items() if not k.startswith("_")}
+            return {k: (list(v) if k in ("log", "log_times") else v) for k, v in j.items() if not k.startswith("_")}
 
     @staticmethod
     def _public_plan(p):
@@ -113,7 +113,7 @@ class Jobs:
                 except ApplyRefused as exc:
                     raise JobError(403, str(exc)) from None
             job = {"id": secrets.token_hex(6), "stack": stack_id, "action": action, "state": "running",
-                   "started": time.time(), "log": [], "result": None, "error": None}
+                   "started": time.time(), "log": [], "log_times": [], "result": None, "error": None}
             self._jobs[job["id"]] = job
         threading.Thread(target=self._work, args=(job, approval), name=f"setup-{stack_id}", daemon=True).start()
         return self.get(job["id"])
@@ -122,9 +122,7 @@ class Jobs:
         """One plain-words progress line in the job's log (Terraform's own output streams in between),
         then any detail lines under it, unmarked."""
         with self._lock:
-            job["log"].append("▶ " + redact.text(text))
-            job["log"].extend(redact.text(d) for d in details)
-            del job["log"][:-MAX_LOG]
+            _append(job, ["▶ " + redact.text(text), *(redact.text(d) for d in details)])
 
     def _where(self, stack_id, init_args) -> str:
         """Where this stack's Terraform state lives, in words."""
@@ -142,9 +140,7 @@ class Jobs:
 
         def log(line):
             with self._lock:
-                lines = current["job"]["log"]
-                lines.append(redact.text(line))
-                del lines[:-MAX_LOG]
+                _append(current["job"], [redact.text(line)])
         sh = self.shell_factory(log)
         env = dict(self.environ)
         init, plan = stacks.tf_args(job["stack"], self.env_name, self.root, self.state_root)
@@ -257,6 +253,15 @@ class Jobs:
     def _finish(self, job, state, result=None, error=None):
         with self._lock:
             job.update(state=state, result=result, error=error, finished=time.time())
+
+
+def _append(job, lines):
+    """Add lines to a job's log, each stamped with when it arrived (log_times, epoch seconds, same length)."""
+    now = time.time()
+    job["log"].extend(lines)
+    job.setdefault("log_times", []).extend(now for _ in lines)
+    del job["log"][:-MAX_LOG]
+    del job["log_times"][:-MAX_LOG]
 
 
 def _summary_text(summary) -> str:

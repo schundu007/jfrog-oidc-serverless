@@ -1,7 +1,7 @@
 // Setup: deploy and destroy test infrastructure. Check reads the stack's outputs; Deploy and Destroy
 // plan first, show the plan, and run it only after Approve (destroy also needs the stack name typed).
 import { $, api, h, hasToken, setToken, statusPill, flyout, closeFlyout, armed } from "/serverless/static/core.js";
-import { renderLog } from "/serverless/static/logview.js";
+import { logBox as tableLog } from "/serverless/static/logview.js";
 
 const POLL_MS = 1000;
 const fill = (el, ...kids) => { el.replaceChildren(...kids.flat().filter(Boolean)); return el; };
@@ -15,20 +15,19 @@ async function waitJob(id, onTick) {
   }
 }
 
-// Terraform's own output, streamed while a job runs; open while running or after a failure.
-// The "$ command → exit" bookkeeping lines are left out, and the box stays hidden until there is output.
-const output = (lines) => (lines || []).filter((l) => !l.startsWith("$ "));
-function logBox(lines, open = true) {
-  const pre = h("pre", { class: "pf-log" });
-  const box = h("details", { class: "pf-log-box", open }, h("summary", { text: "Terraform log" }), pre);
-  box.update = (next) => {
-    const shown = output(next);
-    box.hidden = !shown.length;
-    const stick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 8;
-    renderLog(pre, shown);
-    if (stick) pre.scrollTop = pre.scrollHeight;
+// Terraform's own output as a Time | Message table, streamed while a job runs; open while running or
+// after a failure. The "$ command → exit" bookkeeping lines are left out; hidden until there is output.
+const rows = (job) => (job?.log || []).map((text, i) => ({ t: job.log_times?.[i], text })).filter((r) => !r.text.startsWith("$ "));
+function logBox(job, open = true) {
+  const box = tableLog("Terraform log", [], open);
+  let shown = [];
+  box.update = (j) => {
+    const next = rows(j);
+    const grows = next.length >= shown.length && shown.every((r, i) => r.text === next[i].text && r.t === next[i].t);
+    if (grows) next.slice(shown.length).forEach(box.add); else box.set(next);
+    shown = next;
   };
-  box.update(lines);
+  box.update(job);
   return box;
 }
 
@@ -114,18 +113,18 @@ function planView(stack, plan, panel) {
 }
 
 async function follow(stack, job, panel) {
-  const box = logBox(job.log);
+  const box = logBox(job);
   fill(panel.body, h("p", { class: "muted", text: RUNNING[job.action] || "Running…" }), box);
   fill(panel.status, statusPill("running", "Running"));
-  const done = await waitJob(job.id, (j) => box.update(j.log));
+  const done = await waitJob(job.id, (j) => box.update(j));
   load();
   if (done.state === "failed") {
     fill(panel.status, statusPill("failed", "Failed"));
-    return fill(panel.body, h("pre", { class: "pf-log" }, done.error || ""), logBox(done.log));
+    return fill(panel.body, h("pre", { class: "pf-log" }, done.error || ""), logBox(done));
   }
   fill(panel.status, statusPill("succeeded", "Done"));
-  if (done.action.startsWith("plan-")) return fill(panel.body, planView(stack, done.result, panel), logBox(done.log, false));
-  fill(panel.body, resultView(stack, done.result), logBox(done.log, false));
+  if (done.action.startsWith("plan-")) return fill(panel.body, planView(stack, done.result, panel), logBox(done, false));
+  fill(panel.body, resultView(stack, done.result), logBox(done, false));
 }
 
 async function run(stack, action) {
