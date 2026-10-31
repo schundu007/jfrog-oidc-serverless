@@ -4,10 +4,16 @@ A plan job runs `terraform plan` (or `plan -destroy`) and keeps the summary and 
 sha256. The apply job runs only that plan file, through console.steps.terraform's gates: the
 approval names the sha256, the file still hashes to it, and any delete needs the stack name typed.
 Every log line goes through redaction; no token is ever logged or returned.
+
+A workload stack with a stack-setup pipeline (pipelines/<kind>/<cloud>/<stack>/stack-setup.yml) never
+runs Terraform here: Deploy and Destroy queue that pipeline in Azure DevOps, the plan shown is the
+one the run made, and Approve answers the run's environment approval, so ADO applies exactly that
+plan file. Foundations (they create the pipelines' trust) and reads of state still run here.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import threading
@@ -18,9 +24,12 @@ from console.shell import Shell
 from console.steps.terraform import ApplyRefused, Terraform, TerraformError
 
 from . import stacks
+from .ado import AdoError
 
 
 MAX_LOG = 5000   # lines kept per job
+POLL_SECONDS = 10
+RUN_TIMEOUT = 90 * 60   # a pipeline run that takes longer is reported, not waited on
 
 
 class JobError(RuntimeError):
@@ -31,13 +40,21 @@ class JobError(RuntimeError):
 
 class Jobs:
     def __init__(self, env_name: str = "test", root=stacks.STACKS_DIR, shell_factory=None, environ=None, token_source=None,
-                 state_root=stacks.STATE_ROOT):
+                 state_root=stacks.STATE_ROOT, ado=None, repo_root=stacks.REPO_ROOT, sleep=time.sleep):
         self.env_name, self.root, self.state_root = env_name, root, state_root
         self.shell_factory = shell_factory or (lambda log: Shell(mode="live", log=log))
         self.environ = os.environ if environ is None else environ
         self.token_source = token_source   # callable(shell, host) -> JFrog token, for stacks with a JFrog provider
         self._jobs, self._plans, self._status = {}, {}, {}
         self._lock = threading.Lock()
+        self.ado, self.repo_root, self.sleep = ado, repo_root, sleep
+
+    def pipeline_path(self, stack_id: str) -> str | None:
+        """The stack's ADO stack-setup pipeline (repo-relative), when changes to it run in ADO."""
+        if self.ado is None or stacks.depends_on(stack_id, self.root) is None:
+            return None
+        rel = f"pipelines/{stacks.rel_dir(stack_id)}/stack-setup.yml"
+        return rel if (self.repo_root / rel).is_file() else None
 
     # -- reads -------------------------------------------------------------------
 
@@ -88,6 +105,21 @@ class Jobs:
 
     # -- actions -----------------------------------------------------------------
 
+    def audit(self, stack_id: str, action, client) -> None:
+        """Who asked for a change, kept outside git: every deploy, destroy, approval and discard from
+        the page, so an unexpected change can be traced to the browser that asked for it."""
+        if action == "status":
+            return
+        line = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "stack": str(stack_id)[:64],
+                "action": str(action)[:20], "client": redact.text(str(client or ""))[:200]}
+        p = stacks.Path(self.state_root) / self.env_name / "audit.jsonl"
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with open(p, "a") as f:
+                f.write(json.dumps(line) + "\n")
+        except OSError:
+            pass
+
     def start(self, stack_id: str, action: str, approval=None) -> dict:
         stacks.get(stack_id)
         if action not in ("plan-apply", "plan-destroy", "apply", "status"):
@@ -107,9 +139,11 @@ class Jobs:
             if action == "apply":
                 if not plan:
                     raise JobError(409, "plan first")
-                tf = plan["_tf"]
-                try:
-                    tf.check_approval(plan, approval)   # refuse before any thread or subprocess
+                try:   # refuse before any thread or subprocess
+                    if "_ado" in plan:
+                        _check_ado_approval(plan, approval)
+                    else:
+                        plan["_tf"].check_approval(plan, approval)
                 except ApplyRefused as exc:
                     raise JobError(403, str(exc)) from None
             job = {"id": secrets.token_hex(6), "stack": stack_id, "action": action, "state": "running",
@@ -168,6 +202,10 @@ class Jobs:
         meta = stacks.get(sid)
         name = f"{meta['kind']} · {meta['group']} · {meta['title']} ({sid}), environment {self.env_name}"
         try:
+            if action in ("plan-apply", "plan-destroy", "apply") and self.pipeline_path(sid):
+                result = self._work_ado(job, name, approval)
+                self._finish(job, "done", result=result)
+                return
             if action == "apply":
                 with self._lock:
                     plan = self._plans.pop(sid)
@@ -206,13 +244,68 @@ class Jobs:
             self._finish(job, "done", result=result)
             if action == "apply" or (action == "status" and result.get("deployed")):
                 self._reread_dependents(sid)
-        except (TerraformError, ApplyRefused, stacks.StackError, OSError) as exc:
+        except (TerraformError, ApplyRefused, stacks.StackError, AdoError, OSError) as exc:
             msg = redact.text(str(exc))[:2000]
             first = msg.splitlines()[0] if msg else type(exc).__name__
             self._say(job, f"Failed: {first}")
             if action == "status":   # e.g. the state store does not exist yet: nothing is deployed there
                 self._set_status(sid, {"deployed": False, "outputs": {}, "error": first[:300]})
             self._finish(job, "failed", error=msg)
+
+    def _follow(self, job, run_id, until) -> dict:
+        """Poll the run until its phase is in `until`; say each new phase once."""
+        said, started = None, time.monotonic()
+        words = {"planning": "Azure DevOps is planning…", "applying": "Azure DevOps is applying the approved plan…"}
+        while True:
+            st = self.ado.stack_run(run_id)
+            if st["phase"] != said and st["phase"] in words:
+                self._say(job, words[st["phase"]])
+            said = st["phase"]
+            if st["phase"] in until or st["phase"] in ("failed", "declined", "authorizing"):
+                return st
+            if time.monotonic() - started > RUN_TIMEOUT:
+                raise AdoError(f"run {run_id} is still {st['phase']} after {RUN_TIMEOUT // 60} minutes: see {st['url']}")
+            self.sleep(POLL_SECONDS)
+
+    def _work_ado(self, job, name, approval) -> dict:
+        sid, action = job["stack"], job["action"]
+        if action == "apply":
+            with self._lock:
+                plan = self._plans.pop(sid)
+            run, ap = plan["_ado"]["run"], plan["_ado"]["approval"]
+            verb = "destroy" if plan["action"] == "destroy" else "deploy"
+            self._say(job, f"Approving the {verb} plan of {name} in Azure DevOps (run {run}, plan {plan['sha256'][:12]}).")
+            self.ado.answer(ap, True, f"Approved in the console: plan {plan['sha256'][:12]}")
+            st = self._follow(job, run, ("done",))
+            if st["phase"] != "done":
+                raise AdoError(st.get("error") or f"run {run} was {st['phase']}: {st['url']}")
+            destroyed = plan["action"] == "destroy"
+            outs = {} if destroyed else st.get("outputs") or {}
+            self._set_status(sid, {"deployed": not destroyed, "outputs": outs})
+            self._say(job, "Destroyed." if destroyed else "Deployed.", *_outputs_lines(outs))
+            return {"applied": True, "destroyed": destroyed, "outputs": outs, "run": st["url"]}
+        destroy = action == "plan-destroy"
+        stacks.tf_args(sid, self.env_name, self.root, self.state_root)   # inputs filled in, state derivable
+        pid, pname = self.ado.pipeline(self.pipeline_path(sid))
+        params = {"action": "destroy" if destroy else "apply", "environment": self.env_name,
+                  "inputs": stacks.read_inputs(sid, self.env_name, self.state_root),
+                  "state": stacks.foundation(stacks.backend_kind(sid, self.root), self.env_name, self.state_root)}
+        run = self.ado.queue(pid, params)
+        self._say(job, f"Planning a {'destroy' if destroy else 'deploy'} of {name} in Azure DevOps: "
+                       f"{pname}, run {run} ({self.ado.run_url(run)}).")
+        st = self._follow(job, run, ("waiting_approval", "done"))
+        if st["phase"] == "done":
+            self._say(job, "No changes: the stack already matches its inputs.")
+            return {"action": "destroy" if destroy else "apply", "summary": {}, "changes": [], "run": st["url"]}
+        if st["phase"] != "waiting_approval":
+            raise AdoError(st.get("error") or f"run {run} was {st['phase']}: {st['url']}")
+        p = {"action": "destroy" if destroy else "apply", "sha256": st["sha256"], "summary": st["summary"],
+             "changes": st["changes"], "destructive": st["destructive"], "confirmation_phrase": sid,
+             "job": job["id"], "_ado": {"run": run, "approval": st["approval"]}}
+        with self._lock:
+            self._plans[sid] = p
+        self._say(job, f"Plan ready: {_summary_text(p['summary'])}. Nothing changes until you approve it.")
+        return self._public_plan(p)
 
     def _reread_dependents(self, sid) -> None:
         """A foundation that was just deployed or destroyed changes what its stacks can read: read them again."""
@@ -244,7 +337,12 @@ class Jobs:
     def discard(self, stack_id: str) -> None:
         stacks.get(stack_id)
         with self._lock:
-            self._plans.pop(stack_id, None)
+            plan = self._plans.pop(stack_id, None)
+        if plan and "_ado" in plan:   # the run would otherwise wait on its approval for days
+            try:
+                self.ado.answer(plan["_ado"]["approval"], False, "Discarded in the console")
+            except AdoError:
+                pass
 
     def _set_status(self, sid, status):
         with self._lock:
@@ -253,6 +351,16 @@ class Jobs:
     def _finish(self, job, state, result=None, error=None):
         with self._lock:
             job.update(state=state, result=result, error=error, finished=time.time())
+
+
+def _check_ado_approval(plan, approval) -> None:
+    """The same gate as a local plan: the approval names the plan shown; deleting needs the name typed."""
+    if not isinstance(approval, dict) or approval.get("plan_sha256") != plan["sha256"]:
+        raise ApplyRefused("plan_hash_mismatch", "the approval is for a different plan; review the current plan")
+    if plan.get("destructive") and approval.get("typed_confirmation") != plan["confirmation_phrase"]:
+        raise ApplyRefused("typed_confirmation_required",
+                           f"this plan deletes or replaces {len(plan['destructive'])} resource(s); "
+                           f"type the stack name '{plan['confirmation_phrase']}' to confirm")
 
 
 def _append(job, lines):

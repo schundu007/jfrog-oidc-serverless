@@ -172,8 +172,10 @@ def make_handler(console: SetupServer):
                     return self._json(200, stacks.form(sid, console.env_name, console.root, console.state_root))
                 if what == "jobs" and method == "POST":
                     b = self._body()
+                    console.jobs.audit(sid, b.get("action"), self.headers.get("User-Agent"))
                     return self._json(202, console.jobs.start(sid, b.get("action"), b.get("approval")))
                 if what == "plan" and method == "DELETE":
+                    console.jobs.audit(sid, "discard", self.headers.get("User-Agent"))
                     console.jobs.discard(sid)
                     return self._json(200, {"discarded": True})
             if m == ("GET", "options", 2):

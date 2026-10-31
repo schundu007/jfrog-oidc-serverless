@@ -20,6 +20,8 @@ from kcp_console.jfrog import OperatorToken
 from kcp_console.server import KcpServer
 from kcp_console.store import Store as KcpStore, replay_store
 
+from console.shell import Shell
+from setup_console.ado import Ado
 from setup_console.jobs import Jobs
 from setup_console.server import SetupServer
 
@@ -67,8 +69,13 @@ def main(argv=None) -> int:
         return 2
     env_name = (delivery or {}).get("environment") or "test"
     operator = OperatorToken()
+    # Stack changes run as ADO pipelines (the delivery repo's org and project); foundations and reads stay here.
+    ado_client = None
+    if delivery and not args.fixtures:
+        ado_client = Ado(Shell(mode="live", log=lambda line: None), delivery["ado"]["organization"], delivery["ado"]["project"],
+                         branch=delivery["ado"].get("target_branch") or "main")
     setup = SetupServer(token=token, base=SETUP, env_name=env_name,
-                        jobs=Jobs(env_name=env_name, token_source=operator.get))
+                        jobs=Jobs(env_name=env_name, token_source=operator.get, ado=ado_client))
     portal = Portal(serverless, k8s, host=args.host, port=args.port, setup_console=setup)
     try:
         portal.start()

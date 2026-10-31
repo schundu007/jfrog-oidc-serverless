@@ -232,6 +232,106 @@ class StackTests(unittest.TestCase):
         self.assertIsNone(stacks.jfrog_host("azure-container-apps", "test", self.root.state))
 
 
+class FakeAdo:
+    """Scripted ADO: each stack_run call returns the next phase of the run."""
+
+    def __init__(self, phases):
+        self.phases, self.queued, self.answers = list(phases), [], []
+
+    def pipeline(self, path):
+        return 27, "Cloud Run job - Infrastructure"
+
+    def queue(self, pid, params):
+        self.queued.append((pid, params))
+        return 101
+
+    def run_url(self, run):
+        return f"https://dev.azure.com/acme/p/_build/results?buildId={run}"
+
+    def stack_run(self, run):
+        p = self.phases.pop(0) if len(self.phases) > 1 else self.phases[0]
+        return dict({"run": run, "url": self.run_url(run)}, **p)
+
+    def answer(self, approval, ok, comment):
+        self.answers.append((approval, ok))
+
+
+PLANNED = {"phase": "waiting_approval", "approval": "ap-1", "sha256": "a" * 64, "summary": {"create": 2},
+           "changes": [{"action": "create", "address": "google_service_account.workload"}], "destructive": []}
+
+
+class AdoJobTests(unittest.TestCase):
+    """Workload stacks with a stack-setup pipeline deploy and destroy in Azure DevOps, never here."""
+
+    def setUp(self):
+        self.root = Root()
+        self.addCleanup(shutil.rmtree, self.root.dir)
+        self.root.ready()
+        self.repo = self.root.dir / "repo"
+        p = self.repo / "pipelines" / stacks.rel_dir("gcp-cloud-run")
+        p.mkdir(parents=True)
+        (p / "stack-setup.yml").write_text("trigger: none\n")
+
+    def jobs(self, phases):
+        self.ado = FakeAdo(phases)
+        j = Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state,
+                 ado=self.ado, repo_root=self.repo, sleep=lambda s: None)
+        for f in ("gcp-foundation", "azure-foundation"):
+            j._set_status(f, {"deployed": True, "outputs": {}})
+        return j
+
+    def test_deploy_queues_the_pipeline_and_approves_the_shown_plan(self):
+        jobs = self.jobs([{"phase": "planning"}, PLANNED])
+        j = wait(jobs, jobs.start("gcp-cloud-run", "plan-apply"))
+        self.assertEqual(j["state"], "done", j)
+        pid, params = self.ado.queued[0]
+        self.assertEqual((pid, params["action"], params["environment"]), (27, "apply", "test"))
+        self.assertEqual(params["inputs"]["gcp_project_id"], "proj-1")
+        self.assertEqual(params["state"]["gcp_project_id"], "proj-1")
+        self.assertEqual(self.root.calls("gcp-cloud-run"), [])          # no terraform here
+        self.assertEqual(j["result"]["summary"], {"create": 2})
+        self.assertIn("buildId=101", "\n".join(j["log"]))
+        with self.assertRaises(JobError):
+            jobs.start("gcp-cloud-run", "apply", {"plan_sha256": "b" * 64})
+        self.assertEqual(self.ado.answers, [])
+        self.ado.phases = [{"phase": "applying"}, dict(PLANNED, phase="done", outputs={"job_name": "artifact-reader"})]
+        done = wait(jobs, jobs.start("gcp-cloud-run", "apply", {"plan_sha256": "a" * 64}))
+        self.assertEqual(done["state"], "done", done)
+        self.assertEqual(self.ado.answers, [("ap-1", True)])
+        row = [s for s in jobs.stacks() if s["id"] == "gcp-cloud-run"][0]
+        self.assertEqual(row["status"]["outputs"], {"job_name": "artifact-reader"})
+
+    def test_destroy_needs_the_typed_name_and_discard_rejects_the_run(self):
+        jobs = self.jobs([dict(PLANNED, destructive=["google_service_account.workload"], summary={"delete": 1})])
+        j = wait(jobs, jobs.start("gcp-cloud-run", "plan-destroy"))
+        self.assertEqual(self.ado.queued[0][1]["action"], "destroy")
+        self.assertEqual(j["result"]["confirmation_phrase"], "gcp-cloud-run")
+        with self.assertRaises(JobError):
+            jobs.start("gcp-cloud-run", "apply", {"plan_sha256": "a" * 64})
+        jobs.discard("gcp-cloud-run")
+        self.assertEqual(self.ado.answers, [("ap-1", False)])
+
+    def test_a_failed_run_fails_the_job_with_its_reason(self):
+        jobs = self.jobs([{"phase": "failed", "error": "Error: Invalid value for input variable"}])
+        j = wait(jobs, jobs.start("gcp-cloud-run", "plan-apply"))
+        self.assertEqual(j["state"], "failed")
+        self.assertIn("Invalid value for input variable", j["error"])
+
+    def test_no_changes_needs_no_approval(self):
+        jobs = self.jobs([{"phase": "done", "summary": {}, "changes": [], "destructive": [], "sha256": "c" * 64}])
+        j = wait(jobs, jobs.start("gcp-cloud-run", "plan-apply"))
+        self.assertEqual(j["state"], "done")
+        self.assertIsNone(j["result"]["plan"] if "plan" in j["result"] else None)
+        self.assertEqual([s["plan"] for s in jobs.stacks() if s["id"] == "gcp-cloud-run"], [None])
+
+    def test_stacks_without_a_pipeline_still_run_here(self):
+        jobs = self.jobs([PLANNED])
+        (stacks.stack_dir("azure-container-apps", self.root.dir) / ".fake_plan.json").write_text("[]")
+        wait(jobs, jobs.start("azure-container-apps", "plan-apply"))
+        self.assertEqual(self.ado.queued, [])
+        self.assertTrue(self.root.calls("azure-container-apps"))
+
+
 class JobTests(unittest.TestCase):
     def setUp(self):
         self.root = Root()
@@ -324,6 +424,12 @@ class JobTests(unittest.TestCase):
         with self.assertRaises(JobError) as e:
             self.jobs.start("azure-container-apps", "apply", {"plan_sha256": "x"})
         self.assertEqual(e.exception.status, 409)
+
+    def test_changes_are_audited_with_the_client(self):
+        self.jobs.audit("gcp-cloud-run", "plan-destroy", "Mozilla/5.0 test")
+        self.jobs.audit("gcp-cloud-run", "status", "Mozilla/5.0 test")       # reads are not audited
+        rows = [json.loads(l) for l in (self.root.state / "test" / "audit.jsonl").read_text().splitlines()]
+        self.assertEqual([(r["stack"], r["action"], r["client"]) for r in rows], [("gcp-cloud-run", "plan-destroy", "Mozilla/5.0 test")])
 
     def test_token_never_in_log_or_result(self):
         j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
