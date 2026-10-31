@@ -179,8 +179,9 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
         errors = []
         for name, env in list(signins):
             res = git(*args, cwd=cwd, env=env)
-            if res.ok:
-                signins[:] = [(name, env)]
+            if res.ok:   # first next time; the others stay (a public repo fetches without any sign-in)
+                signins.remove((name, env))
+                signins.insert(0, (name, env))
                 return res
             # Any failure tries the next sign-in (a helper that cannot prompt, a stale token, a timeout).
             errors.append(f"{name}: {redact.text(res.error_text(200))}")

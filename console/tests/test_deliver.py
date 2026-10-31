@@ -37,11 +37,11 @@ class FakeGit(Shell):
     """Replay az/git/HTTP for publish. Temp paths vary, so commands are matched by their verb."""
 
     def __init__(self, log=None, commit_rc=0, pr_status=201, helper="", token_ok=True, helper_ok=True,
-                 helper_error=""):
+                 helper_error="", helper_push_ok=True):
         super().__init__(mode="replay", log=log)
         self.calls, self.commit_rc, self.pr_status = [], commit_rc, pr_status
         self.helper, self.token_ok, self.helper_ok, self.envs = helper, token_ok, helper_ok, []
-        self.helper_error = helper_error
+        self.helper_error, self.helper_push_ok = helper_error, helper_push_ok
 
     def run(self, argv, *a, extra_env=None, **kw):
         self.envs.append(extra_env)
@@ -57,7 +57,7 @@ class FakeGit(Shell):
                 return Result(argv, 0 if self.helper else 1, self.helper + "\n" if self.helper else "", "", 0.0)
             if verb in ("fetch", "push"):
                 env = self.envs[-1] or {}
-                ok = self.token_ok if "GIT_CONFIG_VALUE_0" in env else self.helper_ok
+                ok = self.token_ok if "GIT_CONFIG_VALUE_0" in env else (self.helper_ok and (verb == "fetch" or self.helper_push_ok))
                 if not ok:
                     return Result(argv, 128, "", self.helper_error if "GIT_CONFIG_VALUE_0" not in env and self.helper_error
                                   else "fatal: Authentication failed for 'https://dev.azure.com/acme/'", 0.0)
@@ -211,6 +211,13 @@ class PublishTests(unittest.TestCase):
         self.assertEqual([c[3] for c in sh.calls if c[0] == "git" and c[3] == "fetch"], ["fetch", "fetch"])
         push_env = sh.envs[[i for i, c in enumerate(sh.calls) if c[0] == "git" and c[3] == "push"][0]]
         self.assertIn("GIT_CONFIG_VALUE_0", push_env)      # the sign-in that worked is kept for the push
+
+    def test_a_sign_in_that_only_reads_still_falls_back_for_the_push(self):
+        # A public repo fetches with any helper; the push is where the helper's missing sign-in shows.
+        res, sh = self.publish(gcp_cfg(), helper="/opt/gcm/git-credential-manager", helper_push_ok=False)
+        self.assertTrue(res["changed"])
+        pushes = [sh.envs[i] for i, c in enumerate(sh.calls) if c[0] == "git" and c[3] == "push"]
+        self.assertEqual(["GIT_CONFIG_VALUE_0" in e for e in pushes], [False, True])
 
     def test_every_sign_in_failing_names_each_and_the_fix(self):
         with self.assertRaises(deliver.DeliveryError) as cm:
