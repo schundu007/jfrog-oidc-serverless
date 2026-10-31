@@ -1,7 +1,8 @@
 .setup-row-actions { display: flex; gap: var(--s-2); justify-content: flex-end; flex-wrap: wrap; }
 .setup-actions { display: flex; gap: var(--s-2); margin-top: var(--s-3); flex-wrap: wrap; }
 .setup-actions input { flex: 1; min-width: 180px; font-family: var(--mono); }
-.setup-vars { width: 100%; min-height: 320px; font-family: var(--mono); font-size: var(--t-sm); }
+.setup-form { display: flex; flex-direction: column; gap: var(--s-3); }
+.setup-json { width: 100%; font-family: var(--mono); font-size: var(--t-sm); }
 #groups table { table-layout: fixed; }
 #groups td:first-child { width: 34%; }
 #groups td:nth-child(2) { width: 22%; }

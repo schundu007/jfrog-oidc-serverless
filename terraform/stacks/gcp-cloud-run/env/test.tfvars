@@ -1,9 +1,0 @@
-jfrog_url                = "https://trial9hnw59.jfrog.io"
-jfrog_reader_group       = "serverless-readers"
-gcp_project_id           = "unioxe"
-gcp_region               = "us-central1"
-workload                 = "artifact-reader"
-deployer_service_account = "ado-build@unioxe.iam.gserviceaccount.com"
-artifact_path            = "demo-generic/hello.txt"
-deploy_job               = true
-job_image                = "us-central1-docker.pkg.dev/unioxe/platform/jfrog-oidc-demo:0.1.0"

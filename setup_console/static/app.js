@@ -17,6 +17,7 @@ async function waitJob(id, onTick) {
 function logBox(lines) { return h("pre", { class: "pf-log" }, (lines || []).join("\n")); }
 
 function stackStatus(s) {
+  if (s.missing?.length) return statusPill("notrun", "Inputs needed");
   if (s.busy) return statusPill("running", "Running");
   if (s.plan) return statusPill("waiting_approval", s.plan.action === "destroy" ? "Destroy planned" : "Deploy planned");
   if (!s.status) return statusPill("notrun", "Not checked");
@@ -71,16 +72,64 @@ async function run(stack, action) {
   catch (e) { fill(panel.status, statusPill("failed", e.message)); }
 }
 
+// One field per variable the stack declares. Pickers list live projects / subscriptions; any
+// value can still be typed. JSON-typed variables (objects, maps, lists) take JSON.
+const optionCache = {};
+async function options(source) {
+  optionCache[source] ||= api(`/api/options/${source}`).then((r) => r.options).catch(() => []);
+  return optionCache[source];
+}
+
+function input(f) {
+  const id = `in-${f.name}`;
+  if (f.kind === "bool") return h("input", { id, type: "checkbox", checked: f.current === true });
+  if (f.kind === "json") {
+    return h("textarea", { id, class: "setup-json", spellcheck: "false", rows: 4 },
+      f.current === undefined ? "" : JSON.stringify(f.current, null, 2));
+  }
+  const el = h("input", { id, type: f.kind === "number" ? "number" : "text", spellcheck: "false",
+    value: f.current ?? "", required: f.required });
+  if (f.options) {
+    const list = h("datalist", { id: `${id}-list` });
+    el.setAttribute("list", list.id);
+    options(f.options).then((opts) => fill(list, opts.map((o) => h("option", { value: o.id, text: o.name }))));
+    return [el, list];
+  }
+  return el;
+}
+
+function readField(f) {
+  const el = $(`in-${f.name}`);
+  if (f.kind === "bool") return el.checked;
+  if (f.kind === "number") return el.value === "" ? null : Number(el.value);
+  return el.value;
+}
+
 async function editInputs(stack) {
   const panel = flyout(`${stack.title}: Inputs`);
-  const v = await api(`/api/stacks/${stack.id}/vars`);
-  const area = h("textarea", { class: "setup-vars", spellcheck: "false", "aria-label": v.file }, v.text);
-  const save = h("button", { type: "button", class: "primary", text: "Save" });
-  save.onclick = async () => {
-    try { await api(`/api/stacks/${stack.id}/vars`, { method: "PUT", body: { text: area.value } }); fill(panel.status, statusPill("succeeded", "Saved")); }
-    catch (e) { fill(panel.status, statusPill("failed", e.message)); }
+  const draw = (form) => {
+    const fields = form.fields.map((f) => h("label", { class: "field" },
+      h("span", {}, h("span", { class: "field-label", text: f.name }), f.required ? h("span", { class: "small", text: "required" }) : null),
+      input(f),
+      f.description ? h("span", { class: "field-msg", text: f.description }) : null));
+    const save = h("button", { type: "submit", class: "primary", text: "Save" });
+    const el = h("form", { class: "setup-form", autocomplete: "off" }, fields, h("div", { class: "actions setup-actions" }, save));
+    el.onsubmit = async (e) => {
+      e.preventDefault();
+      save.disabled = true;
+      try {
+        const values = Object.fromEntries(form.fields.map((f) => [f.name, readField(f)]));
+        const next = await api(`/api/stacks/${stack.id}/inputs`, { method: "PUT", body: { values } });
+        fill(panel.status, statusPill(next.missing.length ? "waiting_approval" : "succeeded",
+          next.missing.length ? `Missing: ${next.missing.join(", ")}` : "Saved"));
+        load();
+      } catch (err) { fill(panel.status, statusPill("failed", err.message)); }
+      save.disabled = false;
+    };
+    fill(panel.body, el);
   };
-  fill(panel.body, h("p", { class: "small", text: v.file }), area, h("div", { class: "actions setup-actions" }, save));
+  try { draw(await api(`/api/stacks/${stack.id}/inputs`)); }
+  catch (e) { fill(panel.status, statusPill("failed", e.message)); }
 }
 
 function row(s) {

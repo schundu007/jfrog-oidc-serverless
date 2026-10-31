@@ -21,6 +21,14 @@ parameters:
     type: string
     default: test
     values: [test]
+  # The stack's variables as JSON, as the Infrastructure page saves them (.console/setup/<env>/<stack>.tfvars.json).
+  - name: inputs
+    type: object
+    default: {}
+  # Where state lives: the ADO trust inputs it derives from (gcp_project_id; azure_subscription_id, ado_org, state_resource_group).
+  - name: state
+    type: object
+    default: {}
 
 variables:
   - template: vars/${{ parameters.environment }}.yml
@@ -60,6 +68,8 @@ stages:
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
               JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
+              STACK_INPUTS: ${{ convertToJson(parameters.inputs) }}
+              STACK_STATE: ${{ convertToJson(parameters.state) }}
               GCP_SERVICE_ACCOUNT: $(GCP_SETUP_SERVICE_ACCOUNT)
           - publish: $(Pipeline.Workspace)/plan
             artifact: plan
@@ -94,4 +104,6 @@ stages:
                   env:
                     SYSTEM_ACCESSTOKEN: $(System.AccessToken)
                     JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
+                    STACK_INPUTS: ${{ convertToJson(parameters.inputs) }}
+                    STACK_STATE: ${{ convertToJson(parameters.state) }}
                     GCP_SERVICE_ACCOUNT: $(GCP_SETUP_SERVICE_ACCOUNT)

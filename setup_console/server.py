@@ -26,6 +26,11 @@ STATIC_DIR = Path(__file__).parent / "static"
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
 PAGE_ROUTES = re.compile(r"^/(?:[a-z0-9-]+/?)?$")
 MAX_BODY = 128 * 1024
+OPTION_COMMANDS = {
+    "gcp_projects": ["gcloud", "projects", "list", "--filter=lifecycleState:ACTIVE", "--format=json"],
+    "azure_subscriptions": ["az", "account", "list", "--query", "[?state=='Enabled']", "-o", "json"],
+    "azure_tenants": ["az", "account", "list", "-o", "json"],
+}
 
 
 class HttpError(Exception):
@@ -36,14 +41,32 @@ class HttpError(Exception):
 
 class SetupServer:
     def __init__(self, token: str, jobs: Jobs | None = None, env_name: str = "test", base: str = "/setup",
-                 host: str = "127.0.0.1", port: int = 0, log=sys.stderr, root=stacks.STACKS_DIR):
+                 host: str = "127.0.0.1", port: int = 0, log=sys.stderr, root=stacks.STACKS_DIR,
+                 state_root=stacks.STATE_ROOT):
         self.token, self.base, self.host, self.port, self.log = token, base, host, port, log
-        self.env_name, self.root = env_name, root
-        self.jobs = jobs or Jobs(env_name=env_name, root=root)
+        self.env_name, self.root, self.state_root = env_name, root, state_root
+        self.jobs = jobs or Jobs(env_name=env_name, root=root, state_root=state_root)
         self.static_files = {p.name for p in STATIC_DIR.iterdir() if p.is_file() and p.suffix in CONTENT_TYPES}
 
     def allowed_hosts(self) -> set:
         return {f"127.0.0.1:{self.port}", f"localhost:{self.port}"}
+
+    def options(self, source: str) -> list:
+        """Live choices for a picker (read-only listings): [{id, name}]."""
+        argv = OPTION_COMMANDS.get(source)
+        if not argv:
+            raise HttpError(404, "no such option source")
+        res = self.jobs.shell_factory(lambda line: None).run(argv, timeout=60)
+        if not res.ok:
+            raise HttpError(502, f"{argv[0]}: {res.error_text(160)}")
+        rows = res.json() or []
+        if source == "gcp_projects":
+            out = [{"id": r.get("projectId"), "name": r.get("name") or r.get("projectId")} for r in rows]
+        elif source == "azure_subscriptions":
+            out = [{"id": r.get("id"), "name": r.get("name") or r.get("id")} for r in rows]
+        else:
+            out = [{"id": t, "name": t} for t in sorted({r.get("tenantId") for r in rows if r.get("tenantId")})]
+        return sorted((o for o in out if o["id"]), key=lambda o: o["name"].lower())
 
 
 def make_handler(console: SetupServer):
@@ -142,18 +165,19 @@ def make_handler(console: SetupServer):
             if parts[:1] == ["stacks"] and len(parts) == 3:
                 sid, what = parts[1], parts[2]
                 stacks.get(sid)
-                if what == "vars" and method == "GET":
-                    return self._json(200, {"text": stacks.read_vars(sid, console.env_name, console.root),
-                                            "file": str(stacks.vars_file(sid, console.env_name, console.root).relative_to(console.root))})
-                if what == "vars" and method == "PUT":
-                    stacks.write_vars(sid, console.env_name, self._body().get("text"), console.root)
-                    return self._json(200, {"saved": True})
+                if what == "inputs" and method == "GET":
+                    return self._json(200, stacks.form(sid, console.env_name, console.root, console.state_root))
+                if what == "inputs" and method == "PUT":
+                    stacks.write_inputs(sid, console.env_name, self._body().get("values"), console.root, console.state_root)
+                    return self._json(200, stacks.form(sid, console.env_name, console.root, console.state_root))
                 if what == "jobs" and method == "POST":
                     b = self._body()
                     return self._json(202, console.jobs.start(sid, b.get("action"), b.get("approval")))
                 if what == "plan" and method == "DELETE":
                     console.jobs.discard(sid)
                     return self._json(200, {"discarded": True})
+            if m == ("GET", "options", 2):
+                return self._json(200, {"options": console.options(parts[1])})
             if m == ("GET", "jobs", 2):
                 return self._json(200, console.jobs.get(parts[1]))
             raise HttpError(404, "not found")
