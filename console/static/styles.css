@@ -858,3 +858,29 @@ table.lt .lg { padding-left: 0; text-indent: 0; margin-top: 0; }
   .sidenav .nav-fold { display: none; }
   .sidenav .nav-body, .sidenav .nav-body[hidden] { display: contents; }
 }
+
+/* ================================================================== serverless overview */
+/* One resources card (live workloads only), then Create tiles grouped by what a workload does. */
+.ov-header { border-bottom: 1px solid var(--border); padding-bottom: var(--s-3); }
+.ov-refresh { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.ov-refresh svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ov-card { border: 1px solid var(--border); border-radius: 8px; background: var(--surface, #fff); padding: var(--s-4) 0 var(--s-2); max-width: 760px; }
+.ov-title { margin: 0 var(--s-5) var(--s-3); font-size: 18px; font-weight: 500; display: flex; align-items: center; gap: var(--s-2); }
+.ov-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ov-table thead th { text-align: left; font-weight: 600; background: var(--surface-2); padding: 6px var(--s-3); border-bottom: 1px solid var(--border); }
+.ov-table td { padding: 6px var(--s-3); border-bottom: 1px solid var(--border); }
+.ov-table th:first-child, .ov-table td:first-child { padding-left: var(--s-5); width: 1%; }
+.ov-table tr.row-link { cursor: pointer; }
+.ov-table tr.row-link:hover { background: var(--surface-2); }
+.ov-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.ov-dot-ok { background: var(--ok-fg, #188038); }
+.ov-dot-warn { background: var(--warn-fg, #b06000); }
+.ov-empty { margin: var(--s-3) var(--s-5) var(--s-2); color: var(--fg-3); font-size: 14px; }
+.ov-create { margin-top: var(--s-6, 32px); border-top: 1px solid var(--border); padding-top: var(--s-5); display: flex; flex-wrap: wrap; gap: var(--s-5) var(--s-6, 32px); }
+.ov-group-title { margin: 0 0 var(--s-3); font-size: 18px; font-weight: 500; }
+.ov-tiles { display: flex; flex-wrap: wrap; gap: var(--s-3); }
+.ov-tile { width: 140px; height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-2);
+  border: 1px solid var(--border-strong, var(--border)); border-radius: 6px; color: var(--fg); text-align: center; font-size: 15px;
+  padding: var(--s-2); text-decoration: none; background: var(--surface, #fff); }
+.ov-tile:hover, .ov-tile:focus-visible { border-color: var(--brand); box-shadow: 0 1px 4px rgba(16, 24, 40, 0.1); }
+.ov-tile-icon svg { width: 36px; height: 36px; }

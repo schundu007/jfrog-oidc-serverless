@@ -46,29 +46,23 @@
 
   <!-- Workloads (/<cloud>) -->
   <template id="tpl-list">
-    <header class="page-header">
-      <div class="title-row"><h1>Workloads</h1><span id="wl-count" class="count-badge"></span></div>
+    <header class="page-header ov-header">
+      <div class="title-row"><h1>Serverless</h1></div>
       <div class="actions">
-        <a id="wl-new" class="btn primary" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>New workload</a>
         <span id="list-status" class="page-status small" role="status" aria-live="polite"></span>
+        <button id="wl-refresh" type="button" class="link ov-refresh"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 4v3.5h-3.5"/></svg>Refresh</button>
       </div>
     </header>
-    <div id="wl-body" hidden>
-      <div class="filter-row"><input id="wl-filter" type="search" placeholder="Filter by name, type, workload or identity" aria-label="Filter workloads" spellcheck="false" autocomplete="off"></div>
-      <div class="table-card">
-        <table class="list-table">
-          <thead><tr><th scope="col" class="col-icon"><span class="sr-only">Last run status</span></th><th scope="col">Name</th>
-            <th scope="col">Workload type</th><th scope="col">Workload</th><th scope="col">Identity</th><th scope="col">Last run</th>
-            <th scope="col" class="col-menu"><span class="sr-only">Actions</span></th></tr></thead>
-          <tbody id="wl-rows"></tbody>
-        </table>
-      </div>
-      <p id="wl-none" class="muted small" hidden>No workload matches the filter.</p>
-    </div>
-    <div id="wl-empty" class="empty" hidden>
-      <h2>None running in the cloud</h2>
-      <a id="wl-empty-new" class="btn primary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>New workload</a>
-    </div>
+    <section class="ov-card">
+      <h2 class="ov-title">Resources <span id="wl-help"></span></h2>
+      <table class="ov-table">
+        <thead><tr><th scope="col" class="col-icon"><span class="sr-only">Status</span></th><th scope="col">Name</th>
+          <th scope="col" id="wl-where">Region</th><th scope="col">Type</th><th scope="col">Last updated</th></tr></thead>
+        <tbody id="wl-rows"></tbody>
+      </table>
+      <p id="wl-empty" class="ov-empty" hidden>None in the cloud</p>
+    </section>
+    <div id="wl-create" class="ov-create"></div>
   </template>
 
   <!-- New workload (/<cloud>/new) -->

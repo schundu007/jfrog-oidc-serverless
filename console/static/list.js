@@ -1,68 +1,61 @@
-// Workloads (/<cloud>): only what exists in the cloud right now. A saved or onboarded configuration is
-// listed once the cloud confirms its workload exists (wired or not); missing or unreadable ones are not shown. The whole row opens the workload; "⋯" holds Delete (saved only: an
+// Serverless (/<cloud>, or one kind with ?type=): the resources that exist in the cloud right now, then
+// Create tiles grouped by what the workload does. A configuration is listed only once the cloud
+// confirms its workload exists (wired or not); missing or unreadable ones are not shown. The whole row opens the workload; "⋯" holds Delete (saved only: an
 // onboarded config lives in git, where only offboarding removes it).
 
-import { $, api, h, fill, inSection, href, CLOUD, TYPE, statusIcon, statusText, template, menu, ago, dur, runDuration, stamp,
-  status as setStatus } from "./core.js";
+import { $, api, h, fill, inSection, ofCloud, href, CLOUD, TYPE, template, ago, stamp, help, status as setStatus } from "./core.js";
 import { kindLabel } from "./configure.js";
 
 const ls = { rows: [], schema: null, checked: false };
+const REAL = new Set(["wired", "not_wired"]);
+// Status dot: green when the JFrog settings are on the workload, amber when it exists without them.
+const DOT = { wired: ["ok", "Exists, wired to JFrog"], not_wired: ["warn", "Exists, not wired to JFrog"] };
 
-// "succeeded · 2 h ago · 1 m 32 s"
-function lastRunText(run, snap) {
-  if (!run) return "No runs";
-  const took = dur(runDuration(snap));
-  return [statusText(run.status), ago(run.created), took].filter(Boolean).join(" · ");
-}
-
-// What the cloud says now: the workload exists and carries the JFrog settings, or not.
-const LIVE = { wired: ["succeeded", "Wired"], not_wired: ["warn", "Not wired"], missing: ["failed", "Missing"] };
-function livePill(c) {
-  if (!c.live) return h("span", { class: "pill pill-onboarded", text: "Checking" });
-  const [tone, text] = LIVE[c.live.state] || ["notrun", "Unknown"];
-  return h("span", { class: `pill pill-onboarded pill-${tone}`, title: c.live.detail || null, text });
-}
+// What a workload kind does, as the clouds' own consoles group them; and its service icon.
+const GROUPS = [["Services", (k) => /_service$|_container_app$/.test(k)],
+  ["Jobs and worker pools", (k) => /_job$|_worker_pool$/.test(k)],
+  ["Functions", (k) => /function/.test(k)]];
+const iconOf = (k) => (k === "gcp_run_function" ? "fn" : k.startsWith("gcp_") ? "run" : k.startsWith("azure_functions") ? "func" : "aca");
 
 function row(c) {
   const open = href.workload(c.name);
+  const [tone, label] = DOT[c.live.state];
   const tr = h("tr", { class: "row-link", "data-name": c.name },
-    h("td", { class: "col-icon" }, statusIcon(c.run ? c.run.status : "notrun", c.run ? `Last run ${statusText(c.run.status)}` : "No runs")),
-    h("th", { scope: "row" }, h("a", { href: open, text: c.name }),
-      livePill(c)),
-    h("td", { text: kindLabel(ls.schema, c.kind) }),
-    h("td", { class: "mono small", text: c.workload || "—" }),
-    h("td", {}, c.identity ? h("span", { class: "mono small", text: c.identity }) : h("span", { class: "muted small", text: "not discovered" })),
-    h("td", { class: "small", title: c.run ? stamp(c.run.created) : null, text: lastRunText(c.run, c.snap) }),
-    h("td", { class: "col-menu" }, c.source === "git" ? null : menu(`Actions for ${c.name}`, [
-      { text: "Delete", danger: true, confirm: `Delete ${c.name} and its runs?`, onSelect: () => remove(c.name) },
-    ])));
-  tr.addEventListener("click", (e) => {
-    if (e.target.closest("a, button, .menu-wrap")) return;
-    location.assign(open);
-  });
+    h("td", { class: "col-icon" }, h("span", { class: `ov-dot ov-dot-${tone}`, role: "img", "aria-label": label, title: label })),
+    h("td", {}, h("a", { href: open, text: c.name })),
+    h("td", { text: c.where || "—" }),
+    h("td", { text: ls.schema?.kinds?.[c.kind]?.label || c.kind }),
+    h("td", { title: c.when ? stamp(c.when) : null, text: c.when ? ago(c.when) : "—" }));
+  tr.addEventListener("click", (e) => { if (!e.target.closest("a")) location.assign(open); });
   return tr;
 }
 
-const REAL = new Set(["wired", "not_wired"]);
-
 function render() {
-  const q = $("wl-filter").value.trim().toLowerCase();
   const real = ls.checked ? ls.rows.filter((c) => REAL.has(c.live?.state)) : [];
-  const shown = real.filter((c) => !q || [c.name, kindLabel(ls.schema, c.kind), c.workload, c.identity]
-    .some((v) => String(v || "").toLowerCase().includes(q)));
-  fill($("wl-rows"), shown.map(row));
-  $("wl-none").hidden = shown.length > 0 || !real.length;
-  $("wl-count").textContent = real.length || "";
-  $("wl-body").hidden = !real.length;
-  $("wl-empty").hidden = !ls.checked || !!real.length;
-  // Empty: the empty state carries New workload.
-  $("wl-new").hidden = !real.length;
+  fill($("wl-rows"), real.map(row));
+  $("wl-empty").hidden = !ls.checked || real.length > 0;
+}
+
+function tiles() {
+  const kinds = Object.keys(ls.schema?.kinds || {}).filter((k) => ofCloud(k) && (!TYPE || k === TYPE));
+  return GROUPS.map(([title, test]) => [title, kinds.filter(test)]).filter(([, ks]) => ks.length).map(([title, ks]) =>
+    h("section", { class: "ov-group" }, h("h2", { class: "ov-group-title", text: title }),
+      h("div", { class: "ov-tiles" }, ks.map((k) => {
+        const a = h("a", { class: "ov-tile", href: `${href.create()}?kind=${encodeURIComponent(k)}` });
+        const ico = h("span", { class: "ov-tile-icon" });
+        ico.innerHTML = window.consoleNav?.icon(iconOf(k)) || "";   // constant SVG only
+        a.append(ico, h("span", { text: ls.schema.kinds[k].label }));
+        return a;
+      }))));
 }
 
 async function load() {
   const [{ configs }, { runs }] = await Promise.all([api("/api/configs"), api("/api/runs")]);
   const mine = runs.filter((r) => inSection(r.kind));
-  ls.rows = configs.filter((c) => inSection(c.kind)).map((c) => ({ ...c, run: mine.find((r) => r.name === c.name) || null, snap: null }));
+  ls.rows = configs.filter((c) => inSection(c.kind)).map((c) => {
+    const run = mine.find((r) => r.name === c.name);
+    return { ...c, when: run?.created || c.updated || "" };
+  });
   ls.checked = false;
   render();
   setStatus($("list-status"), "Checking the cloud", "busy");
@@ -71,27 +64,11 @@ async function load() {
     for (const c of ls.rows) c.live = status[c.name] || { state: "unknown" };
     setStatus($("list-status"), "");
   } catch (e) {
-    for (const c of ls.rows) c.live = { state: "unknown", detail: e.message };
+    for (const c of ls.rows) c.live = { state: "unknown" };
     setStatus($("list-status"), `Could not read the cloud: ${e.message}`, "error");
   }
   ls.checked = true;
   render();
-  // Durations need each last run's steps.
-  await Promise.all(ls.rows.filter((c) => c.run).map(async (c) => {
-    try { c.snap = await api(`/api/runs/${encodeURIComponent(c.run.id)}`); } catch { /* the row keeps status and time */ }
-  }));
-  render();
-}
-
-async function remove(name) {
-  try {
-    const res = await api(`/api/configs/${encodeURIComponent(name)}`, { method: "DELETE" });
-    const kept = res.runs_kept ? `; ${res.runs_kept} active run(s) kept until they finish` : "";
-    setStatus($("list-status"), `Deleted ${name} and ${res.runs_deleted} run(s)${kept}`, "ok");
-  } catch (e) {
-    setStatus($("list-status"), e.message, "error");
-  }
-  await load();
 }
 
 export async function mountList(page, { schema }) {
@@ -103,13 +80,13 @@ export async function mountList(page, { schema }) {
     page.querySelector(".page-header h1").textContent = section.label;
     document.title = `${section.label} · ${section.cloud}`;
   }
-  $("wl-new").setAttribute("href", href.create());
-  $("wl-empty-new").setAttribute("href", href.create());
-  $("wl-filter").addEventListener("input", render);
+  $("wl-help").append(help("Workloads onboarded here that exist in the cloud now. Green: wired to JFrog; amber: not wired yet."));
+  $("wl-where").textContent = CLOUD === "azure" ? "Resource group" : "Region";
+  fill($("wl-create"), tiles());
+  $("wl-refresh").addEventListener("click", () => load().catch((e) => setStatus($("list-status"), e.message, "error")));
   try {
     await load();
   } catch (e) {
-    $("wl-new").hidden = false;
     setStatus($("list-status"), `Could not list workloads: ${e.message}`, "error");
   }
 }

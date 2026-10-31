@@ -452,7 +452,9 @@ export async function mountConfig(mount, { schema, mode, name, config, onChange,
     scheduleValidate();
     return;
   }
-  st.cfg = freshConfig(cloudKinds()[0]);
+  // A Create tile opens the form on its workload kind (?kind=).
+  const asked = new URLSearchParams(location.search).get("kind");
+  st.cfg = freshConfig(cloudKinds().includes(asked) ? asked : cloudKinds()[0]);
   writeForm();
   markDirty(false);
   scheduleValidate();
