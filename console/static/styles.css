@@ -65,8 +65,8 @@
   /* cards: 20px gutter, 16/20 padding, hairline border, tinted header band */
   --card-gap: 20px; --card-pad-y: 16px; --card-pad-x: 20px; --card-r: 6px;
   --card-line: #dcdcdc; --card-line-hover: #c8c8c8; --card-head: #f7f7f7;
-  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --card-shadow-hover: 0 2px 8px -2px rgba(0, 0, 0, 0.12);
+  --card-shadow: none;
+  --card-shadow-hover: none;
 
   /* layout */
   --top-h: 64px;
@@ -375,7 +375,7 @@ th .pill-onboarded { margin-left: 8px; height: 20px; }
 
 /* ================================================================== surfaces */
 
-/* One card system: hairline border, 6px corners, a soft shadow, 20px apart. */
+/* One card system: hairline border, 6px corners, flat (no shadow), 20px apart. */
 .card, .table-card, .rail-step {
   background: var(--surface); border: 1px solid var(--card-line); border-radius: var(--card-r); box-shadow: var(--card-shadow);
 }
@@ -692,24 +692,16 @@ details[open] > summary::before { transform: rotate(45deg) translate(-2px, -2px)
   position: relative; display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 6px;
   vertical-align: 1px; border: 1.5px solid currentColor; border-radius: 50%; color: var(--fg-3); opacity: 0.8;
   font: 700 10px/1 var(--font); letter-spacing: 0; text-transform: none; cursor: help; user-select: none;
-  transition: color 120ms, box-shadow 120ms, opacity 120ms;
 }
-.help:hover, .help:focus-visible { color: var(--brand); opacity: 1; outline: none; box-shadow: 0 0 0 3px rgba(91, 169, 8, 0.18); }
+.help:hover, .help:focus-visible { color: var(--brand); opacity: 1; outline: none; }
 .tip {
-  position: absolute; left: 50%; bottom: calc(100% + 10px); z-index: 40; width: max-content; max-width: 280px;
-  padding: 10px 12px; border-radius: 12px; color: var(--fg); background: #ffffff; border: 1px solid var(--border);
-  box-shadow: 0 14px 34px -12px rgba(78, 132, 22, 0.4), 0 0 0 1px rgba(91, 169, 8, 0.12);
+  position: fixed; left: 0; top: 0; z-index: 1000; width: max-content; max-width: 320px;
+  padding: 10px 12px; border-radius: 6px; color: var(--fg); background: #ffffff; border: 1px solid var(--border-strong, var(--border));
   font: 400 var(--t-sm)/1.45 var(--font); letter-spacing: 0; text-transform: none; text-align: left; white-space: normal;
-  opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, 4px);
-  transition: opacity 140ms ease, transform 140ms ease, visibility 0s linear 140ms;
+  opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, -100%);
 }
-.tip::after {
-  content: ""; position: absolute; top: 100%; left: 50%; margin-left: -6px;
-  border: 6px solid transparent; border-top-color: #ffffff;
-}
-.help:hover .tip, .help:focus-visible .tip, .help:focus .tip {
-  opacity: 1; visibility: visible; transform: translate(-50%, 0); transition-delay: 0s;
-}
+.tip.tip-below { transform: translate(-50%, 0); }
+.help:hover .tip, .help:focus-visible .tip, .help:focus .tip { opacity: 1; visibility: visible; }
 
 /* ================================================================== responsive */
 
@@ -882,5 +874,5 @@ table.lt .lg { padding-left: 0; text-indent: 0; margin-top: 0; }
 .ov-tile { width: 140px; height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-2);
   border: 1px solid var(--border-strong, var(--border)); border-radius: 6px; color: var(--fg); text-align: center; font-size: 15px;
   padding: var(--s-2); text-decoration: none; background: var(--surface, #fff); }
-.ov-tile:hover, .ov-tile:focus-visible { border-color: var(--brand); box-shadow: 0 1px 4px rgba(16, 24, 40, 0.1); }
+.ov-tile:hover, .ov-tile:focus-visible { border-color: var(--brand); }
 .ov-tile-icon svg { width: 36px; height: 36px; }

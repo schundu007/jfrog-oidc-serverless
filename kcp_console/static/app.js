@@ -87,9 +87,21 @@ let tips = 0;
 export function help(text) {
   if (!text) return null;
   const id = `tip-${++tips}`;
-  return h("span", { class: "help", tabindex: "0", role: "button", "aria-label": "What is this?", "aria-describedby": id,
-    onclick: (e) => { e.preventDefault(); e.stopPropagation(); } },
-  "?", h("span", { class: "tip", role: "tooltip", id, "aria-hidden": "true" }, text));
+  const tip = h("span", { class: "tip", role: "tooltip", id, "aria-hidden": "true" }, text);
+  const el = h("span", { class: "help", tabindex: "0", role: "button", "aria-label": "What is this?", "aria-describedby": id,
+    onclick: (e) => { e.preventDefault(); e.stopPropagation(); } }, "?", tip);
+  // Fixed to the viewport, placed on show: no card or table that clips its overflow can hide it.
+  const place = () => {
+    const r = el.getBoundingClientRect();
+    const above = r.top > tip.offsetHeight + 16;
+    tip.classList.toggle("tip-below", !above);
+    const half = Math.min(tip.offsetWidth / 2, r.left + r.width / 2 - 8);
+    tip.style.left = `${Math.max(8 + half, Math.min(r.left + r.width / 2, window.innerWidth - 8 - tip.offsetWidth / 2))}px`;
+    tip.style.top = above ? `${r.top - 10}px` : `${r.bottom + 10}px`;
+  };
+  el.addEventListener("mouseenter", place);
+  el.addEventListener("focus", place);
+  return el;
 }
 
 function showAuth() {

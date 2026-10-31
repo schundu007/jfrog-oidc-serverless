@@ -159,7 +159,7 @@ button.more { width: var(--ctl-h); padding: 0; font-size: 18px; line-height: 1; 
 /* The "⋯" menu: fixed under its button, so no card or table clips it. */
 .menu {
   position: fixed; z-index: 50; display: flex; flex-direction: column; min-width: 200px; padding: 4px 0;
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--card-r); box-shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.3);
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--card-r); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
 .menu-item { padding: 8px 14px; font: inherit; text-align: left; color: var(--fg); background: none; border: 0; cursor: pointer; white-space: nowrap; }
@@ -186,7 +186,7 @@ button.more { width: var(--ctl-h); padding: 0; font-size: 18px; line-height: 1; 
 /* A run waiting for approval: under the header on every tab. */
 .approval-banner {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4);
-  background: var(--surface-2); border: 1px solid var(--accent); border-radius: var(--card-r); box-shadow: 0 0 0 3px var(--accent-ring);
+  background: var(--surface-2); border: 1px solid var(--accent); border-radius: var(--card-r);
 }
 
 .x-banner:empty, .x-head:empty { display: none; }
@@ -203,7 +203,7 @@ button.more { width: var(--ctl-h); padding: 0; font-size: 18px; line-height: 1; 
 
 .card, .cfg-form > .tgrid, .cfg-form .block, .cfg-form .advanced { min-width: 0; padding: var(--card-pad-y) var(--card-pad-x); }
 
-.card.needs-you { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.card.needs-you { border-color: var(--accent); }
 
 .card > * + * { margin-top: var(--s-3); }
 
@@ -466,18 +466,15 @@ input.typed { width: 220px; }
 
 .issue.warning { color: var(--warn-fg); }
 
-.tip, .stat[data-tip]::after {
+/* The "?" tip itself is fixed and placed by help() (shared stylesheet); stat tooltips stay absolute. */
+.stat[data-tip]::after {
   position: absolute; left: 50%; bottom: calc(100% + 10px); z-index: 40; width: max-content; max-width: 280px; padding: 10px 12px;
   font: 400 var(--t-sm)/1.45 var(--font); letter-spacing: 0; text-transform: none; text-align: left; white-space: normal;
   color: var(--fg); background: var(--surface); border: 1px solid var(--neutral-line); border-radius: var(--card-r);
-  box-shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.3);
-  opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, 4px);
-  transition: opacity 140ms ease, transform 140ms ease, visibility 0s linear 140ms;
+  opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, 0);
 }
 
-.help:hover .tip, .help:focus-visible .tip, .help:focus .tip, .stat[data-tip]:hover::after, .stat[data-tip]:focus-visible::after {
-  opacity: 1; visibility: visible; transform: translate(-50%, 0); transition-delay: 0s;
-}
+.stat[data-tip]:hover::after, .stat[data-tip]:focus-visible::after { opacity: 1; visibility: visible; }
 
 .stat[data-tip] { position: relative; }
 
