@@ -4,7 +4,7 @@ output "azure_setup_identity_client_id" {
 }
 
 output "azure_tfstate" {
-  value = { storage_account = azurerm_storage_account.tfstate.name, container = azurerm_storage_container.tfstate.name, resource_group = data.azurerm_resource_group.ado.name }
+  value = { storage_account = azurerm_storage_account.tfstate.name, container = azurerm_storage_container.tfstate.name, resource_group = azurerm_resource_group.ado.name }
 }
 
 output "azure_setup_identity_principal_id" {

@@ -9,29 +9,32 @@ locals {
 }
 
 #
-# build (existing identity): rights come from each workload stack (AcrPush,
-#   Contributor on the workload's resource group).
+# build: rights come from each workload stack (AcrPush, Contributor on the workload's
+#   resource group).
 # setup: creates workload stacks. Contributor on the subscription, role
 #   assignments limited to AcrPull/AcrPush/Contributor, Entra apps it owns.
 
-data "azurerm_resource_group" "ado" {
-  name = var.azure_identity.resource_group
+# The foundation's own resource group and the build identity: nothing has to exist beforehand.
+resource "azurerm_resource_group" "ado" {
+  name     = var.azure_identity.resource_group
+  location = var.azure_location
 }
 
-data "azurerm_user_assigned_identity" "ado" {
+resource "azurerm_user_assigned_identity" "ado" {
   name                = var.azure_identity.name
-  resource_group_name = var.azure_identity.resource_group
+  location            = azurerm_resource_group.ado.location
+  resource_group_name = azurerm_resource_group.ado.name
 }
 
 resource "azurerm_user_assigned_identity" "setup" {
   name                = "${var.azure_identity.name}-setup"
-  location            = data.azurerm_resource_group.ado.location
-  resource_group_name = data.azurerm_resource_group.ado.name
+  location            = azurerm_resource_group.ado.location
+  resource_group_name = azurerm_resource_group.ado.name
 }
 
 locals {
   azure_identity = {
-    build = { id = data.azurerm_user_assigned_identity.ado.id, principal_id = data.azurerm_user_assigned_identity.ado.principal_id, client_id = data.azurerm_user_assigned_identity.ado.client_id }
+    build = { id = azurerm_user_assigned_identity.ado.id, principal_id = azurerm_user_assigned_identity.ado.principal_id, client_id = azurerm_user_assigned_identity.ado.client_id }
     setup = { id = azurerm_user_assigned_identity.setup.id, principal_id = azurerm_user_assigned_identity.setup.principal_id, client_id = azurerm_user_assigned_identity.setup.client_id }
   }
   # AcrPull, AcrPush, Contributor
@@ -53,7 +56,7 @@ resource "azurerm_federated_identity_credential" "ado" {
 # AzureCLI@2 logs in before any script runs, so the build identity must see the
 # subscription; Reader on its own resource group is the least that does.
 resource "azurerm_role_assignment" "ado_login" {
-  scope                = data.azurerm_resource_group.ado.id
+  scope                = azurerm_resource_group.ado.id
   role_definition_name = "Reader"
   principal_id         = local.azure_identity.build.principal_id
   principal_type       = "ServicePrincipal"
@@ -95,8 +98,8 @@ resource "azuread_app_role_assignment" "setup_apps" {
 # Terraform state for Azure stacks: Entra auth only, versioned.
 resource "azurerm_storage_account" "tfstate" {
   name                            = substr("st${replace(var.ado_org, "-", "")}tfstate", 0, 24)
-  resource_group_name             = data.azurerm_resource_group.ado.name
-  location                        = data.azurerm_resource_group.ado.location
+  resource_group_name             = azurerm_resource_group.ado.name
+  location                        = azurerm_resource_group.ado.location
   account_tier                    = "Standard"
   account_replication_type        = "LRS"
   min_tls_version                 = "TLS1_2"

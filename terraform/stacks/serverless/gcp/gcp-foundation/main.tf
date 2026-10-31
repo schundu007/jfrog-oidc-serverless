@@ -42,11 +42,17 @@ resource "google_artifact_registry_repository" "images" {
   depends_on = [google_project_service.apis]
 }
 
+# GCP keeps a deleted pool for 30 days and refuses its id meanwhile: each deploy gets a new
+# suffix, so the stack can be destroyed and deployed again any number of times.
+resource "random_id" "pool" {
+  byte_length = 2
+}
+
 resource "google_iam_workload_identity_pool" "ado" {
   depends_on = [google_project_service.apis]
 
   project                   = var.gcp_project_id
-  workload_identity_pool_id = "azure-devops"
+  workload_identity_pool_id = "azure-devops-${random_id.pool.hex}"
   display_name              = "Azure DevOps"
   description               = "ADO ${var.ado_org} pipelines (no keys)"
 }
