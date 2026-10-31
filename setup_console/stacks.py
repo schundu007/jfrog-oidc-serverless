@@ -9,11 +9,14 @@ as JSON (<state root>/<env>/<stack>.tfvars.json, outside git), passed with -var-
 two stacks of the same cloud share (jfrog_url, gcp_project_id, ...) is prefilled from the last
 value saved for it in that cloud; clouds never prefill from each other.
 
-Clouds are completely separate, as in production: each has its own foundation stack
+Serverless and Kubernetes are separate kinds of infrastructure and never depend on each other.
+The cluster stacks (gke-cluster, aks-cluster) stand alone: local state, no foundation, nothing
+stands on them. Within Serverless, clouds are completely separate, as in production: each has its own foundation stack
 (gcp-foundation, azure-foundation) with its own ADO trust, its own JFrog integration and
 mappings, its own pipeline variable group and its own state store. Its stacks' remote state is
 -backend-config derived from that foundation's inputs only: gcs bucket <gcp_project_id>-tfstate;
 azurerm account st<ado_org>tfstate in the ADO identity's resource group. Foundations keep local state.
+Prefill is kept per kind and cloud: never across clouds, never between Serverless and Kubernetes.
 """
 
 from __future__ import annotations
@@ -27,34 +30,35 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 STACKS_DIR = REPO_ROOT / "terraform" / "stacks"
 STATE_ROOT = REPO_ROOT / ".console" / "setup"
 
-# id = the stack directory. Order is the order to deploy in; destroy in reverse.
+# id = the stack directory. kind: Serverless or Kubernetes, independent of each other.
+# Order is the order to deploy in; destroy in reverse.
 # about: what the stack creates, in plain words. next: what to do once it is deployed.
 CATALOGUE = (
-    {"id": "gcp-foundation", "group": "Google Cloud", "title": "Foundation (ADO trust, state)",
+    {"id": "gcp-foundation", "kind": "Serverless", "group": "Google Cloud", "title": "Foundation (ADO trust, state)",
      "about": "Lets the Google Cloud pipelines sign in to Google Cloud and JFrog with their OIDC token, "
               "with no stored keys: the workload identity provider, the pipeline service accounts, "
               "their ADO service connections and variable group, the JFrog integration, and the "
-              "bucket that holds the other Google Cloud stacks' Terraform state.",
+              "bucket that holds the Cloud Run job stack's Terraform state.",
      "next": "Deploy the Cloud Run job stack."},
-    {"id": "gcp-cloud-run", "group": "Google Cloud", "title": "Cloud Run job",
+    {"id": "gcp-cloud-run", "kind": "Serverless", "group": "Google Cloud", "title": "Cloud Run job",
      "about": "The workload's runtime service account, and the Cloud Run job itself once deploy_job is on.",
      "next": "Run gcp-build-deploy to push the first image, then turn on deploy_job (Inputs) and deploy "
              "again. Until the job exists, the pipeline's update step fails."},
-    {"id": "gke-cluster", "group": "Google Cloud", "title": "GKE cluster",
-     "about": "A test GKE cluster and node pool with its OIDC issuer on.",
-     "next": "Run the credentials command, then use the cluster from the Kubernetes console."},
-    {"id": "azure-foundation", "group": "Azure", "title": "Foundation (ADO trust, state)",
+    {"id": "azure-foundation", "kind": "Serverless", "group": "Azure", "title": "Foundation (ADO trust, state)",
      "about": "Lets the Azure pipelines sign in to Azure and JFrog with their OIDC token, with no "
               "stored secrets: the setup identity and its federated credentials, its ADO service "
               "connections and variable group, the JFrog integration, and the storage account that "
-              "holds the other Azure stacks' Terraform state.",
+              "holds the Container Apps job stack's Terraform state.",
      "next": "Deploy the Container Apps job stack."},
-    {"id": "azure-container-apps", "group": "Azure", "title": "Container Apps job",
+    {"id": "azure-container-apps", "kind": "Serverless", "group": "Azure", "title": "Container Apps job",
      "about": "A resource group with a container registry, the workload's identity, a Container Apps "
               "environment, and the job itself once deploy_job is on.",
      "next": "Run azure-build-deploy to push the first image, then turn on deploy_job (Inputs) and "
              "deploy again."},
-    {"id": "aks-cluster", "group": "Azure", "title": "AKS cluster",
+    {"id": "gke-cluster", "kind": "Kubernetes", "group": "Google Cloud", "title": "GKE cluster",
+     "about": "A test GKE cluster and node pool with its OIDC issuer on.",
+     "next": "Run the credentials command, then use the cluster from the Kubernetes console."},
+    {"id": "aks-cluster", "kind": "Kubernetes", "group": "Azure", "title": "AKS cluster",
      "about": "A test AKS cluster, in its own resource group, with its OIDC issuer on.",
      "next": "Run the credentials command, then use the cluster from the Kubernetes console."},
 )
@@ -202,8 +206,9 @@ def inputs_file(stack_id: str, env: str, state_root: Path = STATE_ROOT) -> Path:
 
 
 def _shared_file(env: str, state_root: Path, stack_id: str) -> Path:
-    """Prefill values are kept per cloud (catalogue group), never across clouds."""
-    group = re.sub(r"[^a-z0-9]+", "-", get(stack_id)["group"].lower()).strip("-")
+    """Prefill values are kept per kind and cloud: never across clouds or between kinds."""
+    meta = get(stack_id)
+    group = re.sub(r"[^a-z0-9]+", "-", f"{meta['kind']} {meta['group']}".lower()).strip("-")
     return Path(state_root) / env / f"shared-{group}.json"
 
 
@@ -282,8 +287,8 @@ def write_inputs(stack_id: str, env: str, values: dict, root: Path = STACKS_DIR,
             continue
         out[name] = _coerce(v, raw)
     _write(inputs_file(stack_id, env, state_root), out)
-    group = get(stack_id)["group"]
-    others = {x["name"] for s in CATALOGUE if s["id"] != stack_id and s["group"] == group
+    meta = get(stack_id)
+    others = {x["name"] for s in CATALOGUE if s["id"] != stack_id and (s["kind"], s["group"]) == (meta["kind"], meta["group"])
               for x in variables(s["id"], root)}
     shared = _load(_shared_file(env, state_root, stack_id))
     shared.update({k: val for k, val in out.items() if k in others})

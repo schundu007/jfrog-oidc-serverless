@@ -99,7 +99,7 @@ class Jobs:
                 raise JobError(409, f"{stack_id} is busy")
             if action == "plan-apply" and self._needs(stack_id):
                 dep = stacks.get(self._needs(stack_id)[0])
-                raise JobError(409, f"deploy {dep['group']} · {dep['title']} ({dep['id']}) first: {stack_id} keeps its state there")
+                raise JobError(409, f"deploy {dep['kind']} · {dep['group']} · {dep['title']} ({dep['id']}) first: {stack_id} keeps its state there")
             if action == "plan-destroy" and self._dependents(stack_id):
                 names = ", ".join(stacks.get(x)["title"] + f" ({x})" for x in self._dependents(stack_id))
                 raise JobError(409, f"destroy what stands on {stack_id} first: {names}")
@@ -168,7 +168,7 @@ class Jobs:
     def _work(self, job, approval):
         sid, action = job["stack"], job["action"]
         meta = stacks.get(sid)
-        name = f"{meta['group']} · {meta['title']} ({sid}), environment {self.env_name}"
+        name = f"{meta['kind']} · {meta['group']} · {meta['title']} ({sid}), environment {self.env_name}"
         try:
             if action == "apply":
                 with self._lock:

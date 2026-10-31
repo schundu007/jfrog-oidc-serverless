@@ -49,7 +49,7 @@ variable "azure_identity" {
   })
 }
 ''',
-    "gke-cluster": '''variable "gcp_project_id" { type = string }
+    "gcp-cloud-run": '''variable "gcp_project_id" { type = string }
 variable "name" {
   type    = string
   default = "gke-jfrog-test"
@@ -68,14 +68,14 @@ variable "api_token" {
   default   = ""
 }
 ''',
-    "aks-cluster": '''variable "azure_subscription_id" { type = string }
+    "azure-container-apps": '''variable "azure_subscription_id" { type = string }
 variable "spot" {
   type    = bool
   default = false
 }
 ''',
 }
-BACKENDS = {"gke-cluster": "gcs", "gcp-cloud-run": "gcs", "aks-cluster": "azurerm", "azure-container-apps": "azurerm"}
+BACKENDS = {"gcp-cloud-run": "gcs", "azure-container-apps": "azurerm"}   # clusters keep local state
 GCP_FOUNDATION = {"jfrog_url": "https://acme.jfrog.io", "ado_org": "my-org", "gcp_project_id": "proj-1"}
 AZURE_FOUNDATION = {"ado_org": "my-org", "azure_subscription_id": "sub-1", "azure_identity": {"name": "id", "resource_group": "rg-ci"}}
 
@@ -99,8 +99,8 @@ class Root:
     def ready(self):
         self.save("gcp-foundation", GCP_FOUNDATION)
         self.save("azure-foundation", AZURE_FOUNDATION)
-        self.save("gke-cluster", {"gcp_project_id": "proj-1", "jfrog_url": "https://acme.jfrog.io"})
-        self.save("aks-cluster", {"azure_subscription_id": "sub-1"})
+        self.save("gcp-cloud-run", {"gcp_project_id": "proj-1", "jfrog_url": "https://acme.jfrog.io"})
+        self.save("azure-container-apps", {"azure_subscription_id": "sub-1"})
 
     def calls(self, sid):
         p = self.dir / sid / ".fake_calls"
@@ -129,18 +129,18 @@ class StackTests(unittest.TestCase):
         self.assertEqual((by["notes"]["kind"], by["notes"]["default"]), ("json", []))
         self.assertEqual(stacks.variables("azure-foundation", self.root.dir)[2]["kind"], "json")
         self.assertEqual(by["gcp_project_id"]["options"], "gcp_projects")
-        g = {v["name"]: v for v in stacks.variables("gke-cluster", self.root.dir)}
+        g = {v["name"]: v for v in stacks.variables("gcp-cloud-run", self.root.dir)}
         self.assertEqual((g["node_count"]["kind"], g["node_count"]["default"]), ("number", 1))
         self.assertTrue(g["api_token"]["sensitive"])
 
     def test_form_prefills_saved_then_shared_then_default(self):
         self.root.save("gcp-foundation", GCP_FOUNDATION)
-        f = {x["name"]: x for x in stacks.form("gke-cluster", "test", self.root.dir, self.root.state)["fields"]}
+        f = {x["name"]: x for x in stacks.form("gcp-cloud-run", "test", self.root.dir, self.root.state)["fields"]}
         self.assertEqual((f["gcp_project_id"]["current"], f["gcp_project_id"]["source"]), ("proj-1", "shared"))
         self.assertEqual((f["name"]["current"], f["name"]["source"]), ("gke-jfrog-test", "default"))
         self.assertNotIn("api_token", f)
-        self.root.save("gke-cluster", {"gcp_project_id": "proj-2", "name": "", "node_count": "3"})
-        f = {x["name"]: x for x in stacks.form("gke-cluster", "test", self.root.dir, self.root.state)["fields"]}
+        self.root.save("gcp-cloud-run", {"gcp_project_id": "proj-2", "name": "", "node_count": "3"})
+        f = {x["name"]: x for x in stacks.form("gcp-cloud-run", "test", self.root.dir, self.root.state)["fields"]}
         self.assertEqual((f["gcp_project_id"]["current"], f["gcp_project_id"]["source"]), ("proj-2", "saved"))
         self.assertEqual(f["name"]["source"], "default")    # blank optional input: the default applies
         self.assertEqual(f["node_count"]["current"], 3)
@@ -150,38 +150,51 @@ class StackTests(unittest.TestCase):
         f = {x["name"]: x for x in stacks.form("azure-foundation", "test", self.root.dir, self.root.state)["fields"]}
         self.assertNotIn("current", f["ado_org"])
         self.root.save("azure-foundation", AZURE_FOUNDATION)
-        f = {x["name"]: x for x in stacks.form("aks-cluster", "test", self.root.dir, self.root.state)["fields"]}
+        f = {x["name"]: x for x in stacks.form("azure-container-apps", "test", self.root.dir, self.root.state)["fields"]}
         self.assertEqual((f["azure_subscription_id"]["current"], f["azure_subscription_id"]["source"]), ("sub-1", "shared"))
 
     def test_inputs_are_checked(self):
         for bad in ({"nope": "x"}, {"api_token": "x"}, {"node_count": "many"}, {"gcp_project_id": 5}):
             with self.assertRaises(stacks.StackError, msg=bad):
-                self.root.save("gke-cluster", bad)
+                self.root.save("gcp-cloud-run", bad)
         with self.assertRaises(stacks.StackError):
             self.root.save("azure-foundation", {"azure_identity": "{not json"})
 
     def test_terraform_args_from_inputs(self):
         with self.assertRaises(stacks.StackError) as e:
-            stacks.tf_args("gke-cluster", "test", self.root.dir, self.root.state)
+            stacks.tf_args("gcp-cloud-run", "test", self.root.dir, self.root.state)
         self.assertIn("gcp_project_id", str(e.exception))
         self.root.ready()
-        init, plan = stacks.tf_args("gke-cluster", "test", self.root.dir, self.root.state)
-        self.assertEqual(init, ("-reconfigure", "-backend-config=bucket=proj-1-tfstate", "-backend-config=prefix=gke-cluster/test"))
-        self.assertEqual(plan, (f"-var-file={self.root.state / 'test' / 'gke-cluster.tfvars.json'}",))
-        self.assertEqual(json.loads((self.root.state / "test" / "gke-cluster.tfvars.json").read_text())["gcp_project_id"], "proj-1")
-        init, _ = stacks.tf_args("aks-cluster", "test", self.root.dir, self.root.state)
+        init, plan = stacks.tf_args("gcp-cloud-run", "test", self.root.dir, self.root.state)
+        self.assertEqual(init, ("-reconfigure", "-backend-config=bucket=proj-1-tfstate", "-backend-config=prefix=gcp-cloud-run/test"))
+        self.assertEqual(plan, (f"-var-file={self.root.state / 'test' / 'gcp-cloud-run.tfvars.json'}",))
+        self.assertEqual(json.loads((self.root.state / "test" / "gcp-cloud-run.tfvars.json").read_text())["gcp_project_id"], "proj-1")
+        init, _ = stacks.tf_args("azure-container-apps", "test", self.root.dir, self.root.state)
         self.assertIn("-backend-config=storage_account_name=stmyorgtfstate", init)
         self.assertIn("-backend-config=resource_group_name=rg-ci", init)
         self.assertEqual(stacks.tf_args("gcp-foundation", "test", self.root.dir, self.root.state)[0], ())
 
     def test_each_cloud_reads_only_its_own_foundation(self):
         self.root.save("gcp-foundation", GCP_FOUNDATION)          # GCP foundation alone: GCP stacks work
-        self.root.save("gke-cluster", {"gcp_project_id": "proj-1"})
-        self.root.save("aks-cluster", {"azure_subscription_id": "sub-1"})
-        self.assertIn("-backend-config=bucket=proj-1-tfstate", stacks.tf_args("gke-cluster", "test", self.root.dir, self.root.state)[0])
+        self.root.save("gcp-cloud-run", {"gcp_project_id": "proj-1"})
+        self.root.save("azure-container-apps", {"azure_subscription_id": "sub-1"})
+        self.assertIn("-backend-config=bucket=proj-1-tfstate", stacks.tf_args("gcp-cloud-run", "test", self.root.dir, self.root.state)[0])
         with self.assertRaises(stacks.StackError) as e:           # ...and Azure ones don't borrow from it
-            stacks.tf_args("aks-cluster", "test", self.root.dir, self.root.state)
+            stacks.tf_args("azure-container-apps", "test", self.root.dir, self.root.state)
         self.assertIn("azure-foundation", str(e.exception))
+
+    def test_kubernetes_stacks_stand_alone(self):
+        # The real stacks: a cluster keeps local state, needs no foundation and blocks none.
+        for sid in ("gke-cluster", "aks-cluster"):
+            self.assertEqual(stacks.get(sid)["kind"], "Kubernetes")
+            self.assertIsNone(stacks.backend_kind(sid))
+            self.assertIsNone(stacks.depends_on(sid))
+        self.assertEqual({s["kind"] for s in stacks.CATALOGUE}, {"Serverless", "Kubernetes"})
+        # Prefill never crosses from Serverless to Kubernetes, even in the same cloud.
+        self.root.save("gcp-foundation", GCP_FOUNDATION)
+        self.root.save("gcp-cloud-run", {"gcp_project_id": "proj-9"})
+        f = {x["name"]: x for x in stacks.form("gke-cluster", "test", self.root.dir, self.root.state)["fields"]}
+        self.assertNotIn("current", f.get("gcp_project_id", {}))
 
     def test_unknown_stack_refused(self):
         with self.assertRaises(stacks.StackError):
@@ -189,8 +202,8 @@ class StackTests(unittest.TestCase):
 
     def test_jfrog_host_from_inputs(self):
         self.root.ready()
-        self.assertEqual(stacks.jfrog_host("gke-cluster", "test", self.root.state), "acme.jfrog.io")
-        self.assertIsNone(stacks.jfrog_host("aks-cluster", "test", self.root.state))
+        self.assertEqual(stacks.jfrog_host("gcp-cloud-run", "test", self.root.state), "acme.jfrog.io")
+        self.assertIsNone(stacks.jfrog_host("azure-container-apps", "test", self.root.state))
 
 
 class JobTests(unittest.TestCase):
@@ -209,25 +222,25 @@ class JobTests(unittest.TestCase):
         return wait(self.jobs, self.jobs.start(sid, action))
 
     def test_deploy_needs_the_approved_plan(self):
-        j = self._plan("gke-cluster", [{"address": "google_container_cluster.cluster", "type": "x", "change": {"actions": ["create"]}}])
+        j = self._plan("gcp-cloud-run", [{"address": "google_container_cluster.cluster", "type": "x", "change": {"actions": ["create"]}}])
         self.assertEqual(j["state"], "done", j)
         plan = j["result"]
         self.assertEqual(plan["summary"]["create"], 1)
-        self.assertIn(f"-var-file={self.root.state / 'test' / 'gke-cluster.tfvars.json'}", self.root.calls("gke-cluster")[1])
-        self.assertIn("-backend-config=bucket=proj-1-tfstate", self.root.calls("gke-cluster")[0])
+        self.assertIn(f"-var-file={self.root.state / 'test' / 'gcp-cloud-run.tfvars.json'}", self.root.calls("gcp-cloud-run")[1])
+        self.assertIn("-backend-config=bucket=proj-1-tfstate", self.root.calls("gcp-cloud-run")[0])
         with self.assertRaises(JobError) as e:
-            self.jobs.start("gke-cluster", "apply", {"plan_sha256": "0" * 64})
+            self.jobs.start("gcp-cloud-run", "apply", {"plan_sha256": "0" * 64})
         self.assertEqual(e.exception.status, 403)
-        done = wait(self.jobs, self.jobs.start("gke-cluster", "apply", {"plan_sha256": plan["sha256"]}))
+        done = wait(self.jobs, self.jobs.start("gcp-cloud-run", "apply", {"plan_sha256": plan["sha256"]}))
         self.assertEqual(done["state"], "done", done)
-        self.assertIn(["apply", "-input=false", "-lock-timeout=60s", "-no-color", "plan.bin"], self.root.calls("gke-cluster"))
-        self.assertTrue([s for s in self.jobs.stacks() if s["id"] == "gke-cluster"][0]["status"]["deployed"])
+        self.assertIn(["apply", "-input=false", "-lock-timeout=60s", "-no-color", "plan.bin"], self.root.calls("gcp-cloud-run"))
+        self.assertTrue([s for s in self.jobs.stacks() if s["id"] == "gcp-cloud-run"][0]["status"]["deployed"])
         self.assertEqual(self.minted, ["acme.jfrog.io", "acme.jfrog.io"][:len(self.minted)])
 
     def test_apply_logs_to_its_own_job(self):
-        j = self._plan("gke-cluster", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
         planned = len(j["log"])
-        done = wait(self.jobs, self.jobs.start("gke-cluster", "apply", {"plan_sha256": j["result"]["sha256"]}))
+        done = wait(self.jobs, self.jobs.start("gcp-cloud-run", "apply", {"plan_sha256": j["result"]["sha256"]}))
         self.assertTrue(any(line.startswith("Applied the Terraform plan: ok") for line in done["log"]), done["log"])
         self.assertEqual(len(self.jobs.get(j["id"])["log"]), planned)
 
@@ -241,8 +254,8 @@ class JobTests(unittest.TestCase):
             sh.run = lambda *a, **kw: gate.wait(5) and run(*a, **kw)
             return sh
         self.jobs.shell_factory = held_shell
-        job = self.jobs.start("gke-cluster", "status")
-        row = lambda: [s for s in self.jobs.stacks() if s["id"] == "gke-cluster"][0]
+        job = self.jobs.start("gcp-cloud-run", "status")
+        row = lambda: [s for s in self.jobs.stacks() if s["id"] == "gcp-cloud-run"][0]
         try:
             self.assertEqual(row()["job"], {"id": job["id"], "action": "status"})
         finally:
@@ -251,16 +264,16 @@ class JobTests(unittest.TestCase):
         self.assertIsNone(row()["job"])
 
     def test_destroy_needs_the_stack_name(self):
-        j = self._plan("gke-cluster", [{"address": "google_container_cluster.cluster", "type": "x", "change": {"actions": ["delete"]}}],
+        j = self._plan("gcp-cloud-run", [{"address": "google_container_cluster.cluster", "type": "x", "change": {"actions": ["delete"]}}],
                        action="plan-destroy")
         plan = j["result"]
-        self.assertIn("-destroy", self.root.calls("gke-cluster")[1])
-        self.assertEqual(plan["confirmation_phrase"], "gke-cluster")
+        self.assertIn("-destroy", self.root.calls("gcp-cloud-run")[1])
+        self.assertEqual(plan["confirmation_phrase"], "gcp-cloud-run")
         with self.assertRaises(JobError) as e:
-            self.jobs.start("gke-cluster", "apply", {"plan_sha256": plan["sha256"]})
+            self.jobs.start("gcp-cloud-run", "apply", {"plan_sha256": plan["sha256"]})
         self.assertEqual(e.exception.status, 403)
-        done = wait(self.jobs, self.jobs.start("gke-cluster", "apply",
-                                               {"plan_sha256": plan["sha256"], "typed_confirmation": "gke-cluster"}))
+        done = wait(self.jobs, self.jobs.start("gcp-cloud-run", "apply",
+                                               {"plan_sha256": plan["sha256"], "typed_confirmation": "gcp-cloud-run"}))
         self.assertEqual(done["state"], "done", done)
         self.assertTrue(done["result"]["destroyed"])
 
@@ -276,34 +289,34 @@ class JobTests(unittest.TestCase):
         self.assertEqual(len(self.minted), 2)
 
     def test_plan_refused_until_inputs_filled(self):
-        (self.root.state / "test" / "aks-cluster.tfvars.json").unlink()
+        (self.root.state / "test" / "azure-container-apps.tfvars.json").unlink()
         with self.assertRaises(stacks.StackError):
-            self.jobs.start("aks-cluster", "plan-apply")
-        self.assertEqual([s["missing"] for s in self.jobs.stacks() if s["id"] == "aks-cluster"], [["azure_subscription_id"]])
+            self.jobs.start("azure-container-apps", "plan-apply")
+        self.assertEqual([s["missing"] for s in self.jobs.stacks() if s["id"] == "azure-container-apps"], [["azure_subscription_id"]])
 
     def test_apply_without_plan_refused(self):
         with self.assertRaises(JobError) as e:
-            self.jobs.start("aks-cluster", "apply", {"plan_sha256": "x"})
+            self.jobs.start("azure-container-apps", "apply", {"plan_sha256": "x"})
         self.assertEqual(e.exception.status, 409)
 
     def test_token_never_in_log_or_result(self):
-        j = self._plan("gke-cluster", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
         self.assertNotIn("minted-token-value", json.dumps(j))
 
     def test_failed_plan_reported(self):
-        (self.root.dir / "aks-cluster" / ".fake_fail_plan").write_text("")
-        j = wait(self.jobs, self.jobs.start("aks-cluster", "plan-apply"))
+        (self.root.dir / "azure-container-apps" / ".fake_fail_plan").write_text("")
+        j = wait(self.jobs, self.jobs.start("azure-container-apps", "plan-apply"))
         self.assertEqual(j["state"], "failed")
         self.assertIn("plan failed", j["error"])
         self.assertTrue(j["log"][-1].startswith("▶ Failed: "), j["log"])
 
     def test_log_tells_each_stage_in_words(self):
-        j = self._plan("gke-cluster", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
         said = [line[2:] for line in j["log"] if line.startswith("▶ ")]
-        self.assertTrue(said[0].startswith("Planning a deploy of Google Cloud · GKE cluster (gke-cluster)"), said)
-        self.assertIn("Terraform state: Cloud Storage bucket proj-1-tfstate, prefix gke-cluster/test.", said)
+        self.assertTrue(said[0].startswith("Planning a deploy of Serverless · Google Cloud · Cloud Run job (gcp-cloud-run)"), said)
+        self.assertIn("Terraform state: Cloud Storage bucket proj-1-tfstate, prefix gcp-cloud-run/test.", said)
         self.assertIn("Plan ready: 1 to add. Nothing changes until you approve it.", said)
-        done = wait(self.jobs, self.jobs.start("gke-cluster", "apply", {"plan_sha256": j["result"]["sha256"]}))
+        done = wait(self.jobs, self.jobs.start("gcp-cloud-run", "apply", {"plan_sha256": j["result"]["sha256"]}))
         said = [line[2:] for line in done["log"] if line.startswith("▶ ")]
         self.assertTrue(said[0].startswith("Running the approved deploy plan"), said)
         self.assertTrue(said[-1].startswith("Deployed."), said)
@@ -313,7 +326,7 @@ class JobTests(unittest.TestCase):
         ids = self.jobs.refresh_all()
         done = [wait(self.jobs, {"id": i}) for i in ids]
         checked = {d["stack"] for d in done}
-        self.assertIn("gke-cluster", checked)
+        self.assertIn("gcp-cloud-run", checked)
         self.assertTrue(all(d["action"] == "status" for d in done))
         self.assertEqual(self.jobs.refresh_all(), [])   # known now: nothing started again
 
@@ -322,62 +335,62 @@ class JobTests(unittest.TestCase):
         (self.root.dir / "gcp-foundation" / ".fake_fail_init").write_text("")   # not deployed: read fails
         ids = self.jobs.refresh_all()
         done = [wait(self.jobs, {"id": i}) for i in ids]
-        self.assertNotIn("gke-cluster", {d["stack"] for d in done})
+        self.assertNotIn("gcp-cloud-run", {d["stack"] for d in done})
         rows = {s["id"]: s for s in self.jobs.stacks()}
-        self.assertIsNone(rows["gke-cluster"]["status"])
+        self.assertIsNone(rows["gcp-cloud-run"]["status"])
         self.assertIsNone(rows["gcp-foundation"]["failed"])   # an automatic read never shows as a failed run
 
     def test_deploy_refused_while_its_foundation_is_not_deployed(self):
         self.jobs._set_status("gcp-foundation", {"deployed": False, "outputs": {}})
-        row = [s for s in self.jobs.stacks() if s["id"] == "gke-cluster"][0]
+        row = [s for s in self.jobs.stacks() if s["id"] == "gcp-cloud-run"][0]
         self.assertEqual(row["depends_on"], "gcp-foundation")
         self.assertEqual(row["needs"], ["gcp-foundation"])
         with self.assertRaises(JobError) as e:
-            self.jobs.start("gke-cluster", "plan-apply")
+            self.jobs.start("gcp-cloud-run", "plan-apply")
         self.assertEqual(e.exception.status, 409)
         self.assertIn("gcp-foundation", str(e.exception))
         self.jobs._set_status("gcp-foundation", {"deployed": True, "outputs": {}})
-        self.assertEqual(wait(self.jobs, self.jobs.start("gke-cluster", "status"))["state"], "done")
+        self.assertEqual(wait(self.jobs, self.jobs.start("gcp-cloud-run", "status"))["state"], "done")
 
     def test_a_foundation_not_read_yet_does_not_satisfy_the_order(self):
         self.jobs._status.pop("gcp-foundation")
-        self.assertEqual([s for s in self.jobs.stacks() if s["id"] == "gke-cluster"][0]["needs"], ["gcp-foundation"])
+        self.assertEqual([s for s in self.jobs.stacks() if s["id"] == "gcp-cloud-run"][0]["needs"], ["gcp-foundation"])
         with self.assertRaises(JobError):
-            self.jobs.start("gke-cluster", "plan-apply")
+            self.jobs.start("gcp-cloud-run", "plan-apply")
 
     def test_deploying_a_foundation_reads_its_stacks_again(self):
-        self.jobs._set_status("gke-cluster", {"deployed": False, "outputs": {}, "error": "bucket doesn't exist"})
+        self.jobs._set_status("gcp-cloud-run", {"deployed": False, "outputs": {}, "error": "bucket doesn't exist"})
         j = self._plan("gcp-foundation", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
         wait(self.jobs, self.jobs.start("gcp-foundation", "apply", {"plan_sha256": j["result"]["sha256"]}))
-        reread = [x for x in self.jobs._jobs.values() if x["stack"] == "gke-cluster" and x["action"] == "status"]
+        reread = [x for x in self.jobs._jobs.values() if x["stack"] == "gcp-cloud-run" and x["action"] == "status"]
         self.assertTrue(reread)
         wait(self.jobs, reread[0])
-        self.assertNotIn("error", [s for s in self.jobs.stacks() if s["id"] == "gke-cluster"][0]["status"])
+        self.assertNotIn("error", [s for s in self.jobs.stacks() if s["id"] == "gcp-cloud-run"][0]["status"])
         self.assertFalse([x for x in self.jobs._jobs.values() if x["stack"] == "azure-container-apps"])
 
     def test_foundation_destroy_refused_while_stacks_stand_on_it(self):
-        self.jobs._set_status("gke-cluster", {"deployed": True, "outputs": {}})
+        self.jobs._set_status("gcp-cloud-run", {"deployed": True, "outputs": {}})
         row = [s for s in self.jobs.stacks() if s["id"] == "gcp-foundation"][0]
-        self.assertEqual(row["dependents"], ["gke-cluster"])
+        self.assertEqual(row["dependents"], ["gcp-cloud-run"])
         with self.assertRaises(JobError) as e:
             self.jobs.start("gcp-foundation", "plan-destroy")
         self.assertEqual(e.exception.status, 409)
-        self.assertIn("gke-cluster", str(e.exception))
+        self.assertIn("gcp-cloud-run", str(e.exception))
         # Other clouds are never involved.
         self.assertEqual([s for s in self.jobs.stacks() if s["id"] == "azure-foundation"][0]["dependents"], [])
 
     def test_failed_job_named_on_its_stack(self):
-        (self.root.dir / "aks-cluster" / ".fake_fail_plan").write_text("")
-        j = wait(self.jobs, self.jobs.start("aks-cluster", "plan-apply"))
-        row = [s for s in self.jobs.stacks() if s["id"] == "aks-cluster"][0]
+        (self.root.dir / "azure-container-apps" / ".fake_fail_plan").write_text("")
+        j = wait(self.jobs, self.jobs.start("azure-container-apps", "plan-apply"))
+        row = [s for s in self.jobs.stacks() if s["id"] == "azure-container-apps"][0]
         self.assertEqual(row["failed"]["id"], j["id"])
         self.assertIn("plan failed", row["failed"]["error"])
 
     def test_failed_status_means_not_deployed(self):
-        (self.root.dir / "aks-cluster" / ".fake_fail_init").write_text("")
-        j = wait(self.jobs, self.jobs.start("aks-cluster", "status"))
+        (self.root.dir / "azure-container-apps" / ".fake_fail_init").write_text("")
+        j = wait(self.jobs, self.jobs.start("azure-container-apps", "status"))
         self.assertEqual(j["state"], "failed")
-        st = [s for s in self.jobs.stacks() if s["id"] == "aks-cluster"][0]["status"]
+        st = [s for s in self.jobs.stacks() if s["id"] == "azure-container-apps"][0]["status"]
         self.assertFalse(st["deployed"])
         self.assertTrue(st["error"])
 
@@ -428,17 +441,17 @@ class ServerTests(unittest.TestCase):
         self.assertIn(b'"/setup/static/app.js"', body)
 
     def test_inputs_round_trip_and_plan(self):
-        st, body, _ = self.req("GET", "/api/stacks/gke-cluster/inputs")
+        st, body, _ = self.req("GET", "/api/stacks/gcp-cloud-run/inputs")
         form = json.loads(body)
         self.assertEqual(st, 200)
         self.assertEqual(form["missing"], ["gcp_project_id"])   # prefilled from gcp-foundation, not saved yet
         self.assertEqual({f["name"]: f.get("current") for f in form["fields"]}["gcp_project_id"], "proj-1")
-        self.assertEqual(self.req("PUT", "/api/stacks/gke-cluster/inputs", {"values": {"api_token": "x"}})[0], 400)
-        st, body, _ = self.req("PUT", "/api/stacks/gke-cluster/inputs", {"values": {"gcp_project_id": "proj-9", "name": "x"}})
+        self.assertEqual(self.req("PUT", "/api/stacks/gcp-cloud-run/inputs", {"values": {"api_token": "x"}})[0], 400)
+        st, body, _ = self.req("PUT", "/api/stacks/gcp-cloud-run/inputs", {"values": {"gcp_project_id": "proj-9", "name": "x"}})
         self.assertEqual(st, 200)
         self.assertEqual({f["name"]: f.get("current") for f in json.loads(body)["fields"]}["name"], "x")
-        self.assertEqual(self.req("POST", "/api/stacks/gke-cluster/jobs", {"action": "plan-apply"})[0], 202)
-        self.assertEqual(self.req("POST", "/api/stacks/aks-cluster/jobs", {"action": "plan-apply"})[0], 400)
+        self.assertEqual(self.req("POST", "/api/stacks/gcp-cloud-run/jobs", {"action": "plan-apply"})[0], 202)
+        self.assertEqual(self.req("POST", "/api/stacks/azure-container-apps/jobs", {"action": "plan-apply"})[0], 400)
         self.assertEqual(self.req("POST", "/api/stacks/nope/jobs", {"action": "plan-apply"})[0], 400)
         self.assertEqual(self.req("GET", "/api/options/nope")[0], 404)
 

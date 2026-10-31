@@ -19,3 +19,5 @@
 .setup-note button.link { padding: 0; font-weight: 600; white-space: nowrap; }
 @keyframes setup-flash { from { background: var(--warn-bg); } to { background: transparent; } }
 tr.setup-flash > td { animation: setup-flash 1.6s ease-out; }
+.setup-kind + .setup-kind { margin-top: var(--s-6, 32px); }
+.setup-kind-title { margin: 0 0 var(--s-3); }

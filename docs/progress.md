@@ -504,3 +504,7 @@ Problems met and fixed on the way:
 - Preflight's pipeline-code check needed `az devops login`: it uses `az rest` with the az login.
 - Destroying azure-foundation failed while Entra still listed the deleted federated credentials: destroy waits 120 s between them.
 - Setup: strict dependency order (a stack deploys only after its foundation reads as deployed; a foundation destroys only after its stacks), warnings with links, plain-words progress logs, no Check button.
+
+## 2026-10-31: Serverless and Kubernetes infrastructure separate
+
+The Infrastructure page has two independent sections, Serverless (each cloud's foundation and its workload stack) and Kubernetes (GKE and AKS clusters), with one card per cloud inside each. The cluster stacks no longer keep state in a Serverless foundation's store: they keep local state like the foundations, need nothing deployed first and never block a foundation's destroy. Form prefill is kept per kind and cloud. The stack-setup pipelines are Serverless only.
