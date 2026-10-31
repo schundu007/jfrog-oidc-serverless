@@ -122,21 +122,39 @@ class Discover(AwsDiscover, OpenShiftDiscover):
             return self._gcp_from_function(project, fn)
 
         if self.kind == "gcp_run_job":
-            res = self.sh.run(["gcloud", "run", "jobs", "describe", name, "--region", region, "--project", project,
-                               "--format=json"], timeout=90)
-            if not res.ok:
+            res = self._gcp_job_lookup(project, region, name)
+            if res.ok:
+                return self._gcp_from_job(project, res.json() or {})
+            svc = self._gcp_service(project, region, name, quiet=True) if NOT_FOUND.search(res.error_text()) else None
+            if svc is None:
                 return self._gcp_lookup_failed(res, f"Cloud Run job '{name}'")
-            job = res.json() or {}
-            spec = _dig(job, "spec", "template", "spec", "template", "spec", default={})
-            self.facts["image"] = _dig(spec, "containers", 0, "image")
-            return self._gcp_identity(project, spec.get("serviceAccountName"))
+            self.correct("gcp_run_service", "no job by that name, but a Cloud Run service exists")
+            return self._gcp_service_or_function(project, region, svc)
 
-        svc = self._gcp_service(project, region, name)
+        svc = self._gcp_service(project, region, name, quiet=True)
         if svc is None:
+            # Not a service: the same name may be a job (the type was picked wrong).
+            job = self._gcp_job_lookup(project, region, name)
+            if job.ok:
+                self.correct("gcp_run_job", "no service by that name, but a Cloud Run job exists")
+                return self._gcp_from_job(project, job.json() or {})
+            self._gcp_service(project, region, name)   # records why the service lookup failed
             return
+        return self._gcp_service_or_function(project, region, svc)
+
+    def _gcp_job_lookup(self, project, region, name):
+        return self.sh.run(["gcloud", "run", "jobs", "describe", name, "--region", region, "--project", project,
+                            "--format=json"], timeout=90)
+
+    def _gcp_from_job(self, project, job):
+        spec = _dig(job, "spec", "template", "spec", "template", "spec", default={})
+        self.facts["image"] = _dig(spec, "containers", 0, "image")
+        return self._gcp_identity(project, spec.get("serviceAccountName"))
+
+    def _gcp_service_or_function(self, project, region, svc):
         if _dig(svc, "metadata", "labels", "goog-managed-by") == "cloudfunctions":
             self.correct("gcp_run_function", "this Cloud Run service is managed by Cloud Functions (gen2)")
-            fn = self._gcp_function(project, region, name)
+            fn = self._gcp_function(project, region, svc.get("metadata", {}).get("name") or self.facts["name"])
             if fn:
                 return self._gcp_from_function(project, fn)
         return self._gcp_from_service(project, svc)

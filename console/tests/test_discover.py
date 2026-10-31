@@ -105,6 +105,13 @@ class CorrectionTests(unittest.TestCase):
         self.assertEqual(res["kind"], "azure_functions_premium")
         self.assertIn("code_deployment", {w["code"] for w in res["warnings"]})
 
+    def test_service_type_on_a_job_is_corrected(self):
+        res, sh = run(gcp_cfg("gcp_run_service", "nightly"), "gcp_service_is_job")
+        self.assertEqual(sh.misses, [])
+        self.assertEqual(res["errors"], [])
+        self.assertEqual(res["kind"], "gcp_run_job")
+        self.assertEqual(res["facts"]["mapping_subject"], "104857600000000000002")
+
     def test_cloud_run_service_managed_by_functions(self):
         res, sh = run(gcp_cfg("gcp_run_service", "webhook"), "gcp_service_is_function")
         self.assertEqual(sh.misses, [])
