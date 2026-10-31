@@ -21,6 +21,7 @@ export JFROG_ACCESS_TOKEN
 inputs="$AGENT_TEMPDIRECTORY/${stack}.tfvars.json" state="$AGENT_TEMPDIRECTORY/${stack}.state.json"
 printf '%s' "${STACK_INPUTS:-{\}}" > "$inputs"
 printf '%s' "${STACK_STATE:-{\}}" > "$state"
+python3 -m setup_console.stacks typed-inputs "$stack" "$inputs"   # ADO passes "False" for false
 backend_args=$(python3 -m setup_console.stacks backend-args "$stack" "$environment" "$state")
 mapfile -t backend <<< "$backend_args"
 [ -n "$backend_args" ] || backend=()

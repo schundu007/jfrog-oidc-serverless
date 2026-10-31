@@ -313,6 +313,23 @@ def _coerce(v: dict, raw):
     return raw
 
 
+def typed_inputs(stack_id: str, raw: dict, root: Path = STACKS_DIR) -> dict:
+    """A pipeline's inputs with their declared types back: ADO passes an object parameter's
+    scalars as text ("False", "1"), which Terraform refuses for bool and number variables."""
+    kinds = {v["name"]: v["kind"] for v in variables(stack_id, root)}
+    out = {}
+    for k, val in raw.items():
+        kind = kinds.get(k)
+        if kind == "bool" and isinstance(val, str):
+            if val.lower() not in ("true", "false"):
+                raise StackError(f"{k}: true or false expected")
+            val = val.lower() == "true"
+        elif kind == "number" and isinstance(val, str):
+            val = _coerce({"name": k, "kind": "number"}, val)
+        out[k] = val
+    return out
+
+
 def write_inputs(stack_id: str, env: str, values: dict, root: Path = STACKS_DIR, state_root: Path = STATE_ROOT) -> dict:
     """Save the form. Only declared, non-sensitive variables; a blank optional one falls back to
     its default. Inputs are configuration, never credentials."""
@@ -416,10 +433,15 @@ def needs_jfrog(stack_id: str, action: str, root: Path = STACKS_DIR) -> bool:
 def main(argv=None) -> int:
     """Pipelines: python3 -m setup_console.stacks backend-args <stack> <env> <foundation.json>
     prints one -backend-config=k=v per line (nothing for a local-state stack);
-    python3 -m setup_console.stacks dir <stack> prints its directory under terraform/stacks."""
+    python3 -m setup_console.stacks dir <stack> prints its directory under terraform/stacks;
+    python3 -m setup_console.stacks typed-inputs <stack> <inputs.json> rewrites the file with declared types."""
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) == 2 and argv[0] == "dir":   # the stack's directory, relative to terraform/stacks
         print(rel_dir(argv[1]))
+        return 0
+    if len(argv) == 3 and argv[0] == "typed-inputs":
+        p = Path(argv[2])
+        p.write_text(json.dumps(typed_inputs(argv[1], json.loads(p.read_text() or "{}"))))
         return 0
     if len(argv) != 4 or argv[0] != "backend-args":
         print(main.__doc__, file=sys.stderr)

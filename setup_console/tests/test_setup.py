@@ -212,6 +212,16 @@ class StackTests(unittest.TestCase):
         shared = json.loads((self.root.state / "test" / "shared-serverless-google-cloud.json").read_text())
         self.assertTrue(set(shared) <= stacks.SHARED_INPUTS, shared)
 
+    def test_pipeline_inputs_get_their_declared_types_back(self):
+        # ADO hands object parameters over with every scalar as text ("False", "1").
+        raw = {"spot": "False", "azure_subscription_id": "sub-1"}
+        self.assertEqual(stacks.typed_inputs("azure-container-apps", raw, self.root.dir),
+                         {"spot": False, "azure_subscription_id": "sub-1"})
+        self.assertEqual(stacks.typed_inputs("gcp-cloud-run", {"node_count": "2", "name": "True"}, self.root.dir),
+                         {"node_count": 2, "name": "True"})            # a string stays a string
+        with self.assertRaises(stacks.StackError):
+            stacks.typed_inputs("azure-container-apps", {"spot": "maybe"}, self.root.dir)
+
     def test_unknown_stack_refused(self):
         with self.assertRaises(stacks.StackError):
             stacks.stack_dir("../etc", self.root.dir)
