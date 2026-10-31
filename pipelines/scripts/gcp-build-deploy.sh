@@ -53,6 +53,11 @@ case "$KIND" in
     echo "deployed $image"
     ;;
   function)
+    # Onboarding creates the function (identity + JFrog env); with none yet there is nothing to redeploy.
+    gcloud run services describe "$WORKLOAD" "${loc[@]}" --format='value(name)' >/dev/null 2>&1 || {
+      echo "##vso[task.logissue type=warning]Cloud Run function $WORKLOAD is not deployed in ${GCP_PROJECT}: skipped."
+      exit 0
+    }
     src=$(mktemp -d)
     cp "apps/${APP}/main.py" "$src/"
     cp -R client/src/jfrog_oidc "$src/"

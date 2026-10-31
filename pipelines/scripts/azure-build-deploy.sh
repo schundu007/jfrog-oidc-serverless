@@ -11,8 +11,11 @@ az config set extension.use_dynamic_install=yes_without_prompt --only-show-error
 
 rg="rg-${WORKLOAD}"
 job="caj-${WORKLOAD}"
-acr=$(az acr list --resource-group "$rg" --query "[0].name" -o tsv)
-[ -n "$acr" ] || { echo "no container registry in ${rg}; run azure-stack-setup first" >&2; exit 1; }
+acr=$(az acr list --resource-group "$rg" --query "[0].name" -o tsv 2>/dev/null || true)
+[ -n "$acr" ] || {
+  echo "##vso[task.logissue type=warning]${WORKLOAD} is not deployed (no registry in ${rg}): skipped. Deploy azure-container-apps in Setup first."
+  exit 0
+}
 registry=$(az acr show --name "$acr" --query loginServer -o tsv)
 image="${registry}/${WORKLOAD}:${BUILD_SOURCEVERSION:0:12}"
 
