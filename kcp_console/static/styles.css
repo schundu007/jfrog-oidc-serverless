@@ -706,3 +706,70 @@ input:focus-visible, select:focus-visible { border-color: #5ba908; box-shadow: 0
 button.ghost.danger, button.secondary.danger, button.link.danger,
 .stat.s-attention b, .stat.s-not_proven b { color: #333333; }
 .error, .issue.error, button.link.danger { font-weight: 600; }
+
+/* ================================================================== Humana DevPortal */
+/* The Serverless console's look (console/static/styles.css, same section): a navy top bar with a
+   two-tone wordmark, a light sidebar with a green edge on the open page, a dark-grey title over a
+   short green bar, flat bordered surfaces, square-cornered controls and title-case table headers. */
+:root {
+  --hum-navy: #263545; --hum-green: #5ba908; --hum-green-dk: #4e8416;
+  --hum-side: #f4f5f6; --hum-side-line: #e2e4e6; --hum-text: #333333; --hum-muted: #666666; --hum-line: #dcdcdc;
+  --rail: var(--hum-side); --rail-2: var(--hum-side); --rail-fg: var(--hum-text); --rail-fg-strong: var(--hum-text);
+  --rail-hover: #e9ecee; --rail-on: #e7f1dc; --rail-on-fg: var(--hum-green-dk); --rail-line: var(--hum-side-line);
+  --rail-group: var(--hum-muted);
+  --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); --glow: none;
+}
+body { background: #ffffff; }
+body::before { display: none; }
+
+.topbar { background: var(--hum-navy); border-bottom: 0; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18); }
+.brand { border-right: 0; color: #ffffff; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.brand .brand-accent { color: var(--hum-green); font-weight: 700; }
+.logo { fill: var(--hum-green); width: 28px; height: 28px; }
+.logo .logo-in { fill: var(--hum-navy); }
+
+.sidenav { background: var(--hum-side); color: var(--hum-text); border-right: 1px solid var(--hum-side-line); }
+.nav-group { color: var(--hum-muted); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; }
+.nav-item, .subnav .nav-item, .nav-item[aria-current="true"] { color: var(--hum-text); border-radius: 0; }
+.nav-item:hover { background: #e9ecee; color: var(--hum-text); }
+.nav-item[aria-current="page"], .nav-item[aria-selected="true"] {
+  background: #e7f1dc; color: var(--hum-green-dk); font-weight: 600; box-shadow: none;
+}
+.nav-item[aria-current="page"]::before, .nav-item[aria-selected="true"]::before {
+  border-radius: 0; background: var(--hum-green); box-shadow: none;
+}
+.subnav .nav-item[aria-selected="true"] { color: var(--hum-green-dk); font-weight: 600; }
+.nav-item:focus-visible { outline-color: var(--hum-green-dk); }
+
+/* Title: dark grey over a short thick green bar (the header row wraps the bar onto its own line). */
+.title-row h1, .page-header h1, #cfg-title, .cl-title h1, .cfg-head h1 {
+  color: var(--hum-text); -webkit-text-fill-color: var(--hum-text); background: none; font-weight: 500;
+}
+.cl-head::before, .cfg-head::before { content: ""; order: 98; flex-basis: 100%; height: 0; }
+.cl-head::after, .cfg-head::after { content: ""; order: 99; flex: 0 0 64px; height: 6px; margin-top: -4px; background: var(--hum-green); }
+.head-mark { box-shadow: none; border: 1px solid var(--hum-line); }
+.trail, .trail a { color: var(--hum-muted); }
+
+/* Surfaces and controls: flat, hairline borders, square corners. */
+.panel, details.panel, .stat, .fleet-table, .essentials > div, .cfg-form .block { box-shadow: var(--glass-shadow); }
+input[type="text"], input[type="number"], input[type="search"], input[type="url"], input[type="password"], select {
+  border-radius: 3px; border-color: #9a9a9a; background: #ffffff;
+}
+input:focus-visible, select:focus-visible { border-color: var(--hum-green-dk); box-shadow: 0 0 0 3px rgba(91, 169, 8, 0.2); }
+button.primary, button.secondary, button.ghost, .topbar-back { border-radius: 3px; }
+button.primary, .primary-cmd { background: var(--hum-green-dk); border-color: var(--hum-green-dk); color: #ffffff; box-shadow: none; }
+button.primary:hover:not(:disabled), .primary-cmd:hover:not(:disabled) { background: #3f6c12; border-color: #3f6c12; transform: none; }
+button.secondary, .topbar-back { background: #ffffff; border-color: #9a9a9a; backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* Tables: white title-case headers over a grey rule, hairline rows, light green hover. */
+thead th, .fleet-table th {
+  background: #ffffff; color: var(--hum-text); font-size: 14px; font-weight: 600; text-transform: none; letter-spacing: 0;
+  border-bottom: 1px solid #bdbdbd;
+}
+.fleet-table tbody tr:hover td { background: #f3f8ec; }
+.topbar .brand, .topbar .brand span { color: #ffffff; }
+.topbar .brand .brand-accent { color: var(--hum-green); }
+.shell { background: linear-gradient(90deg, var(--hum-side) 0 var(--rail-w, 248px), #ffffff var(--rail-w, 248px)); }
+.cl-head::after, .cfg-head::after { margin-top: -10px; }
+@media (max-width: 860px) { .shell { background: #ffffff; } }
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) { border-radius: 3px; }
