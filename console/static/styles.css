@@ -936,13 +936,14 @@ img, svg, video { max-width: 100%; }
 
 /* ================================================================== collapse and expand */
 /* One chevron for every collapsible: form steps, the sidebar's open cloud and every <details>. */
-.step-toggle { margin-left: auto; width: 28px; height: 28px; flex: none; display: grid; place-items: center; padding: 0;
+.step-toggle { margin-left: 0; width: 28px; height: 28px; flex: none; display: grid; place-items: center; padding: 0;
   border: 0; border-radius: 8px; background: transparent; color: var(--fg-3); cursor: pointer; }
 .step-toggle::before, details > summary::before, .cloud-switch .nav-item[aria-expanded]::after {
   content: ""; width: 7px; height: 7px; border: solid currentColor; border-width: 0 2px 2px 0;
   transform: rotate(45deg) translate(-2px, -2px); transition: transform 180ms ease; }
 .step-toggle:hover { background: rgba(91, 169, 8, 0.08); color: var(--ai-1); }
-.rail-step > h2 { cursor: pointer; user-select: none; }
+.rail-step > h2 { cursor: pointer; user-select: none; justify-content: flex-start; }
+.rail-step > h2 .head-sum { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; color: var(--fg-3); font-size: var(--t-sm); }
 .rail-step.collapsed > h2 { border-bottom-color: transparent; }
 .rail-step.collapsed > .step-body { display: none; }
 .rail-step.collapsed .step-toggle::before { transform: rotate(-45deg) translate(-1px, -1px); }
