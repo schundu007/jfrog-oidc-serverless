@@ -9,6 +9,7 @@ env/<env>.tfvars; one without (ado-trust) keeps local state and terraform.tfvars
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -83,3 +84,21 @@ def write_vars(stack_id: str, env: str, text: str, root: Path = STACKS_DIR) -> N
     tmp = p.with_suffix(p.suffix + ".tmp")
     tmp.write_text(text if text.endswith("\n") or not text else text + "\n")
     tmp.replace(p)
+
+
+JFROG_TYPES = ("platform_", "artifactory_", "project_")
+
+
+def needs_jfrog(stack_id: str, action: str, root: Path = STACKS_DIR) -> bool:
+    """A destroy or status of a local-state stack needs a JFrog token only while its state holds
+    JFrog resources. Remote state can't be read here, so those always get one."""
+    if action not in ("plan-destroy", "status"):
+        return True
+    state = stack_dir(stack_id, root) / "terraform.tfstate"
+    if not state.is_file():   # remote state (env/ files), or a local stack never deployed
+        return (stack_dir(stack_id, root) / "env").is_dir()
+    try:
+        resources = json.loads(state.read_text()).get("resources") or []
+    except (OSError, ValueError):
+        return True
+    return any(str(r.get("type", "")).startswith(JFROG_TYPES) for r in resources)

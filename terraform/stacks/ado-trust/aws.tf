@@ -24,6 +24,9 @@ provider "aws" {
   skip_credentials_validation = !local.aws_enabled
   skip_requesting_account_id  = !local.aws_enabled
   skip_metadata_api_check     = !local.aws_enabled
+  # Placeholders (not credentials) so an expired or absent AWS login doesn't block the other clouds.
+  access_key = local.aws_enabled ? null : "aws-disabled"
+  secret_key = local.aws_enabled ? null : "aws-disabled"
 }
 
 resource "aws_iam_openid_connect_provider" "ado" {

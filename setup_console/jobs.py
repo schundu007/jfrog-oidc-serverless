@@ -88,7 +88,8 @@ class Jobs:
         sh = self.shell_factory(log)
         env = dict(self.environ)
         host = stacks.jfrog_host(job["stack"], self.env_name, self.root)
-        if not env.get("JFROG_ACCESS_TOKEN") and self.token_source and host:
+        if not env.get("JFROG_ACCESS_TOKEN") and self.token_source and host \
+                and stacks.needs_jfrog(job["stack"], job["action"], self.root):
             try:
                 env["JFROG_ACCESS_TOKEN"] = self.token_source(sh, host)
             except Exception as exc:   # stacks without JFrog resources still plan

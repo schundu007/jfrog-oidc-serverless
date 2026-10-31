@@ -68,6 +68,20 @@ class OperatorTokenTests(unittest.TestCase):
         tokens.get(sh, "x.jfrog.io")
         self.assertEqual(len(sh.calls), 2)
 
+    def test_identity_follows_the_state_file(self):
+        import shutil, tempfile
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        state = pathlib.Path(d, "terraform.tfstate")
+        tokens = OperatorToken(state_file=state)
+        self.assertFalse(tokens.configured)   # ado-trust not deployed yet
+        shutil.copy(STATE, state)
+        self.assertTrue(tokens.configured)    # deployed while the console runs
+        tokens.get(FakeShell(), "x.jfrog.io")
+        state.write_text('{"outputs": {}}')   # destroyed: no stale identity or cached token
+        with self.assertRaises(TokenError):
+            tokens.get(FakeShell(), "x.jfrog.io")
+
     def test_not_configured_names_the_settings(self):
         with self.assertRaises(TokenError) as cm:
             OperatorToken(state_file=pathlib.Path(STATE_DIR, "missing")).get(FakeShell(), "x.jfrog.io")

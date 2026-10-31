@@ -46,18 +46,27 @@ class OperatorToken:
     """Short-lived JFrog tokens by OIDC exchange, one cached per host in memory only."""
 
     def __init__(self, clock=time.time, state_file=ADO_TRUST_STATE):
-        self.provider, self.audience, self.service_account = operator_identity(state_file).values()
-        self.clock = clock
+        self.clock, self.state_file = clock, state_file
+        self._identity = None
         self._cache = {}  # host -> (token, expires_at)
         self._lock = threading.Lock()
 
+    def _load(self):
+        """Read the identity from ado-trust's state on every use: deploying or destroying the stack
+        while the console runs changes it. A changed identity drops the cached tokens."""
+        ident = tuple(operator_identity(self.state_file).values())
+        if ident != self._identity:
+            self._identity, self._cache = ident, {}
+        self.provider, self.audience, self.service_account = ident
+
     @property
     def configured(self) -> bool:
+        self._load()
         return bool(self.provider and self.audience and self.service_account)
 
     def get(self, shell, host: str) -> str:
         if not self.configured:
-            raise TokenError("no console operator identity: apply terraform/stacks/ado-trust with console_operators set")
+            raise TokenError("no console operator identity: ado-trust is not deployed (or has no console_operators)")
         with self._lock:
             tok, exp = self._cache.get(host, ("", 0.0))
             if tok and exp - REFRESH_BEFORE > self.clock():
@@ -67,7 +76,7 @@ class OperatorToken:
             subject = (idt.stdout or "").strip() if idt.rc == 0 else ""
             if not subject:
                 raise TokenError(f"gcloud could not mint an ID token as {self.service_account} "
-                                 "(needs roles/iam.serviceAccountTokenCreator on it; run gcloud auth login)")
+                                 "(it must exist with roles/iam.serviceAccountTokenCreator for your gcloud login)")
             body = json.dumps({"grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
                                "subject_token_type": "urn:ietf:params:oauth:token-type:id_token",
                                "subject_token": subject, "provider_name": self.provider}).encode()

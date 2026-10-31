@@ -68,7 +68,7 @@ def main(argv=None) -> int:
     env_name = (delivery or {}).get("environment") or "test"
     operator = OperatorToken()
     setup = SetupServer(token=token, base=SETUP, env_name=env_name,
-                        jobs=Jobs(env_name=env_name, token_source=operator.get if operator.configured else None))
+                        jobs=Jobs(env_name=env_name, token_source=operator.get))
     portal = Portal(serverless, k8s, host=args.host, port=args.port, setup_console=setup)
     try:
         portal.start()

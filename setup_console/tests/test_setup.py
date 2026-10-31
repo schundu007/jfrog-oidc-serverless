@@ -116,6 +116,18 @@ class JobTests(unittest.TestCase):
         self.assertEqual(done["state"], "done", done)
         self.assertTrue(done["result"]["destroyed"])
 
+    def test_destroy_skips_jfrog_token_when_state_has_no_jfrog_resources(self):
+        state = self.root.dir / "ado-trust" / "terraform.tfstate"
+        (self.root.dir / "ado-trust" / "terraform.tfvars").write_text('jfrog_url = "https://acme.jfrog.io"\n')
+        state.write_text(json.dumps({"resources": [{"type": "google_storage_bucket"}]}))
+        self._plan("ado-trust", [{"address": "a.b", "type": "x", "change": {"actions": ["delete"]}}], action="plan-destroy")
+        self.assertEqual(self.minted, [])
+        state.write_text(json.dumps({"resources": [{"type": "platform_oidc_configuration"}]}))
+        self._plan("ado-trust", [{"address": "a.b", "type": "x", "change": {"actions": ["delete"]}}], action="plan-destroy")
+        self.assertEqual(self.minted, ["acme.jfrog.io"])
+        self._plan("ado-trust", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        self.assertEqual(len(self.minted), 2)
+
     def test_apply_without_plan_refused(self):
         with self.assertRaises(JobError) as e:
             self.jobs.start("aks-cluster", "apply", {"plan_sha256": "x"})
