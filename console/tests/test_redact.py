@@ -133,7 +133,7 @@ class RedactAwsTests(unittest.TestCase):
                shown=["aws", "lambda", "update-function-configuration", "--environment", "@resolve:lambda-environment"])
         self.assertEqual(sh.misses, [])
         self.assertNotIn("hunter2", "\n".join(lines))
-        self.assertIn("@resolve:lambda-environment", lines[0])
+        self.assertEqual(lines[0], "Updated the configuration of AWS Lambda function: ok, 0.0s")
 
 
 class RunLogPathTests(unittest.TestCase):

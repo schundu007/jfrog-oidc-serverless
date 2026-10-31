@@ -41,7 +41,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import redact
+from . import redact, words
 
 ENV_ALLOW = {
     "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "TMPDIR", "TEMP", "TMP", "TZ",
@@ -157,7 +157,7 @@ class Shell:
                 self.recorded.append({"argv": [Path(argv[0]).name, *redact.argv(argv[1:])], "rc": res.rc,
                                       "stdout": REDACTED_OUTPUT if sensitive else redact.text(res.stdout),
                                       "stderr": redact.text(res.stderr)})
-        self._log(f"$ {' '.join(redact.argv(argv))} → exit {res.rc} ({res.seconds:.1f}s)")
+        self._log(redact.text(words.command(redact.argv(argv), res.rc, res.seconds)))
         return res
 
     def _exec(self, argv, timeout, extra_env, on_line=None) -> Result:
@@ -200,7 +200,7 @@ class Shell:
             if self.mode == "record":
                 self.recorded.append({"http": f"{method} {url}", "status": res.status, "headers": redact.obj(res.headers),
                                       "body": REDACTED_OUTPUT if sensitive else redact.text(res.body)})
-        self._log(f"{method} {redact.text(url)} → {res.status or res.error} ({res.seconds:.1f}s)")
+        self._log(redact.text(words.http(method, url, res.status or res.error, res.seconds)))
         return res
 
     def _fetch(self, method, url, headers, body, timeout) -> HttpResult:

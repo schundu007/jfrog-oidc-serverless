@@ -63,7 +63,8 @@ class LiveTests(unittest.TestCase):
     def test_log_line_is_redacted(self):
         self.sh.run([PY, "-c", "pass", "--password", "hunter2hunter2", JWT])
         text = "\n".join(self.lines)
-        self.assertIn("exit 0", text)
+        self.assertIn(": ok, ", text)
+        self.assertNotIn("$ ", text)
         self.assertNotIn("hunter2hunter2", text)
         self.assertNotIn(JWT, text)
 

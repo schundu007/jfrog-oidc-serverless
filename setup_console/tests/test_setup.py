@@ -228,7 +228,7 @@ class JobTests(unittest.TestCase):
         j = self._plan("gke-cluster", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
         planned = len(j["log"])
         done = wait(self.jobs, self.jobs.start("gke-cluster", "apply", {"plan_sha256": j["result"]["sha256"]}))
-        self.assertTrue(any("terraform" in line and "apply" in line for line in done["log"]), done["log"])
+        self.assertTrue(any(line.startswith("Applied the Terraform plan: ok") for line in done["log"]), done["log"])
         self.assertEqual(len(self.jobs.get(j["id"])["log"]), planned)
 
     def test_stacks_name_the_running_job(self):

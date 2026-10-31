@@ -16,7 +16,8 @@ class StreamTest(unittest.TestCase):
         self.assertEqual(r.stderr, "two\n")
         self.assertIn("one", self.lines)
         self.assertIn("two", self.lines)
-        self.assertTrue(self.lines[-1].startswith("$ "))
+        self.assertFalse(self.lines[-1].startswith("$ "))
+        self.assertTrue(self.lines[-1].endswith("s") and ": ok, " in self.lines[-1])
 
     def test_sensitive_output_is_never_streamed(self):
         self.sh.run([sys.executable, "-c", "print('hid' + 'den-value')"], stream=True, sensitive=True)
