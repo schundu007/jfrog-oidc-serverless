@@ -59,7 +59,7 @@
       "subscription": ""
     },
     "discovered": {
-      "at": "2026-10-31T01:13:47Z",
+      "at": "2026-10-31T01:53:38Z",
       "build_service_account": "382389965689-compute@developer.gserviceaccount.com",
       "dedicated_identity": "jfrog-jfrog-fn-demo",
       "kind": "gcp_run_function",
