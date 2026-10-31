@@ -153,7 +153,7 @@ function pane(r, sel) {
       h("div", { class: "card-head" }, icon(sel.status), h("h2", {}, sel.title), muted(KIND_TEXT[kindOf(sel.status)])),
       sel.detail ? h("p", { class: "step-detail" }, brief(sel.detail)) : null,
       (run.guards || []).length && sel.root ? h("div", { class: "callout fail" }, brief(run.guards.join(" "))) : null,
-      h("dl", { class: "kv" }, facts.filter(Boolean).map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]))),
+      h("table", { class: "kv-table" }, h("thead", {}, h("tr", {}, facts.filter(Boolean).map(([k]) => h("th", { scope: "col" }, k)))), h("tbody", {}, h("tr", {}, facts.filter(Boolean).map(([, v]) => h("td", {}, v)))))),
     h("section", { class: "card log-card" },
       h("div", { class: "card-head" }, h("h2", {}, "Log"), muted(`${lines.length} line${lines.length === 1 ? "" : "s"}`), copy),
       lines.length ? h("ol", { class: "log" }, lines.map((t) => h("li", {}, t))) : muted(run.status === "prepared" ? "Starts after the approval." : "No output.")));

@@ -755,3 +755,9 @@ details[open] > summary::before { transform: rotate(45deg) translate(-2px, -2px)
 .ready-links { display: flex; flex-wrap: wrap; gap: var(--s-4); }
 .ready-links a { display: inline-flex; align-items: center; gap: var(--s-2); font-weight: 600; }
 .ready-links svg { width: 18px; height: 18px; }
+
+/* Facts: a table with one header row and one value row (few rows, many columns). */
+table.kv-table { width: auto; border-collapse: collapse; margin: var(--s-2) 0 var(--s-3); font-size: var(--t-sm); }
+table.kv-table th, table.kv-table td { position: static; padding: 4px 16px 4px 0; border: 0; text-align: left; vertical-align: middle; background: none; }
+table.kv-table th { color: var(--fg-2); font-weight: 500; white-space: nowrap; border-bottom: 1px solid var(--border, #ddd); }
+table.kv-table td { overflow-wrap: anywhere; }

@@ -15,10 +15,14 @@ function outcome(text, ok) {
   return h("p", { class: `outcome${ok ? "" : " is-warn"}` }, statusIcon(ok ? "succeeded" : "warn"), text);
 }
 
-function kv(rows) {
-  return h("table", { class: "facts" }, h("tbody", {}, rows.filter(([, v]) => v !== undefined && v !== null && v !== "")
-    .map(([k, v]) => h("tr", {}, h("th", { scope: "row", text: k }),
-      h("td", { class: "mono", text: typeof v === "object" ? JSON.stringify(v) : String(v) })))));
+// Facts as a table: one header row of labels, one row of values (few rows, many columns).
+function kv(rows, lead = null) {
+  const cols = rows.filter(([, v]) => v !== undefined && v !== null && v !== "")
+    .map(([k, v]) => [k, h("span", { class: "mono", text: typeof v === "object" ? JSON.stringify(v) : String(v) })]);
+  if (lead) cols.unshift(lead);
+  return h("table", { class: "kv-table" },
+    h("thead", {}, h("tr", {}, cols.map(([k]) => h("th", { scope: "col", text: k })))),
+    h("tbody", {}, h("tr", {}, cols.map(([, v]) => h("td", {}, v)))));
 }
 
 function viewPublish(step, ev) {
@@ -61,10 +65,11 @@ function viewDiscover(step, ev) {
 function viewSimulate(step, ev) {
   const v = ev.verdict;
   if (!v) return [];
-  return [h("p", {}, "Verdict ", statusPill({ pass: "succeeded", degraded: "warn", fail: "failed" }[v.status] || "notrun", v.status)),
-    v.root_cause ? h("p", { class: "small", text: typeof v.root_cause === "string" ? v.root_cause : JSON.stringify(v.root_cause) }) : null,
-    ev.summary ? kv([["pulls failed", ev.summary.pulls_failed], ["requests failed", ev.summary.requests_failed],
-      ["tokens minted", ev.summary.tokens_minted], ["first failure (s)", ev.summary.first_failure_s]]) : null];
+  const sm = ev.summary || {};
+  const verdict = ["Verdict", statusPill({ pass: "succeeded", degraded: "warn", fail: "failed" }[v.status] || "notrun", v.status)];
+  return [kv([["pulls failed", sm.pulls_failed], ["requests failed", sm.requests_failed],
+      ["tokens minted", sm.tokens_minted], ["first failure (s)", sm.first_failure_s]], verdict),
+    v.root_cause ? h("p", { class: "small", text: typeof v.root_cause === "string" ? v.root_cause : JSON.stringify(v.root_cause) }) : null];
 }
 
 // One plain sentence, e.g. "Imports 1 existing resource and creates 1. Nothing is changed or deleted."
