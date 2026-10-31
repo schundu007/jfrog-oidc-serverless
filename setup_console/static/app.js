@@ -38,7 +38,8 @@ function stackStatus(s) {
   if (s.missing?.length) return statusPill("notrun", "Inputs needed");
   if (s.busy) return statusPill("running", "Running");
   if (s.plan) return statusPill("waiting_approval", s.plan.action === "destroy" ? "Destroy planned" : "Deploy planned");
-  if (!s.status) return statusPill("notrun", "Not checked");
+  // Its state lives in the foundation: with the foundation missing, it cannot be deployed.
+  if (!s.status) return statusPill("notrun", s.needs?.length ? "Not deployed" : "Checking…");
   if (s.status.deployed) return statusPill("succeeded", "Deployed");
   // A status read that failed (e.g. no state bucket yet) also means nothing is deployed; the reason is the tooltip.
   const pill = statusPill("notrun", "Not deployed");

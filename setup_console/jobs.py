@@ -48,10 +48,10 @@ class Jobs:
             # The latest finished job per stack, when it failed: the row warns and links to its log.
             last = {}
             for j in sorted(self._jobs.values(), key=lambda j: j["started"]):
-                if j["state"] != "running":
+                if j["state"] != "running" and j["action"] != "status":   # automatic state reads never warn
                     last[j["stack"]] = j
             failed = {sid: {"id": j["id"], "action": j["action"], "error": (j["error"] or "").splitlines()[0][:300] if j["error"] else ""}
-                      for sid, j in last.items() if j["state"] == "failed"}
+                      for sid, j in last.items() if j["state"] == "failed" and j["action"] != "status"}
             out = []
             for s in stacks.CATALOGUE:
                 sid = s["id"]
@@ -62,12 +62,12 @@ class Jobs:
                                 missing=stacks.missing(sid, self.env_name, self.root, self.state_root)))
             return out
 
-    # Callers hold self._lock. A stack whose status is not known yet blocks nothing.
+    # Callers hold self._lock.
     def _needs(self, sid) -> list:
-        """The foundation this stack stands on, when it is known not to be deployed."""
+        """The foundation this stack stands on, unless its state shows it deployed. Order is strict:
+        only a foundation read as deployed satisfies it; not yet read counts as missing."""
         dep = stacks.depends_on(sid, self.root)
-        st = self._status.get(dep) if dep else None
-        return [dep] if st is not None and not st.get("deployed") else []
+        return [dep] if dep and not (self._status.get(dep) or {}).get("deployed") else []
 
     def _dependents(self, sid) -> list:
         """Deployed stacks that stand on this one (destroy them first)."""
@@ -203,6 +203,8 @@ class Jobs:
                 result = self._public_plan(p)
                 self._say(job, f"Plan ready: {_summary_text(p.get('summary'))}. Nothing changes until you approve it.")
             self._finish(job, "done", result=result)
+            if action == "apply" or (action == "status" and result.get("deployed")):
+                self._reread_dependents(sid)
         except (TerraformError, ApplyRefused, stacks.StackError, OSError) as exc:
             msg = redact.text(str(exc))[:2000]
             first = msg.splitlines()[0] if msg else type(exc).__name__
@@ -211,13 +213,26 @@ class Jobs:
                 self._set_status(sid, {"deployed": False, "outputs": {}, "error": first[:300]})
             self._finish(job, "failed", error=msg)
 
+    def _reread_dependents(self, sid) -> None:
+        """A foundation that was just deployed or destroyed changes what its stacks can read: read them again."""
+        for x in stacks.IDS:
+            if stacks.depends_on(x, self.root) == sid:
+                try:
+                    self.start(x, "status")
+                except (JobError, stacks.StackError):
+                    continue
+
     def refresh_all(self) -> list:
         """Read every stack's state in the background, so the list knows what is deployed without a
-        Check button. Skips stacks with inputs still missing, a known status, or a running job."""
+        Check button. Foundations first: a stack is read only once its foundation reads as deployed
+        (that read starts it), so nothing is touched before what it stands on exists. Skips stacks with
+        inputs still missing, a known status, or a running job."""
         started = []
         for sid in stacks.IDS:
             with self._lock:
                 if sid in self._status or any(j["stack"] == sid and j["state"] == "running" for j in self._jobs.values()):
+                    continue
+                if self._needs(sid):
                     continue
             try:
                 started.append(self.start(sid, "status")["id"])

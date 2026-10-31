@@ -27,15 +27,25 @@ build_image() {
   docker push "$image"
 }
 
+# A new project has no job or service yet: Setup creates it from the first image. Push that image
+# and say what to put in the stack's inputs, instead of failing on the update.
+first_image() {
+  echo "##vso[task.logissue type=warning]$1 $WORKLOAD does not exist yet: pushed $image. In Setup, set job_image to it and deploy_job on, deploy, then run this pipeline again."
+  echo "##vso[build.addbuildtag]first-image"
+  exit 0
+}
+
 case "$KIND" in
   job)
     build_image
+    gcloud run jobs describe "$WORKLOAD" "${loc[@]}" --format='value(name)' >/dev/null 2>&1 || first_image "Cloud Run job"
     gcloud run jobs update "$WORKLOAD" --image "$image" "${loc[@]}" --quiet
     gcloud run jobs execute "$WORKLOAD" "${loc[@]}" --wait --quiet
     echo "deployed and ran $image"
     ;;
   service)
     build_image
+    gcloud run services describe "$WORKLOAD" "${loc[@]}" --format='value(name)' >/dev/null 2>&1 || first_image "Cloud Run service"
     # Only the image changes: the identity and JFrog env the console wired stay.
     gcloud run services update "$WORKLOAD" --image "$image" "${loc[@]}" --quiet
     ready=$(gcloud run services describe "$WORKLOAD" "${loc[@]}" --format='value(status.conditions[0].status)')

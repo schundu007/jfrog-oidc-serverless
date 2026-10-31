@@ -201,6 +201,8 @@ class JobTests(unittest.TestCase):
         self.root.ready()
         self.jobs = Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state,
                          token_source=lambda sh, host: self.minted.append(host) or "minted-token-value")
+        for f in ("gcp-foundation", "azure-foundation"):   # the stacks below stand on them
+            self.jobs._set_status(f, {"deployed": True, "outputs": {}})
 
     def _plan(self, sid, changes, action="plan-apply"):
         (self.root.dir / sid / ".fake_plan.json").write_text(json.dumps(changes))
@@ -315,6 +317,16 @@ class JobTests(unittest.TestCase):
         self.assertTrue(all(d["action"] == "status" for d in done))
         self.assertEqual(self.jobs.refresh_all(), [])   # known now: nothing started again
 
+    def test_refresh_all_leaves_stacks_alone_until_their_foundation_is_deployed(self):
+        self.jobs._status.clear()
+        (self.root.dir / "gcp-foundation" / ".fake_fail_init").write_text("")   # not deployed: read fails
+        ids = self.jobs.refresh_all()
+        done = [wait(self.jobs, {"id": i}) for i in ids]
+        self.assertNotIn("gke-cluster", {d["stack"] for d in done})
+        rows = {s["id"]: s for s in self.jobs.stacks()}
+        self.assertIsNone(rows["gke-cluster"]["status"])
+        self.assertIsNone(rows["gcp-foundation"]["failed"])   # an automatic read never shows as a failed run
+
     def test_deploy_refused_while_its_foundation_is_not_deployed(self):
         self.jobs._set_status("gcp-foundation", {"deployed": False, "outputs": {}})
         row = [s for s in self.jobs.stacks() if s["id"] == "gke-cluster"][0]
@@ -326,6 +338,22 @@ class JobTests(unittest.TestCase):
         self.assertIn("gcp-foundation", str(e.exception))
         self.jobs._set_status("gcp-foundation", {"deployed": True, "outputs": {}})
         self.assertEqual(wait(self.jobs, self.jobs.start("gke-cluster", "status"))["state"], "done")
+
+    def test_a_foundation_not_read_yet_does_not_satisfy_the_order(self):
+        self.jobs._status.pop("gcp-foundation")
+        self.assertEqual([s for s in self.jobs.stacks() if s["id"] == "gke-cluster"][0]["needs"], ["gcp-foundation"])
+        with self.assertRaises(JobError):
+            self.jobs.start("gke-cluster", "plan-apply")
+
+    def test_deploying_a_foundation_reads_its_stacks_again(self):
+        self.jobs._set_status("gke-cluster", {"deployed": False, "outputs": {}, "error": "bucket doesn't exist"})
+        j = self._plan("gcp-foundation", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        wait(self.jobs, self.jobs.start("gcp-foundation", "apply", {"plan_sha256": j["result"]["sha256"]}))
+        reread = [x for x in self.jobs._jobs.values() if x["stack"] == "gke-cluster" and x["action"] == "status"]
+        self.assertTrue(reread)
+        wait(self.jobs, reread[0])
+        self.assertNotIn("error", [s for s in self.jobs.stacks() if s["id"] == "gke-cluster"][0]["status"])
+        self.assertFalse([x for x in self.jobs._jobs.values() if x["stack"] == "azure-container-apps"])
 
     def test_foundation_destroy_refused_while_stacks_stand_on_it(self):
         self.jobs._set_status("gke-cluster", {"deployed": True, "outputs": {}})
@@ -361,6 +389,7 @@ class ServerTests(unittest.TestCase):
         self.root.save("gcp-foundation", GCP_FOUNDATION)
         self.console = SetupServer(token=TOKEN, root=self.root.dir, state_root=self.root.state, log=open("/dev/null", "w"),
                                    jobs=Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state))
+        self.console.jobs._set_status("gcp-foundation", {"deployed": True, "outputs": {}})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(self.console))
         self.console.port = self.httpd.server_address[1]
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
