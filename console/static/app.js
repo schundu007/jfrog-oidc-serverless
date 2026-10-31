@@ -134,98 +134,27 @@ function showError(msg) {
   e.hidden = !msg;
 }
 
-// ----------------------------------------------------------------- back
+// ----------------------------------------------------------------- page
 
-// Back: the previous page of this console (tabs push history entries). Every page is one level
-// deep under its cloud, so there is nothing above to fall back to.
-function parentPath() {
-  return null;
+// One page per cloud: Workloads, with Pipeline runs and the Simulator as sections below the form.
+// Every section and step starts collapsed on each load; nothing remembers what was open.
+// Open a section (sec-runs, sec-sim) and bring it into view: a run started from the form opens Pipeline runs.
+function showSection(id) {
+  const sec = $(id);
+  sec.open = true;
+  sec.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
 }
 
-function setupBack() {
-  const btn = $("nav-back");
-  const inApp = () => (window.navigation?.currentEntry?.index ?? 0) > 0;
-  const update = () => {
-    const up = parentPath();
-    btn.hidden = !inApp() && !up;
-    btn.title = inApp() ? "Back" : up === "/" ? "Back to Home" : "Back to clouds";
-  };
-  btn.addEventListener("click", () => {
-    if (inApp()) history.back();
-    else if (parentPath()) location.assign(parentPath());
-  });
-  window.addEventListener("popstate", update);
-  state.onNavigate = () => { update(); renderTrail(); };
-  window.addEventListener("popstate", renderTrail);
-  update();
-}
-
-// Where you are, in the top bar: Home / Serverless / <cloud> / <page>. Every step but the last is a link.
+// Where you are: Serverless / <cloud> / Workloads. Only the cloud is a link.
 function renderTrail() {
-  const steps = [["Serverless", null]];
-  if (CLOUD) {
-    steps.push([CLOUDS[CLOUD], `${BASE}/${CLOUD}`]);
-    // The path names the page; the tab's aria-selected may still be mid-transition.
-    const tab = $(`tab-${localPath().split("/")[2] || ""}`);
-    if (tab && tab.getAttribute("role") === "tab") steps.push([tab.textContent.trim(), null]);
-  }
-  steps[steps.length - 1][1] = null;
+  const steps = [["Serverless", null], [CLOUDS[CLOUD], `${BASE}/${CLOUD}`], ["Workloads", null]];
   const parts = [];
   steps.forEach(([label, href], i) => {
     if (i) parts.push(h("span", { class: "trail-sep", "aria-hidden": "true", text: "/" }));
-    const last = i === steps.length - 1;
     parts.push(href ? h("a", { href, "data-section": "", text: label })
-      : h("span", { "aria-current": last ? "page" : null, text: label }));
+      : h("span", { "aria-current": i === steps.length - 1 ? "page" : null, text: label }));
   });
   $("trail").replaceChildren(...parts);
-}
-
-// Same-page changes (tabs) cross-fade like page loads do, where the browser supports it.
-function smoothly(fn) {
-  if (!document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) return fn();
-  const t = document.startViewTransition(fn);
-  // A transition skipped by a page load or a newer one is fine: fn still ran.
-  t.ready.catch(() => {});
-  t.finished.catch(() => {});
-}
-
-// ----------------------------------------------------------------- tabs
-
-function setupTabs() {
-  const tabs = [...document.querySelectorAll('[role="tab"]')];
-  const select = (tab, focus = true, how = "push") => {
-    const show = () => {
-      for (const t of tabs) {
-        const on = t === tab;
-        t.setAttribute("aria-selected", String(on));
-        t.tabIndex = on ? 0 : -1;
-        $(t.getAttribute("aria-controls")).hidden = !on;
-      }
-    };
-    if (how === "replace" || tab.getAttribute("aria-selected") === "true") show();
-    else smoothly(show);
-    if (focus) tab.focus();
-    const path = BASE + (CLOUD ? `/${CLOUD}/${tab.id.slice("tab-".length)}` : "/");
-    if (how !== "none" && location.pathname !== path) history[how === "replace" ? "replaceState" : "pushState"](null, "", path);
-    state.onNavigate?.();
-  };
-  state.selectTab = (id, how = "push") => select($(id), false, how);
-  window.addEventListener("popstate", () => {
-    const t = $(`tab-${localPath().split("/")[2] || ""}`);
-    if (t && tabs.includes(t)) select(t, false, "none");
-  });
-  tabs.forEach((t) => {
-    t.addEventListener("click", () => select(t));
-    t.addEventListener("keydown", (e) => {
-      // Hidden tabs (e.g. Configurations with nothing saved) are skipped.
-      const shown = tabs.filter((x) => !x.hidden);
-      const j = shown.indexOf(t);
-      const d = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 1, ArrowUp: -1 }[e.key];
-      if (d) { e.preventDefault(); select(shown[(j + d + shown.length) % shown.length]); }
-      if (e.key === "Home") { e.preventDefault(); select(shown[0]); }
-      if (e.key === "End") { e.preventDefault(); select(shown[shown.length - 1]); }
-    });
-  });
 }
 
 // ----------------------------------------------------------------- simulate form
@@ -256,15 +185,9 @@ const FAULT_LABELS = {
 const CLOUD_ONLY_FAULTS = { arm_refresh_forbidden: ["azure"], sa_recreated: ["gcp"], rotator_down: ["gcp", "azure"],
   federation_disabled: ["aws"] };
 const faultLabel = (t) => FAULT_LABELS[t] || t.replaceAll("_", " ");
-const KIND_LABELS = {
-  gcp_run_service: "Cloud Run service", gcp_run_job: "Cloud Run job", gcp_run_function: "Cloud Run function",
-  azure_container_app: "Container App", azure_functions_aca: "Functions on Container Apps",
-  azure_functions_premium: "Functions Premium", azure_functions_flex: "Functions Flex Consumption",
-  aws_lambda: "Lambda function", aws_ecs_task: "ECS task", aws_app_runner: "App Runner service",
-  openshift_knative_service: "Knative service",
-};
+const ACRONYMS = { jfrog: "JFrog", gcp: "GCP", aws: "AWS", sa: "SA", aca: "ACA", ecs: "ECS", arm: "ARM" };
 const scenarioLabel = (s) => {
-  const words = s.name.replaceAll("-", " ");
+  const words = s.name.split("-").map((w) => ACRONYMS[w] || w).join(" ");
   return `${words[0].toUpperCase()}${words.slice(1)}`;
 };
 
@@ -506,7 +429,7 @@ async function connect() {
   return true;
 }
 
-// Keep only this cloud's fields and links, then show the picker or the tabs.
+// Keep only this cloud's fields and links. Old page paths (/<cloud>/runs, /simulate, /configure) land here too.
 function applyCloud() {
   if (BASE) {
     // Portal: this console is the Serverless section; links to its own pages carry the prefix,
@@ -521,16 +444,10 @@ function applyCloud() {
     return;
   }
   for (const el of document.querySelectorAll("[data-cloud]")) if (el.dataset.cloud !== CLOUD) el.remove();
-  for (const el of document.querySelectorAll(".crumb-cloud")) el.textContent = CLOUDS[CLOUD];
-  for (const a of document.querySelectorAll("[data-cloud-link]")) {
-    if (a.dataset.cloudLink === CLOUD) a.setAttribute("aria-current", "page");
-  }
+  document.querySelector(`[data-cloud-link="${CLOUD}"]`)?.setAttribute("aria-current", "page");
   $("cloud-switch").hidden = false;
-  // The open cloud's pages sit under it in the sidebar.
-  document.querySelector(`[data-cloud-link="${CLOUD}"]`).after($("tabs"));
-  $("tabs").hidden = false;
-  const want = $(`tab-${localPath().split("/")[2] || ""}`);
-  state.selectTab(want && want.getAttribute("role") === "tab" ? want.id : "tab-configure", "replace");
+  const path = `${BASE}/${CLOUD}`;
+  if (location.pathname !== path) history.replaceState(null, "", path + location.search);
 }
 
 // Help: a circled "?" after a heading or field label; its explanation pops up on hover or keyboard
@@ -577,39 +494,26 @@ function setupHelp() {
   }
 }
 
-// Collapse and expand. Each form step's heading toggles its body; the open cloud in the sidebar
-// toggles its pages instead of reloading. Both carry aria-expanded and work from the keyboard.
+// Each form step's heading toggles its body. Steps start collapsed, like every section on the page.
 function setupCollapsibles() {
   for (const step of document.querySelectorAll(".rail-step")) {
     const head = step.querySelector(":scope > h2"), body = step.querySelector(":scope > .step-body");
     if (!head || !body) continue;
     body.id ||= `${step.id}-body`;
-    const btn = h("button", { type: "button", class: "step-toggle", "aria-expanded": "true", "aria-controls": body.id,
-      "aria-label": `Collapse ${head.textContent.trim().replace(/^\d+\s*/, "")}` });
+    const name = head.textContent.trim().replace(/^\d+\s*/, "");
+    const btn = h("button", { type: "button", class: "step-toggle", "aria-controls": body.id });
     head.append(btn);
     const set = (open) => {
       step.classList.toggle("collapsed", !open);
       btn.setAttribute("aria-expanded", String(open));
-      btn.setAttribute("aria-label", `${open ? "Collapse" : "Expand"} ${head.textContent.trim().replace(/^\d+\s*/, "")}`);
+      btn.setAttribute("aria-label", `${open ? "Collapse" : "Expand"} ${name}`);
     };
+    set(false);
     head.addEventListener("click", (e) => { if (!e.target.closest("a, input, select, label")) set(step.classList.contains("collapsed")); });
   }
-  const open = document.querySelector(`[data-cloud-link="${CLOUD}"]`);
-  if (!open) return;
-  open.setAttribute("aria-expanded", "true");
-  open.setAttribute("aria-controls", "tabs");
-  open.addEventListener("click", (e) => {
-    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
-    e.preventDefault();
-    const show = $("tabs").hidden;
-    $("tabs").hidden = !show;
-    open.setAttribute("aria-expanded", String(show));
-  }, true);
 }
 
 async function boot() {
-  setupTabs();
-  setupBack();
   applyCloud();
   setupHelp();
   setupCollapsibles();
@@ -638,6 +542,17 @@ async function boot() {
 function wire() {
   state.catalogue.scenarios = state.catalogue.scenarios.filter((s) => ofCloud(s.target_kind));
   const sel = $("scenario");
+  // The Simulator rehearses the workload type in the form above; other types' scenarios are not offered.
+  const listScenarios = () => {
+    const kind = $("cfg-kind").value;
+    const mine = state.catalogue.scenarios.filter((s) => !kind || s.target_kind === kind);
+    const shown = mine.length ? mine : state.catalogue.scenarios;
+    const keep = sel.value;
+    sel.replaceChildren(...shown.map((s) => h("option", { value: s.name, text: scenarioLabel(s) })));
+    if (shown.some((s) => s.name === keep)) sel.value = keep;
+    if (sel.value !== state.scenario?.name) selectScenario(sel.value);
+  };
+  $("sec-sim").addEventListener("toggle", () => $("sec-sim").open && listScenarios());
   sel.replaceChildren(...state.catalogue.scenarios.map((s) =>
     h("option", { value: s.name, text: scenarioLabel(s) })));
   for (const [t, only] of Object.entries(CLOUD_ONLY_FAULTS)) if (!only.includes(CLOUD)) delete state.catalogue.fault_types[t];
@@ -656,9 +571,9 @@ function wire() {
   const initial = new URLSearchParams(location.search).get("scenario");
   if (initial && scenarioByName(initial)) sel.value = initial;
   selectScenario(sel.value);
-  const runs = initRuns({ api, h, streamEvents, selectTab: state.selectTab, ofCloud }).catch((e) => showError(`Runs tab: ${e.message}`));
-  initConfigure({ api, h, streamEvents, localPath, cloud: CLOUD, ofCloud, selectTab: state.selectTab, onRun: (cfg) => runs.then((r) => r && r.startRun(cfg)) })
-    .catch((e) => showError(`Configure tab: ${e.message}`));
+  const runs = initRuns({ api, h, streamEvents, showSection, ofCloud }).catch((e) => showError(`Pipeline runs: ${e.message}`));
+  initConfigure({ api, h, streamEvents, cloud: CLOUD, ofCloud, onRun: (cfg) => runs.then((r) => r && r.startRun(cfg)) })
+    .catch((e) => showError(`Workloads: ${e.message}`));
   return true;
 }
 

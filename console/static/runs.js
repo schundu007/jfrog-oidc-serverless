@@ -1,11 +1,11 @@
-// Runs tab: the 9-step pipeline for one config, with the approval gates inline.
+// Pipeline runs: the 9-step pipeline for one config, with the approval gates inline.
 // Rendered with DOM APIs only (no innerHTML). Everything shown has been
 // redacted by the server; approvals send back only the hashes it showed.
 
 const $ = (id) => document.getElementById(id);
 const fill = (el, ...kids) => el.replaceChildren(...kids.flat().filter((k) => k !== null && k !== undefined && k !== false));
 
-let api, h, streamEvents, selectTab, ofCloud;
+let api, h, streamEvents, showSection, ofCloud;
 
 const KIND_LABELS = {
   gcp_run_service: "Cloud Run service", gcp_run_job: "Cloud Run job", gcp_run_function: "Cloud Run function",
@@ -33,11 +33,12 @@ async function refreshList() {
   if (rs.id) sel.value = rs.id;
   // No runs: one empty state instead of empty Steps and Log cards.
   document.querySelector(".runs-layout").hidden = !rs.runs.length;
-  if (!rs.runs.length) fill($("run-head"), h("p", { class: "muted", text: "No runs yet. Run the pipeline from Workloads." }));
+  $("runs-count").textContent = rs.runs.length || "";
+  if (!rs.runs.length) fill($("run-head"), h("p", { class: "muted", text: "No runs yet. Run pipeline above starts one." }));
 }
 
 export async function startRun(cfg) {
-  selectTab("tab-runs");
+  showSection("sec-runs");
   note("Starting the pipeline…", "busy");
   let res;
   try {
@@ -409,7 +410,7 @@ async function cancel(ev) {
 // ----------------------------------------------------------------- init
 
 export async function initRuns(deps) {
-  ({ api, h, streamEvents, selectTab, ofCloud } = deps);
+  ({ api, h, streamEvents, showSection, ofCloud } = deps);
   $("runs-list").addEventListener("change", (e) => openRun(e.target.value));
   $("runs-refresh").addEventListener("click", refreshList);
   await refreshList();

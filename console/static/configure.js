@@ -7,7 +7,7 @@ const $ = (id) => document.getElementById(id);
 // replaceChildren() would turn null children into the text "null"; drop them.
 const fill = (el, ...kids) => el.replaceChildren(...kids.flat().filter((k) => k !== null && k !== undefined && k !== false));
 
-let api, h, streamEvents, cloud, ofCloud, onRun, selectTab;
+let api, h, streamEvents, cloud, ofCloud, onRun;
 // showAll: list problems on empty fields too. Off for a new configuration until a button is pressed.
 const st = { inv: null, schema: null, cfg: null, dirty: false, busy: false, validateTimer: null, validation: null, showAll: false, saved: null, current: null };
 
@@ -247,6 +247,7 @@ function renderList() {
   fill($("cfg-saved"), rows);
   // Saved configurations sit above the editor on the same page; none saved, no list.
   $("cfg-saved-box").hidden = st.saved.length === 0;
+  $("cfg-saved-count").textContent = st.saved.length || "";
 }
 
 function renderTitle() {
@@ -273,7 +274,7 @@ function newConfig(kind) {
 
 async function loadConfig(name, btn) {
   if (!name) return;
-  if (st.current === name) return selectTab("tab-configure");
+  if (st.current === name) return;
   if (st.dirty && btn && !armed(btn, "Discard unsaved changes?", btn.textContent)) return;
   await busy("Loading…", async () => {
     const { config } = await api(`/api/configs/${encodeURIComponent(name)}`);
@@ -281,7 +282,6 @@ async function loadConfig(name, btn) {
     st.cfg = mergeDeep(clone(st.schema.defaults[kind]), config);
     st.current = name;
     st.showAll = true;
-    selectTab("tab-configure");
     resetPanels();
     writeForm();
     markDirty(false);
@@ -336,7 +336,7 @@ async function remove(name, btn) {
 async function busy(label, fn) {
   if (st.busy) return;
   st.busy = true;
-  const buttons = [...document.querySelectorAll("#cfg-actions button, #panel-configs button, #cfg-discover-btn")];
+  const buttons = [...document.querySelectorAll("#cfg-actions button, #cfg-saved button, #cfg-discover-btn")];
   buttons.forEach((b) => { b.disabled = true; });
   status(label, "busy");
   try {
@@ -515,8 +515,7 @@ function pickWorkload() {
 }
 
 export async function initConfigure(deps) {
-  ({ api, h, streamEvents, cloud, ofCloud, onRun, selectTab } = deps);
-  const localPath = deps.localPath || (() => location.pathname);
+  ({ api, h, streamEvents, cloud, ofCloud, onRun } = deps);
   st.schema = await api("/api/schema");
   $("cfg-kind").replaceChildren(...cloudKinds().map((k) => h("option", { value: k, text: st.schema.kinds[k].label })));
 
@@ -532,7 +531,6 @@ export async function initConfigure(deps) {
     if (st.cfg && st.dirty && !armed($("cfg-new"), "Discard unsaved changes?", "New configuration")) return;
     st.dirty = false;
     newConfig(cloudKinds()[0]);
-    selectTab("tab-configure");
   });
   $("cfg-save").addEventListener("click", save);
   $("cfg-discover-btn").addEventListener("click", runDiscover);
@@ -555,7 +553,5 @@ export async function initConfigure(deps) {
   writeForm();
   markDirty(false);
   scheduleValidate();
-  // The path picks the tab; with none (or Configurations and nothing saved), land on the useful one.
-  const named = localPath().split("/")[2] || "";
   loadInventory();
 }

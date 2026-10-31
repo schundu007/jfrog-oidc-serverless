@@ -1226,3 +1226,23 @@ tr.log-step-row td { background: #fafbf8; }
 tr.log-step-row .log-msg { font-family: var(--font); font-size: 13.5px; }
 .log-err { margin-top: 4px; font-family: var(--mono); font-size: 12px; font-weight: 400; color: #333333; white-space: pre-wrap; overflow-wrap: anywhere; }
 .log-note { margin-top: 2px; font-size: 12.5px; color: var(--hum-muted, #666666); }
+
+/* ================================================================== page sections */
+/* Workloads is one page: Saved, the form, Pipeline runs and the Simulator. Each section is a card whose
+   header band toggles it; all start collapsed. */
+details.section {
+  margin-top: var(--card-gap); background: var(--surface); border: 1px solid var(--card-line);
+  border-radius: var(--card-r); box-shadow: var(--card-shadow);
+}
+details.section:first-child { margin-top: 0; }
+details.section > .section-head {
+  padding: 12px var(--card-pad-x); background: var(--card-head); border-radius: var(--card-r); cursor: pointer; user-select: none;
+}
+details.section[open] > .section-head { border-bottom: 1px solid var(--card-line); border-radius: var(--card-r) var(--card-r) 0 0; }
+.section-head h2 { display: flex; align-items: center; gap: var(--s-2); font-size: var(--t-md); font-weight: 650; }
+details.section[open] > :not(summary) { margin-inline: var(--card-pad-x); }
+details.section[open] > :nth-child(2) { margin-top: var(--card-pad-y); }
+details.section[open] > :last-child { margin-bottom: var(--card-pad-y); }
+details.section > * + :not(summary) { margin-top: var(--card-gap); }
+.section-lead { max-width: 80ch; color: var(--fg-2); font-size: var(--t-sm); }
+details.saved { margin-bottom: var(--s-6); }

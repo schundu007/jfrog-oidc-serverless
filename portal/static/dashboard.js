@@ -79,7 +79,7 @@ async function serverless() {
     const last = runs.find((r) => cloudOf(r.kind) === c);
     return chip(`/serverless/${c}`, mk, name, `${n} workload${n === 1 ? "" : "s"}`, last ? RUN[last.status] : "");
   }));
-  $("sl-runs").replaceChildren(...(runs.length ? runs.slice(0, 6).map((r) => row(`/serverless/${cloudOf(r.kind)}/runs`,
+  $("sl-runs").replaceChildren(...(runs.length ? runs.slice(0, 6).map((r) => row(`/serverless/${cloudOf(r.kind)}`,
     markEl(kindMark(String(r.kind))), h("span", { class: "dash-main" }, h("b", { text: r.name }), h("small", { text: `${label(r.kind)} · ${when(r.created)}` })),
     h("span", { class: `pill ${RUN[r.status] || ""}`, text: r.status.replaceAll("_", " ") }))) : [empty("No runs")]));
 }
