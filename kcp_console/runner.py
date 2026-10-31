@@ -260,6 +260,19 @@ class RunManager:
                 raise RunError(404, "no such run")
             return dict(r)
 
+    def delete(self, run_id: str) -> dict:
+        """Forget one finished run and remove its folder. An active run (prepared, queued, running) stays:
+        it may be awaiting approval or mid-change; cancel it first."""
+        with self.lock:
+            r = self.runs.get(run_id)
+            if r is None:
+                raise RunError(404, "no such run")
+            if r.get("status") in ("prepared", "queued", "running"):
+                raise RunError(409, "the run is still active; cancel it first")
+            del self.runs[run_id]
+        self.store.delete(run_id)
+        return {"deleted": run_id}
+
     def prune(self, config: str) -> dict:
         """Clear old runs of one cluster. The newest finished run of each action stays: it is the evidence the
         cluster page reads. Active runs (prepared, queued, running) stay; refused requests and older runs go."""

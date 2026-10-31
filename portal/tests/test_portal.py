@@ -95,6 +95,8 @@ class PortalTests(unittest.TestCase):
             self.assertEqual(st, 200, p)
             self.assertIn(b"<title>KCP Console</title>", raw, p)
             self.assertIn(b'<meta name="console-base" content="/k8s">', raw, p)
+            # One design system: the shared stylesheet first, then the Kubernetes-only rules.
+            self.assertLess(raw.index(b'href="/serverless/static/styles.css"'), raw.index(b'href="/k8s/static/styles.css"'), p)
             self.assertNotIn(b'"/static/', raw, p)
 
     def test_setup_section(self):
@@ -132,6 +134,8 @@ class PortalTests(unittest.TestCase):
         st, _, raw = self.req("GET", "/runs", token=False, headers={"Sec-Fetch-Site": "none"})
         self.assertEqual(st, 200)
         self.assertIn(b'src="/runs-page.js"', raw)
+        for b in (b'id="runs-delete"', b'id="runs-clear"', b'id="runs-all"', b'id="runs-confirm-yes"'):
+            self.assertIn(b, raw)  # admin: delete selected or clear finished runs, confirmed inline
         self.assertIn(self.token.encode(), raw)
         for p in ("/runs-page.js", "/data.js"):
             self.assertEqual(self.req("GET", p, token=False)[0], 200, p)

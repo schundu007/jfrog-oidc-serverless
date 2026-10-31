@@ -456,3 +456,23 @@ class PruneTest(unittest.TestCase):
                                           "20261030-150000-aaaaa6"])
         self.assertFalse((root / "runs" / "20261030-100000-aaaaa1").exists())
         self.assertTrue((root / "runs" / "20261030-110000-aaaaa2").exists())
+
+    def test_delete_one_finished_run_refuses_active(self):
+        root = Path(tempfile.mkdtemp())
+        store = RunStore(root)
+        m = RunManager(store, lambda log: FakeShell(), env={}, sleep=lambda s: None, root=root, tokens=StaticToken(TOKEN))
+        for rid, status in (("20261030-100000-bbbbb1", "failed"), ("20261030-110000-bbbbb2", "prepared"),
+                            ("20261030-120000-bbbbb3", "running")):
+            run = {"id": rid, "created": "2026-10-30T10:00:00Z", "config": "aks-1", "kind": "direct", "name": "setup", "status": status}
+            m.runs[rid] = run
+            store.save(run)
+        self.assertEqual(m.delete("20261030-100000-bbbbb1"), {"deleted": "20261030-100000-bbbbb1"})
+        self.assertFalse((root / "runs" / "20261030-100000-bbbbb1").exists())
+        for rid in ("20261030-110000-bbbbb2", "20261030-120000-bbbbb3"):
+            with self.assertRaises(RunError) as cm:
+                m.delete(rid)
+            self.assertEqual(cm.exception.status, 409)
+            self.assertIn(rid, m.runs)
+        with self.assertRaises(RunError) as cm:
+            m.delete("20261030-130000-bbbbb4")
+        self.assertEqual(cm.exception.status, 404)

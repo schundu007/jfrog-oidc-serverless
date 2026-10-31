@@ -51,6 +51,17 @@ async function get(path) {
   return r.json();
 }
 
+// Admin: forget one finished run (its record and log). Active runs answer 409.
+export async function removeRun(path) {
+  const r = await fetch(path, { method: "DELETE", headers: { "X-Console-Token": TOKEN || "" }, credentials: "omit", cache: "no-store" });
+  if (!r.ok) {
+    let msg = `HTTP ${r.status}`;
+    try { const b = await r.json(); msg = b.error?.message || b.message || b.error || msg; } catch { /* keep status */ }
+    throw new Error(r.status === 401 ? "signed-out" : String(msg));
+  }
+  return r.json();
+}
+
 export function h(tag, attrs = {}, ...kids) {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) if (v !== null && v !== undefined && v !== false) {
@@ -83,7 +94,7 @@ async function serverless() {
     const known = Boolean(r.name && r.kind);
     return { cloud: known ? cloudOf(r.kind) : null, section: known ? sectionOfKind(r.kind) : null,
       name: known ? r.name : "Unknown workload", type: known ? label(r.kind) : "No workload recorded",
-      mark: known ? markOfKind(r.kind) : null, status: r.status, created: r.created, id: r.id,
+      mark: known ? markOfKind(r.kind) : null, status: r.status, created: r.created, id: r.id, api: `/serverless/api/runs/${encodeURIComponent(r.id)}`,
       href: known ? `/serverless/${cloudOf(r.kind)}/w/${encodeURIComponent(r.name)}/runs/${encodeURIComponent(r.id)}` : null };
   });
   return { items, runs: runRows };
@@ -107,7 +118,7 @@ async function kubernetes() {
     const known = Boolean(p);
     return { cloud: p ? SECTIONS[p]?.[0] || null : null, section: p, name: r.config || r.cluster || "Unknown cluster",
       type: `${(p && SECTIONS[p]?.[1].replace(/s$/, "")) || "Cluster (configuration deleted)"} · ${words(r.name || r.kind)}`, mark: p,
-      status: r.status, created: r.created, id: r.id,
+      status: r.status, created: r.created, id: r.id, api: `/k8s/api/runs/${encodeURIComponent(r.id)}`,
       href: known ? `/k8s/clusters/${p}/${encodeURIComponent(r.config)}/runs/${encodeURIComponent(r.id)}` : null };
   });
   return { items, runs: runRows };

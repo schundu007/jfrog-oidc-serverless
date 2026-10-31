@@ -20,9 +20,19 @@
     <div class="page-top"><nav class="trail" aria-label="You are here"><span aria-current="page">Runs</span></nav></div>
     <header class="page-header">
       <div class="title-row"><h1>Runs</h1><span id="runs-count" class="count-badge"></span></div>
-      <div class="actions"><button type="button" id="runs-refresh" class="btn secondary">Refresh</button></div>
+      <div class="actions">
+        <button type="button" id="runs-delete" class="btn secondary" disabled>Delete selected</button>
+        <button type="button" id="runs-clear" class="btn secondary">Clear finished</button>
+        <button type="button" id="runs-refresh" class="btn secondary">Refresh</button>
+      </div>
     </header>
     <p id="runs-errors" class="error-box" role="alert" hidden></p>
+    <div id="runs-confirm" class="runs-confirm" role="alertdialog" aria-labelledby="runs-confirm-text" hidden>
+      <span id="runs-confirm-text"></span>
+      <button type="button" id="runs-confirm-yes" class="btn danger">Delete</button>
+      <button type="button" id="runs-confirm-no" class="btn secondary">Keep</button>
+    </div>
+    <p id="runs-done" class="muted small" role="status" hidden></p>
     <!-- Every run of every workload and cluster, newest first: one list for the whole console. -->
     <div class="filter-row runs-filters">
       <select id="runs-cloud" aria-label="Cloud"><option value="">All clouds</option><option value="gcp">Google Cloud</option><option value="azure">Azure</option></select>
@@ -31,7 +41,7 @@
     </div>
     <div class="table-card">
       <table class="list-table">
-        <thead><tr><th scope="col">Status</th><th scope="col">Workload or cluster</th><th scope="col">Type</th><th scope="col">Cloud</th><th scope="col">Started</th></tr></thead>
+        <thead><tr><th scope="col" class="sel"><input type="checkbox" id="runs-all" aria-label="Select all finished runs shown"></th><th scope="col">Status</th><th scope="col">Workload or cluster</th><th scope="col">Type</th><th scope="col">Cloud</th><th scope="col">Started</th></tr></thead>
         <tbody id="runs-rows"></tbody>
       </table>
     </div>
