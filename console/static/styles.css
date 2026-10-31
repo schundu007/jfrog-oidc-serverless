@@ -805,7 +805,7 @@ table.lt .lg { padding-left: 0; text-indent: 0; margin-top: 0; }
   display: flex; align-items: center; gap: 8px; padding: var(--s-2) 24px 4px; font-size: 13px; font-weight: 800;
   letter-spacing: 0.06em; color: var(--cloud, var(--navy));
 }
-.sidenav .nav-cloud .nav-group::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--cloud, var(--navy)); }
+.sidenav .nav-cloud .nav-group .cloud-logo { width: 18px; height: 18px; flex: none; }
 .sidenav .nav-cloud[data-cloud-group="gcp"] { --cloud: var(--gcp); }
 .sidenav .nav-cloud[data-cloud-group="azure"] { --cloud: var(--azure); }
 .sidenav .nav-sub {
@@ -890,3 +890,11 @@ table.lt .lg { padding-left: 0; text-indent: 0; margin-top: 0; }
 input.is-known { border-color: var(--ok-line); background: var(--ok-bg); }
 input.is-unknown { border-color: var(--bad-line); background: var(--bad-bg); }
 .field input[type="checkbox"] { width: auto; align-self: flex-start; }
+
+/* Clean and bright: white page, sidebar and cards with crisp lines; color only marks state and brand. */
+:root { --side: #ffffff; --side-hover: #f4f7f0; --side-on: #eef6e6; --side-line: #e3e6df; }
+.pill-failed { color: #ffffff; background: var(--bad-line); border-color: var(--bad-line); }
+
+/* Humana model: square corners, thin light lines; only the Home stat cards carry the thick dark border. */
+:root { --card-r: 0; --card-shadow: none; --r-lg: 0; }
+.empty { border-radius: 0; background: #ffffff; }

@@ -53,21 +53,26 @@
   // The list page itself is the current page; a page inside it (a workload, a cluster, a run) only opens it.
   const atTop = () => !/\/(w|runs|new)\/|\/clusters\/[a-z]+\/[^/]+/.test(location.pathname + "/");
 
+  // Each cloud's real logo: constant inline SVG, no user data.
+  const CLOUD_LOGO = {
+    gcp: '<svg class="mark cloud-logo" viewBox="0 0 24 19.3" aria-hidden="true"><path fill="#EA4335" d="M15.2 5.3h.7l2-2 .1-.9C14.2-.9 8.5-.5 5.2 3.3c-.9 1-1.6 2.3-2 3.6.2-.1.5-.1.7 0l4-.7s.2-.3.3-.3c1.8-2 4.8-2.2 6.9-.5h.1z"/><path fill="#4285F4" d="M20.8 6.9c-.5-1.7-1.4-3.2-2.7-4.4l-2.8 2.8c1.2 1 1.9 2.5 1.8 4v.5c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5h-5l-.5.5v3l.5.5h5c3.6 0 6.5-2.9 6.5-6.5 0-2.2-1.1-4.2-2.8-5.4z"/><path fill="#34A853" d="M7.1 19.3h5v-4h-5c-.4 0-.7-.1-1-.2l-.7.2-2 2-.2.7c1.1.8 2.5 1.3 3.9 1.3z"/><path fill="#FBBC05" d="M7.1 6.3C3.5 6.3.6 9.3.6 12.9c0 2 1 3.9 2.6 5.2l2.9-2.9c-1.3-.6-1.8-2.1-1.3-3.3.6-1.3 2.1-1.8 3.3-1.3.6.3 1 .7 1.3 1.3l2.9-2.9c-1.2-1.6-3.1-2.6-5.2-2.6z"/></svg>',
+    azure: '<svg class="mark cloud-logo" viewBox="0 0 24 24" aria-hidden="true"><path fill="#0078D4" d="M5.483 21.3H24L14.025 4.013l-3.038 8.347 5.836 6.938L5.483 21.3zM13.23 2.7L6.105 8.677 0 19.253h5.505v.014L13.23 2.7z"/></svg>',
+  };
   const html = [DEFS];
   html.push(`<nav aria-label="Home">${TOP.map((i) => link(i)).join("")}</nav>`);
   // Each cloud and each Serverless/Kubernetes group folds; the operator's choice is kept per browser.
   const FOLD_KEY = "consoleNav.folded";
   let folded = {};
   try { folded = JSON.parse(localStorage.getItem(FOLD_KEY) || "{}") || {}; } catch { folded = {}; }
-  const fold = (id, cls, label, body) => {
+  const fold = (id, cls, label, body, logo = "") => {
     const open = !folded[id];
     return `<button type="button" class="${cls} nav-fold" aria-expanded="${open}" aria-controls="nf-${id}" data-fold="${id}">`
-      + `<span>${esc(label)}</span></button><div class="nav-body" id="nf-${id}"${open ? "" : " hidden"}>${body}</div>`;
+      + `${logo}<span>${esc(label)}</span></button><div class="nav-body" id="nf-${id}"${open ? "" : " hidden"}>${body}</div>`;
   };
   for (const [cloud, id, groups] of CLOUDS) {
     const body = groups.map(([group, items]) =>
       fold(`${id}-${group.toLowerCase()}`, "nav-sub", group, items.map((i) => link(i, " nested")).join(""))).join("");
-    html.push(`<nav class="nav-cloud" data-cloud-group="${esc(id)}" aria-label="${esc(cloud)}">${fold(id, "nav-group", cloud, body)}</nav>`);
+    html.push(`<nav class="nav-cloud" data-cloud-group="${esc(id)}" aria-label="${esc(cloud)}">${fold(id, "nav-group", cloud, body, CLOUD_LOGO[id] || "")}</nav>`);
   }
   html.push(`<nav aria-label="Runs">${BOTTOM.map((i) => link(i)).join("")}</nav>`);
   html.push('<nav class="subnav" id="k8s-sub" aria-label="Clusters" hidden></nav>');
@@ -102,11 +107,7 @@
   });
   const selectAndReveal = (key) => { select(key); reveal(); };
   selectAndReveal(fromPath());
-  // Service icons for other pages (Infrastructure rows): constant inline SVG, no user data.
-  const CLOUD_LOGO = {
-    gcp: '<svg class="mark cloud-logo" viewBox="0 0 24 19.3" aria-hidden="true"><path fill="#EA4335" d="M15.2 5.3h.7l2-2 .1-.9C14.2-.9 8.5-.5 5.2 3.3c-.9 1-1.6 2.3-2 3.6.2-.1.5-.1.7 0l4-.7s.2-.3.3-.3c1.8-2 4.8-2.2 6.9-.5h.1z"/><path fill="#4285F4" d="M20.8 6.9c-.5-1.7-1.4-3.2-2.7-4.4l-2.8 2.8c1.2 1 1.9 2.5 1.8 4v.5c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5h-5l-.5.5v3l.5.5h5c3.6 0 6.5-2.9 6.5-6.5 0-2.2-1.1-4.2-2.8-5.4z"/><path fill="#34A853" d="M7.1 19.3h5v-4h-5c-.4 0-.7-.1-1-.2l-.7.2-2 2-.2.7c1.1.8 2.5 1.3 3.9 1.3z"/><path fill="#FBBC05" d="M7.1 6.3C3.5 6.3.6 9.3.6 12.9c0 2 1 3.9 2.6 5.2l2.9-2.9c-1.3-.6-1.8-2.1-1.3-3.3.6-1.3 2.1-1.8 3.3-1.3.6.3 1 .7 1.3 1.3l2.9-2.9c-1.2-1.6-3.1-2.6-5.2-2.6z"/></svg>',
-    azure: '<svg class="mark cloud-logo" viewBox="0 0 24 24" aria-hidden="true"><path fill="#0078D4" d="M5.483 21.3H24L14.025 4.013l-3.038 8.347 5.836 6.938L5.483 21.3zM13.23 2.7L6.105 8.677 0 19.253h5.505v.014L13.23 2.7z"/></svg>',
-  };
+  // Service icons for other pages (Infrastructure rows, Home): constant inline SVG, no user data.
   const BOOT = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.4 3.1 8.2 7.5 9.5 4.4-1.3 7.5-5.1 7.5-9.5V6z"/><circle cx="12" cy="10.5" r="2.2"/><path d="M12 12.7V16.5M12 15h1.8"/></svg>';
   const icon = (k) => (k === "boot" ? BOOT : CLOUD_LOGO[k] || ICON[k] || "");
   window.consoleNav = { icon, select: selectAndReveal, SECTIONS, sectionOfKind, section: (key) => SECTIONS[key] || null, current: fromPath };

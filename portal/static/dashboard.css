@@ -186,3 +186,31 @@
 #dash .dash-empty { font-size: 14px; }
 #dash .dash-table thead th { font-size: 13px; }
 #dash .dash-table td, #dash .dash-table tbody th { font-size: 14px; }
+/* Stat cards: the number and its label on one line. */
+#dash .hstat > span:last-child { flex-direction: row; align-items: baseline; gap: var(--s-2); }
+#dash .hstat small { font-size: 15px; }
+#dash .board-head { align-items: center; }
+.board-logo { display: inline-grid; place-items: center; }
+.board-logo .cloud-logo { width: 26px; height: 26px; }
+
+/* Humana model: the stat cards are square, white, with a thick dark border; everything else is square
+   with thin light lines. One green accent. */
+#dash { --cute-r: 0; --cute-r-sm: 0; }
+#dash .hstat { --ink: #333333; background: #ffffff; border: 2px solid #333333; border-radius: 0; box-shadow: none; }
+#dash .hstat b, #dash .hstat small { color: #333333; opacity: 1; }
+#dash .ring { background: radial-gradient(closest-side, #ffffff 74%, transparent 76%), conic-gradient(#5ba908 calc(var(--p) * 1%), #e3e6df 0); }
+#dash .ring b { color: #333333; }
+#dash .bubble { background: #eef6e6; border-radius: 0; }
+#dash .bubble svg { stroke: #4e8416; }
+#dash .board, #dash .tile, #dash .table-wrap, #dash .dash-empty { background: #ffffff; border-radius: 0; box-shadow: none; }
+#dash .tile-mark, #dash .dash-table .dash-mark { border-radius: 0; }
+#dash .tile:hover { border-color: #5ba908; transform: none; box-shadow: none; }
+#dash .dash-table thead th { background: #fafbf8; }
+#dash .hero-btn, #dash .board-link { border-radius: 0; box-shadow: none; }
+/* Stat card icons: custom marks (serverless box, Kubernetes wheel, pipeline, progress), dark lines, green accent. */
+.sbadge { display: grid; place-items: center; width: 52px; height: 52px; flex: none; background: #eef6e6; }
+.sicon { width: 32px; height: 32px; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.sicon .s-line { stroke: #333333; stroke-width: 1.8; fill: none; }
+.sicon .s-fill { fill: #5ba908; stroke: #4e8416; stroke-width: 1; }
+.sicon .s-soft { stroke: #c9d6bb; stroke-width: 1.8; fill: none; }
+.sicon .s-arc { stroke: #5ba908; stroke-width: 2.6; fill: none; }

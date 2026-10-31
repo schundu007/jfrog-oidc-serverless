@@ -522,3 +522,7 @@ input.typed { width: 220px; }
 }
 
 .log-card .lt-wrap { border: 0; border-radius: 0; border-top: 1px solid var(--border); max-height: 70vh; }
+
+/* Humana model, as in the Serverless console: square corners, thin light lines, white. */
+.card, .stat, .pick-card, .table, .empty, .cfg-form > .tgrid, .cfg-form .block, .cfg-form .advanced, .essentials > div {
+  border-radius: 0; box-shadow: none; background: #ffffff; }

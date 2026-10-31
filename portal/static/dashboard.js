@@ -63,11 +63,18 @@ function groupSection(cloud, group, mine, runs) {
     table(["", "Name", "Type", "Detail", "Status"], here.map(itemRow), `No ${noun}s on ${CLOUD_NAMES[cloud]} yet`));
 }
 
+// The cloud's real logo, from the sidebar (constant SVG only).
+function cloudLogo(cloud) {
+  const el = h("span", { class: "board-logo" });
+  el.insertAdjacentHTML("afterbegin", window.consoleNav?.icon(cloud) || "");
+  return el;
+}
+
 function board(cloud, items, runs) {
   const mine = items.filter((it) => it.cloud === cloud);
   const id = `h-${cloud}`;
   return h("section", { class: "board", "aria-labelledby": id },
-    h("header", { class: "board-head" }, h("h2", { id, text: CLOUD_NAMES[cloud] })),
+    h("header", { class: "board-head" }, cloudLogo(cloud), h("h2", { id, text: CLOUD_NAMES[cloud] })),
     groupSection(cloud, "Serverless", mine, runs),
     groupSection(cloud, "Kubernetes", mine, runs));
 }
