@@ -279,15 +279,20 @@ async function load() {
   const data = await api("/api/stacks");
   byId = Object.fromEntries(data.stacks.map((s) => [s.id, s]));
   $("env").textContent = data.env;
-  // One card per cloud, as the sidebar groups the console: its foundation, workload stacks and
-  // cluster together, in catalogue order. (They still never depend on each other across kinds.)
+  // One card per cloud, and inside it Serverless and Kubernetes as separate tables: the two kinds
+  // never share a table, as they never share state, pipelines or dependencies.
   const clouds = {};
-  for (const s of data.stacks) (clouds[s.group] ||= []).push(s);
-  fill($("groups"), Object.entries(clouds).map(([g, list]) => h("section", { class: "card cloud-card", "data-cloud": CLOUD_ID[g] || "" },
-    h("div", { class: "card-head cloud-head" }, iconEl(CLOUD_ID[g], "cloud-badge"),
-      h("div", { class: "cloud-title" }, h("h3", { text: g }), h("span", { class: "cloud-sub",
-        text: `${list.length} stacks · ${list.filter((x) => x.status?.deployed).length} deployed` }))),
-    h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, list.flatMap(row)))))));
+  for (const s of data.stacks) ((clouds[s.group] ||= {})[s.kind] ||= []).push(s);
+  fill($("groups"), Object.entries(clouds).map(([g, kinds]) => {
+    const all = Object.values(kinds).flat();
+    return h("section", { class: "card cloud-card", "data-cloud": CLOUD_ID[g] || "" },
+      h("div", { class: "card-head cloud-head" }, iconEl(CLOUD_ID[g], "cloud-badge"),
+        h("div", { class: "cloud-title" }, h("h3", { text: g }), h("span", { class: "cloud-sub",
+          text: `${all.length} stacks · ${all.filter((x) => x.status?.deployed).length} deployed` }))),
+      ...Object.entries(kinds).map(([k, list]) => h("div", { class: "kind-block", "data-kind": k },
+        h("h4", { class: "kind-title", text: k }),
+        h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, list.flatMap(row)))))));
+  }));
   // While a job runs, keep the rows current so Running turns into its result without a reload.
   clearTimeout(load.timer);
   if (data.stacks.some((s) => s.busy)) load.timer = setTimeout(() => load().catch(() => {}), POLL_MS * 2);
