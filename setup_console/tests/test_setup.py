@@ -183,12 +183,15 @@ class StackTests(unittest.TestCase):
             stacks.tf_args("azure-container-apps", "test", self.root.dir, self.root.state)
         self.assertIn("azure-foundation", str(e.exception))
 
-    def test_kubernetes_stacks_stand_alone(self):
-        # The real stacks: a cluster keeps local state, needs no foundation and blocks none.
-        for sid in ("gke-cluster", "aks-cluster"):
+    def test_kubernetes_stacks_use_their_cloud_foundation_for_state_and_pipeline(self):
+        # The real stacks: a cluster keeps remote state in its own cloud's foundation store and has
+        # its own stack-setup pipeline; nothing stands on it.
+        for sid, backend, dep in (("gke-cluster", "gcs", "gcp-foundation"), ("aks-cluster", "azurerm", "azure-foundation")):
             self.assertEqual(stacks.get(sid)["kind"], "Kubernetes")
-            self.assertIsNone(stacks.backend_kind(sid))
-            self.assertIsNone(stacks.depends_on(sid))
+            self.assertEqual(stacks.backend_kind(sid), backend)
+            self.assertEqual(stacks.depends_on(sid), dep)
+            self.assertTrue((stacks.REPO_ROOT / "pipelines" / stacks.rel_dir(sid) / "stack-setup.yml").is_file(), sid)
+            self.assertFalse(any(stacks.depends_on(o) == sid for o in stacks.IDS), sid)
         self.assertEqual({s["kind"] for s in stacks.CATALOGUE}, {"Serverless", "Kubernetes"})
         # Prefill never crosses from Serverless to Kubernetes, even in the same cloud.
         self.root.save("gcp-foundation", GCP_FOUNDATION)

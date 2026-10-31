@@ -10,9 +10,10 @@ as JSON (<state root>/<env>/<stack>.tfvars.json, outside git), passed with -var-
 variable two stacks of the same cloud share (jfrog_url, gcp_project_id, ...) is prefilled from the last
 value saved for it in that cloud; clouds never prefill from each other.
 
-Serverless and Kubernetes are separate kinds of infrastructure and never depend on each other.
-The cluster stacks (gke-cluster, aks-cluster) stand alone: local state, no foundation, nothing
-stands on them. Within Serverless, clouds are completely separate, as in production: each has its own foundation stack
+Serverless and Kubernetes are separate kinds of infrastructure: no stack of one stands on a stack
+of the other, and prefill never crosses between them. The cluster stacks (gke-cluster, aks-cluster)
+use their cloud's foundation only for remote state and pipeline trust (their stack-setup pipeline,
+pipelines/kubernetes/<cloud>/<stack>/stack-setup.yml); nothing stands on them. Clouds are completely separate, as in production: each has its own foundation stack
 (gcp-foundation, azure-foundation) with its own ADO trust, its own JFrog integration and
 mappings, its own pipeline variable group and its own state store. Its stacks' remote state is
 -backend-config derived from that foundation's inputs only: gcs bucket <gcp_project_id>-tfstate;

@@ -1,5 +1,5 @@
-# Template: plan -> apply (or destroy) for ONE Google Cloud serverless stack.
-# Used only by pipelines/serverless/gcp/<stack>/stack-setup.yml, one pipeline per stack.
+# Template: plan -> apply (or destroy) for ONE Google Cloud stack (a serverless workload or the test cluster).
+# Used only by pipelines/{serverless,kubernetes}/gcp/<stack>/stack-setup.yml, one pipeline per stack.
 # The setup service connection's OIDC token gives a JFrog admin token (mapping
 # ado-setup) for the run only, and GCP through WIF. The apply stage targets the ADO
 # environment "<stack>-<environment>" (approval) and applies exactly the reviewed plan file;
