@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# terraform-stack.sh <plan|apply> <stack> <environment> <plan-file>
+# terraform-stack.sh <plan|plan-destroy|apply> <stack> <environment> <plan-file>
 #
 # Runs terraform/stacks/<stack> with env/<environment>.tfvars, and the stack's
 # remote state (backend.tf) configured by env/<environment>.backend.hcl. Azure
@@ -19,9 +19,9 @@ cd "terraform/stacks/${stack}"
 terraform init -input=false -no-color -backend-config="env/${environment}.backend.hcl"
 
 case "$action" in
-  plan)
+  plan|plan-destroy)
     rc=0
-    terraform plan -input=false -no-color -lock-timeout=5m \
+    terraform plan -input=false -no-color -lock-timeout=5m $([ "$action" = plan-destroy ] && echo -destroy) \
       -var-file="env/${environment}.tfvars" -out="$plan_file" -detailed-exitcode || rc=$?
     [ "$rc" -eq 1 ] && exit 1
     echo "##vso[task.setvariable variable=hasChanges;isOutput=true]$([ "$rc" -eq 2 ] && echo true || echo false)"

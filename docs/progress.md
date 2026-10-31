@@ -468,3 +468,10 @@ The tool is two things: **Setup** (`/setup`, test only) deploys and destroys the
 - Live check: GKE stack Check read the GCS state (not deployed).
 
 Tests: setup 15, portal 14, console 374 (9 skipped), KCP 221.
+
+## Gaps closed: destroy and cluster pipelines (2026-10-30)
+
+- `gcp-stack-setup.yml` / `azure-stack-setup.yml` take `stack` (adds `gke-cluster`, `aks-cluster`) and `action` (apply or destroy: `plan -destroy`, same approval on environment `<stack>-<env>`, same reviewed plan file). `terraform-stack.sh` has `plan-destroy`. The pipeline definitions in ADO stay as they are.
+- `workload-onboard` skips a workspace removed from git (cleanup) instead of failing.
+- ado-trust: the GCP setup identity gets `container.admin` and `serviceusage.serviceUsageAdmin` (GKE); `azure_console_operators` (Entra object IDs) get Storage Blob Data Contributor on the Azure tfstate container, so the Infrastructure page can plan and destroy Azure stacks locally. Planned: 3 creates, nothing else; apply pending from the Infrastructure page.
+- Cleanup (workloads only): Azure rg-artifact-reader, rg-jfrog-types, kcp-test-rg, Entra app jfrog-jfrog-oidc-audience, AWS ECS cluster jfrog-demo deleted; Azure OIDC workspace removed. JFrog integrations azure-entra and kcp-test-aks-oidc still to delete.

@@ -16,3 +16,4 @@ ado_token_audience = "api://AzureADTokenExchange"
 
 # Console operator identity (console-operator.tf): who may mint the console's short-lived JFrog token
 # console_operators = ["user:you@example.com"]
+# azure_console_operators = ["<your Entra object id: az ad signed-in-user show --query id -o tsv>"]

@@ -24,6 +24,20 @@ variable "console_jfrog_audience" {
   default     = "jfrog-gcp"
 }
 
+variable "azure_console_operators" {
+  description = "Entra object IDs of people who run the Infrastructure page: read/write the Azure Terraform state (the pipelines' setup identity already can)."
+  type        = list(string)
+  default     = []
+}
+
+resource "azurerm_role_assignment" "console_operator_state" {
+  for_each             = toset(var.azure_console_operators)
+  scope                = azurerm_storage_container.tfstate.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = each.value
+  principal_type       = "User"
+}
+
 locals {
   console_operator = length(var.console_operators) > 0
 }

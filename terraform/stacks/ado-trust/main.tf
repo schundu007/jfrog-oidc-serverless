@@ -236,6 +236,8 @@ resource "google_project_iam_member" "setup" {
     "roles/iam.serviceAccountUser",
     "roles/artifactregistry.admin",
     "roles/run.admin",
+    "roles/container.admin",                # gke-cluster stack
+    "roles/serviceusage.serviceUsageAdmin", # enables container.googleapis.com
   ])
 
   project = var.gcp_project_id

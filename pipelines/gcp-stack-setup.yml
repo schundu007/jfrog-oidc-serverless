@@ -1,12 +1,22 @@
-# Plan -> apply for terraform/stacks/gcp-cloud-run.
+# Plan -> apply (or destroy) for one GCP stack in terraform/stacks: gcp-cloud-run, gke-cluster.
+# Infrastructure only (test targets); JFrog OIDC for workloads is <cloud>-workload-onboard.yml.
 # The setup service connection's OIDC token gives a JFrog admin token (mapping
-# ado-setup) for the run only, and GCP through WIF. The apply stage targets the
-# ADO environment "gcp-cloud-run-<environment>" and applies exactly the reviewed plan file.
+# ado-setup) for the run only, and GCP through WIF. The apply stage targets the ADO
+# environment "<stack>-<environment>" (approval) and applies exactly the reviewed plan file;
+# action=destroy plans `terraform plan -destroy` and applies that the same way.
 
 trigger: none
 pr: none
 
 parameters:
+  - name: stack
+    type: string
+    default: gcp-cloud-run
+    values: [gcp-cloud-run, gke-cluster]
+  - name: action
+    type: string
+    default: apply
+    values: [apply, destroy]
   - name: environment
     type: string
     default: test
@@ -16,13 +26,18 @@ variables:
   - template: vars/${{ parameters.environment }}.yml
   - name: PLAN_FILE
     value: $(Pipeline.Workspace)/plan/tfplan
+  - name: PLAN_ACTION
+    ${{ if eq(parameters.action, 'destroy') }}:
+      value: plan-destroy
+    ${{ else }}:
+      value: plan
 
 pool:
   vmImage: ubuntu-24.04
 
 stages:
   - stage: plan
-    displayName: Plan
+    displayName: Plan ${{ parameters.action }} ${{ parameters.stack }}
     jobs:
       - job: plan
         timeoutInMinutes: 30
@@ -35,13 +50,13 @@ stages:
             displayName: Prepare
           - task: AzureCLI@2
             name: tf
-            displayName: terraform plan (OIDC)
+            displayName: terraform ${{ parameters.action }} plan (OIDC)
             inputs:
               azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
               scriptType: bash
               scriptLocation: scriptPath
               scriptPath: pipelines/scripts/terraform-stack.sh
-              arguments: plan gcp-cloud-run ${{ parameters.environment }} $(PLAN_FILE)
+              arguments: $(PLAN_ACTION) ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
               JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
@@ -56,7 +71,7 @@ stages:
     condition: and(succeeded(), eq(dependencies.plan.outputs['plan.tf.hasChanges'], 'true'))
     jobs:
       - deployment: apply
-        environment: gcp-cloud-run-${{ parameters.environment }}
+        environment: ${{ parameters.stack }}-${{ parameters.environment }}
         timeoutInMinutes: 60
         strategy:
           runOnce:
@@ -75,7 +90,7 @@ stages:
                     scriptType: bash
                     scriptLocation: scriptPath
                     scriptPath: pipelines/scripts/terraform-stack.sh
-                    arguments: apply gcp-cloud-run ${{ parameters.environment }} $(PLAN_FILE)
+                    arguments: apply ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
                   env:
                     SYSTEM_ACCESSTOKEN: $(System.AccessToken)
                     JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
