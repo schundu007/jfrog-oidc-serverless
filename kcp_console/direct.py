@@ -75,10 +75,37 @@ def _cause(event: str) -> str:
     """The reason in a kubelet event, without image references or URLs."""
     if "oauth token" in event.lower() and "401" in event:
         return "registry token request got 401: cached or expired credentials"
+    if "failed to authorize" in event.lower() and re.search(r"\b401\b", event):
+        return "JFrog answered 401: no credential for this pod"
     for k in ("401 Unauthorized", "403 Forbidden", "404 Not Found", "not found", "no basic auth credentials", "timeout"):
         if k.lower() in event.lower():
             return k
     return "see the cluster's events"
+
+
+_URL = re.compile(r"https?://([^/\s\"]+)[^\s\"]*?(?=:?(?:\s|\"|$))")
+
+
+def event_rows(items: list, uid: str = "") -> list:
+    """The test pod's own events, oldest first, as the cluster wrote them: URLs cut to their host."""
+    out = []
+    for e in items:
+        io = e.get("involvedObject") or {}
+        if uid and io.get("uid") not in (None, uid):
+            continue
+        src = e.get("source") or {}
+        out.append({"at": e.get("lastTimestamp") or e.get("eventTime") or e.get("firstTimestamp") or "",
+                    "type": e.get("type", ""), "reason": e.get("reason", ""),
+                    "from": " on ".join(x for x in (src.get("component") or e.get("reportingComponent") or "",
+                                                     src.get("host") or e.get("reportingInstance") or "") if x),
+                    "count": e.get("count") or 1, "message": _URL.sub(r"\1", e.get("message", ""))[:600]})
+    return sorted(out, key=lambda r: r["at"])
+
+
+def _why(msgs: list) -> str:
+    """The cause in the kubelet's 'Failed to pull' event, not the ErrImagePull/BackOff lines after it."""
+    full = [m for m in msgs if m.startswith("Failed to pull")]
+    return _cause((full or msgs)[-1])
 
 
 def paths(root: Path, name: str) -> dict:
@@ -413,16 +440,16 @@ class Runner:
             return self._dry_pod()
         ok, reason, msgs, secs = self._pull()
         if ok:
-            return "done", "pulled with no pull secret"
-        raise StepError(f"pull failed ({reason}){': ' + _cause(msgs[-1]) if msgs else ''}")
+            return "done", "pulled with no pull secret", {"pulled": True, "seconds": secs, "events": self._events}
+        raise StepError(f"pull failed ({reason}){': ' + _why(msgs) if msgs else ''}")
 
     def s_repull(self):
         if self.dry:
             return self._dry_pod()
         ok, reason, msgs, secs = self._pull()
         if ok:
-            return "done", f"pulled again in {secs} s", {"pulled": True, "seconds": secs}
-        raise StepError(f"pull failed after the trust came back ({reason}){': ' + _cause(msgs[-1]) if msgs else ''}")
+            return "done", f"pulled again in {secs} s", {"pulled": True, "seconds": secs, "events": self._events}
+        raise StepError(f"pull failed after the trust came back ({reason}){': ' + _why(msgs) if msgs else ''}")
 
     def s_refused(self):
         if self.dry:
@@ -430,8 +457,9 @@ class Runner:
         ok, reason, msgs, secs = self._pull()
         if ok:
             raise StepError("pulled without the trust: the pull does not depend on OIDC")
-        why = _cause(msgs[-1]) if msgs else reason
-        return "ok", f"refused ({reason}: {why})", {"pulled": False, "reason": reason, "cause": why}
+        why = _why(msgs) if msgs else reason
+        return "ok", f"refused ({reason}: {why})", {"pulled": False, "reason": reason, "cause": why,
+                                                     "events": self._events}
 
     def _dry_pod(self):
         self.p["pod"].write_text(json.dumps(pod_manifest(self.cfg), indent=2))
@@ -461,6 +489,7 @@ class Runner:
         # Events outlive a deleted pod; an earlier test pod with the same name is told apart by its uid.
         msgs = [e.get("message", "") for e in ev.get("items", []) if e.get("reason") in ("Pulled", "Failed", "BackOff")
                 and (not uid or (e.get("involvedObject") or {}).get("uid") in (None, uid))]
+        self._events = event_rows(ev.get("items", []), uid)
         self._run(["kubectl", "delete", "pod", k["test_pod"], "-n", k["namespace"], "--ignore-not-found", "--wait=false"])
         secs = int(self.clock() - self.facts["pull_started"]) if isinstance(self.facts.get("pull_started"), (int, float)) else waited
         return phase in ("Running", "Succeeded"), reason or phase or "timeout", msgs, max(secs, 0)

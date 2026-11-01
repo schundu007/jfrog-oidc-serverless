@@ -231,7 +231,9 @@ class RunnerTest(unittest.TestCase):
         kube = [e for c, e in zip(sh.calls, sh.env_seen) if c[0] in ("kubectl", "helm")]
         self.assertTrue(kube and all(e.get("KUBECONFIG") == kc for e in kube))
         by = {r["id"]: r for r in res}
-        self.assertEqual(by["pull"], {"id": "pull", "title": "Test pull without a pull secret", "status": "done", "detail": "pulled with no pull secret"})
+        self.assertEqual({k: v for k, v in by["pull"].items() if k != "facts"},
+                         {"id": "pull", "title": "Test pull without a pull secret", "status": "done", "detail": "pulled with no pull secret"})
+        self.assertEqual([e["reason"] for e in by["pull"]["facts"]["events"]], ["Pulled"])
         self.assertEqual(by["anon"]["status"], "ok")
         self.assertEqual((res[-1]["id"], res[-1]["status"]), ("who", "ok"))
 
@@ -526,6 +528,8 @@ class ProveTest(unittest.TestCase):
         self.assertEqual(by["no-keys"]["facts"], {"long_lived": 0, "short_lived": 1})
         self.assertFalse(by["refused"]["facts"]["pulled"])
         self.assertTrue(by["repull"]["facts"]["pulled"])
+        self.assertEqual([e["message"] for e in by["refused"]["facts"]["events"]], ["401 Unauthorized"])
+        self.assertEqual([e["reason"] for e in by["repull"]["facts"]["events"]], ["Pulled"])
         self.assertEqual(len(sh.mappings), 1)            # the trust is back
         self.assertEqual(sh.sa_deletes, 3)
         self.assertNotIn(TOKEN, "\n".join(self.lines) + json.dumps(by))
@@ -570,3 +574,30 @@ class ProveTest(unittest.TestCase):
         self.assertTrue(r["changes_state"])
         self.assertFalse(r["needs_typed_cluster"])
         self.assertTrue(any("restores the mapping" in w for w in r["warnings"]))
+
+
+class EventRowsTest(unittest.TestCase):
+    def test_the_pods_own_events_oldest_first_with_urls_cut_to_the_host(self):
+        items = [
+            {"involvedObject": {"uid": "u1"}, "lastTimestamp": "2026-11-01T08:27:20Z", "type": "Warning", "reason": "Failed",
+             "source": {"component": "kubelet", "host": "aks-node-0"}, "count": 2,
+             "message": 'failed to fetch anonymous token: unexpected status from GET request to https://acme.jfrog.io/v2/token?scope=repository:x:pull&service=y: 401 Unauthorized'},
+            {"involvedObject": {"uid": "u1"}, "lastTimestamp": "2026-11-01T08:27:18Z", "type": "Normal", "reason": "Pulling",
+             "source": {"component": "kubelet", "host": "aks-node-0"}, "message": 'Pulling image "acme.jfrog.io/docker/app:1"'},
+            {"involvedObject": {"uid": "old"}, "lastTimestamp": "2026-11-01T08:00:00Z", "reason": "Pulled", "message": "earlier pod"},
+        ]
+        rows = direct.event_rows(items, "u1")
+        self.assertEqual([r["reason"] for r in rows], ["Pulling", "Failed"])
+        self.assertEqual(rows[1]["from"], "kubelet on aks-node-0")
+        self.assertEqual(rows[1]["count"], 2)
+        self.assertIn("request to acme.jfrog.io: 401 Unauthorized", rows[1]["message"])
+        self.assertNotIn("https://", rows[1]["message"])
+        self.assertNotIn("scope=", rows[1]["message"])
+
+
+class WhyTest(unittest.TestCase):
+    def test_the_failed_to_pull_event_names_the_401_not_the_backoff_after_it(self):
+        msgs = ['Failed to pull image "h/x:1": failed to resolve reference "h/x:1": failed to authorize: '
+                'failed to fetch anonymous token: unexpected status from GET request to h: 401', "Error: ErrImagePull",
+                'Back-off pulling image "h/x:1"', "Error: ImagePullBackOff"]
+        self.assertEqual(direct._why(msgs), "JFrog answered 401: no credential for this pod")

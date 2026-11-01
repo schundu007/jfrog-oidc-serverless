@@ -530,3 +530,5 @@ input.typed { width: 220px; }
   border-radius: 0; box-shadow: none; background: #ffffff; }
 .grid3 > .card + .card, .grid2 > .card + .card { margin-top: 0; }
 .card + .grid3 { margin-top: var(--card-gap); }
+.events-table .ev-msg { white-space: pre-wrap; word-break: break-word; font-size: 12px; }
+.events-table td:first-child, .events-table td:nth-child(2) { white-space: nowrap; }

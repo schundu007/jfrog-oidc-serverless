@@ -39,6 +39,9 @@ const CARD_HELP = {
   Essentials: "What the cluster and JFrog report right now, read live with read-only calls.",
   "Set up": "Dry run first, then your approval, then the real change: Helm install, JFrog OIDC provider and mapping.",
   Verify: "Read-only: re-reads the cluster and JFrog and pulls the test image again.",
+  "Pull with OIDC": "The kubelet's events for the test pod: no pull secret, the image pulled through the credential provider.",
+  "Pull without trust": "The kubelet's events with the identity mapping removed: JFrog answers 401 and the pull fails.",
+  "Pull with trust restored": "The kubelet's events once the mapping is back: the same pod pulls again.",
   Prove: "Proves the pull depends on OIDC: no stored secret, a live exchange, refused while the JFrog mapping is removed, working again once it is restored.",
   "No stored secret": "No pull secret on the service account or in its namespace, and no long-lived JFrog token for the mapped user.",
   "Live exchange": "A recreated service account (nothing cached) pulls through JFrog; JFrog records the mapped user.",
@@ -226,6 +229,26 @@ const PROVE_GROUPS = [
   ["Trust removed", ["break", "renew-2", "refused", "restore", "renew-3", "repull"]],
 ];
 
+const EVENT_PULLS = [["Pull with OIDC", "pull"], ["Pull without trust", "refused"], ["Pull with trust restored", "repull"]];
+const clock = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }); };
+
+// The kubelet's own events for each test pull, as the cluster recorded them.
+function eventsCard(run, title, id) {
+  const s = (run.result.steps || []).find((x) => x.id === id);
+  const ev = s?.facts?.events;
+  if (!ev) return null;
+  const bad = id === "refused" ? ev.every((e) => e.reason !== "Pulled") : ev.some((e) => e.reason === "Pulled");
+  return card(title, h("span", { class: `badge ${bad ? "ok" : "fail"}` }, id === "refused" ? (bad ? "Refused" : "Pulled") : (bad ? "Pulled" : "Not pulled")),
+    ev.length ? h("table", { class: "table events-table" },
+      h("thead", {}, h("tr", {}, ["Time", "Reason", "From", "Message"].map((t) => h("th", { scope: "col" }, t)))),
+      h("tbody", {}, ev.map((e) => h("tr", { class: e.type === "Warning" ? "warn-row" : null },
+        h("td", { class: "mono" }, clock(e.at)),
+        h("td", {}, h("span", { class: `badge ${e.type === "Warning" ? "fail" : "ok"}` }, e.count > 1 ? `${e.reason} ×${e.count}` : e.reason)),
+        h("td", {}, e.from),
+        h("td", { class: "mono ev-msg" }, e.message)))))
+      : muted("No events"));
+}
+
 const latestProve = (runs) => (runs || []).find((x) => x.kind === "direct" && x.name === "prove" && !isDry(x) && !ACTIVE.includes(x.status) && x.result);
 
 function proveFacts(run) {
@@ -264,7 +287,8 @@ function proofTab(c) {
         const bad = steps.some((s) => s.status === "failed" || s.status === "warn") || steps.length < ids.length;
         return card(title, h("span", { class: `badge ${bad ? "fail" : "ok"}` }, bad ? "Not proven" : "Proven"), checklist(steps));
       })),
-    ] : (a?.which === "prove" ? null : h("div", { class: "empty slim" }, h("p", {}, "No proof yet"))));
+      EVENT_PULLS.map(([title, id]) => eventsCard(run, title, id)),
+    ] : (a?.which === "prove" ? null : !runsOf[name] ? muted("Loading…") : h("div", { class: "empty slim" }, h("p", {}, "No proof yet"))));
 }
 
 // The evidence as a Markdown file for the people who were not in the room.
@@ -278,6 +302,13 @@ function download(c, run) {
   for (const [title, ids] of PROVE_GROUPS) {
     L.push(`## ${title}`, "", row(["Check", "Status", "Evidence"]), row(["---", "---", "---"]));
     for (const id of ids) { const s = run.result.steps.find((x) => x.id === id); if (s) L.push(row([s.title, s.status, s.detail])); }
+    L.push("");
+  }
+  for (const [title, id] of EVENT_PULLS) {
+    const ev = run.result.steps.find((x) => x.id === id)?.facts?.events;
+    if (!ev) continue;
+    L.push(`## Cluster events: ${title}`, "", row(["Time (UTC)", "Type", "Reason", "From", "Count", "Message"]), row(Array(6).fill("---")));
+    for (const e of ev) L.push(row([e.at, e.type, e.reason, e.from, e.count, e.message]));
     L.push("");
   }
   const blob = new Blob([L.join("\n")], { type: "text/markdown" });
