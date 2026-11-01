@@ -273,6 +273,12 @@
 .conn-inline { display: flex; align-items: flex-end; gap: var(--s-3); }
 .conn-inline .field { flex: 1; min-width: 0; }
 .conn-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+/* Use login: a two-way switch, the login in use filled. */
+.conn-switch { display: inline-flex; border: 1px solid var(--border); width: max-content; }
+.conn-switch button { border: 0; border-radius: 0; background: var(--surface); color: var(--fg); padding: 6px 14px; font: inherit; }
+.conn-switch button + button { border-left: 1px solid var(--border); }
+.conn-switch button:hover:not(:disabled) { background: var(--surface-2); }
+.conn-switch button[aria-pressed="true"], .conn-switch button[aria-pressed="true"]:disabled { background: var(--accent); color: var(--on-accent); opacity: 1; cursor: default; font-weight: 600; }
 .conn-pending { display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-4); margin: var(--s-3) 0;
   border: 1px solid var(--warn-line, #e0a43b); background: var(--warn-bg, #fff8ea); }
 .conn-step { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; }

@@ -94,10 +94,29 @@ function pending(tool, p) {
   box.append(actions(button("Cancel sign-in", async () => { await post(tool, "cancel"); await load(); })));
   return box;
 }
-const signInLabel = (s) => (s.source === "console" ? "Sign in again" : "Sign in");
-// Sign out ends the login shown in Connection, so it sits there, under the account it signs out of.
-const signOut = (tool, s) => (s.source === "console"
-  ? actions(button("Sign out", async () => { await post(tool, "signout"); await load(); }, "secondary", signingIn(s))) : null);
+// Which login a tool acts as: this machine's or the one signed in on this console. Both are kept, so
+// switching is instant; the console's option needs a sign-in here first.
+function loginSwitch(tool, s) {
+  const has = s.logins || {};
+  const opt = (login, label, why) => {
+    const on = s.source === login;
+    const b = button(label, async () => { await post(tool, "use", { login }); await load(); }, "", need(signingIn(s),
+      () => (on ? "In use" : ""), () => (has[login] ? "" : why)));
+    b.setAttribute("aria-pressed", String(on));
+    return b;
+  };
+  return h("div", { class: "field" }, h("span", { class: "field-label" }, "Use login"),
+    h("div", { class: "conn-switch", role: "group", "aria-label": "Use login" },
+      opt("machine", "This machine", "No login on this machine"), opt("console", "This console", "Sign in on this console first")));
+}
+// Sign in and sign out take turns: a console login exists → Sign out (removes it); none → Sign in.
+// While a sign-in waits, the pending box carries Cancel instead.
+function signInOut(tool, s, signIn, when) {
+  if (s.pending?.state === "waiting") return null;
+  return s.logins?.console
+    ? actions(button("Sign out", async () => { await post(tool, "signout"); await load(); }, "secondary"))
+    : actions(button("Sign in", async () => { await signIn(); await load(); }, "primary", when));
+}
 
 async function choices(tool) {
   const r = await api(`/api/settings/${tool}/choices`, { abs: true });
@@ -115,7 +134,8 @@ const CONNECTORS = [
     panel: (s) => {
       const pick = state.choices?.gcp;
       return [
-        section("Connection", facts([["Account", s.account], ["Project", s.project], ["Login", SOURCE[s.source]]]), missing(s, "gcloud"), signOut("gcp", s)),
+        section("Connection", facts([["Account", s.account], ["Project", s.project]]), missing(s, "gcloud"), loginSwitch("gcp", s),
+          signInOut("gcp", s, () => post("gcp", "signin"), () => (s.cli === false ? "gcloud is not installed" : ""))),
         pending("gcp", s.pending),
         s.signed_in ? section("Project", pick
           ? h("div", { class: "conn-inline" },
@@ -123,8 +143,6 @@ const CONNECTORS = [
             button("Use", async () => { await put("gcp", { project: val("gcp", "project") }); await load(); }, "primary",
               need(signingIn(s), filled(["gcp", "project"]), changed([[["gcp", "project"], s.project]]))))
           : actions(button("Change project", () => choices("gcp"), "secondary", signingIn(s)))) : null,
-        actions(button(signInLabel(s), async () => { await post("gcp", "signin"); await load(); }, "primary",
-          need(signingIn(s), () => (s.cli === false ? "gcloud is not installed" : "")))),
       ];
     } },
   { id: "azure", name: "Azure", category: "cloud",
@@ -133,8 +151,13 @@ const CONNECTORS = [
     panel: (s) => {
       const pick = state.choices?.azure;
       return [
-        section("Connection", facts([["Account", s.account], ["Subscription", s.subscription], ["Tenant", s.tenant], ["Login", SOURCE[s.source]]]),
-          missing(s, "Azure CLI"), signOut("azure", s)),
+        section("Connection", facts([["Account", s.account], ["Subscription", s.subscription], ["Tenant", s.tenant]]),
+          missing(s, "Azure CLI"), loginSwitch("azure", s),
+          s.logins?.console || s.pending?.state === "waiting" ? null
+            : field("azure", "tenant", "Tenant", { value: s.tenant_wanted, placeholder: "Default tenant",
+              tip: "Optional. A tenant ID or domain (contoso.onmicrosoft.com) when the account belongs to more than one." }),
+          signInOut("azure", s, () => post("azure", "signin", { tenant: val("azure", "tenant") }),
+            () => (s.cli === false ? "Azure CLI is not installed" : ""))),
         pending("azure", s.pending),
         s.signed_in ? section("Subscription", pick
           ? h("div", { class: "conn-inline" },
@@ -142,11 +165,6 @@ const CONNECTORS = [
             button("Use", async () => { await put("azure", { subscription: val("azure", "subscription") }); await load(); }, "primary",
               need(signingIn(s), filled(["azure", "subscription"]), changed([[["azure", "subscription"], s.subscription_id]]))))
           : actions(button("Change subscription", () => choices("azure"), "secondary", signingIn(s)))) : null,
-        section("Sign in",
-          field("azure", "tenant", "Tenant", { value: s.tenant_wanted, placeholder: "Default tenant",
-            tip: "Optional. A tenant ID or domain (contoso.onmicrosoft.com) when the account belongs to more than one." }),
-          actions(button(signInLabel(s), async () => { await post("azure", "signin", { tenant: val("azure", "tenant") }); await load(); }, "primary",
-            need(signingIn(s), () => (s.cli === false ? "Azure CLI is not installed" : ""))))),
       ];
     } },
   { id: "aws", name: "AWS", category: "cloud",
@@ -192,20 +210,18 @@ const CONNECTORS = [
     about: "Admin access for JFrog writes. Without a token the console acts as its operator identity.",
     scope: (s) => (s.url || "").replace(/^https:\/\//, ""),
     panel: (s) => [
-      section("Connection", facts([["Platform", s.url], ["Admin token", s.token_present ? (s.source === "console" ? "Entered here" : "This machine's") : ""],
+      section("Connection", facts([["Platform", s.url], ["Admin token", s.token_present ? "Present" : ""],
         ["Admin rights", s.admin === null || s.admin === undefined ? "" : s.admin ? "Yes" : "No"], ["Console operator", s.operator]]),
-        s.error ? h("p", { class: "conn-msg bad" }, s.error) : null, signOut("jfrog", s)),
-      section("Sign in",
-        h("div", { class: "conn-fields" },
+        s.error ? h("p", { class: "conn-msg bad" }, s.error) : null, loginSwitch("jfrog", s),
+        s.logins?.console ? null : h("div", { class: "conn-fields" },
           field("jfrog", "url", "Platform URL", { type: "url", value: s.url, placeholder: "https://acme.jfrog.io" }),
-          field("jfrog", "token", "Admin access token", { type: "password", placeholder: s.token_present ? "Entered" : "Paste a token",
+          field("jfrog", "token", "Admin access token", { type: "password", placeholder: "Paste a token",
             tip: "Kept in this console's memory only: never saved, logged or shown. Enter it again after a restart." })),
-        actions(button("Sign in", async () => {
+        signInOut("jfrog", s, async () => {
           await post("jfrog", "signin", { url: val("jfrog", "url"), token: $("f-jfrog-token")?.value || "" });
           delete drafts["f-jfrog-url"];
-          await load();
-        }, "primary", need(() => (/^https:\/\/[A-Za-z0-9.-]+(:\d+)?\/?$/.test(val("jfrog", "url")) ? "" : "Enter the platform URL (https://…)"),
-          () => ($("f-jfrog-token")?.value ? "" : "Paste an admin token"))))),
+        }, need(() => (/^https:\/\/[A-Za-z0-9.-]+(:\d+)?\/?$/.test(val("jfrog", "url")) ? "" : "Enter the platform URL (https://…)"),
+          () => ($("f-jfrog-token")?.value ? "" : "Paste an admin token")))),
     ] },
 ];
 

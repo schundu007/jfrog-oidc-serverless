@@ -176,7 +176,7 @@ def _make_handler(portal: Portal):
             return body
 
         def _api(self, path: str):
-            """Settings: /api/settings[/<tool>[/signin|code|cancel|signout|choices]]. Same checks as the
+            """Settings: /api/settings[/<tool>[/signin|code|cancel|signout|use|choices]]. Same checks as the
             consoles' APIs: same-origin only and the session token."""
             from .connections import TOOLS, SettingsError
             try:
@@ -205,7 +205,7 @@ def _make_handler(portal: Portal):
                     return self._json(200, {"items": c.choices(tool)})
                 if m == "PUT" and not act:
                     return self._json(200, c.set_values(tool, self._body()))
-                if m == "POST" and act in ("signin", "code", "cancel", "signout"):
+                if m == "POST" and act in ("signin", "code", "cancel", "signout", "use"):
                     body = self._body()
                     if act == "signin":
                         return self._json(200, c.sign_in(tool, body))
@@ -213,8 +213,10 @@ def _make_handler(portal: Portal):
                         return self._json(200, c.send_code(tool, body.get("code")))
                     if act == "cancel":
                         return self._json(200, c.cancel(tool))
+                    if act == "use":
+                        return self._json(200, c.use(tool, body))
                     return self._json(200, c.sign_out(tool))
-                raise _Refused(405 if act in ("", "choices", "signin", "code", "cancel", "signout") else 404,
+                raise _Refused(405 if act in ("", "choices", "signin", "code", "cancel", "signout", "use") else 404,
                                "method not allowed")
             except _Refused as exc:
                 self._json(exc.status, {"error": str(exc)})

@@ -63,6 +63,7 @@ class Connections:
         self._lock = threading.Lock()
         self._signin = {}               # tool -> {"session", "started", "error"}
         self._jfrog_token = ""          # in memory only
+        self._jfrog_login = "machine"   # which token JFrog calls use: the entered one or the machine's
         self._machine = {k: self.environ.get(k) for k in ("CLOUDSDK_CONFIG", "GOOGLE_APPLICATION_CREDENTIALS",
                                                          "AZURE_CONFIG_DIR", "AWS_PROFILE", "AWS_REGION",
                                                          "JFROG_ACCESS_TOKEN")}
@@ -127,7 +128,40 @@ class Connections:
         aws = s.get("aws") or {}
         put("AWS_PROFILE", aws.get("profile") or self._machine["AWS_PROFILE"])
         put("AWS_REGION", aws.get("region") or self._machine["AWS_REGION"])
-        put("JFROG_ACCESS_TOKEN", self._jfrog_token or self._machine["JFROG_ACCESS_TOKEN"])
+        put("JFROG_ACCESS_TOKEN", self._jfrog_token if self._jfrog_login == "console" and self._jfrog_token
+            else self._machine["JFROG_ACCESS_TOKEN"])
+
+    # A login exists where its CLI keeps credentials: gcloud's credentials.db, az's MSAL token cache.
+    _CRED_FILES = {"gcp": ("credentials.db",), "azure": ("msal_token_cache.json", "msal_token_cache.bin")}
+
+    def _machine_dir(self, tool: str) -> Path:
+        if tool == "gcp":
+            return Path(self._machine.get("CLOUDSDK_CONFIG") or Path.home() / ".config" / "gcloud")
+        return Path(self._machine.get("AZURE_CONFIG_DIR") or Path.home() / ".azure")
+
+    def logins(self, tool: str) -> dict:
+        """Which logins exist to switch between: this machine's and the one signed in on this console."""
+        if tool == "jfrog":
+            return {"machine": bool(self._machine.get("JFROG_ACCESS_TOKEN")), "console": bool(self._jfrog_token)}
+        has = lambda d: any((d / f).is_file() for f in self._CRED_FILES[tool])   # noqa: E731
+        return {"machine": has(self._machine_dir(tool)), "console": has(self.dir_of(tool))}
+
+    def use(self, tool: str, body: dict) -> dict:
+        """Switch which login a tool acts as. Neither login is removed, so switching back is instant."""
+        if tool not in ("gcp", "azure", "jfrog"):
+            raise SettingsError(f"{tool} has one login only", 404)
+        login = str(body.get("login") or "")
+        if login not in ("machine", "console"):
+            raise SettingsError("login is machine or console")
+        if login == "console" and not self.logins(tool)["console"]:
+            raise SettingsError("sign in on this console first", 409)
+        if tool == "jfrog":
+            self._jfrog_login = login
+        else:
+            keep = {k: v for k, v in (self.settings().get(tool) or {}).items() if k != "mode"}
+            self._update(tool, {**keep, "mode": "console"} if login == "console" else (keep or None))
+        self.apply()
+        return {"login": login}
 
     def _env_for(self, tool: str) -> dict:
         """The child env for a sign-in into the console's own directory."""
@@ -174,7 +208,7 @@ class Connections:
         r = sh.run(["gcloud", "config", "list", "--format=json"], timeout=30)
         core = ((r.json({}) or {}).get("core") or {}) if r.ok else {}
         out = {"source": self._source("gcp", s), "account": core.get("account") or "",
-               "project": core.get("project") or "", "cli": r.rc != 127}
+               "project": core.get("project") or "", "cli": r.rc != 127, "logins": self.logins("gcp")}
         out["signed_in"] = bool(out["account"])
         out["pending"] = self._pending("gcp")
         return out
@@ -185,7 +219,7 @@ class Connections:
         out = {"source": self._source("azure", s), "account": ((acc or {}).get("user") or {}).get("name") or "",
                "subscription": (acc or {}).get("name") or "", "subscription_id": (acc or {}).get("id") or "",
                "tenant": (acc or {}).get("tenantId") or "", "tenant_wanted": (s.get("azure") or {}).get("tenant") or "",
-               "cli": r.rc != 127}
+               "cli": r.rc != 127, "logins": self.logins("azure")}
         out["signed_in"] = bool(out["account"])
         out["pending"] = self._pending("azure")
         return out
@@ -225,7 +259,8 @@ class Connections:
         url = (s.get("jfrog") or {}).get("url") or ""
         tok = self.environ.get("JFROG_ACCESS_TOKEN") or ""
         ident = jfrog_operator.identity()
-        out = {"url": url, "source": "console" if self._jfrog_token else ("machine" if tok else ""),
+        console = self._jfrog_login == "console" and bool(self._jfrog_token)
+        out = {"url": url, "source": "console" if console else ("machine" if tok else ""), "logins": self.logins("jfrog"),
                "token_present": bool(tok), "operator": ident.get("JFROG_OIDC_SERVICE_ACCOUNT") or "",
                "signed_in": False, "admin": None}
         if tok and url:
@@ -329,7 +364,7 @@ class Connections:
     def sign_out(self, tool: str) -> dict:
         """Back to this machine's own login. The console's own sign-in is signed out and removed."""
         if tool == "jfrog":
-            self._jfrog_token = ""
+            self._jfrog_token, self._jfrog_login = "", "machine"
             self.apply()
             return {"signed_out": True}
         if tool not in ("gcp", "azure"):
@@ -361,7 +396,7 @@ class Connections:
         check = self._check_jfrog(self.shell_factory(), url, tok)
         if not check.get("signed_in"):
             raise SettingsError(check.get("error") or "JFrog did not accept the token")
-        self._jfrog_token = tok
+        self._jfrog_token, self._jfrog_login = tok, "console"
         self.apply()
         return {"saved": True, "admin": check.get("admin")}
 

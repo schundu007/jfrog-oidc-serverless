@@ -99,7 +99,7 @@ class ConnectionsTests(unittest.TestCase):
         c = self.conn()
         c._update("ado", {"organization": "acme", "project": "web", "repository": "r"})
         c._update("jfrog", {"url": "https://acme.jfrog.io"})
-        c._jfrog_token = TOKEN
+        c._jfrog_token, c._jfrog_login = TOKEN, "console"
         c.apply()
         s = c.status()
         self.assertEqual(s["gcp"]["account"], "me@example.com")
@@ -225,6 +225,49 @@ class ConnectionsTests(unittest.TestCase):
         d2 = deliver.load_settings(self.root / "missing.json", stacks_dir=stacks, overrides=c.file)
         self.assertEqual(d2["ado"]["organization"], "acme")
         self.assertIsNone(deliver.load_settings(self.root / "missing.json", stacks_dir=stacks))
+
+    def test_switch_between_machine_and_console_logins(self):
+        machine = self.root / "machine-azure"
+        machine.mkdir()
+        (machine / "msal_token_cache.json").write_text("{}")
+        self.env["AZURE_CONFIG_DIR"] = str(machine)
+        c = self.conn()
+        self.assertEqual(c.logins("azure"), {"machine": True, "console": False})
+        with self.assertRaises(SettingsError) as e:
+            c.use("azure", {"login": "console"})
+        self.assertEqual(e.exception.status, 409)
+        mine = self.root / "connections" / "azure"
+        mine.mkdir(parents=True)
+        (mine / "msal_token_cache.json").write_text("{}")
+        c._update("azure", {"tenant": "contoso.onmicrosoft.com"})
+        c.use("azure", {"login": "console"})
+        self.assertEqual(self.env["AZURE_CONFIG_DIR"], str(mine))
+        # Back to the machine's login: the console's is kept, so switching back needs no new sign-in.
+        c.use("azure", {"login": "machine"})
+        self.assertEqual(self.env["AZURE_CONFIG_DIR"], str(machine))
+        self.assertTrue(mine.is_dir())
+        self.assertEqual(c.settings()["azure"], {"tenant": "contoso.onmicrosoft.com"})
+        self.assertEqual(c.logins("azure"), {"machine": True, "console": True})
+        with self.assertRaises(SettingsError):
+            c.use("azure", {"login": "elsewhere"})
+        with self.assertRaises(SettingsError):
+            c.use("ado", {"login": "machine"})
+
+    def test_jfrog_switch_keeps_the_entered_token_in_memory(self):
+        self.env["JFROG_ACCESS_TOKEN"] = ADO_TOKEN
+        c = self.conn()
+        c.sign_in("jfrog", {"url": "https://acme.jfrog.io", "token": TOKEN})
+        self.assertEqual(c.logins("jfrog"), {"machine": True, "console": True})
+        self.assertEqual(self.env["JFROG_ACCESS_TOKEN"], TOKEN)
+        c.use("jfrog", {"login": "machine"})
+        self.assertEqual(self.env["JFROG_ACCESS_TOKEN"], ADO_TOKEN)
+        self.assertEqual(c.status()["jfrog"]["source"], "machine")
+        c.use("jfrog", {"login": "console"})
+        self.assertEqual(self.env["JFROG_ACCESS_TOKEN"], TOKEN)
+        c.sign_out("jfrog")
+        self.assertEqual(self.env["JFROG_ACCESS_TOKEN"], ADO_TOKEN)
+        with self.assertRaises(SettingsError):
+            c.use("jfrog", {"login": "console"})
 
     def test_apply_restores_machine_logins(self):
         self.env.update({"AZURE_CONFIG_DIR": "/machine/azure", "AWS_PROFILE": "machine"})
