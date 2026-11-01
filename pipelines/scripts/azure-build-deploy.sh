@@ -53,6 +53,7 @@ zip_deploy() {
   cp apps/azure-function/function_app.py apps/azure-function/host.json "$src/"
   cp -R client/src/jfrog_oidc "$src/"
   : > "$src/requirements.txt"   # azure.functions comes with the Python worker; the client is stdlib only
+  chmod -R a+rX "$src"   # the Functions host runs as a non-root user: every file must be readable
   (cd "$src" && find . -name __pycache__ -prune -o -type f -print | zip -q -@ ../package.zip)
   az functionapp deployment source config-zip --name "$app" --resource-group "$rg" \
     --src "$src/../package.zip" --build-remote false --only-show-errors >/dev/null
