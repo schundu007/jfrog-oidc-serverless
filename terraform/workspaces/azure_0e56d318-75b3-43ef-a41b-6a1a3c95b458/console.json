@@ -45,6 +45,18 @@
       "runtime_ttl": 3600,
       "subject": "c0256b7b-4295-41f3-9d1f-d852d53d2636"
     },
+    "func-aca-jfrog-demo": {
+      "dedicated_identity": null,
+      "identity_location": "West US 2",
+      "identity_resource_group": "rg-func-aca-jfrog-demo",
+      "identity_type": "user_assigned",
+      "kind": "azure_functions_aca",
+      "name": "func-aca-jfrog-demo",
+      "principal_id": "07dff7b7-646a-46f5-91db-c17d32e5456d",
+      "runtime_enabled": true,
+      "runtime_ttl": 3600,
+      "subject": "07dff7b7-646a-46f5-91db-c17d32e5456d"
+    },
     "func-flex-jfrog-demo-8c4538": {
       "dedicated_identity": null,
       "identity_location": "West US 2",
