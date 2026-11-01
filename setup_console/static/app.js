@@ -324,8 +324,44 @@ function iconEl(key, cls) {
   return span;
 }
 
+// Filters over the grouped view: Cloud, Type, Status and free text, kept in the address.
+// JFrog OIDC (/setup/oidc) holds both clouds' trust stacks; /setup/oidc-<cloud> opens it on that cloud.
+const OIDC = /\/oidc(-[a-z]+)?\/?$/.test(location.pathname);
+const STATES = [["deployed", "Deployed"], ["not", "Not deployed"], ["attention", "Needs attention"]];
+const stateOf = (s) => (s.status?.deployed ? "deployed" : partlyDeleted(s) || lastFailure(s) || s.missing?.length ? "attention" : "not");
+const F = { q: "", cloud: location.pathname.match(/\/oidc-(gcp|azure)\/?$/)?.[1] || "", kind: "", state: "" };
+{
+  const u = new URLSearchParams(location.search);
+  for (const k of ["q", "cloud", "kind", "state"]) if (u.get(k)) F[k] = u.get(k);
+}
+let lastData = null;
+
+function saveQuery() {
+  const u = new URLSearchParams();
+  for (const k of ["q", "cloud", "kind", "state"]) if (F[k]) u.set(k, F[k]);
+  const base = (document.querySelector('meta[name="console-base"]')?.content || "") + (OIDC ? "/oidc" : "");
+  history.replaceState(null, "", `${base || "/"}${u.toString() ? `?${u}` : ""}`);
+}
+
+function drawFilters(kinds) {
+  const set = (k) => (v) => { F[k] = v; saveQuery(); draw(); };
+  fill($("filters"), window.consoleBlade.bar({ q: F.q, onQuery: (v) => { F.q = v; saveQuery(); draw(false); }, pills: [
+    { label: "Cloud", value: F.cloud, options: [["azure", "Azure"], ["gcp", "Google Cloud"]], onChange: set("cloud") },
+    OIDC ? null : { label: "Type", value: F.kind, options: kinds.map((k) => [k, k]), onChange: set("kind") },
+    { label: "Status", value: F.state, options: STATES, onChange: set("state") },
+  ].filter(Boolean) }));
+}
+
 async function load() {
-  const data = await api("/api/stacks");
+  lastData = await api("/api/stacks");
+  draw();
+  // While a job runs, keep the rows current so Running turns into its result without a reload.
+  clearTimeout(load.timer);
+  if (lastData.stacks.some((s) => s.busy)) load.timer = setTimeout(() => load().catch(() => {}), POLL_MS * 2);
+}
+
+function draw(withFilters = true) {
+  const data = lastData;
   byId = Object.fromEntries(data.stacks.map((s) => [s.id, s]));
   // The environment every stack here deploys to: it picks the saved inputs, the ADO environments
   // <stack>-<env> and the variable groups jfrog-oidc-<cloud>-<env>.
@@ -335,9 +371,15 @@ async function load() {
   // has its own page per cloud (/setup/oidc-<cloud>), made only once that cloud's infrastructure exists.
   const ORDER = ["Common", "Serverless", "Kubernetes", "JFrog OIDC"];
   const sectionOf = (s) => (s.id.endsWith("-foundation") ? "Common" : s.kind);
-  const oidcCloud = location.pathname.match(/\/oidc-(gcp|azure)\/?$/)?.[1];
-  $("page-title").textContent = oidcCloud ? "JFrog OIDC" : "Infrastructure";
-  const shown = data.stacks.filter((s) => (oidcCloud ? s.kind === "JFrog OIDC" && CLOUD_ID[s.group] === oidcCloud : s.kind !== "JFrog OIDC"));
+  $("page-title").textContent = OIDC ? "JFrog OIDC" : "Infrastructure";
+  document.title = `${OIDC ? "JFrog OIDC" : "Infrastructure"} · JFrog OIDC Console`;
+  const all = data.stacks.filter((s) => (OIDC ? s.kind === "JFrog OIDC" : s.kind !== "JFrog OIDC"));
+  if (withFilters) drawFilters(ORDER.filter((k) => all.some((s) => sectionOf(s) === k)));
+  const q = F.q.trim().toLowerCase();
+  const shown = all.filter((s) => (!F.cloud || CLOUD_ID[s.group] === F.cloud) && (!F.kind || sectionOf(s) === F.kind)
+    && (!F.state || stateOf(s) === F.state)
+    && (!q || [s.title, s.id, s.group, sectionOf(s), s.about].some((v) => String(v || "").toLowerCase().includes(q))));
+  $("none").hidden = shown.length > 0;
   const clouds = {};
   for (const s of shown) ((clouds[s.group] ||= {})[sectionOf(s)] ||= []).push(s);
   const done = (list) => list.filter((x) => x.status?.deployed).length;
@@ -360,10 +402,9 @@ async function load() {
         h("h4", { class: "kind-folder-title" }, h("span", { text: k }), h("span", { class: "kind-count", text: `${done(kinds[k])}/${kinds[k].length}` })),
         h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, kinds[k].map(row)))))));
   }));
-  // While a job runs, keep the rows current so Running turns into its result without a reload.
-  clearTimeout(load.timer);
-  if (data.stacks.some((s) => s.busy)) load.timer = setTimeout(() => load().catch(() => {}), POLL_MS * 2);
 }
+
+$("refresh").onclick = () => load().catch(() => {});
 
 $("flyout-close").onclick = closeFlyout;
 $("auth-form").onsubmit = (e) => {

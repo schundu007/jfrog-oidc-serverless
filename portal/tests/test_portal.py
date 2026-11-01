@@ -111,9 +111,8 @@ class PortalTests(unittest.TestCase):
         self.assertEqual(self.req("GET", "/serverless/api/stacks")[0], 404)
     def test_one_menu_for_every_page(self):
         # Serverless and Kubernetes are one product: every page, whichever console serves it, loads the
-        # same sidebar (console/static/shell.js): each cloud holds its Serverless services (one item per
-        # workload kind) and its Kubernetes clusters.
-        for p in ("/", "/runs", "/setup", "/serverless/gcp", "/serverless/azure", "/k8s/clusters/aks", "/k8s/clusters/gke"):
+        # same flat sidebar (console/static/shell.js): six list pages; cloud and type are filters on them.
+        for p in ("/", "/runs", "/setup", "/setup/oidc", "/serverless/", "/serverless/gcp", "/k8s/clusters", "/k8s/clusters/aks"):
             st, _, raw = self.req("GET", p, token=False, headers={"Sec-Fetch-Site": "none"})
             self.assertEqual(st, 200, p)
             self.assertIn(b'<aside class="sidenav"><script src="/serverless/static/shell.js"></script></aside>', raw, p)
@@ -121,15 +120,11 @@ class PortalTests(unittest.TestCase):
         st, _, shell = self.req("GET", "/serverless/static/shell.js", token=False)
         self.assertEqual(st, 200)
         text = shell.decode()
-        for s in ('"/"', '"/setup"', '"/runs"', "`/serverless/${cloud}?type=${kind}`", "`/k8s/clusters/${p}`"):
-            self.assertIn(s, text)
-        order = ['"Azure"', '"Serverless"', '"azure_container_app_job"', '"azure_container_app"',
-                 '"azure_functions_aca"', '"azure_functions_premium"', '"azure_functions_flex"', '"Kubernetes"', 'k8s("aks"',
-                 '"Google Cloud"', '"Serverless"', '"gcp_run_job"', '"gcp_run_service"', '"gcp_run_function"', '"Kubernetes"',
-                 'k8s("gke"']
         at = 0
-        for s in order:
+        for s in ('"Home", "/"', '"Infrastructure", "/setup"', '"Serverless", "/serverless/"', '"Kubernetes", "/k8s/clusters"',
+                  '"JFrog OIDC", "/setup/oidc"', '"Runs", "/runs"'):
             at = text.index(s, at) + len(s)
+        self.assertIn("window.consoleBlade", text)
 
     def test_runs_page(self):
         st, _, raw = self.req("GET", "/runs", token=False, headers={"Sec-Fetch-Site": "none"})

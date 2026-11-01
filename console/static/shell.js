@@ -1,122 +1,117 @@
-// The console's one navigation, on every page: Home, Infrastructure, then each cloud with its
-// Serverless services and its Kubernetes clusters, then Runs. Serverless and Kubernetes are one
-// product, grouped by cloud. A classic script placed inside <aside class="sidenav">: it writes the
-// menu where it stands, before the page's own module runs, so the first paint already has it.
-// Pages refine the open item with consoleNav.select().
+// The console's one navigation, on every page: six flat items, each one list page in the Azure portal
+// style (Home, Infrastructure, Serverless, Kubernetes, JFrog OIDC, Runs). Cloud and service type are
+// filters on those lists, never menu items. A classic script placed inside <aside class="sidenav">: it
+// writes the menu where it stands, before the page's own module runs, so the first paint already has it.
+// Also window.consoleBlade: the list pages' filter bar ("Filter for any field…" and filter pills).
 (() => {
   // Official service icons and line icons, inlined: no CDN.
   const ICON = {"home": "<svg class=\"ico\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M3 10.5 12 3l9 7.5\"/><path d=\"M5 9.5V20h5v-6h4v6h5V9.5\"/></svg>", "infra": "<svg class=\"ico\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"7\" rx=\"1.5\"/><rect x=\"3\" y=\"13\" width=\"18\" height=\"7\" rx=\"1.5\"/><path d=\"M7 7.5h.01M7 16.5h.01\"/></svg>", "runs": "<svg class=\"ico\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M5 6h14M5 12h14M5 18h9\"/><path d=\"M17 15.5l4 2.5-4 2.5z\"/></svg>", "run": "<svg class=\"mark\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><g><g><polygon points=\"8.9 2.63 12.02 12 21.38 12 8.9 2.63\" fill=\"#aecbfa\" fill-rule=\"evenodd\" /><polygon points=\"21.38 12 12.02 12 8.9 21.38 21.38 12\" fill-rule=\"evenodd\" fill=\"#4285f4\" /><polygon points=\"3.44 21.38 6.57 19.81 8.9 12 5.78 12 3.44 21.38\" fill-rule=\"evenodd\" fill=\"#4285f4\" /><polygon points=\"3.44 2.63 5.78 12 8.9 12 6.57 4.19 3.44 2.63\" fill=\"#aecbfa\" fill-rule=\"evenodd\" /></g></g></svg>", "gke": "<svg class=\"mark\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><polygon fill=\"#4285f4\" fill-rule=\"evenodd\" points=\"14.68 13.06 19.23 15.69 19.23 16.68 14.29 13.83 14.68 13.06\"/><polygon fill=\"#669df6\" fill-rule=\"evenodd\" points=\"9.98 13.65 4.77 16.66 4.45 15.86 9.53 12.92 9.98 13.65\"/><rect fill=\"#aecbfa\" x=\"11.55\" y=\"3.29\" width=\"0.86\" height=\"5.78\"/><path fill=\"#aecbfa\" fill-rule=\"evenodd\" d=\"M3.25,7V17L12,22l8.74-5V7L12,2Zm15.63,8.89L12,19.78,5.12,15.89V8.11L12,4.22l6.87,3.89v7.78Z\"/><polygon fill=\"#aecbfa\" fill-rule=\"evenodd\" points=\"11.98 11.5 15.96 9.21 11.98 6.91 8.01 9.21 11.98 11.5\"/><polygon fill=\"#669df6\" fill-rule=\"evenodd\" points=\"11.52 12.3 7.66 10.01 7.66 14.6 11.52 16.89 11.52 12.3\"/><polygon fill=\"#4285f4\" fill-rule=\"evenodd\" points=\"12.48 12.3 12.48 16.89 16.34 14.6 16.34 10.01 12.48 12.3\"/></svg>", "aca": "<svg class=\"mark\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><g><g><g><g><path d=\"M16.932,11.578a8.448,8.448,0,0,1-7.95,5.59,8.15,8.15,0,0,1-2.33-.33,2.133,2.133,0,0,0,.18-.83c.01,0,.03.01.04.01a7.422,7.422,0,0,0,2.11.3,7.646,7.646,0,0,0,6.85-4.28l.01-.01Z\" fill=\"#32bedd\" /><path d=\"M3.582,14.068a2.025,2.025,0,0,0-.64.56,8.6,8.6,0,0,1-1.67-2.44l1.04.23v.26a.6.6,0,0,0,.47.59l.14.03a6.136,6.136,0,0,0,.62.73Z\" fill=\"#32bedd\" /><path d=\"M12.352.958a2.28,2.28,0,0,0-.27.81c-.02-.01-.05-.02-.07-.03a7.479,7.479,0,0,0-3.03-.63,7.643,7.643,0,0,0-5.9,2.8l-.29.06a.6.6,0,0,0-.48.58v.46l-1.02.19A8.454,8.454,0,0,1,8.982.268,8.6,8.6,0,0,1,12.352.958Z\" fill=\"#32bedd\" /><path d=\"M16.872,5.7l-1.09-.38a6.6,6.6,0,0,0-.72-1.16c-.02-.03-.04-.05-.05-.07a2.083,2.083,0,0,0,.72-.45A7.81,7.81,0,0,1,16.872,5.7Z\" fill=\"#32bedd\" /><path d=\"M10.072,11.908l2.54.56L8.672,14.1c-.02,0-.03.01-.05.01a.154.154,0,0,1-.15-.15V3.448a.154.154,0,0,1,.15-.15.09.09,0,0,1,.05.01l4.46,1.56-3.05.57a.565.565,0,0,0-.44.54v5.4A.537.537,0,0,0,10.072,11.908Z\" fill=\"#fff\" /><g><g><path d=\"M1.1,5.668l1.21-.23v6.55l-1.23-.27-.99-.22a.111.111,0,0,1-.09-.12v-5.4a.12.12,0,0,1,.09-.12Z\" fill=\"#a67af4\" /></g><g><g><g><path d=\"M10.072,11.908l2.54.56L8.672,14.1c-.02,0-.03.01-.05.01a.154.154,0,0,1-.15-.15V3.448a.154.154,0,0,1,.15-.15.09.09,0,0,1,.05.01l4.46,1.56-3.05.57a.565.565,0,0,0-.44.54v5.4A.537.537,0,0,0,10.072,11.908Z\" fill=\"url(#sl-aca-g0)\" /><path d=\"M8.586,3.3,2.878,4.378a.177.177,0,0,0-.14.175V12.68a.177.177,0,0,0,.137.174L8.581,14.1a.176.176,0,0,0,.21-.174V3.478A.175.175,0,0,0,8.619,3.3Z\" fill=\"url(#sl-aca-g1)\" /></g></g><polygon points=\"5.948 4.921 5.948 12.483 7.934 12.814 7.934 4.564 5.948 4.921\" fill=\"#b796f9\" opacity=\"0.5\" /><polygon points=\"3.509 5.329 3.509 11.954 5.238 12.317 5.238 5.031 3.509 5.329\" fill=\"#b796f9\" opacity=\"0.5\" /></g></g></g><path d=\"M16,2.048a1.755,1.755,0,1,1-1.76-1.76A1.756,1.756,0,0,1,16,2.048Z\" fill=\"#32bedd\" /><circle cx=\"4.65\" cy=\"15.973\" r=\"1.759\" fill=\"#32bedd\" /></g><path d=\"M18,6.689v3.844a.222.222,0,0,1-.133.2l-.766.316-3.07,1.268-.011,0a.126.126,0,0,1-.038,0,.1.1,0,0,1-.1-.1V5.234a.1.1,0,0,1,.054-.088l0,0,.019,0a.031.031,0,0,1,.019,0,.055.055,0,0,1,.034.008l.011,0,.012,0L17.05,6.2l.8.282A.213.213,0,0,1,18,6.689Z\" fill=\"#773adc\" /><path d=\"M13.959,5.14l-3.8.715a.118.118,0,0,0-.093.117v5.409a.118.118,0,0,0,.091.116l3.8.831a.115.115,0,0,0,.137-.09.109.109,0,0,0,0-.026V5.256a.117.117,0,0,0-.115-.118A.082.082,0,0,0,13.959,5.14Z\" fill=\"#a67af4\" /></g></g></svg>", "func": "<svg class=\"mark\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><g><path d=\"M2.37,7.475H3.2a.267.267,0,0,1,.267.267v6.148a.533.533,0,0,1-.533.533H2.1a0,0,0,0,1,0,0V7.741a.267.267,0,0,1,.267-.267Z\" transform=\"translate(12.507 16.705) rotate(134.919)\" fill=\"#50e6ff\" /><path d=\"M2.325,3.6h.833a.267.267,0,0,1,.267.267v6.583a0,0,0,0,1,0,0H2.591a.533.533,0,0,1-.533-.533V3.865A.267.267,0,0,1,2.325,3.6Z\" transform=\"translate(5.759 0.114) rotate(44.919)\" fill=\"#1490df\" /></g><g><path d=\"M14.53,7.475h.833a.533.533,0,0,1,.533.533v6.148a.267.267,0,0,1-.267.267H14.8a.267.267,0,0,1-.267-.267V7.475a0,0,0,0,1,0,0Z\" transform=\"translate(12.223 -7.555) rotate(45.081)\" fill=\"#50e6ff\" /><path d=\"M15.108,3.6h.833a0,0,0,0,1,0,0v6.583a.267.267,0,0,1-.267.267h-.833a.267.267,0,0,1-.267-.267V4.131a.533.533,0,0,1,.533-.533Z\" transform=\"translate(31.022 1.222) rotate(135.081)\" fill=\"#1490df\" /></g><path d=\"M8.459,9.9H4.87a.193.193,0,0,1-.2-.181.166.166,0,0,1,.018-.075L8.991,1.13a.206.206,0,0,1,.186-.106h4.245a.193.193,0,0,1,.2.181.165.165,0,0,1-.035.1L8.534,7.966h4.928a.193.193,0,0,1,.2.181.176.176,0,0,1-.052.122L5.421,16.788c-.077.046-.624.5-.356-.189h0Z\" fill=\"url(#sl-func-g0)\" /></svg>", "aks": "<svg class=\"mark\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><polygon points=\"5.8 1.22 2.94 1.75 2.94 5.65 5.8 6.26 8.67 5.11 8.67 2.2 5.8 1.22\" fill=\"url(#kcp-aks-g)\"/><path d=\"M2.94,1.75v3.9l2.89.61v-5Zm1.22,3.6-.81-.16v-3l.81-.13Zm1.26.23-.93-.15V2l.93-.16Z\" fill=\"#341a6e\"/><polygon points=\"11.99 1.27 9.13 1.8 9.13 5.7 11.99 6.31 14.85 5.15 14.85 2.25 11.99 1.27\" fill=\"url(#kcp-aks-g)\"/><path d=\"M9.13,1.8V5.7L12,6.31v-5Zm1.21,3.6-.81-.16v-3l.81-.13Zm1.26.23-.93-.15V2.05l.93-.17Z\" fill=\"#341a6e\"/><polygon points=\"2.87 6.6 0.01 7.13 0.01 11.03 2.87 11.64 5.74 10.49 5.74 7.58 2.87 6.6\" fill=\"url(#kcp-aks-g)\"/><path d=\"M0,7.13V11l2.89.61v-5Zm1.21,3.61-.81-.17v-3l.81-.14ZM2.48,11l-.93-.15V7.38l.93-.16Z\" fill=\"#341a6e\"/><polygon points=\"9.04 6.56 6.18 7.09 6.18 10.99 9.04 11.61 11.9 10.45 11.9 7.54 9.04 6.56\" fill=\"url(#kcp-aks-g)\"/><path d=\"M6.18,7.09V11l2.88.61v-5ZM7.39,10.7l-.81-.17v-3l.81-.14Zm1.26.22-.93-.15V7.34l.93-.16Z\" fill=\"#341a6e\"/><polygon points=\"15.21 6.61 12.35 7.14 12.35 11.04 15.21 11.65 18.08 10.5 18.08 7.59 15.21 6.61\" fill=\"url(#kcp-aks-g)\"/><path d=\"M12.35,7.14V11l2.89.61v-5Zm1.22,3.61-.81-.17v-3l.81-.14Zm1.26.22-.93-.15V7.39l.93-.16Z\" fill=\"#341a6e\"/><polygon points=\"5.73 12.04 2.87 12.56 2.87 16.46 5.73 17.08 8.6 15.92 8.6 13.02 5.73 12.04\" fill=\"url(#kcp-aks-g)\"/><path d=\"M2.87,12.56v3.9l2.89.62V12Zm1.22,3.61L3.28,16V13l.81-.14Zm1.26.23-.93-.15V12.81l.93-.16Z\" fill=\"#341a6e\"/><polygon points=\"11.91 12.08 9.05 12.61 9.05 16.51 11.91 17.12 14.78 15.97 14.78 13.06 11.91 12.08\" fill=\"url(#kcp-aks-g)\"/><path d=\"M9.05,12.61v3.9l2.89.61v-5Zm1.22,3.61-.81-.17v-3l.81-.14Zm1.26.22-.93-.15V12.86l.93-.16Z\" fill=\"#341a6e\"/></svg>", "fn": "<svg class=\"mark\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><g><g><g><polygon points=\"2 15.56 5 18 5 6 2 8.43 2 15.56\" fill=\"#669df6\" /><polygon points=\"2 10 5 8 5 6 2 10\" fill=\"#4285f4\" /><polygon points=\"5 18 5 16 2 14 5 18\" fill=\"#4285f4\" /><polygon points=\"8 20 2 14 2 18 6 22 8 20\" fill=\"#aecbfa\" /></g></g><polygon points=\"5.99 2.01 2 6 2.01 10 7.99 4.01 5.99 2.01\" fill=\"#aecbfa\" /><g><g><polygon points=\"22 8.45 19 6.01 19 18.01 22 15.59 22 8.45\" fill=\"#669df6\" /><polygon points=\"22 14.01 19 16.01 19 18.01 22 14.01\" fill=\"#4285f4\" /><polygon points=\"19 6.01 19 8.01 22 10.01 19 6.01\" fill=\"#4285f4\" /><polygon points=\"16 4.01 22 10.01 22 6.01 18 2.01 16 4.01\" fill=\"#aecbfa\" /></g></g><polygon points=\"18.01 22 22 18.01 21.99 14.01 16.01 20 18.01 22\" fill=\"#aecbfa\" /><circle cx=\"8\" cy=\"12\" r=\"1\" fill=\"#aecbfa\" /><circle cx=\"12\" cy=\"12\" r=\"1\" fill=\"#aecbfa\" /><circle cx=\"15.99\" cy=\"12\" r=\"1\" fill=\"#aecbfa\" /></g></svg>"};
   const DEFS = "<svg class=\"mark-defs\" width=\"0\" height=\"0\" aria-hidden=\"true\" focusable=\"false\"><defs><linearGradient id=\"kcp-aks-g\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0\" stop-color=\"#b77af4\"/><stop offset=\"1\" stop-color=\"#773adc\"/></linearGradient><linearGradient id=\"sl-aca-g0\" x1=\"8.798\" y1=\"8.703\" x2=\"14.683\" y2=\"8.703\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0.001\" stop-color=\"#773adc\" /><stop offset=\"1\" stop-color=\"#552f99\" /></linearGradient><linearGradient id=\"sl-aca-g1\" x1=\"5.764\" y1=\"3.777\" x2=\"5.764\" y2=\"13.78\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#a67af4\" /><stop offset=\"0.999\" stop-color=\"#773adc\" /></linearGradient><linearGradient id=\"sl-func-g0\" x1=\"-175.993\" y1=\"-343.723\" x2=\"-175.993\" y2=\"-359.232\" gradientTransform=\"translate(212.573 370.548) scale(1.156 1.029)\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#fea11b\" /><stop offset=\"0.284\" stop-color=\"#fea51a\" /><stop offset=\"0.547\" stop-color=\"#feb018\" /><stop offset=\"0.8\" stop-color=\"#ffc314\" /><stop offset=\"1\" stop-color=\"#ffd70f\" /></linearGradient></defs></svg>";
-  // A Serverless item is one workload kind (its list is /serverless/<cloud>?type=<kind>); a Kubernetes
-  // item is one cluster platform. [key, label, href, icon, attrs]
-  const sl = (cloud, kind, label, icon) => [kind, label, `/serverless/${cloud}?type=${kind}`, icon];
-  const k8s = (p, label) => [p, label, `/k8s/clusters/${p}`, p, { "data-cloud": p }];
-  // JFrog OIDC is not infrastructure: it is made once the cloud's infrastructure exists, on its own page.
-  const oidc = (cloud) => [`oidc-${cloud}`, "Pipelines' JFrog trust", `/setup/oidc-${cloud}`, "boot"];
-  const BOOT = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.4 3.1 8.2 7.5 9.5 4.4-1.3 7.5-5.1 7.5-9.5V6z"/><circle cx="12" cy="10.5" r="2.2"/><path d="M12 12.7V16.5M12 15h1.8"/></svg>';
-  ICON.boot = BOOT;
-  // Azure first, then Google Cloud (top to bottom everywhere).
-  const CLOUDS = [
-    ["Azure", "azure", [
-      ["Serverless", [sl("azure", "azure_container_app_job", "Container Apps jobs", "aca"),
-        sl("azure", "azure_container_app", "Container Apps", "aca"),
-        sl("azure", "azure_functions_aca", "Functions on Container Apps", "func"),
-        sl("azure", "azure_functions_premium", "Functions Premium", "func"),
-        sl("azure", "azure_functions_flex", "Functions Flex Consumption", "func")]],
-      ["Kubernetes", [k8s("aks", "AKS clusters")]],
-      ["JFrog OIDC", [oidc("azure")]]]],
-    ["Google Cloud", "gcp", [
-      ["Serverless", [sl("gcp", "gcp_run_job", "Cloud Run jobs", "run"), sl("gcp", "gcp_run_service", "Cloud Run services", "run"),
-        sl("gcp", "gcp_run_function", "Cloud Run functions", "fn"), sl("gcp", "gcp_run_worker_pool", "Cloud Run worker pools", "run")]],
-      ["Kubernetes", [k8s("gke", "GKE clusters")]],
-      ["JFrog OIDC", [oidc("gcp")]]]],
-  ];
-  const TOP = [["home", "Home", "/", "home"], ["infra", "Infrastructure", "/setup", "infra"]];
-  const BOTTOM = [["runs", "Runs", "/runs", "runs"]];
-
-  // key → {key, label, href, cloud, group}: what a page needs for its title and breadcrumb.
-  const SECTIONS = {};
-  for (const [cloud, id, groups] of CLOUDS) {
-    for (const [group, items] of groups) for (const [key, label, href] of items) SECTIONS[key] = { key, label, href, cloud, cloudId: id, group };
-    SECTIONS[`serverless-${id}`] = { key: `serverless-${id}`, label: "Serverless", href: `/serverless/${id}`, cloud, cloudId: id, group: null };
-  }
-  const sectionOfKind = (kind) => (SECTIONS[kind] ? kind : null);
-
-  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const link = ([key, label, href, icon, attrs], cls = "") => {
-    const extra = Object.entries(attrs || {}).map(([k, v]) => ` ${k}="${esc(v)}"`).join("");
-    return `<a class="nav-item${cls}" href="${esc(href)}" data-section data-nav="${key}"${extra}>${ICON[icon]}<span>${esc(label)}</span></a>`;
-  };
-  function fromPath() {
-    const p = location.pathname, type = new URLSearchParams(location.search).get("type");
-    if (p === "/") return "home";
-    const o = p.match(/^\/setup\/oidc-(gcp|azure)\/?$/);
-    if (o) return `oidc-${o[1]}`;
-    if (/^\/setup(\/|$)/.test(p)) return "infra";
-    if (/^\/runs(\/|$)/.test(p)) return "runs";
-    const s = p.match(/^(?:\/serverless)?\/(gcp|azure)(\/|$)/);
-    if (s) return SECTIONS[type]?.cloudId === s[1] ? type : `serverless-${s[1]}`;
-    const k = p.match(/^(?:\/k8s)?\/clusters\/(gke|aks)(\/|$)/);
-    return k ? k[1] : null;
-  }
-  // The list page itself is the current page; a page inside it (a workload, a cluster, a run) only opens it.
-  const atTop = () => !/\/(w|runs|new)\/|\/clusters\/[a-z]+\/[^/]+/.test(location.pathname + "/");
-
   // Each cloud's real logo: constant inline SVG, no user data.
   const CLOUD_LOGO = {
     gcp: '<svg class="mark cloud-logo" viewBox="0 0 24 19.3" aria-hidden="true"><path fill="#EA4335" d="M15.2 5.3h.7l2-2 .1-.9C14.2-.9 8.5-.5 5.2 3.3c-.9 1-1.6 2.3-2 3.6.2-.1.5-.1.7 0l4-.7s.2-.3.3-.3c1.8-2 4.8-2.2 6.9-.5h.1z"/><path fill="#4285F4" d="M20.8 6.9c-.5-1.7-1.4-3.2-2.7-4.4l-2.8 2.8c1.2 1 1.9 2.5 1.8 4v.5c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5h-5l-.5.5v3l.5.5h5c3.6 0 6.5-2.9 6.5-6.5 0-2.2-1.1-4.2-2.8-5.4z"/><path fill="#34A853" d="M7.1 19.3h5v-4h-5c-.4 0-.7-.1-1-.2l-.7.2-2 2-.2.7c1.1.8 2.5 1.3 3.9 1.3z"/><path fill="#FBBC05" d="M7.1 6.3C3.5 6.3.6 9.3.6 12.9c0 2 1 3.9 2.6 5.2l2.9-2.9c-1.3-.6-1.8-2.1-1.3-3.3.6-1.3 2.1-1.8 3.3-1.3.6.3 1 .7 1.3 1.3l2.9-2.9c-1.2-1.6-3.1-2.6-5.2-2.6z"/></svg>',
     azure: '<svg class="mark cloud-logo" viewBox="0 0 24 24" aria-hidden="true"><path fill="#0078D4" d="M5.483 21.3H24L14.025 4.013l-3.038 8.347 5.836 6.938L5.483 21.3zM13.23 2.7L6.105 8.677 0 19.253h5.505v.014L13.23 2.7z"/></svg>',
   };
-  const html = [DEFS];
-  html.push(`<nav aria-label="Home">${TOP.map((i) => link(i)).join("")}</nav>`);
-  // Each cloud and each Serverless/Kubernetes group folds; the operator's choice is kept per browser.
-  const FOLD_KEY = "consoleNav.folded";
-  let folded = {};
-  try { folded = JSON.parse(localStorage.getItem(FOLD_KEY) || "{}") || {}; } catch { folded = {}; }
-  const fold = (id, cls, label, body, logo = "") => {
-    const open = !folded[id];
-    return `<button type="button" class="${cls} nav-fold" aria-expanded="${open}" aria-controls="nf-${id}" data-fold="${id}">`
-      + `${logo}<span>${esc(label)}</span></button><div class="nav-body" id="nf-${id}"${open ? "" : " hidden"}>${body}</div>`;
-  };
-  for (const [cloud, id, groups] of CLOUDS) {
-    const body = groups.map(([group, items]) =>
-      fold(`${id}-${group.toLowerCase().replace(/\s+/g, "-")}`, "nav-sub", group, items.map((i) => link(i, " nested")).join(""))).join("");
-    html.push(`<nav class="nav-cloud" data-cloud-group="${esc(id)}" aria-label="${esc(cloud)}">${fold(id, "nav-group", cloud, body, CLOUD_LOGO[id] || "")}</nav>`);
+  ICON.boot = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.4 3.1 8.2 7.5 9.5 4.4-1.3 7.5-5.1 7.5-9.5V6z"/><circle cx="12" cy="10.5" r="2.2"/><path d="M12 12.7V16.5M12 15h1.8"/></svg>';
+  ICON.serverless = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2.5 5 13.5h6l-1 8 8-11h-6z"/></svg>';
+  ICON.k8s = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8 20 6.6l2 8.6-5.5 6.9h-9L2 15.2l2-8.6z"/><circle cx="12" cy="12.5" r="2.4"/><path d="M12 6.5v3.6M12 14.9v3.6M6.6 9.9l3.2 1.5M14.2 13.6l3.2 1.5M17.4 9.9l-3.2 1.5M9.8 13.6l-3.2 1.5"/></svg>';
+  const BOOT = ICON.boot;
+
+  // Every service the lists show: key → {key, label, cloud, cloudId, group, icon}. Azure first, then Google Cloud.
+  const KINDS = [
+    ["azure", "Azure", "Serverless", [["azure_container_app_job", "Container Apps job", "aca"], ["azure_container_app", "Container App", "aca"],
+      ["azure_functions_aca", "Functions on Container Apps", "func"], ["azure_functions_premium", "Functions Premium", "func"],
+      ["azure_functions_flex", "Functions Flex Consumption", "func"]]],
+    ["azure", "Azure", "Kubernetes", [["aks", "AKS cluster", "aks"]]],
+    ["gcp", "Google Cloud", "Serverless", [["gcp_run_job", "Cloud Run job", "run"], ["gcp_run_service", "Cloud Run service", "run"],
+      ["gcp_run_function", "Cloud Run function", "fn"], ["gcp_run_worker_pool", "Cloud Run worker pool", "run"]]],
+    ["gcp", "Google Cloud", "Kubernetes", [["gke", "GKE cluster", "gke"]]],
+  ];
+  const SECTIONS = {};
+  for (const [cloudId, cloud, group, items] of KINDS) {
+    for (const [key, label, icon] of items) SECTIONS[key] = { key, label, cloud, cloudId, group, icon };
   }
-  html.push(`<nav aria-label="Runs">${BOTTOM.map((i) => link(i)).join("")}</nav>`);
-  html.push('<nav class="subnav" id="k8s-sub" aria-label="Clusters" hidden></nav>');
+  const sectionOfKind = (kind) => (SECTIONS[kind] ? kind : null);
+
+  const NAV = [["home", "Home", "/", "home"], ["infra", "Infrastructure", "/setup", "infra"],
+    ["serverless", "Serverless", "/serverless/", "serverless"], ["k8s", "Kubernetes", "/k8s/clusters", "k8s"],
+    ["oidc", "JFrog OIDC", "/setup/oidc", "boot"], ["runs", "Runs", "/runs", "runs"]];
+
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const link = ([key, label, href, icon]) =>
+    `<a class="nav-item" href="${esc(href)}" data-section data-nav="${key}">${ICON[icon]}<span>${esc(label)}</span></a>`;
+  function fromPath() {
+    const p = location.pathname;
+    if (p === "/") return "home";
+    if (/^\/setup\/oidc(-[a-z]+)?\/?$/.test(p)) return "oidc";
+    if (/^\/setup(\/|$)/.test(p)) return "infra";
+    if (/^\/runs(\/|$)/.test(p)) return "runs";
+    if (/^\/serverless(\/|$)/.test(p)) return "serverless";
+    if (/^\/k8s(\/|$)/.test(p)) return "k8s";
+    return null;
+  }
+  // The list page itself is the current page; a page inside it (a workload, a cluster, a run) only opens it.
+  const atTop = () => !/\/(w|runs|new)\/|\/clusters\/[a-z]+\/[^/]+/.test(location.pathname + "/");
+
   const me = document.currentScript;
   me.parentElement.id ||= "sidenav";
-  me.insertAdjacentHTML("beforebegin", html.join(""));
+  me.insertAdjacentHTML("beforebegin", `${DEFS}<nav aria-label="Console">${NAV.map(link).join("")}</nav>`);
 
+  // A service kind (Cloud Run job) or platform (aks) selects the list it belongs to.
   function select(key) {
+    const s = SECTIONS[key];
+    const nav = s ? (s.group === "Kubernetes" ? "k8s" : "serverless") : key;
     for (const a of document.querySelectorAll(".sidenav [data-nav]")) {
-      if (a.dataset.nav === key) a.setAttribute("aria-current", atTop() ? "page" : "true");
+      if (a.dataset.nav === nav) a.setAttribute("aria-current", atTop() ? "page" : "true");
       else a.removeAttribute("aria-current");
     }
   }
-  // Open every fold around the current page, so it is never hidden.
-  function reveal() {
-    for (const a of document.querySelectorAll(".sidenav [data-nav][aria-current]")) {
-      for (let b = a.closest(".nav-body"); b; b = b.parentElement.closest(".nav-body")) setFold(b.id.slice(3), true, false);
-    }
-  }
-  function setFold(id, open, save = true) {
-    const btn = document.querySelector(`.sidenav [data-fold="${id}"]`), body = document.getElementById(`nf-${id}`);
-    if (!btn || !body) return;
-    btn.setAttribute("aria-expanded", String(open));
-    body.hidden = !open;
-    if (!save) return;
-    if (open) delete folded[id]; else folded[id] = 1;
-    try { localStorage.setItem(FOLD_KEY, JSON.stringify(folded)); } catch { /* storage blocked: this page only */ }
-  }
-  me.parentElement.addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-fold]");
-    if (btn) setFold(btn.dataset.fold, btn.getAttribute("aria-expanded") !== "true");
-  });
-  const selectAndReveal = (key) => { select(key); reveal(); };
-  selectAndReveal(fromPath());
-  // Service icons for other pages (Infrastructure rows, Home): constant inline SVG, no user data.
+  select(fromPath());
+  // Service icons for other pages (list rows, Home): constant inline SVG, no user data.
   const icon = (k) => (k === "boot" ? BOOT : CLOUD_LOGO[k] || ICON[k] || "");
-  window.consoleNav = { icon, select: selectAndReveal, SECTIONS, sectionOfKind, section: (key) => SECTIONS[key] || null, current: fromPath };
+  window.consoleNav = { icon, select, SECTIONS, sectionOfKind, section: (key) => SECTIONS[key] || null, current: fromPath };
+
+  // ------------------------------------------------------------------ filter bar
+  // bar({placeholder, q, onQuery, pills: [{label, value, options: [[value, text]], onChange}]}) → element.
+  // A pill reads "Cloud equals all"; clicking it opens its options, × clears it back to all.
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v === null || v === undefined || v === false) continue;
+      if (k === "text") n.textContent = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v);
+    }
+    n.append(...kids.flat().filter((x) => x !== null && x !== undefined && x !== false));
+    return n;
+  };
+  let openPop = null;
+  const closePop = () => { openPop?.remove(); openPop?._btn?.setAttribute("aria-expanded", "false"); openPop = null; };
+  document.addEventListener("click", (e) => { if (openPop && !e.target.closest(".blade-pop, .blade-pill")) closePop(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && openPop) { const b = openPop._btn; closePop(); b?.focus(); } });
+  function pill(p) {
+    const text = (p.options.find(([v]) => v === p.value) || [null, "all"])[1];
+    const wrap = el("span", { class: `blade-pill${p.value ? " set" : ""}` });
+    const btn = el("button", { type: "button", class: "blade-pill-btn", "aria-haspopup": "listbox", "aria-expanded": "false",
+      onclick: () => {
+        if (openPop?._btn === btn) return closePop();
+        closePop();
+        const pop = el("div", { class: "blade-pop", role: "listbox", "aria-label": p.label },
+          [["", "All"], ...p.options].map(([v, t]) => el("button", { type: "button", role: "option", class: "blade-opt",
+            "aria-selected": String(v === (p.value || "")), onclick: () => { closePop(); p.onChange(v); } }, t)));
+        pop._btn = btn;
+        wrap.append(pop);
+        openPop = pop;
+        btn.setAttribute("aria-expanded", "true");
+        pop.querySelector('[aria-selected="true"]')?.focus();
+      } }, `${p.label} equals `, el("b", { text }));
+    wrap.append(btn);
+    if (p.value) wrap.append(el("button", { type: "button", class: "blade-pill-x", "aria-label": `Clear ${p.label} filter`, onclick: () => p.onChange("") }, "×"));
+    return wrap;
+  }
+  function bar({ placeholder = "Filter for any field…", q = "", onQuery, pills = [] }) {
+    const box = el("input", { type: "search", class: "blade-search", placeholder, value: q, "aria-label": placeholder, spellcheck: "false",
+      oninput: (e) => onQuery?.(e.target.value) });
+    const wrapBox = el("span", { class: "blade-search-wrap" }, box);
+    return el("div", { class: "blade-filters" }, onQuery ? wrapBox : null, pills.filter((p) => p.options.length > 1 || p.value).map(pill));
+  }
+  window.consoleBlade = { bar, el };
 })();

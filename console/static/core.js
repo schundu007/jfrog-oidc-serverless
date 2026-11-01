@@ -27,7 +27,8 @@ export const inSection = (kind) => ofCloud(kind) && (!TYPE || kind === TYPE);
 
 // Page links. Names and run IDs are URL-safe (server-side patterns); encode anyway.
 export const href = {
-  list: (section = TYPE) => `${BASE}/${CLOUD}${ofThisCloud(section) ? `?type=${encodeURIComponent(section)}` : ""}`,
+  // The one Serverless list, filtered to a type (which names its cloud) when given.
+  list: (section = TYPE) => (section && /^[a-z]+_/.test(section) ? `${BASE}/?type=${encodeURIComponent(section)}` : `${BASE}/`),
   create: () => `${BASE}/${CLOUD}/new`,
   workload: (name, tab) => `${BASE}/${CLOUD}/w/${encodeURIComponent(name)}${tab ? `?tab=${tab}` : ""}`,
   run: (name, id) => `${BASE}/${CLOUD}/w/${encodeURIComponent(name)}/runs/${encodeURIComponent(id)}`,

@@ -1,83 +1,136 @@
-// Serverless (/<cloud>, or one kind with ?type=): the workloads that exist in the cloud right now,
-// read live, whether onboarded here or not; then type tiles grouped by what a workload does.
+// Serverless (/serverless/): one list of every serverless workload in every cloud, read live, onboarded
+// here or not, in the Azure portal's browse style: + Create and Refresh, "Filter for any field…" with
+// Cloud, Type and Status pills, then the table. /<cloud> and /<cloud>?type=<kind> open it pre-filtered.
 // A row opens its workload when onboarded, else New workload on its type.
 
-import { $, api, h, fill, inSection, ofCloud, href, CLOUD, TYPE, template, help, status as setStatus } from "./core.js";
-import { kindLabel } from "./configure.js";
+import { $, api, h, fill, BASE, CLOUD, TYPE, template, help, status as setStatus } from "./core.js";
 
-const ls = { rows: [], configs: [], schema: null, checked: false };
-// Status dot: green when the workload is onboarded to JFrog OIDC here, grey when it only exists in the cloud.
-const DOT = { true: ["ok", "Onboarded to JFrog OIDC"], false: ["none", "Not onboarded"] };
+const LIVE = ["azure", "gcp"];   // the clouds read live (AWS and OpenShift are runtime path only)
+const NAMES = { azure: "Azure", gcp: "Google Cloud" };
+const ls = { rows: [], configs: [], schema: null, errors: [], loading: 0 };
+const F = { q: "", cloud: LIVE.includes(CLOUD) ? CLOUD : "", type: TYPE || "", state: "" };
 
-// What a workload kind does, as the clouds' own consoles group them; and its service icon.
-const GROUPS = [["Services", (k) => /_service$|_container_app$/.test(k)],
-  ["Jobs and worker pools", (k) => /_job$|_worker_pool$/.test(k)],
-  ["Functions", (k) => /function/.test(k)]];
-const iconOf = (k) => (k === "gcp_run_function" ? "fn" : k.startsWith("gcp_") ? "run" : k.startsWith("azure_functions") ? "func" : "aca");
+const iconOf = (k) => window.consoleNav?.section(k)?.icon || "run";
+const iconEl = (key, cls) => {
+  const s = h("span", { class: cls });
+  s.innerHTML = window.consoleNav?.icon(key) || "";   // constant SVG only, never data
+  return s;
+};
+const cloudOf = (k) => String(k).split("_")[0];
+const kindLabel = (k) => ls.schema?.kinds?.[k]?.label || k;
 
 // The saved configuration that targets this cloud workload, if any (same kind, same workload name).
 const configOf = (w) => ls.configs.find((c) => c.kind === w.kind && String(c.workload || "").split(" / ").pop() === w.name);
 
+// Filters live in the address, so a refresh or a shared link shows the same list.
+function saveQuery() {
+  const u = new URLSearchParams();
+  for (const k of ["q", "cloud", "type", "state"]) if (F[k]) u.set(k, F[k]);
+  history.replaceState(null, "", `${BASE}/${u.toString() ? `?${u}` : ""}`);
+}
+
+function matches(w) {
+  if (F.cloud && w.cloud !== F.cloud) return false;
+  if (F.type && w.kind !== F.type) return false;
+  if (F.state && (F.state === "on") !== !!w.cfg) return false;
+  const q = F.q.trim().toLowerCase();
+  return !q || [w.name, w.region, kindLabel(w.kind), w.resource_group, w.project, w.subscription_name, w.subscription, NAMES[w.cloud]]
+    .some((v) => String(v || "").toLowerCase().includes(q));
+}
+
 function row(w) {
-  const cfg = configOf(w);
-  const open = cfg ? href.workload(cfg.name) : `${href.create()}?kind=${encodeURIComponent(w.kind)}`;
-  const [tone, label] = DOT[!!cfg];
+  const open = w.cfg ? `${BASE}/${w.cloud}/w/${encodeURIComponent(w.cfg.name)}` : `${BASE}/${w.cloud}/new?kind=${encodeURIComponent(w.kind)}`;
   const tr = h("tr", { class: "row-link", "data-name": w.name },
-    h("td", { class: "col-icon" }, h("span", { class: `ov-dot ov-dot-${tone}`, role: "img", "aria-label": label, title: label })),
-    h("td", {}, h("a", { href: open, text: w.name })),
+    h("td", {}, h("span", { class: "blade-name" }, iconEl(iconOf(w.kind), "blade-ico"), h("a", { href: open, text: w.name }))),
+    h("td", {}, h("span", { class: `blade-state ${w.cfg ? "ok" : ""}`, text: w.cfg ? "Onboarded" : "Not onboarded" })),
+    h("td", { text: kindLabel(w.kind) }),
     h("td", { text: w.region || "—" }),
-    h("td", { text: ls.schema?.kinds?.[w.kind]?.label || w.kind }),
-    h("td", { text: w.project || w.resource_group || "—" }));
+    h("td", { text: w.resource_group || "—" }),
+    h("td", { text: w.project || w.subscription_name || w.subscription || "—" }),
+    h("td", {}, h("span", { class: "blade-cloud" }, iconEl(w.cloud, ""), NAMES[w.cloud])));
   tr.addEventListener("click", (e) => { if (!e.target.closest("a")) location.assign(open); });
   return tr;
 }
 
 function render() {
-  fill($("wl-rows"), ls.rows.map(row));
-  $("wl-empty").hidden = !ls.checked || ls.rows.length > 0;
+  const kinds = Object.keys(ls.schema?.kinds || {}).filter((k) => LIVE.includes(cloudOf(k)) && (!F.cloud || cloudOf(k) === F.cloud));
+  if (F.type && !kinds.includes(F.type)) F.type = "";
+  const set = (k) => (v) => { F[k] = v; saveQuery(); render(); };
+  fill($("wl-filters"), window.consoleBlade.bar({ q: F.q, onQuery: (v) => { F.q = v; saveQuery(); rows(); }, pills: [
+    { label: "Cloud", value: F.cloud, options: LIVE.map((c) => [c, NAMES[c]]), onChange: set("cloud") },
+    { label: "Type", value: F.type, options: kinds.map((k) => [k, kindLabel(k)]), onChange: set("type") },
+    { label: "Status", value: F.state, options: [["on", "Onboarded"], ["off", "Not onboarded"]], onChange: set("state") },
+  ] }));
+  rows();
 }
 
-function tiles() {
-  const kinds = Object.keys(ls.schema?.kinds || {}).filter((k) => ofCloud(k) && (!TYPE || k === TYPE));
-  return GROUPS.map(([title, test]) => [title, kinds.filter(test)]).filter(([, ks]) => ks.length).map(([title, ks]) =>
-    h("section", { class: "ov-group" }, h("h2", { class: "ov-group-title", text: title }),
-      h("div", { class: "ov-tiles" }, ks.map((k) => {
-        const a = h("a", { class: "ov-tile", href: `${href.create()}?kind=${encodeURIComponent(k)}` });
-        const ico = h("span", { class: "ov-tile-icon" });
-        ico.innerHTML = window.consoleNav?.icon(iconOf(k)) || "";   // constant SVG only
-        a.append(ico, h("span", { text: ls.schema.kinds[k].label }));
-        return a;
-      }))));
+function rows() {
+  const shown = ls.rows.filter(matches);
+  fill($("wl-rows"), shown.map(row));
+  const busy = ls.loading > 0;
+  $("wl-count").textContent = busy && !ls.rows.length ? "" : `Showing ${shown.length} of ${ls.rows.length} records.`;
+  $("wl-empty").hidden = busy || shown.length > 0;
+  $("wl-empty").textContent = ls.rows.length ? "No workloads match the filters" : "No serverless workloads in the clouds";
 }
 
-// What exists in the cloud now (the same read-only listing the New workload picker uses), and the
-// saved configurations, to mark and open the onboarded ones.
+// + Create: every service type, by cloud, each opening New workload on that type.
+function createPanel() {
+  const kinds = Object.keys(ls.schema?.kinds || {}).filter((k) => LIVE.includes(cloudOf(k)));
+  return LIVE.map((c) => h("section", { class: "ov-group" }, h("h2", { class: "ov-group-title" }, iconEl(c, "blade-ico"), NAMES[c]),
+    h("div", { class: "ov-tiles" }, kinds.filter((k) => cloudOf(k) === c).map((k) =>
+      h("a", { class: "ov-tile", href: `${BASE}/${c}/new?kind=${encodeURIComponent(k)}` }, iconEl(iconOf(k), "ov-tile-icon"), h("span", { text: kindLabel(k) }))))));
+}
+
+// What exists in each cloud now (the same read-only listing the New workload picker uses), and the
+// saved configurations, to mark and open the onboarded ones. One cloud at a time: they share the CLI lock.
 async function load(refresh = false) {
-  ls.checked = false;
-  render();
-  setStatus($("list-status"), "Reading the cloud", "busy");
-  const [inv, { configs }] = await Promise.all([api(`/api/inventory/${CLOUD}${refresh ? "?refresh=1" : ""}`), api("/api/configs")]);
-  ls.configs = configs;
-  ls.rows = (inv.workloads || []).filter((w) => w.supported && inSection(w.kind));
-  ls.checked = true;
-  render();
-  const errs = inv.errors || [];
-  setStatus($("list-status"), errs.length ? `Could not read part of the cloud: ${errs[0]}` : "", errs.length ? "error" : "");
+  ls.rows = [];
+  ls.errors = [];
+  ls.loading = LIVE.length;
+  rows();
+  setStatus($("list-status"), "Reading the clouds", "busy");
+  ls.configs = (await api("/api/configs")).configs;
+  for (const c of LIVE) {
+    try {
+      const inv = await api(`/api/inventory/${c}${refresh ? "?refresh=1" : ""}`);
+      const known = (k) => Object.hasOwn(ls.schema?.kinds || {}, k);
+      for (const w of inv.workloads || []) {
+        if (w.supported && known(w.kind)) ls.rows.push({ ...w, cloud: c, subscription_name: w.subscription_name || inv.defaults?.subscription_name, cfg: null });
+      }
+      for (const e of inv.errors || []) ls.errors.push(`${NAMES[c]}: ${e}`);
+    } catch (e) {
+      ls.errors.push(`${NAMES[c]}: ${e.message}`);
+    }
+    ls.loading -= 1;
+    for (const w of ls.rows) w.cfg = configOf(w) || null;
+    rows();
+  }
+  setStatus($("list-status"), ls.errors.length ? `Could not read part of the clouds` : "", ls.errors.length ? "error" : "");
+  fill($("wl-help"), ls.errors.length ? help(ls.errors.join(" ")) : null);
 }
 
 export async function mountList(page, { schema }) {
   ls.schema = schema;
+  const u = new URLSearchParams(location.search);
+  Object.assign(F, { q: u.get("q") || "", state: ["on", "off"].includes(u.get("state")) ? u.get("state") : "" });
+  if (!F.type && schema.kinds?.[u.get("type")]) F.type = u.get("type");
+  if (!F.cloud && LIVE.includes(u.get("cloud"))) F.cloud = u.get("cloud");
   page.replaceChildren(template("tpl-list"));
-  // Titled after its menu item (one service, e.g. Cloud Run jobs), or Serverless for all of the cloud's.
-  const section = window.consoleNav?.section(TYPE || `serverless-${CLOUD}`);
-  if (section) {
-    page.querySelector(".page-header h1").textContent = section.label;
-    document.title = `${section.label} · ${section.cloud}`;
-  }
-  $("wl-help").append(help("What exists in the cloud now. Green: onboarded to JFrog OIDC here; grey: not onboarded (opens New workload)."));
-  $("wl-where").textContent = CLOUD === "azure" ? "Resource group" : "Project";
-  fill($("wl-create"), tiles());
+  document.title = "Serverless · JFrog OIDC Console";
+  $("wl-create").addEventListener("click", () => {
+    const p = $("wl-create-panel");
+    p.hidden = !p.hidden;
+    $("wl-create").setAttribute("aria-expanded", String(!p.hidden));
+    if (!p.hidden && !p.childElementCount) fill(p, createPanel());
+    if (!p.hidden) p.scrollIntoView({ block: "nearest" });
+  });
   $("wl-refresh").addEventListener("click", () => load(true).catch((e) => setStatus($("list-status"), e.message, "error")));
+  // The type tiles show from the start, as before; + Create folds them away and back.
+  fill($("wl-create-panel"), createPanel());
+  $("wl-create-panel").hidden = false;
+  $("wl-create").setAttribute("aria-expanded", "true");
+  saveQuery();
+  render();
   try {
     await load();
   } catch (e) {

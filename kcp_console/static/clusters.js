@@ -1,5 +1,6 @@
-// Clusters: one platform's clusters at /clusters/<cloud>. KPI tiles filter the table, the search box
-// narrows it, the whole row opens the cluster, and the row's "⋯" menu holds the destructive actions.
+// Kubernetes (/clusters): every platform's clusters in one list, Azure portal style: Add a cluster and
+// Refresh, "Filter for any field…" with Platform and Status pills, then the table. /clusters/<cloud>
+// opens it filtered. The whole row opens the cluster; the row's "⋯" menu holds the destructive actions.
 // Add a cluster lists the clusters the operator's cloud logins can see and saves one as a new configuration.
 
 import { api, h, fill, state, refreshConfigs, route, go, url, clusterPath, runPath, markOf, help, CLOUDS as CLOUD } from "./app.js";
@@ -24,12 +25,13 @@ const STAT_HELP = {
 const RUN_TEXT = { prepared: "waiting for approval", queued: "queued", running: "running", succeeded: "succeeded", failed: "failed",
   cancelled: "cancelled", interrupted: "interrupted", refused: "refused", error: "failed" };
 
-const F = { q: "", state: "", page: 1 };
+const F = { q: "", state: "", platform: "", page: 1 };
 let fleet = null;
 let fleetLoading = false;
 let adding = false;
 
-const cloud = () => route().cloud || "aks";
+const cloud = () => F.platform;
+const BUILT = ["aks", "gke"];
 const P = () => $("panel-list");
 
 export function initClusters() {
@@ -47,7 +49,7 @@ function render() {
 
 function readQuery() {
   const u = new URLSearchParams(location.search);
-  Object.assign(F, { q: u.get("q") || "", state: u.get("state") || "", page: Number(u.get("page")) || 1 });
+  Object.assign(F, { q: u.get("q") || "", state: u.get("state") || "", platform: route().cloud || "", page: Number(u.get("page")) || 1 });
 }
 
 function query() {
@@ -60,7 +62,7 @@ function query() {
 // Filters live in the address, so a refresh or a shared link shows the same list.
 function setFilter(patch) {
   Object.assign(F, { page: 1 }, patch);
-  history.replaceState({}, "", url(`/clusters/${cloud()}${query()}`));
+  history.replaceState({}, "", url(`/clusters${F.platform ? `/${F.platform}` : ""}${query()}`));
 }
 
 async function loadFleet() {
@@ -81,49 +83,65 @@ async function loadFleet() {
 function matches(r) {
   if (F.state && r.state !== F.state) return false;
   const q = F.q.trim().toLowerCase();
-  return !q || [r.name, r.cluster, r.location, r.subscription, r.resource_group].some((v) => (v || "").toLowerCase().includes(q));
+  if (F.platform && (r.cloud || "aks") !== F.platform) return false;
+  return !q || [r.name, r.cluster, r.location, r.subscription, r.resource_group, CLOUD[r.cloud || "aks"], (STATE[r.state] || [])[1]]
+    .some((v) => (v || "").toLowerCase().includes(q));
 }
 
 function view() {
   if (!fleet && !fleetLoading) loadFleet();
   const d = fleet || { clusters: [], platforms: {} };
-  // Titled as the sidebar names it (AKS clusters, GKE clusters).
-  const k = cloud(), label = window.consoleNav?.section(k)?.label || CLOUD[k];
-  const built = (d.platforms || {})[k] !== false && !!SOURCES[k];
-  const mine = d.clusters.filter((r) => (r.cloud || "aks") === k);
+  const k = cloud();
+  // A platform the console can't read yet (EKS, OpenShift): what it will need.
+  if (k && !BUILT.includes(k)) return h("div", { class: "page" }, head(), notYet(k, CLOUD[k]));
+  const built = BUILT.filter((p) => (d.platforms || {})[p] !== false);
+  const n = d.clusters.length;
+  const open = fleet && (adding || !n);   // no clusters yet: the list to add from is the page
+  const set = (key) => (v) => { setFilter({ [key]: v }); render(); };
+  return h("div", { class: "page" },
+    head(),
+    h("div", { class: "blade-cmds", role: "toolbar", "aria-label": "Kubernetes" },
+      n ? h("button", { class: "blade-cmd", "aria-expanded": String(adding), onclick: () => { adding = !adding; render(); } }, plus(), "Add a cluster") : null,
+      h("button", { class: "blade-cmd", disabled: fleetLoading, onclick: () => { fleet = null; render(); } }, refreshIcon(), "Refresh")),
+    d.error ? h("div", { class: "callout fail" }, brief(d.error)) : null,
+    open ? (k ? [k] : built).map((p) => addPanel(state.configs || [], p)) : null,
+    fleet && n ? stats(d.clusters.filter((r) => !k || (r.cloud || "aks") === k)) : null,
+    fleet && !n ? null : window.consoleBlade.bar({ q: F.q, onQuery: (v) => { setFilter({ q: v }); fillTable(); }, pills: [
+      { label: "Platform", value: F.platform, options: BUILT.map((p) => [p, CLOUD[p]]), onChange: set("platform") },
+      { label: "Status", value: F.state, options: STATS.filter(([s]) => s).map(([s, t]) => [s, t]), onChange: set("state") },
+    ] }),
+    !fleet ? muted("Loading…") : n ? h("div", { id: "fleet-table" }, table(d.clusters)) : null);
+}
+
+// KPI tiles: counts per status for the chosen platform; a tile filters the table to that status.
+function stats(mine) {
   const counts = {};
   for (const r of mine) counts[r.state] = (counts[r.state] || 0) + 1;
-  const n = mine.length;
-  const open = built && fleet && (adding || !n);   // no clusters yet: the list to add from is the page
-  const where = k === "gke" ? "project or location" : "subscription, resource group or region";
-  return h("div", { class: "page" },
-    h("header", { class: "page-head" },
-      h("div", { class: "page-id" }, h("div", { class: "page-title" }, h("span", { class: "head-mark" }, markOf(k)), h("h1", {}, label),
-        n ? muted(`${n} cluster${n === 1 ? "" : "s"}`) : null)),
-      h("div", { class: "head-actions" },
-        built && n ? h("button", { class: adding ? "secondary" : "primary", onclick: () => { adding = !adding; render(); } }, adding ? "Close" : "Add a cluster") : null,
-        built ? h("button", { class: "ghost", disabled: fleetLoading, onclick: () => { fleet = null; render(); } }, "Refresh") : null)),
-    d.error ? h("div", { class: "callout fail" }, brief(d.error)) : null,
-    !built ? notYet(k, label) : null,
-    open ? addPanel(state.configs || [], k) : null,
-    !built ? null
-      : !fleet ? muted("Loading…")
-      : n ? [
-        h("div", { class: "stats" }, STATS.map(([s, text]) => h("button", {
-          class: `stat${F.state === s ? " on" : ""}${s ? ` s-${s}` : ""}`, "aria-pressed": F.state === s ? "true" : "false",
-          onclick: () => { setFilter({ state: F.state === s ? "" : s }); render(); },
-          "data-tip": STAT_HELP[s], "aria-description": STAT_HELP[s],
-        }, h("b", {}, String(s ? counts[s] || 0 : n)), h("span", {}, text)))),
-        h("div", { class: "filter-bar" },
-          h("input", { type: "search", class: "search", placeholder: `Filter by name, ${where}`, value: F.q, "aria-label": "Filter clusters",
-            oninput: (e) => { setFilter({ q: e.target.value }); fillTable(); } })),
-        h("div", { id: "fleet-table" }, table(mine)),
-      ] : null);
+  return h("div", { class: "stats" }, STATS.map(([s, text]) => h("button", {
+    class: `stat${F.state === s ? " on" : ""}${s ? ` s-${s}` : ""}`, "aria-pressed": F.state === s ? "true" : "false",
+    onclick: () => { setFilter({ state: F.state === s ? "" : s }); render(); },
+    "data-tip": STAT_HELP[s], "aria-description": STAT_HELP[s],
+  }, h("b", {}, String(s ? counts[s] || 0 : mine.length)), h("span", {}, text))));
 }
+
+function head() {
+  return h("header", { class: "blade-head" }, h("h1", {}, "Kubernetes"), h("span", { class: "blade-sub" }, "AKS and GKE clusters"));
+}
+const svg = (d) => {
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  s.setAttribute("viewBox", "0 0 20 20");
+  s.setAttribute("aria-hidden", "true");
+  const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  p.setAttribute("d", d);
+  s.append(p);
+  return s;
+};
+const plus = () => svg("M10 4v12M4 10h12");
+const refreshIcon = () => svg("M16 10a6 6 0 1 1-1.8-4.3M16 4v3.5h-3.5");
 
 function fillTable() {
   const el = $("fleet-table");
-  if (el && fleet) fill(el, table(fleet.clusters.filter((r) => (r.cloud || "aks") === cloud())));
+  if (el && fleet) fill(el, table(fleet.clusters));
 }
 
 // "Verify · failed · 22 min ago · 1 m 32 s"
@@ -136,16 +154,15 @@ function lastRun(a) {
 
 function table(all) {
   const rows = all.filter(matches);
-  const gke = cloud() === "gke";
-  if (!rows.length) return h("div", { class: "empty slim" }, h("p", {}, "No clusters match"),
-    h("button", { class: "ghost", onclick: () => { setFilter({ q: "", state: "" }); render(); } }, "Clear filters"));
+  if (!rows.length) return h("p", { class: "blade-empty" }, all.length ? "No clusters match the filters" : "No clusters yet");
   const pages = Math.ceil(rows.length / PAGE);
   F.page = Math.min(Math.max(1, F.page), pages);
   const first = (F.page - 1) * PAGE;
-  const turn = (p) => { F.page = p; history.replaceState({}, "", url(`/clusters/${cloud()}${query()}`)); fillTable(); };
-  const heads = ["", "Cluster", gke ? "Project" : "Subscription", gke ? null : "Resource group", "Status", "Credential provider", "Last run", ""];
+  const turn = (p) => { setFilter({ page: p }); fillTable(); };
+  const heads = ["", "Name", "Status", "Platform", "Location", "Resource group", "Subscription / project", "Credential provider", "Last run", ""];
   return [
-    h("table", { class: "table fleet-table" },
+    muted(`Showing ${rows.length} of ${all.length} records.`),
+    h("table", { class: "table fleet-table blade-table" },
       h("thead", {}, h("tr", {}, heads.filter((t) => t !== null).map((t, i) => h("th", { scope: "col", class: i === 0 ? "c-ico" : null,
         "aria-label": i === 0 ? "Last run status" : t === "" ? "Actions" : null }, t)))),
       h("tbody", {}, rows.slice(first, first + PAGE).map((r) => {
@@ -154,11 +171,13 @@ function table(all) {
         const open = () => go(clusterPath(r.name));
         return h("tr", { tabindex: "0", onclick: open, onkeydown: (e) => { if (e.key === "Enter" && e.target === e.currentTarget) open(); } },
           h("td", { class: "c-ico" }, a ? icon(a.status) : icon("notrun", "No runs")),
-          h("td", {}, h("div", { class: "nm" }, link(go, url, clusterPath(r.name), r.name)),
-            h("div", { class: "sub" }, [r.cluster !== r.name ? r.cluster : "", r.location].filter(Boolean).join(" · "))),
+          h("td", {}, h("span", { class: "blade-name" }, h("span", { class: "blade-ico" }, markOf(r.cloud || "aks")), link(go, url, clusterPath(r.name), r.name)),
+            r.cluster !== r.name ? h("div", { class: "sub" }, r.cluster) : null),
+          h("td", {}, h("span", { class: `badge ${cls}` }, text), r.problem ? help(brief(r.problem)) : null),
+          h("td", {}, CLOUD[r.cloud || "aks"]),
+          h("td", { class: "wrap" }, r.location || muted("—")),
+          h("td", { class: "wrap" }, r.resource_group || muted("—")),
           h("td", { class: "wrap" }, r.subscription || muted("—")),
-          gke ? null : h("td", { class: "wrap" }, r.resource_group || muted("—")),
-          h("td", {}, h("span", { class: `badge ${cls}` }, text), r.problem ? h("div", { class: "sub" }, brief(r.problem)) : null),
           h("td", {}, r.chart ? h("div", {}, `v${r.chart}`) : muted("—"), r.ready ? h("div", { class: "sub" }, `${r.ready} nodes ready`) : null),
           h("td", {}, a?.id ? link(go, url, runPath(r.name, a.id), lastRun(a)) : lastRun(a)),
           h("td", { class: "c-more", onclick: (e) => e.stopPropagation() }, moreMenu([

@@ -106,14 +106,14 @@ export function help(text) {
 
 function showAuth() {
   $("auth-banner").hidden = false;
-  $("k8s-sub").hidden = true;
   document.querySelectorAll("[role=tabpanel]").forEach((p) => { p.hidden = true; });
 }
 
 // ----------------------------------------------------------------- pages
 
 // One URL per page, each cloud kept apart (docs/ui-pattern.md):
-//   /clusters/<cloud>                     that platform's clusters (aks, gke, eks, openshift)
+//   /clusters                             every platform's clusters, one filtered list (clusters.js)
+//   /clusters/<cloud>                     the same list filtered to one platform (aks, gke, eks, openshift)
 //   /clusters/<cloud>/<name>?tab=…        one cluster: Summary, Runs or Configuration
 //   /clusters/<cloud>/<name>/runs/<id>    one run: its step tree and log
 // /clusters, /clusters/<name>, /configure and .../<name>/edit are older links; they move to the paths above.
@@ -135,20 +135,16 @@ export function route(path = location.pathname) {
   if (p[0] === "configure") return { page: "cluster", cloud: cloudOf(state.config), name: state.config, tab: "config", moved: true };
   if (p[0] !== "clusters") return { page: "list", cloud: null, name: null, moved: true };
   if (p[1] && !CLOUDS[p[1]]) return { page: "cluster", cloud: cloudOf(p[1]), name: p[1], tab, moved: true };
-  if (!p[1]) return { page: "list", cloud: null, name: null, moved: true };
+  if (!p[1]) return { page: "list", cloud: null, name: null };
   if (!p[2]) return { page: "list", cloud: p[1], name: null };
   if (p[3] === "edit") return { page: "cluster", cloud: p[1], name: p[2], tab: "config", moved: true };
   if (p[3] === "runs" && p[4]) return { page: "run", cloud: p[1], name: p[2], run: p[4] };
   return { page: "cluster", cloud: p[1], name: p[2], tab };
 }
 
-// The first platform that has clusters, for /clusters.
-const homeCloud = () => Object.keys(CLOUDS).find((k) => state.configs.some((c) => (c.platform || "aks") === k)) || "aks";
-
 function canonical(r) {
-  const cloud = r.cloud || homeCloud();
-  if (!r.name) return `/clusters/${cloud}`;
-  return `/clusters/${cloud}/${encodeURIComponent(r.name)}${r.tab && r.tab !== "summary" ? `?tab=${r.tab}` : ""}`;
+  if (!r.name) return r.cloud ? `/clusters/${r.cloud}` : "/clusters";
+  return `/clusters/${r.cloud}/${encodeURIComponent(r.name)}${r.tab && r.tab !== "summary" ? `?tab=${r.tab}` : ""}`;
 }
 
 // Go to a path inside the console without a reload.
@@ -167,21 +163,16 @@ function transition(update) {
 // One level up: run → its cluster's Runs tab → its platform's list → Home.
 function parent(r) {
   if (r.page === "run") return { path: clusterPath(r.name, "runs"), label: r.name };
-  if (r.name) return { path: `/clusters/${r.cloud}`, label: CLOUDS[r.cloud] };
+  if (r.name) return { path: "/clusters", label: "Kubernetes" };
   return { home: true, label: "Home" };
 }
 
 // A product mark (aks, gke, eks, openshift, k8s) or the arrow icon, cloned from the page's template.
 export const markOf = (k) => $("marks").content.querySelector(`[data-mark="${k}"] svg`).cloneNode(true);
 
-// Where you are: <cloud> > Kubernetes > <platform>'s clusters > <cluster> > Run <id>, as the menu
-// nests them (each cloud holds Serverless and Kubernetes). Names come from the path.
-const TRAIL = { aks: ["Azure", "AKS clusters"], gke: ["Google Cloud", "GKE clusters"], eks: ["AWS", "EKS clusters"],
-  openshift: ["OpenShift", "Clusters"] };
+// Where you are: Kubernetes > <cluster> > Run <id>. Names come from the path.
 function renderTrail(r) {
-  const [cloud, section] = TRAIL[r.cloud] || [null, "Clusters"];
-  const steps = cloud ? [[cloud, null], ["Kubernetes", null]] : [["Kubernetes", null]];
-  steps.push([section, r.cloud && (r.name || r.page === "run") ? `/clusters/${r.cloud}` : null]);
+  const steps = [["Kubernetes", r.name ? "/clusters" : null]];
   if (r.name) steps.push([r.name, r.page === "run" ? clusterPath(r.name, "runs") : clusterPath(r.name)]);
   if (r.page === "run") steps.push([`Run ${r.run}`, null]);
   const parts = [];
@@ -195,26 +186,6 @@ function renderTrail(r) {
     } }, label));
   });
   $("trail").replaceChildren(...parts);
-}
-
-// The open platform's clusters, as a band under it in the sidebar. It starts collapsed on every page
-// load; clicking the open platform toggles it.
-let bandOpen = false;
-function renderBand(r) {
-  const band = $("k8s-sub");
-  const item = r.cloud && document.querySelector(`#sidenav [data-cloud="${r.cloud}"]`);
-  const mine = state.configs.filter((c) => (c.platform || "aks") === r.cloud);
-  document.querySelectorAll("#sidenav [data-cloud]").forEach((a) => a.removeAttribute("aria-expanded"));
-  if (item && mine.length) item.setAttribute("aria-expanded", String(bandOpen));
-  band.hidden = !item || !mine.length || !bandOpen;
-  if (band.hidden) return;
-  item.after(band);
-  fill(band, mine.map((c) => h("a", { class: "nav-item", href: url(clusterPath(c.name)),
-    "aria-current": c.name === r.name ? "page" : null, onclick: (e) => {
-      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
-      e.preventDefault();
-      go(clusterPath(c.name));
-    } }, h("span", {}, c.name))));
 }
 
 // Back walks up one level, as the breadcrumb does.
@@ -235,12 +206,9 @@ function show() {
   if (r.moved) history.replaceState({}, "", url(canonical(r)) + (r.name ? "" : location.search));
   const now = route();
   for (const p of PAGES) $(`panel-${p}`).hidden = p !== now.page;
-  document.querySelectorAll("#sidenav [data-cloud]").forEach((a) => {
-    if (a.dataset.cloud === now.cloud) a.setAttribute("aria-current", now.name ? "true" : "page"); else a.removeAttribute("aria-current");
-  });
+  window.consoleNav?.select("k8s");
   backButton(now);
   renderTrail(now);
-  renderBand(now);
   // A tab switch keeps the scroll position; a new page starts at the top.
   const key = `${now.page}|${now.name}|${now.run}`;
   if (key !== shown) window.scrollTo(0, 0);
@@ -248,22 +216,13 @@ function show() {
   state.emit("page", now);
 }
 
-// Platform links go through the router; any other link (the other console's section) loads its page.
+// The sidebar's Kubernetes item goes through the router; any other link loads its page.
 function wireTabs() {
-  document.querySelectorAll("#sidenav [data-cloud]").forEach((a) => {
-    const path = `/clusters/${a.dataset.cloud}`;
-    a.setAttribute("href", url(path));
-    a.addEventListener("click", (e) => {
-      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
-      e.preventDefault();
-      if (route().cloud === a.dataset.cloud && a.hasAttribute("aria-expanded")) {
-        bandOpen = !bandOpen;
-        renderBand(route());
-        return;
-      }
-      bandOpen = false;
-      go(path);
-    });
+  const a = document.querySelector('#sidenav [data-nav="k8s"]');
+  a?.addEventListener("click", (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    go("/clusters");
   });
 }
 

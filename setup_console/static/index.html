@@ -24,7 +24,12 @@
   </div>
   <main>
     <header class="page-header"><div class="title-row"><h1 id="page-title">Infrastructure</h1><span class="count-badge" id="env"></span></div></header>
+    <div class="blade-cmds" role="toolbar" aria-label="Stacks">
+      <button id="refresh" type="button" class="blade-cmd"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 4v3.5h-3.5"/></svg>Refresh</button>
+    </div>
+    <div id="filters"></div>
     <div id="groups"></div>
+    <p id="none" class="blade-empty" hidden>No stacks match the filters</p>
   </main>
   <aside id="flyout" class="flyout" role="dialog" aria-labelledby="flyout-title" hidden>
     <div class="flyout-head">

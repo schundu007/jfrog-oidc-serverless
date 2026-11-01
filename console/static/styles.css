@@ -898,3 +898,53 @@ input.is-unknown { border-color: var(--bad-line); background: var(--bad-bg); }
 /* Humana model: square corners, thin light lines; only the Home stat cards carry the thick dark border. */
 :root { --card-r: 0; --card-shadow: none; --r-lg: 0; }
 .empty { border-radius: 0; background: #ffffff; }
+
+/* ================================================================== browse list (Azure portal blade)
+   One list per page: title, command bar, "Filter for any field…" with filter pills, then the table. */
+.blade-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--s-3); }
+.blade-head h1 { margin: 0; font-size: 22px; font-weight: 600; }
+.blade-head .blade-sub { color: var(--fg-3); font-size: 13px; }
+.blade-cmds { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 4px 0; border-bottom: 1px solid var(--border); margin-bottom: var(--s-3); }
+.blade-cmd { display: inline-flex; align-items: center; gap: 6px; background: none; border: 1px solid transparent; color: var(--fg);
+  font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 2px; cursor: pointer; text-decoration: none; }
+.blade-cmd:hover:not(:disabled) { background: var(--surface-2); }
+.blade-cmd:disabled { color: var(--fg-3); cursor: default; }
+.blade-cmd svg { width: 16px; height: 16px; fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.blade-cmd.primary-cmd { background: none; border-color: transparent; color: var(--fg); font-weight: 400; }
+.blade-cmds .page-status { margin-left: auto; }
+.blade-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-bottom: var(--s-3); }
+.blade-search-wrap { flex: 0 1 300px; min-width: 200px; }
+.blade-search { width: 100%; box-sizing: border-box; height: 32px; padding: 0 10px; border: 1px solid var(--control-line); border-radius: 2px; font: inherit; font-size: 14px; }
+.blade-search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.blade-pill { position: relative; display: inline-flex; align-items: center; height: 26px; border-radius: 13px; background: var(--surface-3); font-size: 13px; }
+.blade-pill.set { background: var(--accent-soft); }
+.blade-pill-btn { background: none; border: 0; font: inherit; color: var(--fg); padding: 0 12px; height: 100%; cursor: pointer; border-radius: 13px; }
+.blade-pill-btn b { font-weight: 600; }
+.blade-pill.set .blade-pill-btn { padding-right: 4px; }
+.blade-pill-x { background: none; border: 0; font: inherit; font-size: 15px; line-height: 1; color: var(--fg-3); padding: 0 10px 0 4px; height: 100%; cursor: pointer; border-radius: 0 13px 13px 0; }
+.blade-pill-x:hover, .blade-pill-btn:hover { color: var(--accent); }
+.blade-pill-btn:focus-visible, .blade-pill-x:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.blade-pop { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; min-width: 200px; max-height: 320px; overflow: auto;
+  background: var(--surface); border: 1px solid var(--border-strong); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14); padding: 4px 0; display: flex; flex-direction: column; }
+.blade-opt { background: none; border: 0; text-align: left; font: inherit; font-size: 14px; color: var(--fg); padding: 6px 14px; cursor: pointer; white-space: nowrap; }
+.blade-opt:hover, .blade-opt:focus-visible { background: var(--surface-2); outline: none; }
+.blade-opt[aria-selected="true"] { font-weight: 600; color: var(--accent); }
+.blade-count { color: var(--fg-3); font-size: 13px; margin: 0 0 var(--s-2); }
+.blade-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.blade-table thead th { text-align: left; font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border-strong); white-space: nowrap; }
+.blade-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.blade-table tbody tr:hover { background: var(--surface-2); }
+.blade-table tr.row-link { cursor: pointer; }
+.blade-name { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.blade-name .blade-ico svg { width: 18px; height: 18px; display: block; }
+.blade-name a { color: var(--accent); text-decoration: none; font-weight: 500; }
+.blade-name a:hover { text-decoration: underline; }
+.blade-state { display: inline-flex; align-items: center; gap: 6px; }
+.blade-state::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--fg-3); }
+.blade-state.ok::before { background: var(--ok-line); }
+.blade-state.warn::before { background: var(--warn-line); }
+.blade-state.fail::before { background: var(--bad-line); }
+.blade-empty { padding: var(--s-5) 10px; color: var(--fg-3); }
+.blade-cloud { display: inline-flex; align-items: center; gap: 6px; }
+.blade-cloud svg { width: 16px; height: 16px; }
+.sidenav nav[aria-label="Console"] { padding-top: var(--s-2); }

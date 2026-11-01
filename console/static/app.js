@@ -1,7 +1,7 @@
 // JFrog OIDC console UI (Serverless). Vanilla ES module, no build step, no CDN.
 // The session token comes from the URL fragment (or the page) and is sent only as the X-Console-Token
 // header; see core.js. Pages, modelled on Azure DevOps Pipelines (docs/ui-pattern.md):
-//   /<cloud>                        Workloads (list.js)
+//   /                               Serverless: every cloud's workloads, filtered (list.js); /<cloud> opens it filtered
 //   /<cloud>/new                    New workload: the configuration form; Save creates it and opens it
 //   /<cloud>/w/<name>?tab=…         Workload: Runs · Configuration · Simulator (workload.js)
 //   /<cloud>/w/<name>/runs/<id>     Run: step tree, step detail and log (runs.js)
@@ -40,13 +40,10 @@ document.addEventListener("console:section", (e) => {
 });
 function renderTrail(r) {
   trailRoute = r;
-  const section = trailSection && window.consoleNav?.section(trailSection);
-  const steps = [[CLOUDS[CLOUD], null]];
-  if (r.page !== "not-yet") {
-    const top = r.page === "list" && !section;
-    steps.push(["Serverless", top ? null : href.list(null)]);
-    if (section) steps.push([section.label, r.page === "list" ? null : href.list(trailSection)]);
-  }
+  const section = r.page !== "list" && trailSection && window.consoleNav?.section(trailSection);
+  const steps = [["Serverless", r.page === "list" ? null : href.list(null)]];
+  if (r.page === "not-yet") steps.push([CLOUDS[CLOUD], null]);
+  if (section) steps.push([section.label, href.list(trailSection)]);
   if (r.page === "new") steps.push(["New workload", null]);
   if (r.name) steps.push([r.name, r.page === "run" ? href.workload(r.name, "runs") : null]);
   if (r.page === "run") steps.push([`Run ${r.id}`, null]);
@@ -66,7 +63,7 @@ function applyShell() {
     for (const a of document.querySelectorAll('a[href^="/"]:not([data-section])')) a.setAttribute("href", BASE + a.getAttribute("href"));
     for (const el of document.querySelectorAll("[data-portal]")) el.hidden = false;
   }
-  document.title = `JFrog OIDC Console · ${CLOUDS[CLOUD]}`;
+  document.title = CLOUD ? `JFrog OIDC Console · ${CLOUDS[CLOUD]}` : "JFrog OIDC Console";
   $("flyout-close").addEventListener("click", closeFlyout);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("flyout").hidden && !document.querySelector(".menu:not([hidden])")) closeFlyout(); });
 }
@@ -122,8 +119,8 @@ async function start() {
   if (!schema || mounted) return;
   mounted = true;
   // AWS and OpenShift: not set up live yet, every path shows what they will need.
-  const r = NOT_YET[CLOUD] ? { page: "not-yet" } : route();
-  if (r.legacy) history.replaceState(null, "", href.list() + location.search);
+  const r = NOT_YET[CLOUD] ? { page: "not-yet" } : CLOUD ? route() : { page: "list" };
+  if (r.legacy) history.replaceState(null, "", href.list());
   renderTrail(r);
   const page = $("page");
   try {
@@ -138,11 +135,6 @@ async function start() {
 }
 
 function boot() {
-  // No picker page: the console opens on Google Cloud; the sidebar switches clouds.
-  if (!CLOUD) {
-    location.replace(`${BASE}/gcp${location.search}`);
-    return;
-  }
   applyShell();
   window.addEventListener("hashchange", () => {
     const t = takeTokenFromHash();
