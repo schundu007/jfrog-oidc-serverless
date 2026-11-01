@@ -1,0 +1,69 @@
+{
+  "jfrog": {
+    "adopt_integration": false,
+    "docker_host": "",
+    "docker_repo": "docker-virtual",
+    "integration_names": {
+      "aws": "aws-sts",
+      "azure": "azure-entra",
+      "gcp": "gcp-cloudrun",
+      "openshift": "openshift-knative"
+    },
+    "project_key": null,
+    "reader_group": "serverless-readers",
+    "url": "https://trial9hnw59.jfrog.io"
+  },
+  "name": "crwp-jfrog",
+  "runtime": {
+    "enabled": true,
+    "ttl_seconds": 3600,
+    "username": "svc-gcp-run-worker-pool"
+  },
+  "state_backend": {
+    "bucket": "unioxe-tfstate",
+    "prefix": "workspaces/gcp_unioxe_us-central1",
+    "type": "gcs"
+  },
+  "target": {
+    "aws": {
+      "account": "",
+      "cluster": "",
+      "name": "",
+      "profile": "",
+      "region": ""
+    },
+    "azure": {
+      "identity_type": "user_assigned",
+      "name": "",
+      "resource_group": "",
+      "subscription": ""
+    },
+    "discovered": {
+      "at": "2026-11-01T08:00:19Z",
+      "image": "us-central1-docker.pkg.dev/unioxe/platform/crwp-jfrog:36a331394a47",
+      "kind": "gcp_run_worker_pool",
+      "mapping_subject": "113955821450675940102",
+      "name": "crwp-jfrog",
+      "project": "unioxe",
+      "region": "us-central1",
+      "service_account": "crwp-jfrog@unioxe.iam.gserviceaccount.com",
+      "service_account_unique_id": "113955821450675940102"
+    },
+    "gcp": {
+      "name": "crwp-jfrog",
+      "project": "unioxe",
+      "region": "us-central1"
+    },
+    "kind": "gcp_run_worker_pool",
+    "openshift": {
+      "cluster": "",
+      "context": "",
+      "name": "",
+      "namespace": ""
+    }
+  },
+  "verify": {
+    "artifact_path": "demo-generic/hello.txt",
+    "probe_image_runtime": ""
+  }
+}

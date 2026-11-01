@@ -42,6 +42,15 @@
       "runtime_enabled": true,
       "runtime_ttl": 3600,
       "subject": "103973554486208671400"
+    },
+    "crwp-jfrog": {
+      "dedicated_identity": null,
+      "dedicated_roles": [],
+      "kind": "gcp_run_worker_pool",
+      "name": "crwp-jfrog",
+      "runtime_enabled": true,
+      "runtime_ttl": 3600,
+      "subject": "113955821450675940102"
     }
   }
 }
