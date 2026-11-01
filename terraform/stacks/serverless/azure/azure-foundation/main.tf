@@ -38,8 +38,13 @@ locals {
     build = { id = azurerm_user_assigned_identity.ado.id, principal_id = azurerm_user_assigned_identity.ado.principal_id, client_id = azurerm_user_assigned_identity.ado.client_id }
     setup = { id = azurerm_user_assigned_identity.setup.id, principal_id = azurerm_user_assigned_identity.setup.principal_id, client_id = azurerm_user_assigned_identity.setup.client_id }
   }
-  # AcrPull, AcrPush, Contributor
-  assignable_roles = "7f951dda-4ed3-4680-a7ca-43fe172d538d, 8311e382-0749-4cb8-b61a-304f252e45ec, b24988ac-6180-42a0-ab88-20f7382dd24c"
+  # AcrPull, AcrPush, Contributor, and the function host storage roles: Storage Blob Data Owner,
+  # Storage Queue Data Contributor, Storage Table Data Contributor, Storage Blob Data Contributor (deployer)
+  assignable_roles = join(", ", [
+    "7f951dda-4ed3-4680-a7ca-43fe172d538d", "8311e382-0749-4cb8-b61a-304f252e45ec", "b24988ac-6180-42a0-ab88-20f7382dd24c",
+    "b7e6dc6d-f1e8-4753-8033-0f276bb0955b", "974c5e8b-45b9-4653-ba55-5f855dd0fb88", "0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3",
+    "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
+  ])
 }
 
 resource "azurerm_federated_identity_credential" "ado" {
