@@ -1115,3 +1115,4 @@ html body .home-table tr.cloud-cols:hover { background: none; box-shadow: none; 
 
 tr.row-bad td { color: #b42318; }
 tr.row-warn td { color: #b54708; }
+td.nowrap { white-space: nowrap; }

@@ -222,7 +222,7 @@ function table(cols, rows, tones = []) {
   return h("div", { class: "table-wrap" }, h("table", { class: "kv-table" },
     h("thead", {}, h("tr", {}, cols.map((t) => h("th", { scope: "col", text: t })))),
     h("tbody", {}, rows.map((r, i) => h("tr", { class: tones[i] ? `row-${tones[i]}` : null },
-      r.map((c, j) => h("td", { class: j === r.length - 1 || cols[j] === "Message" ? "mono" : null, text: String(c ?? "") })))))));
+      r.map((c, j) => h("td", { class: cols[j] === "Message" || cols[j] === "Answer" ? "mono" : "nowrap", text: String(c ?? "") })))))));
 }
 
 function viewProve(step, ev) {
