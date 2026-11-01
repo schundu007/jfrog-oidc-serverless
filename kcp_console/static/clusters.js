@@ -202,7 +202,7 @@ function table(all) {
           az ? h("td", { class: "wrap" }, out(r.links?.resource_group, r.resource_group || muted("—"))) : null,
           h("td", { class: "wrap" }, out(r.links?.scope, r.subscription || muted("—"))),
           h("td", {}, r.chart ? h("div", {}, `v${r.chart}`) : muted("—"), r.ready ? h("div", { class: "sub" }, `${r.ready} nodes ready`) : null),
-          h("td", {}, a?.id ? link(go, url, runPath(r.name, a.id), lastRun(a)) : lastRun(a)),
+          h("td", {}, a?.id ? link(go, url, a.which === "prove" && !a.dry ? clusterPath(r.name, "proof") : runPath(r.name, a.id), lastRun(a)) : lastRun(a)),
           r.live ? h("td", {}) : h("td", { class: "c-more", onclick: (e) => e.stopPropagation() }, moreMenu([
             { label: "Open", onclick: open },
             { label: "Edit configuration", onclick: () => go(clusterPath(r.name, "config")) },

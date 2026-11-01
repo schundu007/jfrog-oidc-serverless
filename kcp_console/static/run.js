@@ -3,7 +3,7 @@
 // A run waiting for approval shows its approval at the top of the right pane. ?step=<id> keeps the selection.
 
 import { api, h, fill, state, refreshConfigs, route, go, url, clusterPath } from "./app.js";
-import { $, muted, brief, icon, kindOf, KIND_TEXT, when, duration, link, liveSteps, ACTIVE, runTitle, runStarted } from "./ui.js";
+import { $, muted, brief, icon, kindOf, KIND_TEXT, when, duration, link, liveSteps, ACTIVE, runTitle, runStarted, isDry } from "./ui.js";
 import { approvalBox, dryBefore } from "./cluster.js";
 import { logTable, timeToggle } from "./logview.js";
 
@@ -104,7 +104,9 @@ function render(focusTree = false) {
           h("span", { class: `badge ${PILL[kind] || ""}` }, run.status === "prepared" ? "Waiting for approval" : KIND_TEXT[kind])),
         h("p", { class: "facts" }, `Run ${run.id} · `, started ? [`started ${when(started)}`, run.finished || ACTIVE.includes(run.status) ? duration(started, run.finished) : run.status].join(" · ") : `prepared ${when(run.created)}`,
           " · ", backLink(r))),
-      active ? h("div", { class: "head-actions" }, h("button", { class: "secondary", onclick: cancel }, "Cancel")) : null),
+      active ? h("div", { class: "head-actions" }, h("button", { class: "secondary", onclick: cancel }, "Cancel"))
+        : run.name === "prove" && !isDry(run) ? h("div", { class: "head-actions" }, h("button", { class: "primary", onclick: () => go(clusterPath(r.name, "proof")) }, "Open proof"))
+        : null),
     error ? h("div", { class: "callout fail" }, brief(error)) : null,
     h("div", { class: "run-grid" }, tree(list, sel), pane(r, sel))));
   if (focusTree) P().querySelector(".step[aria-selected=\"true\"]")?.focus();
