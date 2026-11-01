@@ -402,7 +402,7 @@ function draw(withFilters = true) {
     groups.flatMap((g) => {
       const inCloud = shown.filter((s) => s.group === g);
       // A cloud heading only when more than one cloud is listed: alone, it repeats the filter.
-      const cloudHead = groups.length > 1 ? h("tbody", { class: "cloud-head" }, head(g, inCloud)) : null;
+      const cloudHead = groups.length > 1 ? h("tbody", { class: "cloud-band" }, head(g, inCloud)) : null;
       return [cloudHead, ...sections.map((k) => {
         const list = inCloud.filter((s) => sectionOf(s) === k);
         // A section heading only when more than one section is listed (one alone repeats the Type filter).

@@ -1041,7 +1041,7 @@ tbody tr, .ov-tile, .tile, .nav-item, a, button, .blade-opt, .chip, .kind-folder
 /* A section under a cloud (CI/CD, Serverless, Kubernetes): a smaller heading than the cloud's. */
 .home-table tr.home-subgroup th { padding: 18px 10px 6px; }
 .home-table tr.home-subgroup .home-group-name { font-size: 14px; }
-.home-table tbody.cloud-head tr.home-group th { border-bottom: 0; padding-bottom: 0; }
+.home-table tbody.cloud-band tr.home-group th { border-bottom: 0; padding-bottom: 0; }
 .blade-cmds a.blade-cmd { text-decoration: none; font-size: 14px; padding: 6px 10px; }
 .home-table tbody tr.row-link { cursor: pointer; }
 .ess-col dt, .ess-col dd { line-height: 20px; }
