@@ -1,0 +1,81 @@
+{
+  "jfrog": {
+    "adopt_integration": false,
+    "docker_host": "",
+    "docker_repo": "docker-virtual",
+    "integration_names": {
+      "aws": "aws-sts",
+      "azure": "azure-entra",
+      "gcp": "gcp-cloudrun",
+      "openshift": "openshift-knative"
+    },
+    "project_key": null,
+    "reader_group": "serverless-readers",
+    "url": "https://trial9hnw59.jfrog.io"
+  },
+  "name": "caj-artifact-reader",
+  "runtime": {
+    "enabled": true,
+    "ttl_seconds": 3600,
+    "username": "svc-azure-container-app-job"
+  },
+  "state_backend": {
+    "container_name": "tfstate",
+    "key": "workspaces/azure_0e56d318-75b3-43ef-a41b-6a1a3c95b458.tfstate",
+    "resource_group_name": "ado-cicd-rg",
+    "storage_account_name": "stcdoazuretfstate",
+    "type": "azurerm"
+  },
+  "target": {
+    "aws": {
+      "account": "",
+      "cluster": "",
+      "name": "",
+      "profile": "",
+      "region": ""
+    },
+    "azure": {
+      "identity_resource_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourcegroups/rg-artifact-reader/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-artifact-reader",
+      "identity_type": "user_assigned",
+      "name": "caj-artifact-reader",
+      "resource_group": "rg-artifact-reader",
+      "subscription": "0e56d318-75b3-43ef-a41b-6a1a3c95b458"
+    },
+    "discovered": {
+      "at": "2026-11-01T08:01:06Z",
+      "client_id": "9ac0a2a1-61ca-404d-b80c-073aaeed4e81",
+      "environment_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourceGroups/rg-artifact-reader/providers/Microsoft.App/managedEnvironments/cae-artifact-reader",
+      "identity_resource_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourcegroups/rg-artifact-reader/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-artifact-reader",
+      "identity_type": "user_assigned",
+      "identity_types": "UserAssigned",
+      "image": "crartifactreader0e56d31875b343ef.azurecr.io/artifact-reader:89e2627fe5df",
+      "kind": "azure_container_app_job",
+      "location": "West US 2",
+      "mapping_subject": "c0256b7b-4295-41f3-9d1f-d852d53d2636",
+      "name": "caj-artifact-reader",
+      "principal_id": "c0256b7b-4295-41f3-9d1f-d852d53d2636",
+      "resource_group": "rg-artifact-reader",
+      "resource_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourceGroups/rg-artifact-reader/providers/Microsoft.App/jobs/caj-artifact-reader",
+      "subscription": "0e56d318-75b3-43ef-a41b-6a1a3c95b458",
+      "user_assigned_identities": [
+        "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourcegroups/rg-artifact-reader/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-artifact-reader"
+      ]
+    },
+    "gcp": {
+      "name": "",
+      "project": "",
+      "region": ""
+    },
+    "kind": "azure_container_app_job",
+    "openshift": {
+      "cluster": "",
+      "context": "",
+      "name": "",
+      "namespace": ""
+    }
+  },
+  "verify": {
+    "artifact_path": "demo-generic/hello.txt",
+    "probe_image_runtime": ""
+  }
+}
