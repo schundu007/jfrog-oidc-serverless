@@ -1,17 +1,34 @@
-// Settings (/settings): who the consoles act as. One card per tool, all the same size: what it is signed
-// in as, where that login lives (this machine or this console), and the sign-in. Google Cloud shows
-// Google's link and takes the code back; Azure and AWS SSO show a device code; JFrog takes the platform
-// URL and an admin token, which the server keeps in memory only (never shown again). Azure DevOps names
-// the organization and project; it signs in through Azure. API: /api/settings (portal/server.py).
+// Settings (/settings): who the consoles act as. One list for every connection (cloud sign-ins, Azure
+// DevOps, JFrog, more to come), like an integrations page: stat cards, a filter bar, rows grouped by
+// category; a row opens the side panel with its details and sign-in. A new connection is one entry in
+// CONNECTORS (its row facts and its panel). Google Cloud shows Google's link and takes the code back;
+// Azure and AWS SSO show a device code; the JFrog token is kept in server memory only and never shown.
+// API: /api/settings (portal/server.py, portal/connections.py).
 import { api, h, help } from "/serverless/static/core.js";
 
-const LOGO = {"gcp": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 19.3\" aria-hidden=\"true\"><path fill=\"#EA4335\" d=\"M15.2 5.3h.7l2-2 .1-.9C14.2-.9 8.5-.5 5.2 3.3c-.9 1-1.6 2.3-2 3.6.2-.1.5-.1.7 0l4-.7s.2-.3.3-.3c1.8-2 4.8-2.2 6.9-.5h.1z\"/><path fill=\"#4285F4\" d=\"M20.8 6.9c-.5-1.7-1.4-3.2-2.7-4.4l-2.8 2.8c1.2 1 1.9 2.5 1.8 4v.5c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5h-5l-.5.5v3l.5.5h5c3.6 0 6.5-2.9 6.5-6.5 0-2.2-1.1-4.2-2.8-5.4z\"/><path fill=\"#34A853\" d=\"M7.1 19.3h5v-4h-5c-.4 0-.7-.1-1-.2l-.7.2-2 2-.2.7c1.1.8 2.5 1.3 3.9 1.3z\"/><path fill=\"#FBBC05\" d=\"M7.1 6.3C3.5 6.3.6 9.3.6 12.9c0 2 1 3.9 2.6 5.2l2.9-2.9c-1.3-.6-1.8-2.1-1.3-3.3.6-1.3 2.1-1.8 3.3-1.3.6.3 1 .7 1.3 1.3l2.9-2.9c-1.2-1.6-3.1-2.6-5.2-2.6z\"/></svg>","azure": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"#0078D4\" d=\"M5.483 21.3H24L14.025 4.013l-3.038 8.347 5.836 6.938L5.483 21.3zM13.23 2.7L6.105 8.677 0 19.253h5.505v.014L13.23 2.7z\"/></svg>","ado": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path fill=\"#0078D4\" d=\"M17 4v9.74l-4 3.28-6.2-2.26V17l-3.51-4.59 10.23.8V4.44zm-3.41.49L7.85 1v2.29L2.58 4.84 1 6.87v4.61l2.26 1V6.57z\"/></svg>","jfrog": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect width=\"24\" height=\"24\" rx=\"5\" fill=\"#40BE46\"/><circle cx=\"8\" cy=\"9\" r=\"2.2\" fill=\"#fff\"/><circle cx=\"16\" cy=\"9\" r=\"2.2\" fill=\"#fff\"/><path d=\"M6 14.5c1.6 2.2 3.7 3.2 6 3.2s4.4-1 6-3.2\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\"/></svg>","aws": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect width=\"24\" height=\"24\" rx=\"5\" fill=\"#232F3E\"/><text x=\"12\" y=\"13\" text-anchor=\"middle\" font-family=\"Arial,Helvetica,sans-serif\" font-weight=\"700\" font-size=\"8\" fill=\"#fff\">aws</text><path d=\"M6 16c3.6 2 8.4 2 12 0\" stroke=\"#FF9900\" stroke-width=\"1.6\" fill=\"none\" stroke-linecap=\"round\"/><path d=\"M16.6 15.2l1.6.6-.5 1.6\" stroke=\"#FF9900\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\"/></svg>"};   // constant SVG only
+const LOGO = {"gcp": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 19.3\" aria-hidden=\"true\"><path fill=\"#EA4335\" d=\"M15.2 5.3h.7l2-2 .1-.9C14.2-.9 8.5-.5 5.2 3.3c-.9 1-1.6 2.3-2 3.6.2-.1.5-.1.7 0l4-.7s.2-.3.3-.3c1.8-2 4.8-2.2 6.9-.5h.1z\"/><path fill=\"#4285F4\" d=\"M20.8 6.9c-.5-1.7-1.4-3.2-2.7-4.4l-2.8 2.8c1.2 1 1.9 2.5 1.8 4v.5c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5h-5l-.5.5v3l.5.5h5c3.6 0 6.5-2.9 6.5-6.5 0-2.2-1.1-4.2-2.8-5.4z\"/><path fill=\"#34A853\" d=\"M7.1 19.3h5v-4h-5c-.4 0-.7-.1-1-.2l-.7.2-2 2-.2.7c1.1.8 2.5 1.3 3.9 1.3z\"/><path fill=\"#FBBC05\" d=\"M7.1 6.3C3.5 6.3.6 9.3.6 12.9c0 2 1 3.9 2.6 5.2l2.9-2.9c-1.3-.6-1.8-2.1-1.3-3.3.6-1.3 2.1-1.8 3.3-1.3.6.3 1 .7 1.3 1.3l2.9-2.9c-1.2-1.6-3.1-2.6-5.2-2.6z\"/></svg>","azure": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"#0078D4\" d=\"M5.483 21.3H24L14.025 4.013l-3.038 8.347 5.836 6.938L5.483 21.3zM13.23 2.7L6.105 8.677 0 19.253h5.505v.014L13.23 2.7z\"/></svg>","ado": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path fill=\"#0078D4\" d=\"M17 4v9.74l-4 3.28-6.2-2.26V17l-3.51-4.59 10.23.8V4.44zm-3.41.49L7.85 1v2.29L2.58 4.84 1 6.87v4.61l2.26 1V6.57z\"/></svg>","jfrog": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect width=\"24\" height=\"24\" rx=\"5\" fill=\"#40BE46\"/><circle cx=\"8\" cy=\"9\" r=\"2.2\" fill=\"#fff\"/><circle cx=\"16\" cy=\"9\" r=\"2.2\" fill=\"#fff\"/><path d=\"M6 14.5c1.6 2.2 3.7 3.2 6 3.2s4.4-1 6-3.2\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\"/></svg>","aws": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect width=\"24\" height=\"24\" rx=\"5\" fill=\"#232F3E\"/><text x=\"12\" y=\"13\" text-anchor=\"middle\" font-family=\"Arial,Helvetica,sans-serif\" font-weight=\"700\" font-size=\"8\" fill=\"#fff\">aws</text><path d=\"M6 16c3.6 2 8.4 2 12 0\" stroke=\"#FF9900\" stroke-width=\"1.6\" fill=\"none\" stroke-linecap=\"round\"/><path d=\"M16.6 15.2l1.6.6-.5 1.6\" stroke=\"#FF9900\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\"/></svg>"};   // constant SVG only   // constant SVG only
 const $ = (id) => document.getElementById(id);
-let state = null, timer = null;
+const SOURCE = { console: "This console", machine: "This machine" };
+const CATEGORY = { cloud: "Cloud providers", cicd: "CI/CD", artifacts: "Artifact platforms" };
+
+let state = null, timer = null, open = null;
 const drafts = {};   // unsaved field values, kept across redraws
+const u0 = new URLSearchParams(location.search);
+const F = { q: u0.get("q") || "", category: u0.get("category") || "", status: u0.get("status") || "" };
+function saveQuery() {
+  const u = new URLSearchParams();
+  for (const k of ["q", "category", "status"]) if (F[k]) u.set(k, F[k]);
+  if (open) u.set("open", open);
+  history.replaceState(null, "", location.pathname + (u.toString() ? `?${u}` : ""));
+}
+
+// ------------------------------------------------------------------------------------------- helpers
 
 const logo = (k) => { const s = h("span", { class: "conn-logo" }); s.innerHTML = LOGO[k] || ""; return s; };
-const SOURCE = { console: "Signed in here", machine: "This machine's login", "": "None" };
+const post = (tool, act, body = {}) => api(`/api/settings/${tool}/${act}`, { method: "POST", body, abs: true });
+const put = (tool, body) => api(`/api/settings/${tool}`, { method: "PUT", body, abs: true });
+const val = (tool, key) => ($(`f-${tool}-${key}`)?.value || "").trim();
+function showError(msg) { const e = $("set-error"); e.textContent = msg; e.hidden = !msg; }
 
 function facts(rows) {
   return h("table", { class: "blade-table conn-facts" },
@@ -22,145 +39,46 @@ function facts(rows) {
 function field(tool, key, label, { type = "text", value = "", placeholder = "", list = null, tip = null } = {}) {
   const id = `f-${tool}-${key}`;
   const cur = drafts[id] ?? value ?? "";
-  let input;
-  if (list) {
-    input = h("select", { id }, h("option", { value: "" }, list.length ? "Choose…" : "None found"),
-      ...list.map(([v, t]) => h("option", { value: v, selected: v === cur || null }, t)));
-  } else {
-    input = h("input", { id, type, value: type === "password" ? "" : cur, placeholder, autocomplete: "off", spellcheck: "false" });
-  }
-  if (type !== "password") input.addEventListener("input", () => { drafts[id] = input.value; });
-  input.addEventListener("change", () => { if (type !== "password") drafts[id] = input.value; });
+  const input = list
+    ? h("select", { id }, h("option", { value: "" }, list.length ? "Choose…" : "None found"),
+      ...list.map(([v, t]) => h("option", { value: v, selected: v === cur || null }, t)))
+    : h("input", { id, type, value: type === "password" ? "" : cur, placeholder, autocomplete: "off", spellcheck: "false" });
+  if (type !== "password") for (const ev of ["input", "change"]) input.addEventListener(ev, () => { drafts[id] = input.value; });
   return h("label", { class: "field", for: id }, h("span", { class: "field-label" }, label, tip ? help(tip) : null), input);
 }
-const val = (tool, key) => ($(`f-${tool}-${key}`)?.value || "").trim();
 
-function busy(btn, fn) {
-  return async () => {
-    btn.disabled = true;
-    $("set-error").hidden = true;
-    try { await fn(); } catch (e) { showError(e.message); } finally { btn.disabled = false; }
-  };
+function button(text, fn, cls = "secondary") {
+  const b = h("button", { type: "button", class: cls }, text);
+  b.addEventListener("click", async () => {
+    b.disabled = true; showError("");
+    try { await fn(); } catch (e) { showError(e.message); } finally { b.disabled = false; }
+  });
+  return b;
 }
-function button(text, fn, cls = "secondary") { const b = h("button", { type: "button", class: cls }, text); b.addEventListener("click", busy(b, fn)); return b; }
-function showError(msg) { const e = $("set-error"); e.textContent = msg; e.hidden = false; }
-
-const post = (tool, act, body = {}) => api(`/api/settings/${tool}/${act}`, { method: "POST", body, abs: true });
-const put = (tool, body) => api(`/api/settings/${tool}`, { method: "PUT", body, abs: true });
+const section = (title, ...kids) => h("section", { class: "conn-sec" }, h("h3", {}, title), ...kids.filter(Boolean));
+const actions = (...b) => h("div", { class: "conn-actions" }, ...b.filter(Boolean));
+const missing = (s, cli) => (s.cli === false ? h("p", { class: "conn-msg bad" }, `${cli} is not installed on this machine.`) : null);
 
 // A sign-in in progress: the link to open, the device code or a box for Google's code, and Cancel.
 function pending(tool, p) {
-  if (!p) return null;
-  if (p.state === "done") return null;
-  if (p.state === "failed") return h("p", { class: "conn-msg bad" }, `Sign-in failed: ${p.error || "see the CLI output"}`);
-  const kids = [];
-  if (p.url) kids.push(h("a", { class: "btn primary", href: p.url, target: "_blank", rel: "noopener noreferrer" }, "Open sign-in page"));
-  else kids.push(h("span", { class: "muted" }, "Starting…"));
-  if (p.code) kids.push(h("span", { class: "conn-code", "aria-label": "Device code" }, p.code));
-  const box = h("div", { class: "conn-pending" }, h("div", { class: "conn-row" }, ...kids));
+  if (!p || p.state === "done") return null;
+  if (p.state === "failed") return h("p", { class: "conn-msg bad" }, `Sign-in failed: ${p.error || "see the output below"}`);
+  const box = h("div", { class: "conn-pending" },
+    h("div", { class: "conn-step" }, h("b", {}, "1"),
+      p.url ? h("a", { class: "btn primary", href: p.url, target: "_blank", rel: "noopener noreferrer" }, "Open sign-in page")
+        : h("span", { class: "muted" }, "Starting…")),
+    p.code ? h("div", { class: "conn-step" }, h("b", {}, "2"), h("span", {}, "Enter this code"),
+      h("span", { class: "conn-code", "aria-label": "Device code" }, p.code)) : null);
   if (p.needs_code && p.url) {
-    const code = field(tool, "code", "Code from the sign-in page", { type: "password", placeholder: "Paste the code" });
-    box.append(h("div", { class: "conn-row conn-inline" }, code,
+    box.append(h("div", { class: "conn-step conn-inline" }, h("b", {}, "2"),
+      field(tool, "code", "Code from the sign-in page", { type: "password", placeholder: "Paste the code" }),
       button("Send", async () => { await post(tool, "code", { code: val(tool, "code") }); await load(); }, "primary")));
   }
-  box.append(h("div", { class: "conn-row" }, button("Cancel", async () => { await post(tool, "cancel"); await load(); })));
+  box.append(actions(button("Cancel sign-in", async () => { await post(tool, "cancel"); await load(); })));
   return box;
 }
-
-function card(tool, title, status, body) {
-  const ok = status.signed_in;
-  return h("section", { class: "conn-card", "aria-labelledby": `h-${tool}` },
-    h("header", { class: "conn-head" }, logo(tool), h("h2", { id: `h-${tool}` }, title),
-      h("span", { class: `blade-state ${ok ? "ok" : "warn"}` }, ok ? "Connected" : "Not connected")),
-    ...body.filter(Boolean));
-}
-
-function gcp(s) {
-  const pick = state.choices?.gcp;
-  return card("gcp", "Google Cloud", s, [
-    facts([["Account", s.account], ["Project", s.project], ["Login", SOURCE[s.source]]]),
-    !s.cli ? h("p", { class: "conn-msg bad" }, "gcloud is not installed on this machine.") : null,
-    pending("gcp", s.pending),
-    pick ? h("div", { class: "conn-row conn-inline" },
-      field("gcp", "project", "Project", { list: pick.map((p) => [p.id, p.name === p.id ? p.id : `${p.name} (${p.id})`]), value: s.project }),
-      button("Use", async () => { await put("gcp", { project: val("gcp", "project") }); await load(); }, "primary")) : null,
-    h("div", { class: "conn-actions" },
-      button(s.source === "console" ? "Sign in again" : "Sign in", async () => { await post("gcp", "signin"); await load(); }, "primary"),
-      s.signed_in ? button("Change project", async () => { await choices("gcp"); }) : null,
-      s.source === "console" ? button("Sign out", async () => { await post("gcp", "signout"); await load(); }) : null),
-  ]);
-}
-
-function azure(s) {
-  const pick = state.choices?.azure;
-  return card("azure", "Azure", s, [
-    facts([["Account", s.account], ["Subscription", s.subscription], ["Tenant", s.tenant], ["Login", SOURCE[s.source]]]),
-    !s.cli ? h("p", { class: "conn-msg bad" }, "Azure CLI is not installed on this machine.") : null,
-    pending("azure", s.pending),
-    pick ? h("div", { class: "conn-row conn-inline" },
-      field("azure", "subscription", "Subscription", { list: pick.map((a) => [a.id, a.name]), value: s.subscription_id }),
-      button("Use", async () => { await put("azure", { subscription: val("azure", "subscription") }); await load(); }, "primary")) : null,
-    field("azure", "tenant", "Tenant", { value: s.tenant_wanted, placeholder: "Default tenant",
-      tip: "Optional. A tenant ID or domain (contoso.onmicrosoft.com) when the account belongs to more than one." }),
-    h("div", { class: "conn-actions" },
-      button(s.source === "console" ? "Sign in again" : "Sign in", async () => { await post("azure", "signin", { tenant: val("azure", "tenant") }); await load(); }, "primary"),
-      s.signed_in ? button("Change subscription", async () => { await choices("azure"); }) : null,
-      s.source === "console" ? button("Sign out", async () => { await post("azure", "signout"); await load(); }) : null),
-  ]);
-}
-
-function ado(s) {
-  const v = s.values || {};
-  return card("ado", "Azure DevOps", s, [
-    facts([["Account", s.account], ["Project", s.project_ok === null ? "" : s.project_ok ? "Found" : "Not found"]]),
-    s.error ? h("p", { class: "conn-msg bad" }, s.error) : null,
-    h("div", { class: "conn-fields" },
-      field("ado", "organization", "Organization", { value: v.organization, placeholder: "contoso" }),
-      field("ado", "project", "Project", { value: v.project }),
-      field("ado", "repository", "Repository", { value: v.repository }),
-      field("ado", "target_branch", "Branch", { value: v.target_branch, placeholder: "main" })),
-    h("div", { class: "conn-actions" },
-      button("Save", async () => {
-        await put("ado", { organization: val("ado", "organization"), project: val("ado", "project"),
-          repository: val("ado", "repository"), target_branch: val("ado", "target_branch") });
-        for (const k of Object.keys(drafts)) if (k.startsWith("f-ado-")) delete drafts[k];
-        await load();
-      }, "primary")),
-  ]);
-}
-
-function jfrog(s) {
-  return card("jfrog", "JFrog", s, [
-    facts([["Platform", s.url], ["Admin token", s.token_present ? (s.source === "console" ? "Entered here" : "This machine's") : ""],
-      ["Admin rights", s.admin === null ? "" : s.admin ? "Yes" : "No"], ["Console operator", s.operator]]),
-    s.error ? h("p", { class: "conn-msg bad" }, s.error) : null,
-    h("div", { class: "conn-fields" },
-      field("jfrog", "url", "Platform URL", { type: "url", value: s.url, placeholder: "https://acme.jfrog.io" }),
-      field("jfrog", "token", "Admin access token", { type: "password", placeholder: s.token_present ? "Entered" : "Paste a token",
-        tip: "Kept in this console's memory only: never saved, logged or shown. Enter it again after a restart." })),
-    h("div", { class: "conn-actions" },
-      button("Sign in", async () => {
-        await post("jfrog", "signin", { url: val("jfrog", "url"), token: $("f-jfrog-token")?.value || "" });
-        delete drafts["f-jfrog-url"];
-        await load();
-      }, "primary"),
-      s.source === "console" ? button("Sign out", async () => { await post("jfrog", "signout"); await load(); }) : null),
-  ]);
-}
-
-function aws(s) {
-  return card("aws", "AWS", s, [
-    facts([["Account", s.account], ["Identity", s.arn], ["Profile", s.profile], ["Region", s.region]]),
-    !s.cli ? h("p", { class: "conn-msg bad" }, "AWS CLI is not installed on this machine.") : null,
-    pending("aws", s.pending),
-    h("div", { class: "conn-fields" },
-      field("aws", "profile", "Profile", { list: (s.profiles || []).map((p) => [p, p]), value: s.profile }),
-      field("aws", "region", "Region", { value: s.region, placeholder: "us-east-1" })),
-    h("div", { class: "conn-actions" },
-      button("Save", async () => { await put("aws", { profile: val("aws", "profile"), region: val("aws", "region") }); await load(); }, "primary"),
-      button("SSO sign-in", async () => { await post("aws", "signin", { profile: val("aws", "profile") }); await load(); })),
-  ]);
-}
+const signInLabel = (s) => (s.source === "console" ? "Sign in again" : "Sign in");
+const signOut = (tool, s) => (s.source === "console" ? button("Sign out", async () => { await post(tool, "signout"); await load(); }) : null);
 
 async function choices(tool) {
   const r = await api(`/api/settings/${tool}/choices`, { abs: true });
@@ -168,12 +86,212 @@ async function choices(tool) {
   draw();
 }
 
+// ------------------------------------------------------------------------------------------- connectors
+
+// status(s): [dot, text] for the list; scope(s): what it points at; panel(s): the side panel's sections.
+const CONNECTORS = [
+  { id: "gcp", name: "Google Cloud", category: "cloud",
+    about: "gcloud and Terraform act as this account. Sign in here to use a login kept by this console instead of this machine's.",
+    scope: (s) => s.project,
+    panel: (s) => {
+      const pick = state.choices?.gcp;
+      return [
+        section("Connection", facts([["Account", s.account], ["Project", s.project], ["Login", SOURCE[s.source]]]), missing(s, "gcloud")),
+        pending("gcp", s.pending),
+        s.signed_in ? section("Project", pick
+          ? h("div", { class: "conn-inline" },
+            field("gcp", "project", "Project", { list: pick.map((p) => [p.id, p.name === p.id ? p.id : `${p.name} (${p.id})`]), value: s.project }),
+            button("Use", async () => { await put("gcp", { project: val("gcp", "project") }); await load(); }, "primary"))
+          : actions(button("Change project", () => choices("gcp")))) : null,
+        actions(button(signInLabel(s), async () => { await post("gcp", "signin"); await load(); }, "primary"), signOut("gcp", s)),
+      ];
+    } },
+  { id: "azure", name: "Azure", category: "cloud",
+    about: "az, Terraform and Azure DevOps act as this account.",
+    scope: (s) => s.subscription,
+    panel: (s) => {
+      const pick = state.choices?.azure;
+      return [
+        section("Connection", facts([["Account", s.account], ["Subscription", s.subscription], ["Tenant", s.tenant], ["Login", SOURCE[s.source]]]),
+          missing(s, "Azure CLI")),
+        pending("azure", s.pending),
+        s.signed_in ? section("Subscription", pick
+          ? h("div", { class: "conn-inline" },
+            field("azure", "subscription", "Subscription", { list: pick.map((a) => [a.id, a.name]), value: s.subscription_id }),
+            button("Use", async () => { await put("azure", { subscription: val("azure", "subscription") }); await load(); }, "primary"))
+          : actions(button("Change subscription", () => choices("azure")))) : null,
+        section("Sign in",
+          field("azure", "tenant", "Tenant", { value: s.tenant_wanted, placeholder: "Default tenant",
+            tip: "Optional. A tenant ID or domain (contoso.onmicrosoft.com) when the account belongs to more than one." }),
+          actions(button(signInLabel(s), async () => { await post("azure", "signin", { tenant: val("azure", "tenant") }); await load(); }, "primary"),
+            signOut("azure", s))),
+      ];
+    } },
+  { id: "aws", name: "AWS", category: "cloud",
+    about: "The AWS CLI acts as this profile.",
+    scope: (s) => [s.profile, s.region].filter(Boolean).join(" · "),
+    panel: (s) => [
+      section("Connection", facts([["Account", s.account], ["Identity", s.arn], ["Profile", s.profile], ["Region", s.region]]), missing(s, "AWS CLI")),
+      pending("aws", s.pending),
+      section("Profile",
+        h("div", { class: "conn-fields" },
+          field("aws", "profile", "Profile", { list: (s.profiles || []).map((p) => [p, p]), value: s.profile }),
+          field("aws", "region", "Region", { value: s.region, placeholder: "us-east-1" })),
+        actions(button("Save", async () => { await put("aws", { profile: val("aws", "profile"), region: val("aws", "region") }); await load(); }, "primary"),
+          button("SSO sign-in", async () => { await post("aws", "signin", { profile: val("aws", "profile") }); await load(); }))),
+    ] },
+  { id: "ado", name: "Azure DevOps", category: "cicd",
+    about: "Pipelines, pull requests and approvals. Signs in through Azure: the Azure account must be a member of the organization.",
+    scope: (s) => [s.values?.organization, s.values?.project].filter(Boolean).join(" / "),
+    panel: (s) => {
+      const v = s.values || {};
+      return [
+        section("Connection", facts([["Account", s.account], ["Project", s.project_ok === null ? "" : s.project_ok ? "Found" : "Not found"]]),
+          s.error ? h("p", { class: "conn-msg bad" }, s.error) : null),
+        section("Repository",
+          h("div", { class: "conn-fields" },
+            field("ado", "organization", "Organization", { value: v.organization, placeholder: "contoso" }),
+            field("ado", "project", "Project", { value: v.project }),
+            field("ado", "repository", "Repository", { value: v.repository }),
+            field("ado", "target_branch", "Branch", { value: v.target_branch, placeholder: "main" })),
+          actions(button("Save", async () => {
+            await put("ado", { organization: val("ado", "organization"), project: val("ado", "project"),
+              repository: val("ado", "repository"), target_branch: val("ado", "target_branch") });
+            for (const k of Object.keys(drafts)) if (k.startsWith("f-ado-")) delete drafts[k];
+            await load();
+          }, "primary"))),
+      ];
+    } },
+  { id: "jfrog", name: "JFrog", category: "artifacts",
+    about: "Admin access for JFrog writes. Without a token the console acts as its operator identity.",
+    scope: (s) => (s.url || "").replace(/^https:\/\//, ""),
+    panel: (s) => [
+      section("Connection", facts([["Platform", s.url], ["Admin token", s.token_present ? (s.source === "console" ? "Entered here" : "This machine's") : ""],
+        ["Admin rights", s.admin === null || s.admin === undefined ? "" : s.admin ? "Yes" : "No"], ["Console operator", s.operator]]),
+        s.error ? h("p", { class: "conn-msg bad" }, s.error) : null),
+      section("Sign in",
+        h("div", { class: "conn-fields" },
+          field("jfrog", "url", "Platform URL", { type: "url", value: s.url, placeholder: "https://acme.jfrog.io" }),
+          field("jfrog", "token", "Admin access token", { type: "password", placeholder: s.token_present ? "Entered" : "Paste a token",
+            tip: "Kept in this console's memory only: never saved, logged or shown. Enter it again after a restart." })),
+        actions(button("Sign in", async () => {
+          await post("jfrog", "signin", { url: val("jfrog", "url"), token: $("f-jfrog-token")?.value || "" });
+          delete drafts["f-jfrog-url"];
+          await load();
+        }, "primary"), signOut("jfrog", s))),
+    ] },
+];
+
+// [dot class, text, filter key]
+function statusOf(s) {
+  if (!s) return ["", "Unknown", "off"];
+  if (s.pending?.state === "waiting") return ["warn", "Signing in", "pending"];
+  if (s.pending?.state === "failed") return ["fail", "Sign-in failed", "error"];
+  if (s.signed_in && s.error) return ["warn", "Needs attention", "error"];
+  if (s.signed_in) return ["ok", "Connected", "ok"];
+  if (s.error) return ["fail", "Error", "error"];
+  return ["", "Not connected", "off"];
+}
+const STATUSES = [["ok", "Connected"], ["off", "Not connected"], ["pending", "Signing in"], ["error", "Needs attention"]];
+
+// ------------------------------------------------------------------------------------------- page
+
+const svg = (d) => { const s = h("span", { class: "bubble" }); s.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`; return s; };
+function stats(items) {
+  const n = (k) => items.filter((c) => statusOf(state[c.id])[2] === k).length;
+  const ok = n("ok"), here = items.filter((c) => state[c.id]?.source === "console").length;
+  const pct = items.length ? Math.round((ok / items.length) * 100) : 0;
+  const tile = (cls, mark, num, label, filter) => {
+    const t = h("button", { type: "button", class: `hstat ${cls}${F.status === filter && filter ? " on" : ""}` }, mark, h("span", {}, h("b", {}, String(num)), h("small", {}, label)));
+    t.addEventListener("click", () => { F.status = F.status === filter ? "" : filter; saveQuery(); draw(); });
+    return t;
+  };
+  const ring = h("span", { class: "ring" }, h("b", {}, `${pct}%`));
+  ring.style.setProperty("--p", String(pct));
+  return [
+    tile("", ring, ok, "Connected", "ok"),
+    tile("peach", svg("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8 12h8"), n("off"), "Not connected", "off"),
+    tile("lilac", svg("M12 3l9.5 17h-19zM12 10v4M12 17v.5"), n("error") + n("pending"), "Needs attention", "error"),
+    tile("sky", svg("M4 11l8-7 8 7v9h-5v-6H9v6H4z"), here, "Signed in on this console", ""),
+  ];
+}
+
+function matches(c) {
+  const s = state[c.id] || {};
+  if (F.category && c.category !== F.category) return false;
+  if (F.status && statusOf(s)[2] !== F.status && !(F.status === "error" && statusOf(s)[2] === "pending")) return false;
+  if (!F.q) return true;
+  const hay = [c.name, CATEGORY[c.category], s.account, c.scope(s), statusOf(s)[1], SOURCE[s.source]].join(" ").toLowerCase();
+  return F.q.toLowerCase().split(/\s+/).every((w) => hay.includes(w));
+}
+
+function row(c) {
+  const s = state[c.id] || {};
+  const [dot, text] = statusOf(s);
+  const name = h("a", { href: `?open=${c.id}` }, c.name);
+  name.addEventListener("click", (e) => { e.preventDefault(); openPanel(c.id); });
+  const tr = h("tr", { class: `row-link${open === c.id ? " is-open" : ""}`, tabindex: "0" },
+    h("td", {}, h("span", { class: "blade-name" }, h("span", { class: "blade-ico" }, logo(c.id)), name)),
+    h("td", {}, h("span", { class: `blade-state ${dot}` }, text)),
+    h("td", { class: s.account ? "" : "muted" }, s.account || "—"),
+    h("td", { class: c.scope(s) ? "" : "muted" }, c.scope(s) || "—"),
+    h("td", { class: s.source ? "" : "muted" }, SOURCE[s.source] || "—"),
+    h("td", { class: "conn-go" }, h("button", { type: "button", class: "secondary small", tabindex: "-1" },
+      s.signed_in ? "Manage" : "Connect")));
+  tr.addEventListener("click", (e) => { if (!e.target.closest("a")) openPanel(c.id); });
+  tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPanel(c.id); } });
+  return tr;
+}
+
+function list() {
+  const shown = CONNECTORS.filter(matches);
+  $("set-count").textContent = `Showing ${shown.length} of ${CONNECTORS.length} connections`;
+  if (!shown.length) return h("p", { class: "blade-empty" }, "No connections match the filter.");
+  const body = h("tbody", {});
+  for (const [cat, title] of Object.entries(CATEGORY)) {
+    const rows = shown.filter((c) => c.category === cat);
+    if (!rows.length) continue;
+    body.append(h("tr", { class: "conn-group" }, h("th", { colspan: "6", scope: "rowgroup" }, title, h("span", { class: "muted" }, ` ${rows.length}`))));
+    for (const c of rows) body.append(row(c));
+  }
+  return h("table", { class: "blade-table conn-list" },
+    h("thead", {}, h("tr", {}, ...["Name", "Status", "Account", "Scope", "Login", ""].map((t) => h("th", { scope: "col" }, t)))), body);
+}
+
+function panel() {
+  const fly = $("flyout");
+  const c = CONNECTORS.find((x) => x.id === open);
+  if (!c || !state) { fly.hidden = true; return; }
+  const s = state[c.id] || {};
+  const [dot, text] = statusOf(s);
+  fly.hidden = false;
+  $("flyout-title").replaceChildren(logo(c.id), h("span", {}, c.name));
+  $("flyout-status").replaceChildren(h("span", { class: `blade-state ${dot}` }, text));
+  $("flyout-body").replaceChildren(h("p", { class: "conn-about" }, c.about), ...c.panel(s).filter(Boolean));
+}
+
+function openPanel(id) {
+  open = id;
+  saveQuery();
+  draw();
+  $("flyout-close")?.focus();
+}
+function closePanel() { open = null; saveQuery(); draw(); }
+
 function draw() {
-  const root = $("set-cards");
+  if (!state) return;
   const keep = document.activeElement?.id;
-  root.replaceChildren(gcp(state.gcp), azure(state.azure), ado(state.ado), jfrog(state.jfrog), aws(state.aws));
-  root.setAttribute("aria-busy", "false");
-  if (keep) $(keep)?.focus();
+  $("set-stats").replaceChildren(...stats(CONNECTORS));
+  $("set-filters").replaceChildren(window.consoleBlade.bar({ placeholder: "Filter connections…", q: F.q,
+    onQuery: (v) => { F.q = v; saveQuery(); $("set-list").replaceChildren(list()); },
+    pills: [
+      { label: "Category", value: F.category, options: Object.entries(CATEGORY), onChange: (v) => { F.category = v; saveQuery(); draw(); } },
+      { label: "Status", value: F.status, options: STATUSES, onChange: (v) => { F.status = v; saveQuery(); draw(); } },
+    ] }));
+  $("set-list").replaceChildren(list());
+  $("set-list").setAttribute("aria-busy", "false");
+  panel();
+  if (keep && keep !== "set-q") $(keep)?.focus();
 }
 
 async function load() {
@@ -182,12 +300,14 @@ async function load() {
     const s = await api("/api/settings", { abs: true });
     state = { ...s, choices: state?.choices };
     draw();
-    const waiting = ["gcp", "azure", "aws"].some((t) => s[t]?.pending?.state === "waiting");
-    if (waiting) timer = setTimeout(load, 2500);
+    if (CONNECTORS.some((c) => s[c.id]?.pending?.state === "waiting")) timer = setTimeout(load, 2500);
   } catch (e) {
     showError(e.status === 401 ? "Signed out of the console: open it again from the link the portal printed." : e.message);
   }
 }
 
+open = CONNECTORS.some((c) => c.id === u0.get("open")) ? u0.get("open") : null;
 $("set-refresh").addEventListener("click", () => load());
+$("flyout-close").addEventListener("click", closePanel);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && open && !document.querySelector(".blade-pop")) closePanel(); });
 load();

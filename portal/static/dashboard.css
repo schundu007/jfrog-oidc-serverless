@@ -244,23 +244,40 @@
 .home-proof { display: inline-flex; align-items: center; gap: 12px; white-space: nowrap; }
 .home-proof .blade-cmd.home-prove { height: 28px; padding: 0 10px; }
 
-/* Settings: one card per connection, all the same size, in a grid. */
-.conn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: var(--s-4); align-items: stretch; }
-.conn-card { display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-4); background: #ffffff; border: 1px solid var(--edge); border-radius: 0; }
-.conn-head { display: flex; align-items: center; gap: var(--s-3); }
-.conn-head h2 { margin: 0; font-size: var(--t-md, 16px); font-weight: 650; flex: 1; }
-.conn-logo { display: grid; place-items: center; width: 32px; height: 32px; flex: none; }
-.conn-logo svg { width: 26px; height: 26px; }
+/* Settings: an integrations list. Stat cards, the filter bar, rows grouped by category; a row opens the
+   side panel (details and sign-in). Scales to many connections without growing the page sideways. */
+.conn-stats { margin-bottom: var(--s-4); }
+.conn-stats .hstat { border: 0; font: inherit; text-align: left; cursor: pointer; }
+.conn-stats .hstat:hover, .conn-stats .hstat.on { box-shadow: inset 0 0 0 2px var(--ink); }
+.conn-list td { height: 44px; }
+.conn-list tr.conn-group th { text-align: left; font-size: var(--t-sm); font-weight: 700; color: var(--fg-2, #3b3b3b); background: #f7f9f4;
+  padding: 8px 10px; border-bottom: 1px solid var(--border); text-transform: none; }
+.conn-list tr.conn-group th .muted { font-weight: 500; }
+.conn-list tr.conn-group:hover { background: #f7f9f4; box-shadow: none; }
+.conn-list tr.is-open { background: #eef6e4; box-shadow: inset 3px 0 0 var(--brand, #5ba908); }
+.conn-list .conn-go { text-align: right; width: 1%; white-space: nowrap; }
+.conn-list td:nth-child(3), .conn-list td:nth-child(4) { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conn-logo { display: inline-grid; place-items: center; width: 22px; height: 22px; flex: none; }
+.conn-logo svg { width: 20px; height: 20px; }
+.conn-flyout #flyout-title { display: inline-flex; align-items: center; gap: var(--s-2); flex: 1; margin: 0; font-size: 18px; }
+.conn-flyout #flyout-title .conn-logo, .conn-flyout #flyout-title .conn-logo svg { width: 26px; height: 26px; }
+.conn-about { margin: 0 0 var(--s-4); color: var(--fg-3); font-size: var(--t-sm); }
+.conn-sec { display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-4) 0; border-top: 1px solid var(--border); }
+.conn-sec:first-of-type { border-top: 0; padding-top: 0; }
+.conn-sec h3 { margin: 0; font-size: 14px; font-weight: 700; }
 .conn-facts { width: 100%; border-collapse: collapse; }
-.conn-facts th, .conn-facts td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #f0f2ec; font-size: var(--t-sm); overflow-wrap: anywhere; }
+.conn-facts th, .conn-facts td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #f0f2ec; font-size: var(--t-sm); overflow-wrap: anywhere; }
 .conn-facts thead th { color: #6b7a5c; font-weight: 700; background: #f7f9f4; }
-.conn-facts tbody th { font-weight: 500; color: var(--fg-3); width: 38%; }
-.conn-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--s-3); }
-.conn-row { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
-.conn-inline { align-items: flex-end; }
-.conn-inline .field { flex: 1; }
-.conn-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; margin-top: auto; }
-.conn-pending { display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-3); border: 1px solid var(--warn-line, #e0a43b); background: var(--warn-bg, #fff8ea); }
+.conn-facts tbody th { font-weight: 500; color: var(--fg-3); width: 34%; }
+.conn-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-3); }
+.conn-inline { display: flex; align-items: flex-end; gap: var(--s-3); }
+.conn-inline .field { flex: 1; min-width: 0; }
+.conn-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.conn-pending { display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-4); margin: var(--s-3) 0;
+  border: 1px solid var(--warn-line, #e0a43b); background: var(--warn-bg, #fff8ea); }
+.conn-step { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
+.conn-step > b { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #ffffff;
+  border: 1px solid var(--warn-line, #e0a43b); font-size: 12px; flex: none; }
 .conn-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 20px; font-weight: 700; letter-spacing: 2px; user-select: all; }
 .conn-msg { margin: 0; font-size: var(--t-sm); }
 .conn-msg.bad { color: var(--bad-fg, #a61b1b); }

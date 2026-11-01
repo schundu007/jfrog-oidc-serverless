@@ -37,6 +37,18 @@ if sys.argv[1:3] == ["auth", "login"]:
     sys.exit(0 if code == "4/goodcode" else 1)
 if sys.argv[1:3] == ["auth", "revoke"]:
     sys.exit(0)
+if sys.argv[1:4] == ["config", "get-value", "project"]:
+    import os
+    d = os.environ.get("CLOUDSDK_CONFIG", "")
+    f = os.path.join(d, "project")
+    print(open(f).read() if os.path.exists(f) else ("machine-proj" if d.endswith("machine-gcloud") else ""))
+    sys.exit(0)
+if sys.argv[1:4] == ["config", "set", "project"]:
+    import os
+    d = os.environ["CLOUDSDK_CONFIG"]
+    os.makedirs(d, exist_ok=True)
+    open(os.path.join(d, "project"), "w").write(sys.argv[4])
+    sys.exit(0)
 sys.exit(3)
 """
 
@@ -163,6 +175,7 @@ class ConnectionsTests(unittest.TestCase):
         self.assertEqual(c.settings()["azure"], {"tenant": "contoso.onmicrosoft.com"})
 
     def test_google_code_goes_to_stdin_and_is_never_logged(self):
+        self.env["CLOUDSDK_CONFIG"] = str(self.root / "machine-gcloud")
         c = self.conn(replay=False)
         c.sign_in("gcp", {})
         for _ in range(100):
@@ -175,10 +188,12 @@ class ConnectionsTests(unittest.TestCase):
         c.send_code("gcp", "4/goodcode")
         self.assertEqual(c._signin["gcp"]["session"].wait(10), 0)
         for _ in range(100):
-            if self.env.get("CLOUDSDK_CONFIG"):
+            if self.env.get("CLOUDSDK_CONFIG", "").endswith("connections/gcloud"):
                 break
             time.sleep(0.05)
         self.assertEqual(self.env["CLOUDSDK_CONFIG"], str(self.root / "connections" / "gcloud"))
+        # The new login starts on the machine login's project.
+        self.assertEqual((self.root / "connections" / "gcloud" / "project").read_text(), "machine-proj")
         self.assertNotIn("4/goodcode", "\n".join(self.log) + json.dumps(c._pending("gcp")))
         with self.assertRaises(SettingsError):
             c.send_code("gcp", "again")

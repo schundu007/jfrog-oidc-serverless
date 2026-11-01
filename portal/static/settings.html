@@ -26,9 +26,20 @@
       <button id="set-refresh" type="button" class="blade-cmd"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 4v3.5h-3.5"/></svg>Refresh</button>
     </div>
     <p id="set-error" class="error-box" role="alert" hidden></p>
-    <div id="set-cards" class="conn-grid" aria-busy="true"></div>
+    <div id="set-stats" class="hero-stats conn-stats"></div>
+    <div id="set-filters"></div>
+    <p id="set-count" class="blade-count"></p>
+    <div id="set-list" aria-busy="true"><p class="blade-empty">Reading connections…</p></div>
   </main>
   </div>
+  <aside id="flyout" class="flyout conn-flyout" role="dialog" aria-labelledby="flyout-title" hidden>
+    <div class="flyout-head">
+      <h2 id="flyout-title"></h2>
+      <span id="flyout-status"></span>
+      <button type="button" id="flyout-close" class="icon-btn" aria-label="Close panel" title="Close"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></button>
+    </div>
+    <div id="flyout-body" class="flyout-body"></div>
+  </aside>
 </div>
 </body>
 </html>

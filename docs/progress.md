@@ -636,7 +636,8 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
 
 ## Settings: sign-ins from the UI (2026-11-01)
 
-- Portal page `/settings` (sidebar "Settings"): one card each for Google Cloud, Azure, Azure DevOps, JFrog and AWS, with status, account and where the login lives (this machine or this console).
+- Portal page `/settings` (sidebar "Settings"): an integrations list built to grow. It has stat cards (connected, not connected, needs attention, signed in here), the filter bar (search, Category and Status pills, all kept in the URL), and rows grouped by category (Cloud providers, CI/CD, Artifact platforms) showing status, account, scope and where the login lives. A row opens the side panel (`?open=<id>`) with the details and sign-in. A new connection is one `CONNECTORS` entry in `portal/static/settings-page.js`. Status reads every tool in parallel.
+- A Google sign-in on the page starts on the machine login's project.
 - Google Cloud (`gcloud auth login --no-launch-browser --update-adc`; the code is pasted back and sent to stdin, never logged), Azure (`az login --use-device-code`, optional tenant) and AWS SSO (`aws sso login --use-device-code`) sign in through `console/shell.py` `Shell.start` (interactive `Session`, redacted output).
 - Console logins live in `.console/connections/<tool>` (0700, outside git) via `CLOUDSDK_CONFIG`/`AZURE_CONFIG_DIR`; `portal/connections.py` `Connections.apply()` switches the environment for every console. Sign out goes back to the machine login.
 - Pickers: GCP project, Azure subscription, AWS profile and region. ADO organization/project/repository/branch are saved in `.console/connections/settings.json` and override `pipelines/delivery.json` (`deliver.load_settings(overrides=)`); the running ADO client is retargeted.

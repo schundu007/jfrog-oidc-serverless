@@ -21,6 +21,7 @@ their allow-list) pick it up on their next call.
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import os
 import re
@@ -37,6 +38,7 @@ ADO_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798"
 ADO_KEYS = ("organization", "project", "repository", "target_branch")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,99}$")
 GUID_OR_DOMAIN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]{1,253}$")
+PROJECT_RE = re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
 URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+(:\d+)?/?$")
 DEVICE_URL = re.compile(r"https://\S*(?:devicelogin|device|activate|awsapps\.com/start)\S*", re.I)
 DEVICE_CODE = re.compile(r"\b(?:code|enter)\b[^A-Z0-9]*\b([A-Z0-9]{4,}(?:-[A-Z0-9]{4,})?)\b")
@@ -138,10 +140,12 @@ class Connections:
     # -- status -------------------------------------------------------------------------------
 
     def status(self) -> dict:
-        sh = self.shell_factory()
+        # Each tool on its own shell, all at once: the page waits for the slowest CLI, not their sum.
         s = self.settings()
-        return {"gcp": self._gcp(sh, s), "azure": self._azure(sh, s), "ado": self._ado(sh, s),
-                "jfrog": self._jfrog(sh, s), "aws": self._aws(sh, s)}
+        readers = {"gcp": self._gcp, "azure": self._azure, "ado": self._ado, "jfrog": self._jfrog, "aws": self._aws}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(readers), thread_name_prefix="settings") as pool:
+            futures = {k: pool.submit(fn, self.shell_factory(), s) for k, fn in readers.items()}
+            return {k: f.result() for k, f in futures.items()}
 
     def _source(self, tool: str, s: dict) -> str:
         return "console" if (s.get(tool) or {}).get("mode") == "console" else "machine"
@@ -287,10 +291,24 @@ class Connections:
 
         def finish():
             if sess.wait() == 0 and saved is not None:
+                if tool == "gcp":
+                    self._carry_gcp_project()
                 self._update(tool, saved)
                 self.apply()
         threading.Thread(target=finish, daemon=True, name=f"signin-{tool}").start()
         return {"started": True}
+
+    def _carry_gcp_project(self) -> None:
+        """A new gcloud login has no project: start from the one this machine's login uses."""
+        sh = self.shell_factory()
+        console = {"CLOUDSDK_CONFIG": str(self.dir_of("gcp"))}
+        if sh.run(["gcloud", "config", "get-value", "project"], timeout=60, extra_env=console).stdout.strip():
+            return
+        machine = self._machine.get("CLOUDSDK_CONFIG") or str(Path.home() / ".config" / "gcloud")
+        project = sh.run(["gcloud", "config", "get-value", "project"], timeout=60,
+                         extra_env={"CLOUDSDK_CONFIG": machine}).stdout.strip()
+        if project and PROJECT_RE.match(project):
+            sh.run(["gcloud", "config", "set", "project", project], timeout=60, extra_env=console)
 
     def send_code(self, tool: str, code: str) -> dict:
         p = self._signin.get(tool)
@@ -384,7 +402,7 @@ class Connections:
             return {"saved": True}
         if tool == "gcp":
             project = str(body.get("project") or "").strip()
-            if not re.match(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$", project):
+            if not PROJECT_RE.match(project):
                 raise SettingsError("pick a project")
             r = self.shell_factory().run(["gcloud", "config", "set", "project", project, "--quiet"], timeout=60)
             if not r.ok:
