@@ -26,7 +26,7 @@ from pathlib import Path
 
 from .. import gcprun, model
 from ..jfrog_operator import OperatorError
-from . import verify
+from . import verify, workload_logs
 
 ROWS = [("secret", "No stored secret"), ("granted", "Download with OIDC"), ("keys", "No long-lived JFrog token"),
         ("who", "JFrog records the download"), ("break", "Trust removed"), ("refused", "Download refused"),
@@ -151,6 +151,7 @@ class Prove:
             self._do("repull", self.s_repull)
         else:
             self._row("repull").update(status="skipped", text="trust not restored" if self.facts.get("removed") else "not reached")
+        self._read_log()
         self.update(self.rows, self.facts)
         failed = [r["title"] for r in self.rows if r["status"] == "failed"]
         return {"proved": not failed and all(r["status"] in ("ok", "done", "warn") for r in self.rows),
@@ -169,6 +170,23 @@ class Prove:
             tries += 1
             res = verify.run(self.cfg, self.sh)
         return res
+
+    def _answer(self, stage, res):
+        """JFrog's answer to the workload at this stage, as the check saw it."""
+        a = workload_logs.answer_from_check(res)
+        self.facts.setdefault("answers", []).append({"stage": stage, "at": self._now(), **a})
+
+    def _read_log(self):
+        """The workload's own live log for the whole proof window (read-only; never fails the proof)."""
+        if not self.facts.get("started") or not workload_logs.supported(self.cfg):
+            return
+        try:
+            got = workload_logs.read(self.cfg, self.sh, self.facts["started"])
+        except Exception as exc:   # a log read must never leave the trust removed or the run unfinished
+            self.log(f"workload log not read: {exc}")
+            got = None
+        self.facts["workload_log"] = got or {"source": "workload log", "rows": [], "answers": [], "jfrog": None,
+                                             "error": "the workload's log was not readable"}
 
     def _run_job(self):
         if self.kind == "gcp_run_job":
@@ -213,6 +231,7 @@ class Prove:
         self.facts["started"] = self._now()
         res = self._check(True, since=self.facts["started"])
         self.facts["granted"] = res
+        self._answer("granted", res)
         if res["status"] != "pass":
             raise StepError(f"the workload could not read JFrog: {res.get('reason')}")
         mapping = f"{self.cfg['name']}-runtime"
@@ -294,6 +313,7 @@ class Prove:
     def s_refused(self):
         res = self._check(False, since=self._now())
         self.facts["refused"] = res
+        self._answer("refused", res)
         if res["status"] == "pass":
             raise StepError("the workload still read JFrog with its trust removed: something else grants access")
         return "ok", f"refused: {res.get('reason')}", {"answer": res.get("reason") or ""}
@@ -319,6 +339,7 @@ class Prove:
             sleep(10)
             tries += 1
             res = self._check(True, since=self._now())
+        self._answer("repull", res)
         if res["status"] != "pass":
             raise StepError(f"still refused after the trust was restored: {res.get('reason')}")
         return "ok", f"exchanged as {res.get('jfrog_user') or self.facts['user']} again", {"read": res.get("read") or ""}

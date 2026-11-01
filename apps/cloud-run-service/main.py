@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from jfrog_oidc import JFrogOidcError, JFrogTokenProvider, download, get_json
-from jfrog_oidc.probe import selftest
+from jfrog_oidc.probe import log_result, selftest
 
 _jfrog = None
 
@@ -32,6 +32,7 @@ def jfrog() -> JFrogTokenProvider:
 def handle(path: str, query: dict) -> tuple[int, dict]:
     if path == "/healthz/jfrog":
         result = selftest(os.environ.get("JFROG_HEALTHCHECK_PATH") or None, provider=jfrog(), fresh=query.get("fresh", [""])[0] == "1")
+        log_result(result)   # the platform's log: what JFrog answered, never a token
         return (200 if result["ok"] else 503), result
     folder = query.get("path", ["generic-local/models"])[0]
     listing = get_json(jfrog(), f"/artifactory/api/storage/{folder}")

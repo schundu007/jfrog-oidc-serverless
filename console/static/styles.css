@@ -1112,3 +1112,6 @@ html body .home-table tr.cloud-cols:hover { background: none; box-shadow: none; 
 .blade-table th.sortable:hover::after { opacity: .35; border-top-color: currentColor; border-bottom-width: 0; }
 .blade-table th[aria-sort="ascending"]::after { opacity: 1; border-bottom: 5px solid currentColor; border-top-width: 0; }
 .blade-table th[aria-sort="descending"]::after { opacity: 1; border-top: 5px solid currentColor; border-bottom-width: 0; }
+
+tr.row-bad td { color: #b42318; }
+tr.row-warn td { color: #b54708; }

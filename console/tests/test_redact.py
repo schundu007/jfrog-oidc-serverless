@@ -191,5 +191,21 @@ class RunLogPathTests(unittest.TestCase):
         self.assertNotIn(REF, raw)
 
 
+class WorkloadLogPathTests(unittest.TestCase):
+    """Prove reads the workload's own log (console/steps/workload_logs.py): every line is redacted."""
+
+    def test_container_app_and_cloud_logging_lines(self):
+        from console import model
+        from console.shell import Shell
+        from console.steps import workload_logs as wl
+        wl.sleep = lambda s: None
+        cfg = model.default_config("azure_container_app", name="a")
+        cfg["target"]["azure"].update(subscription="s", resource_group="rg", name="a")
+        out = json.dumps({"TimeStamp": "2026-11-01T09:10:41+00:00", "Log": f'F {{"access_token": "{REF}"}} Bearer {JWT}'}) + "\n"
+        got = wl.read(cfg, Shell(mode="replay", fixtures=[{"argv": wl.argv(cfg), "rc": 0, "stdout": out}]), "2026-11-01T09:10:40Z")
+        self.assertNotIn(JWT, json.dumps(got))
+        self.assertNotIn(REF, json.dumps(got))
+
+
 if __name__ == "__main__":
     unittest.main()

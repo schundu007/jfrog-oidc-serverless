@@ -17,13 +17,14 @@ import sys
 import threading
 
 from jfrog_oidc import JFrogOidcError, JFrogTokenProvider
-from jfrog_oidc.probe import selftest
+from jfrog_oidc.probe import log_result, selftest
 
 stop = threading.Event()
 
 
 def check(provider) -> dict:
     result = selftest(os.environ.get("JFROG_HEALTHCHECK_PATH") or None, provider=provider, fresh=True)
+    log_result(result)   # the platform's log: what JFrog answered, never a token
     print(json.dumps({"event": "jfrog_check", "ok": result["ok"], "claims": result.get("claims"),
                       "check": result.get("check"), "read": result.get("read")}), flush=True)
     return result

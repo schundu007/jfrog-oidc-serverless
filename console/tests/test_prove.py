@@ -8,7 +8,9 @@ from pathlib import Path
 
 from console import model
 from console.shell import Shell
-from console.steps import prove, verify
+from console.steps import prove, verify, workload_logs
+
+workload_logs.sleep = lambda s: None
 
 IDTOK = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl"
 OK = {"ok": True, "claims": {"email": "svc@demo.iam.gserviceaccount.com"},
@@ -85,6 +87,24 @@ class ProveTests(unittest.TestCase):
         self.assertEqual(res["facts"]["who"]["last_downloaded_by"], "gcp-cloudrun/t-runtime")
         self.assertFalse((d / "removed-mapping.json").exists())
         self.assertNotIn(IDTOK, blob)
+
+    def test_jfrog_answers_per_stage_and_the_workloads_live_log(self):
+        cfg = cfg_service()
+        fx = fixtures(cfg)
+        line = {"event": "jfrog_oidc_selftest", "ok": False, "jfrog_status": 401, "provider": "gcp-cloudrun",
+                "message": "JFrog refused the exchange via gcp-cloudrun: HTTP 401"}
+        fx.append({"argv": workload_logs.argv(cfg, "2026-11-01T09:10:00Z"), "rc": 0,
+                   "stdout": json.dumps([{"timestamp": "2026-11-01T09:10:05Z", "severity": "INFO", "jsonPayload": line}])})
+        lines, approvals = [], []
+        p = prove.Prove(cfg, Shell(mode="replay", fixtures=fx, log=lines.append), lambda h: FakeJfrog(), approvals.append,
+                        lambda r, f: None, Path(tempfile.mkdtemp()), clock=lambda: 1793524200)
+        prove.sleep = lambda s: None
+        res = p.run()
+        self.assertEqual([(a["stage"], a["status"]) for a in res["facts"]["answers"]],
+                         [("granted", 200), ("refused", 401), ("repull", 200)])
+        log = res["facts"]["workload_log"]
+        self.assertEqual(log["rows"][0]["level"], "ERROR")
+        self.assertEqual(log["jfrog"]["status"], 401)
 
     def test_stored_token_stops_before_anything_changes(self):
         env = ENV + [{"name": "JFROG_ACCESS_TOKEN", "value": "s3cr3t-value"}]

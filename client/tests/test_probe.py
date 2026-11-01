@@ -62,6 +62,39 @@ class SelfTestTests(BaseCase):
         self.assertIsNone(result["read"])
 
 
+class LogResultTests(BaseCase):
+    def _line(self, result):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            probe.log_result(result)
+        lines = out.getvalue().splitlines()
+        self.assertEqual(len(lines), 1)
+        return json.loads(lines[0])
+
+    def test_granted_line_names_user_lifetime_and_read(self):
+        line = self._line(probe.selftest("generic-local/healthcheck/ping.txt", provider=self.gcp_provider(), fresh=True))
+        self.assertEqual(line["event"], "jfrog_oidc_selftest")
+        self.assertTrue(line["ok"])
+        self.assertEqual(line["jfrog_status"], 200)
+        self.assertIn("JFrog issued a token for cr-orders", line["message"])
+        self.assertIn("read generic-local/healthcheck/ping.txt: HTTP 200", line["message"])
+        self.assertEqual(line["sub"], "1234567890")
+
+    def test_refused_line_carries_jfrogs_answer(self):
+        FakeCloud.state["provider"] = "something-else"
+        line = self._line(probe.selftest(provider=self.gcp_provider(), fresh=True))
+        self.assertFalse(line["ok"])
+        self.assertEqual(line["jfrog_status"], 401)
+        self.assertIn("JFrog refused the exchange", line["message"])
+
+    def test_line_never_holds_a_token(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            probe.log_result(probe.selftest("generic-local/healthcheck/ping.txt", provider=self.gcp_provider()))
+        self.assertNotIn(FakeCloud.state["current_access"], out.getvalue())
+        self.assertNotIn("eyJ", out.getvalue())
+
+
 class ProbeCliTests(BaseCase):
     def run_cli(self, *argv):
         env = {

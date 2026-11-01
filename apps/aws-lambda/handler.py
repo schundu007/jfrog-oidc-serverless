@@ -19,7 +19,7 @@ import json
 import os
 
 from jfrog_oidc import JFrogOidcError, JFrogTokenProvider, get_json
-from jfrog_oidc.probe import selftest
+from jfrog_oidc.probe import log_result, selftest
 
 _jfrog = None
 
@@ -42,6 +42,7 @@ def handler(event, context):
     query = event.get("queryStringParameters") or {}
     if path == "/healthz/jfrog":
         result = selftest(os.environ.get("JFROG_HEALTHCHECK_PATH") or None, provider=jfrog(), fresh=query.get("fresh") == "1")
+        log_result(result)   # the platform's log: what JFrog answered, never a token
         return _reply(200 if result["ok"] else 503, result)
     folder = query.get("path", "generic-local/models")
     try:

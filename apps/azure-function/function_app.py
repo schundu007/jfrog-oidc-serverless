@@ -17,7 +17,7 @@ import os
 import azure.functions as func
 
 from jfrog_oidc import JFrogOidcError, JFrogTokenProvider, get_json
-from jfrog_oidc.probe import selftest
+from jfrog_oidc.probe import log_result, selftest
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
@@ -58,5 +58,6 @@ def healthz_jfrog(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(json.dumps({"ok": False, "check": {"error": str(exc)}}), status_code=503,
                                  mimetype="application/json")
     result = selftest(os.environ.get("JFROG_HEALTHCHECK_PATH") or None, provider=provider, fresh=req.params.get("fresh") == "1")
+    log_result(result)   # the platform's log: what JFrog answered, never a token
     return func.HttpResponse(json.dumps(result), status_code=200 if result["ok"] else 503,
                              mimetype="application/json")

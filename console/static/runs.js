@@ -215,6 +215,16 @@ function viewWire(step, ev) {
 // approval (bound to the mapping's hash) and always restored. Evidence downloads as JSON, built here.
 const ROW_TONE = { ok: "succeeded", done: "succeeded", warn: "warn", failed: "failed", running: "running",
   needs_approval: "needs_approval", pending: "pending", skipped: "skipped" };
+const PROVE_STAGE = { granted: "With trust", refused: "Trust removed", repull: "Trust restored" };
+
+// A plain table; tones[i] "bad" paints row i red (an expected refusal is "warn": shown, not a failure).
+function table(cols, rows, tones = []) {
+  return h("div", { class: "table-wrap" }, h("table", { class: "kv-table" },
+    h("thead", {}, h("tr", {}, cols.map((t) => h("th", { scope: "col", text: t })))),
+    h("tbody", {}, rows.map((r, i) => h("tr", { class: tones[i] ? `row-${tones[i]}` : null },
+      r.map((c, j) => h("td", { class: j === r.length - 1 || cols[j] === "Message" ? "mono" : null, text: String(c ?? "") })))))));
+}
+
 function viewProve(step, ev) {
   const out = [];
   const a = step.approval;
@@ -236,6 +246,19 @@ function viewProve(step, ev) {
   const f = ev.facts;
   if (f?.who) out.push(kv([["Artifact", f.who.artifact], ["Last downloaded by", f.who.last_downloaded_by],
     ["When", f.who.last_downloaded ? stamp(f.who.last_downloaded) : null], ["Downloads", f.who.downloads]]));
+  if (f?.answers?.length) {
+    out.push(h("h3", {}, "JFrog's answers", help("What JFrog answered to the workload's own identity at each stage: HTTP status and message. Never a token.")));
+    out.push(table(["Stage", "HTTP", "Answer", "At"], f.answers.map((x) => [PROVE_STAGE[x.stage] || x.stage, x.status ?? "—",
+      x.answer, x.at ? stamp(x.at) : ""]), f.answers.map((x) => x.status !== 200 && x.stage !== "refused" ? "bad" : x.status !== 200 ? "warn" : "")));
+  }
+  const wl = f?.workload_log;
+  if (wl) {
+    out.push(h("h3", {}, "Workload log", help("The workload's own live log for the proof window, read from the platform. Each self-test prints one line with JFrog's answer; tokens are never logged.")));
+    out.push(kv([["Source", wl.source], ["Workload", wl.workload], ["Since", wl.since ? stamp(wl.since) : null],
+      ["Lines", wl.error || String((wl.rows || []).length)]]));
+    if (wl.rows?.length) out.push(table(["At", "Level", "Message"], wl.rows.map((r) => [stamp(r.at), r.level, r.message]),
+      wl.rows.map((r) => r.level === "ERROR" ? "bad" : "")));
+  }
   if (ev.result) {
     out.unshift(outcome(ev.result.proved ? "Proved: JFrog is read only through the OIDC trust" : `Not proved: ${ev.result.failed.join(", ")}`,
       ev.result.proved));

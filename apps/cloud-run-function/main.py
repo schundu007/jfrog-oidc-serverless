@@ -14,7 +14,7 @@ import tempfile
 import functions_framework
 
 from jfrog_oidc import JFrogTokenProvider, download, get_json
-from jfrog_oidc.probe import selftest
+from jfrog_oidc.probe import log_result, selftest
 
 _jfrog = None
 
@@ -32,6 +32,7 @@ def jfrog() -> JFrogTokenProvider:
 def handler(request):
     if request.path == "/healthz/jfrog":
         result = selftest(os.environ.get("JFROG_HEALTHCHECK_PATH") or None, provider=jfrog(), fresh=request.args.get("fresh") == "1")
+        log_result(result)   # the platform's log: what JFrog answered, never a token
         return result, (200 if result["ok"] else 503)
 
     folder = request.args.get("path", "generic-local/models")

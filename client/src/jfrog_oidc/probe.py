@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 import urllib.error
@@ -76,6 +77,8 @@ def selftest(
         tok = provider.token()
     except JFrogOidcError as exc:
         result["check"] = {"error": str(exc), "provider": provider.provider_name}
+        if exc.status:
+            result["check"]["status"] = exc.status
         return result
     result["check"] = {
         "username": tok.username,
@@ -96,6 +99,34 @@ def selftest(
     else:
         result["ok"] = True
     return result
+
+
+def log_result(result: dict) -> None:
+    """Print one JSON line about a selftest: what JFrog answered to this identity, in words.
+
+    For the platform's own log (Cloud Logging, Container Apps console logs, Application Insights,
+    CloudWatch), so the console can show the workload's live record of each exchange. Never a token:
+    selftest returns none, and only its claims, check and read are used.
+    """
+    claims, check, read = result.get("claims") or {}, result.get("check") or {}, result.get("read") or {}
+    status = check.get("status")
+    if status is None and check.get("error"):
+        m = re.search(r"HTTP (\d{3})", check["error"])
+        status = int(m.group(1)) if m else None
+    if check.get("username"):
+        status = 200
+        mins = int(check.get("expires_in") or 0) // 60
+        msg = f"JFrog issued a token for {check['username']} via {check.get('provider')}, expires in {mins} min"
+        if read.get("status") is not None:
+            msg += f"; read {read.get('path')}: HTTP {read['status']}"
+        elif read.get("error"):
+            msg += f"; read {read.get('path')} failed: {read['error']}"
+    else:
+        msg = f"JFrog refused the exchange via {check.get('provider') or 'its provider'}: {check.get('error') or 'no answer'}"
+    line = {"event": "jfrog_oidc_selftest", "ok": bool(result.get("ok")), "jfrog_status": status,
+            "provider": check.get("provider"), "jfrog_user": check.get("username"),
+            **{k: claims[k] for k in ("iss", "sub", "aud") if k in claims}, "message": msg[:600]}
+    print(json.dumps(line), flush=True)
 
 
 def main(argv=None) -> int:
