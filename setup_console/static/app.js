@@ -389,26 +389,27 @@ function draw(withFilters = true) {
   const rank = (g) => (CLOUD_ORDER.includes(g) ? CLOUD_ORDER.indexOf(g) : CLOUD_ORDER.length);
   const groups = [...new Set(shown.map((s) => s.group))].sort((x, y) => rank(x) - rank(y));
   const cols = OIDC ? ["Name", "Status", "Stack", "Last checked", ""] : ["Name", "Status", "Stack", "Runs in", "Last checked", ""];
-  const head = (g, list) => h("tr", { class: "home-group" }, h("th", { scope: "colgroup", colspan: String(cols.length) },
-    h("span", { class: "home-group-name" }, iconEl(CLOUD_ID[g], "home-group-logo"), g,
-      h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }))));
+  const head = (g, list) => h("h2", { class: "cloud-title home-group-name" }, iconEl(CLOUD_ID[g], "home-group-logo"), g,
+    h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }));
   // Under each cloud, CI/CD, Serverless and Kubernetes never mix: each has its own heading and rows.
   const LABEL = { Common: "CI/CD" };
   const sections = ORDER.filter((k) => shown.some((s) => sectionOf(s) === k));
   const subHead = (k, list) => h("tr", { class: "home-group home-subgroup" }, h("th", { scope: "colgroup", colspan: String(cols.length) },
     h("span", { class: "home-group-name" }, LABEL[k] || k, h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }))));
-  fill($("groups"), shown.length ? h("div", { class: "table-wrap" }, h("table", { class: "blade-table home-table stack-table" },
-    h("thead", {}, h("tr", {}, cols.map((c) => h("th", { scope: "col", text: c })))),
-    groups.flatMap((g) => {
-      const inCloud = shown.filter((s) => s.group === g);
-      // A cloud heading only when more than one cloud is listed: alone, it repeats the filter.
-      const cloudHead = groups.length > 1 ? h("tbody", { class: "cloud-band" }, head(g, inCloud)) : null;
-      return [cloudHead, ...sections.map((k) => {
-        const list = inCloud.filter((s) => sectionOf(s) === k);
-        // A section heading only when more than one section is listed (one alone repeats the Type filter).
-        return list.length ? h("tbody", {}, sections.length > 1 ? subHead(k, list) : null, list.map((s) => row(s, k))) : null;
-      })];
-    }))) : null);
+  // Each cloud is its own block: its heading (logo, name, count) above its own table with its own
+  // column headers, so a cloud name never sits under another cloud's header row.
+  const table = (rows) => h("div", { class: "table-wrap" }, h("table", { class: `blade-table home-table stack-table cloud-table cols-${cols.length}` },
+    h("thead", {}, h("tr", {}, cols.map((c) => h("th", { scope: "col", text: c })))), rows));
+  fill($("groups"), shown.length ? h("div", { class: "cloud-tables" }, groups.map((g) => {
+    const inCloud = shown.filter((s) => s.group === g);
+    const bodies = sections.map((k) => {
+      const list = inCloud.filter((s) => sectionOf(s) === k);
+      // A section heading only when more than one section is listed (one alone repeats the Type filter).
+      return list.length ? h("tbody", {}, sections.length > 1 ? subHead(k, list) : null, list.map((s) => row(s, k))) : null;
+    }).filter(Boolean);
+    // A cloud heading only when more than one cloud is listed: alone, it repeats the filter.
+    return h("section", { class: "cloud-block" }, groups.length > 1 ? head(g, inCloud) : null, table(bodies));
+  })) : null);
 }
 
 // Where a stack runs: foundations and JFrog trust from this page; workload and cluster stacks as

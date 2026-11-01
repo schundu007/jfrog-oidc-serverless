@@ -82,9 +82,13 @@ function draw() {
         h("span", { class: "home-group-name" }, logo, CLOUD_NAMES[c] || "No cloud recorded", h("small", { text: String(n) }))));
     };
     // A cloud heading only when more than one cloud is listed: alone, it repeats the filter.
-    const top = (c, n) => (groups.length > 1 ? head(c, n) : null);
-    $("home-rows").replaceWith(...[h("tbody", { id: "home-rows" }, ...(groups[0] ? [top(groups[0][0], groups[0][1].length), ...groups[0][1].map(v.row)] : [])),
-      ...groups.slice(1).map(([c, xs]) => h("tbody", { class: "home-rows-more" }, top(c, xs.length), ...xs.map(v.row)))]);
+    // Several clouds: each gets its own column header row under its heading; the shared one hides.
+    const many = groups.length > 1;
+    $("home-head").hidden = many && shown.length > 0;
+    const cols = () => h("tr", { class: "cloud-cols" }, ...v.cols.map((c) => h("th", { scope: "col", text: c })));
+    const top = (c, n) => (many ? [head(c, n), cols()] : []);
+    $("home-rows").replaceWith(...[h("tbody", { id: "home-rows" }, ...(groups[0] ? [...top(groups[0][0], groups[0][1].length), ...groups[0][1].map(v.row)] : [])),
+      ...groups.slice(1).map(([c, xs]) => h("tbody", { class: "home-rows-more" }, ...top(c, xs.length), ...xs.map(v.row)))]);
     $("home-count").textContent = `Showing ${shown.length} of ${all.length} records.`;
     $("home-empty").hidden = shown.length > 0;
     $("home-empty").textContent = all.length ? "Nothing matches the filters" : v.empty;

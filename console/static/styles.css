@@ -1041,7 +1041,6 @@ tbody tr, .ov-tile, .tile, .nav-item, a, button, .blade-opt, .chip, .kind-folder
 /* A section under a cloud (CI/CD, Serverless, Kubernetes): a smaller heading than the cloud's. */
 .home-table tr.home-subgroup th { padding: 18px 10px 6px; }
 .home-table tr.home-subgroup .home-group-name { font-size: 14px; }
-.home-table tbody.cloud-band tr.home-group th { border-bottom: 0; padding-bottom: 0; }
 .blade-cmds a.blade-cmd { text-decoration: none; font-size: 14px; padding: 6px 10px; }
 .home-table tbody tr.row-link { cursor: pointer; }
 .ess-col dt, .ess-col dd { line-height: 20px; }
@@ -1086,3 +1085,20 @@ tbody tr, .ov-tile, .tile, .nav-item, a, button, .blade-opt, .chip, .kind-folder
 /* Workload Essentials: an even grid, column count set by workload.js (gridCols). */
 html body #wl-ess-body.ess-body { grid-template-columns: repeat(var(--ess-cols, 3), minmax(0, 1fr)); }
 @media (max-width: 860px) { html body #wl-ess-body.ess-body { grid-template-columns: minmax(0, 1fr); } }
+
+/* Infrastructure / JFrog OIDC: one table per cloud, each with its own header row; fixed column widths
+   so the clouds' columns line up. */
+.cloud-block + .cloud-block { margin-top: 28px; }
+.cloud-title.home-group-name { display: flex; margin: 0 0 8px; font-size: 16px; }
+html body table.cloud-table:not(#_) { table-layout: fixed; width: 100%; }
+html body table.cloud-table:not(#_) thead th:nth-child(2) { width: 20%; }
+html body table.cloud-table:not(#_) thead th:nth-child(3) { width: 20%; }
+html body table.cloud-table:not(#_).cols-6 thead th:nth-child(4) { width: 10%; }
+html body table.cloud-table:not(#_).cols-6 thead th:nth-child(5), html body table.cloud-table:not(#_).cols-5 thead th:nth-child(4) { width: 13%; }
+html body table.cloud-table:not(#_) thead th:last-child { width: 11%; }
+html body table.cloud-table:not(#_) td { overflow-wrap: anywhere; white-space: normal; }
+/* Home and Runs: with several clouds, each cloud's own column header row under its heading. */
+html body .home-table tr.cloud-cols th:not(#_) { text-align: left; font-weight: 600; font-size: 14px; color: var(--fg); padding: 8px 10px; border-bottom: 1px solid var(--border-strong); white-space: nowrap; background: none; }
+html body .home-table tr.cloud-cols th.sel:not(#_) { width: 1%; }
+html body .home-table tr.home-group:has(+ tr.cloud-cols) th:not(#_) { border-bottom: 0; padding-bottom: 2px; }
+html body .home-table tr.cloud-cols:hover { background: none; box-shadow: none; }

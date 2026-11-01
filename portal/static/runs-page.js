@@ -82,9 +82,20 @@ function render() {
   for (const t of document.querySelectorAll(".runs-rows-more")) t.remove();
   const [first, ...rest] = groups;
   // A cloud heading only when more than one cloud is listed: alone, it repeats the filter.
-  const top = (c, n) => (groups.length > 1 ? head(c, n) : null);
-  $("runs-rows").replaceChildren(...(first ? [top(first[0], first[1].length), ...first[1].map(row)] : []).filter(Boolean));
-  $("runs-rows").after(...rest.map(([c, xs]) => h("tbody", { class: "runs-rows-more" }, top(c, xs.length), ...xs.map(row))));
+  // Several clouds: each gets its own column header row (with its own select-all) under its heading;
+  // the shared header row hides.
+  const many = groups.length > 1;
+  $("runs-all").closest("thead").hidden = many;
+  const cols = (c, xs) => {
+    const box = h("input", { type: "checkbox", class: "cloud-all", "aria-label": `Select all finished ${CLOUD_NAMES[c] || "other"} runs shown` });
+    box.addEventListener("change", () => { for (const r of finished(xs)) box.checked ? picked.add(r.api) : picked.delete(r.api); render(); });
+    box._runs = xs;
+    return h("tr", { class: "cloud-cols" }, h("th", { scope: "col", class: "sel" }, box),
+      ...["Name", "Status", "Type", "Started"].map((t) => h("th", { scope: "col", text: t })));
+  };
+  const top = (c, xs) => (many ? [head(c, xs.length), cols(c, xs)] : []);
+  $("runs-rows").replaceChildren(...(first ? [...top(first[0], first[1]), ...first[1].map(row)] : []));
+  $("runs-rows").after(...rest.map(([c, xs]) => h("tbody", { class: "runs-rows-more" }, ...top(c, xs), ...xs.map(row))));
   $("runs-count").textContent = `Showing ${shown.length} of ${rows.length} records.`;
   $("runs-none").hidden = shown.length > 0;
   $("runs-none").textContent = rows.length ? "No run matches the filters" : "No runs yet";
@@ -117,6 +128,12 @@ function sync() {
   box.checked = visible.size > 0 && picked.size === visible.size;
   box.indeterminate = picked.size > 0 && picked.size < visible.size;
   box.disabled = !visible.size;
+  for (const b of document.querySelectorAll("input.cloud-all")) {
+    const mine = finished(b._runs).map((r) => r.api), n = mine.filter((a) => picked.has(a)).length;
+    b.checked = mine.length > 0 && n === mine.length;
+    b.indeterminate = n > 0 && n < mine.length;
+    b.disabled = !mine.length;
+  }
 }
 
 function ask(rows, what) {
