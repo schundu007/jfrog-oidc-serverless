@@ -69,6 +69,14 @@ class RunsApiTests(unittest.TestCase):
         self.assertEqual(st, 200, body)
         self.assertEqual(seen, [("discover", {"answer": "yes", "plan_sha256": "a" * 64})])
 
+    def test_approve_passes_the_prove_hash(self):
+        seen = []
+        self.console.runs.approve = lambda rid, step, payload: seen.append((step, payload)) or {"accepted": True}
+        st, body = self.req("POST", "/api/runs", {"config": demo_cfg(), "steps": ["preflight"]})
+        st, body = self.req("POST", f"/api/runs/{body['run_id']}/approve", {"step": "prove", "prove_sha256": "b" * 64})
+        self.assertEqual(st, 200, body)
+        self.assertEqual(seen, [("prove", {"prove_sha256": "b" * 64})])
+
     def test_full_pipeline_with_gates(self):
         st, body = self.req("POST", "/api/runs", {"config": demo_cfg()})
         self.assertEqual(st, 202, body)

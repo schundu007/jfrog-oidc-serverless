@@ -643,7 +643,7 @@ def _make_handler(console: ConsoleServer):
                     return self._stream_run(run)
                 if method == "POST" and rest[1:] == ["approve"]:
                     body = self._body()
-                    payload = {k: body[k] for k in ("plan_sha256", "typed_confirmation", "diff_sha256", "answer")
+                    payload = {k: body[k] for k in ("plan_sha256", "typed_confirmation", "diff_sha256", "prove_sha256", "answer")
                                if isinstance(body.get(k), str)}
                     return self._json(200, console.runs.approve(run.id, str(body.get("step", "")), payload))
                 if method == "POST" and rest[1:] == ["cancel"]:
