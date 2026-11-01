@@ -27,9 +27,6 @@ from setup_console.server import SetupServer
 
 from .server import K8S, SERVERLESS, SETUP, Portal
 
-DEMO_FIXTURES = REPO_ROOT / "console" / "tests" / "fixtures" / "discover"
-DEMO_KCP_FIXTURES = REPO_ROOT / "kcp_console" / "tests" / "fixtures" / "sandbox"
-
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m portal")
@@ -43,22 +40,13 @@ def main(argv=None) -> int:
     parser.add_argument("--kcp-fixtures", metavar="DIR", help="Kubernetes: answer reads from recorded fixtures")
     parser.add_argument("--local-apply", action="store_true",
                         help="Serverless: plan, apply and wire from this machine instead of an ADO pull request")
-    parser.add_argument("--demo", action="store_true",
-                        help="public demo: both sections on recorded fixtures, Setup read-only, no cloud logins used")
-    parser.add_argument("--public-host", action="append", default=[], metavar="NAME",
-                        help="hostname a TLS proxy serves the portal on (repeatable)")
     parser.add_argument(EXPOSE_FLAG, dest="exposed_ok", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     if args.print_url:
         print(f"http://127.0.0.1:{args.port}/#t={Store().session_token()}")
         return 0
-    if args.demo:
-        args.fixtures = args.fixtures or str(DEMO_FIXTURES)
-        args.kcp_fixtures = args.kcp_fixtures or str(DEMO_KCP_FIXTURES)
-        args.local_apply, args.no_browser = True, True
-    # A demo holds no logins and no tokens worth taking: it may listen beyond loopback.
-    refusal = check_bind(args.host, args.exposed_ok or args.demo)
+    refusal = check_bind(args.host, args.exposed_ok)
     if refusal:
         print(f"portal: {refusal}", file=sys.stderr)
         return 2
@@ -83,20 +71,18 @@ def main(argv=None) -> int:
     operator = OperatorToken()
     # Stack changes run as ADO pipelines (the delivery repo's org and project); foundations and reads stay here.
     ado_client = None
-    if delivery and not args.fixtures and not args.demo:
+    if delivery and not args.fixtures:
         ado_client = Ado(Shell(mode="live", log=lambda line: None), delivery["ado"]["organization"], delivery["ado"]["project"],
                          branch=delivery["ado"].get("target_branch") or "main", repo=delivery["ado"].get("repository") or "")
     setup = SetupServer(token=token, base=SETUP, env_name=env_name,
                         jobs=Jobs(env_name=env_name, token_source=operator.get, ado=ado_client))
-    portal = Portal(serverless, k8s, host=args.host, port=args.port, setup_console=setup,
-                    public_hosts=args.public_host, demo=args.demo)
+    portal = Portal(serverless, k8s, host=args.host, port=args.port, setup_console=setup)
     try:
         portal.start()
     except OSError as exc:
         print(f"portal: cannot listen on {args.host}:{args.port}: {exc}", file=sys.stderr)
         return 1
-    if not args.demo:
-        setup.jobs.refresh_all()   # the Setup list shows what is deployed without a Check click
+    setup.jobs.refresh_all()   # the Setup list shows what is deployed without a Check click
     url = portal.url()
     print(f"JFrog OIDC console (Serverless {SERVERLESS}, Kubernetes {K8S}, Setup {SETUP}): {url}")
     print("Ctrl+C to stop.", flush=True)

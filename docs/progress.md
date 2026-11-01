@@ -611,11 +611,6 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
   - All 9 workloads verified. The 6 image workloads match their ADO run by commit.
   - The Prove on `cr-svc-jfrog` passed every step before the approval (secret, granted, keys, who). It waits for the operator's approval.
 
-## Public demo (2026-11-01)
-
-- `python -m portal --demo`: both sections on recorded fixtures, Setup writes refused, no cloud logins; `--public-host` adds a TLS proxy's hostname to every console's Host/Origin checks.
-- Fly.io app `jfrog-oidc-portal` (`Dockerfile`, `fly.toml`) at jfrog-oidc-portal.fly.dev; Vercel project `jfrog-oidc` (`deploy/vercel/`) landing. No custom domain.
-
 ## Cost teardown (2026-11-01)
 
 - `python -m setup_console.costs status|down|up`: only the stacks that bill (9 workload stacks, `gke-cluster`, `aks-cluster`, with their Log Analytics workspaces and Container Insights rule). Same gates as the page: plan, approve its sha256, stack name typed; ADO stacks run their stack-setup pipelines.

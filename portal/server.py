@@ -48,24 +48,18 @@ def legacy_target(path: str):
 
 class Portal:
     def __init__(self, oidc_console, kcp_console, host: str = "127.0.0.1", port: int = 8760, log=sys.stderr,
-                 setup_console=None, public_hosts=(), demo: bool = False):
+                 setup_console=None):
         self.setup = setup_console or setup.SetupServer(token=oidc_console.token, base=SETUP)
         if not (oidc_console.token == kcp_console.token == self.setup.token):
             raise ValueError("every console must share the portal's session token")
         self.oidc, self.kcp = oidc_console, kcp_console
         self.host, self.requested_port, self.log = host, port, log
         self.token = oidc_console.token
-        # Hostnames a TLS proxy serves the portal on (e.g. a Fly.io app): accepted as Host and as https Origin.
-        self.public_hosts = frozenset(public_hosts)
-        # Demo: a public copy on fixtures. Setup would run terraform and pipelines: it is read-only here.
-        self.demo = demo
-        for c in (self.oidc, self.kcp, self.setup):
-            c.public_hosts = self.public_hosts
         self.port = None
         self._httpd = None
 
     def allowed_hosts(self) -> set:
-        return self.oidc.allowed_hosts() | self.public_hosts
+        return self.oidc.allowed_hosts()
 
     def url(self) -> str:
         return f"http://127.0.0.1:{self.port}/#t={self.token}"
@@ -117,9 +111,6 @@ def _make_handler(portal: Portal):
         def _dispatch(self):
             split = urllib.parse.urlsplit(self.path)
             section, inner = section_of(split.path)
-            if section == SETUP and portal.demo and self.command != "GET" and inner.startswith("/api/"):
-                body = b'{"error": "demo: Setup is read-only here", "code": "demo"}'
-                return self._send(403, "application/json", body)
             if section:
                 # Hand the request to that console's handler as if it were standalone. The class is
                 # switched back afterwards: a keep-alive connection's next request must come here again.
