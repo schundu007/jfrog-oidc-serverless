@@ -74,7 +74,7 @@ From the repository root:
 
 ```bash
 JFROG_ACCESS_TOKEN="$(cat ~/.jfrog-test-admin-token)" \
-  PYTHONPATH=client/src:rotator:. python3 -m portal --no-browser
+  PYTHONPATH=client/src:. python3 -m portal --no-browser
 ```
 
 It prints `JFrog OIDC console (Serverless /serverless, Kubernetes /k8s, Setup /setup): http://127.0.0.1:8760/#t=<session>`.
