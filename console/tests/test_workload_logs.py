@@ -35,7 +35,8 @@ def aca_lines(*pairs):
 
 class AcaTests(unittest.TestCase):
     def test_reads_console_log_since_the_check(self):
-        out = aca_lines(("2026-11-01T09:00:00.1+00:00", "GET / 404"),
+        out = aca_lines(("2026-11-01T09:00:00.1+00:00", "GET / 404"), ("2026-11-01T09:10:36.0+00:00", "GET / 404"),
+                        ("2026-11-01T09:10:36.1+00:00", "Traceback (most recent call last):"),
                         ("2026-11-01T09:10:36.2+00:00", json.dumps(GRANTED)),
                         ("2026-11-01T09:10:36.3+00:00", "GET /healthz/jfrog 200"))
         sh = Shell(mode="replay", fixtures=[{"argv": wl.argv(aca()), "rc": 0, "stdout": out}])
@@ -55,7 +56,7 @@ class AcaTests(unittest.TestCase):
         self.assertEqual(got["jfrog"]["status"], 403)
 
     def test_tokens_never_reach_the_rows(self):
-        out = aca_lines(("2026-11-01T09:10:41+00:00", f"Authorization: Bearer {JWT}"))
+        out = aca_lines(("2026-11-01T09:10:41+00:00", f"GET /healthz/jfrog Authorization: Bearer {JWT}"))
         sh = Shell(mode="replay", fixtures=[{"argv": wl.argv(aca()), "rc": 0, "stdout": out}])
         self.assertNotIn(JWT, json.dumps(wl.read(aca(), sh, "2026-11-01T09:10:40Z")))
 

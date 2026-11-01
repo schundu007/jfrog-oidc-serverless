@@ -16,6 +16,7 @@ from .. import model, redact
 from .verify import _a, _g
 
 EVENT = "jfrog_oidc_selftest"
+HEALTH = "/healthz/jfrog"
 TRIES, WAIT = 4, 10
 sleep = time.sleep   # seam for tests
 
@@ -114,8 +115,8 @@ def read(cfg, sh, since: str):
                 if not at or at < since:
                     continue
                 row, ev = _row(at, raw, sev)
-                if not row["message"]:
-                    continue
+                if not row["message"] or not (ev or HEALTH in row["message"]):
+                    continue   # only the JFrog evidence: self-test answers and the /healthz/jfrog requests
                 rows.append(row)
                 if ev:
                     answers.append({"status": ev.get("jfrog_status"), "answer": row["message"],

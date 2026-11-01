@@ -13,6 +13,7 @@ Deploy without --allow-unauthenticated so Cloud Run IAM protects it.
 import json
 import os
 import tempfile
+import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -51,6 +52,8 @@ class Handler(BaseHTTPRequestHandler):
             status, body = handle(url.path, parse_qs(url.query))
         except (JFrogOidcError, ValueError) as exc:
             status, body = 502, {"error": str(exc)}
+        except urllib.error.HTTPError as exc:   # JFrog's answer to a read (e.g. 404 for a missing folder): no traceback
+            status, body = exc.code, {"error": f"JFrog answered HTTP {exc.code}"}
         data = json.dumps(body).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")

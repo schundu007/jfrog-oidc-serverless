@@ -201,7 +201,7 @@ class WorkloadLogPathTests(unittest.TestCase):
         wl.sleep = lambda s: None
         cfg = model.default_config("azure_container_app", name="a")
         cfg["target"]["azure"].update(subscription="s", resource_group="rg", name="a")
-        out = json.dumps({"TimeStamp": "2026-11-01T09:10:41+00:00", "Log": f'F {{"access_token": "{REF}"}} Bearer {JWT}'}) + "\n"
+        out = json.dumps({"TimeStamp": "2026-11-01T09:10:41+00:00", "Log": f'F GET /healthz/jfrog {{"access_token": "{REF}"}} Bearer {JWT}'}) + "\n"
         got = wl.read(cfg, Shell(mode="replay", fixtures=[{"argv": wl.argv(cfg), "rc": 0, "stdout": out}]), "2026-11-01T09:10:40Z")
         self.assertNotIn(JWT, json.dumps(got))
         self.assertNotIn(REF, json.dumps(got))
