@@ -66,6 +66,7 @@ class ProvisionTests(unittest.TestCase):
         self.jobs = Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state,
                          ado=self.ado, repo_root=repo, sleep=lambda s: None)
         self.jobs._set_status("gcp-foundation", {"deployed": True, "outputs": {}})
+        self.jobs._set_status("gcp-jfrog-trust", {"deployed": True, "outputs": {}})
         self.p = provision.Provisioner(self.jobs, self.ado, sleep=lambda s: None)
         self.asked, self.lines = [], []
 
@@ -110,6 +111,14 @@ class ProvisionTests(unittest.TestCase):
         with self.assertRaises(provision.ProvisionError) as e:
             self.p.run(job_cfg(), self.yes, self.lines.append)
         self.assertIn("gcp-foundation", str(e.exception))
+        self.assertEqual(self.ado.queued, [])
+
+    def test_needs_the_clouds_jfrog_trust_before_anything(self):
+        # The image pass pulls through JFrog: without the cloud's JFrog OIDC trust nothing starts.
+        self.jobs._set_status("gcp-jfrog-trust", {"deployed": False, "outputs": {}})
+        with self.assertRaises(provision.ProvisionError) as e:
+            self.p.run(job_cfg(), self.yes, self.lines.append)
+        self.assertIn("JFrog", str(e.exception))
         self.assertEqual(self.ado.queued, [])
 
     def test_azure_names_map_back_to_the_stack_workload(self):

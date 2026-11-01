@@ -193,8 +193,11 @@ class Jobs:
         init, plan = stacks.tf_args(job["stack"], self.env_name, self.root, self.state_root)
         self._say(job, f"Terraform state: {self._where(job['stack'], init)}.")
         host = stacks.jfrog_host(job["stack"], self.env_name, self.state_root)
-        if not host:
-            self._say(job, "JFrog: this stack has no JFrog resources.")
+        if stacks.get(job["stack"])["kind"] != "JFrog OIDC":
+            # Infrastructure never touches JFrog: no JFrog token or setting reaches its Terraform.
+            env = {k: v for k, v in env.items() if not k.startswith("JFROG_")}
+        elif not host:
+            self._say(job, "JFrog: no jfrog_url in the inputs.")
         elif env.get("JFROG_ACCESS_TOKEN"):
             self._say(job, f"JFrog {host}: using the admin token the portal was started with.")
         elif not stacks.needs_jfrog(job["stack"], job["action"], self.root):

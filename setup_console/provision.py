@@ -7,6 +7,7 @@ ADO applies it. Types that run an image are deployed in two passes, as by hand: 
 the workload, the build-deploy pipeline for the first image (base image through JFrog), then the
 stack again with that image. Function apps that take code get the build-deploy pipeline after the stack.
 A foundation is never deployed from here: it holds the pipelines' trust (Infrastructure page only).
+Nor is the JFrog OIDC trust: it must already exist, since the first image comes through JFrog.
 """
 
 from __future__ import annotations
@@ -78,9 +79,13 @@ class Provisioner:
         dep = stacks.depends_on(sid, self.jobs.root)
         if dep and not self.jobs.deployed(dep):
             raise ProvisionError(f"{meta['title']} stands on {dep}, which is not deployed: deploy it on the Infrastructure page first")
+        cloud = kind.split("_", 1)[0]
+        trust = f"{cloud}-jfrog-trust"
+        if trust in stacks.IDS and not self.jobs.deployed(trust):
+            raise ProvisionError(f"the first image comes through JFrog, and {trust} is not deployed: "
+                                 f"deploy Pipelines' JFrog trust on the {stacks.get(trust)['group']} JFrog OIDC page first")
         if not self.jobs.pipeline_path(sid):
             raise ProvisionError(f"{sid} has no Azure DevOps stack-setup pipeline to deploy it with")
-        cloud = kind.split("_", 1)[0]
         t = cfg["target"].get(cloud) or {}
         workload = workload_name(kind, t.get("name") or cfg["name"])
         declared = {v["name"] for v in stacks.variables(sid, self.jobs.root)}

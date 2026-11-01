@@ -83,6 +83,7 @@ variable "spot" {
 }
 ''',
 }
+VARS["gcp-jfrog-trust"] = 'variable "jfrog_url" { type = string }\nvariable "ado_org" { type = string }\n'
 BACKENDS = {"gcp-cloud-run": "gcs", "azure-container-apps": "azurerm"}   # clusters keep local state
 GCP_FOUNDATION = {"jfrog_url": "https://acme.jfrog.io", "ado_org": "my-org", "gcp_project_id": "proj-1"}
 AZURE_FOUNDATION = {"ado_org": "my-org", "azure_subscription_id": "sub-1", "azure_identity": {"name": "id", "resource_group": "rg-ci"}}
@@ -109,6 +110,7 @@ class Root:
         self.save("azure-foundation", AZURE_FOUNDATION)
         self.save("gcp-cloud-run", {"gcp_project_id": "proj-1", "jfrog_url": "https://acme.jfrog.io"})
         self.save("azure-container-apps", {"azure_subscription_id": "sub-1"})
+        self.save("gcp-jfrog-trust", {"jfrog_url": "https://acme.jfrog.io", "ado_org": "my-org"})
 
     def calls(self, sid):
         p = stacks.stack_dir(sid, self.dir) / ".fake_calls"
@@ -244,6 +246,28 @@ class StackTests(unittest.TestCase):
             self.assertIsNone(stacks.backend_kind(sid))   # local state, run here with the operator's token
             self.assertEqual(stacks.rel_dir(sid), f"oidc/{dep.split('-')[0]}/{sid}")
             self.assertIn('source  = "jfrog/platform"', (stacks.stack_dir(sid) / "versions.tf").read_text())
+
+    def test_jfrog_inputs_saved_on_a_foundation_move_to_its_clouds_trust(self):
+        # Inputs saved before the split: JFrog values leave the infrastructure inputs (and its
+        # prefill) for the cloud's own JFrog OIDC stack; never another cloud's, never overwriting.
+        import tempfile
+        state = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, state)
+        d = state / "test"
+        d.mkdir()
+        (d / "gcp-foundation.tfvars.json").write_text(json.dumps(
+            {"gcp_project_id": "p1", "ado_org": "o", "jfrog_url": "https://a.jfrog.io", "jfrog_reader_group": "r",
+             "console_operators": ["x@y.z"]}))
+        (d / "azure-foundation.tfvars.json").write_text(json.dumps({"ado_org": "o", "jfrog_url": "https://b.jfrog.io"}))
+        (d / "azure-jfrog-trust.tfvars.json").write_text(json.dumps({"jfrog_url": "https://kept.jfrog.io"}))
+        (d / "shared-serverless-google-cloud.json").write_text(json.dumps({"gcp_project_id": "p1", "jfrog_url": "https://a.jfrog.io"}))
+        stacks.separate_jfrog_inputs("test", state_root=state)
+        self.assertEqual(stacks.read_inputs("gcp-foundation", "test", state), {"gcp_project_id": "p1", "ado_org": "o"})
+        self.assertEqual(stacks.read_inputs("gcp-jfrog-trust", "test", state),
+                         {"jfrog_url": "https://a.jfrog.io", "jfrog_reader_group": "r", "console_operators": ["x@y.z"]})
+        self.assertEqual(stacks.read_inputs("azure-foundation", "test", state), {"ado_org": "o"})
+        self.assertEqual(stacks.read_inputs("azure-jfrog-trust", "test", state), {"jfrog_url": "https://kept.jfrog.io"})
+        self.assertEqual(json.loads((d / "shared-serverless-google-cloud.json").read_text()), {"gcp_project_id": "p1"})
 
     def test_foundation_environments_cover_every_stack_setup_pipeline(self):
         # Each foundation makes the approval environment for exactly the stacks of its cloud that
@@ -420,7 +444,7 @@ class JobTests(unittest.TestCase):
         self.assertEqual(done["state"], "done", done)
         self.assertIn(["apply", "-input=false", "-lock-timeout=60s", "-no-color", "plan.bin"], self.root.calls("gcp-cloud-run"))
         self.assertTrue([s for s in self.jobs.stacks() if s["id"] == "gcp-cloud-run"][0]["status"]["deployed"])
-        self.assertEqual(self.minted, ["acme.jfrog.io", "acme.jfrog.io"][:len(self.minted)])
+        self.assertEqual(self.minted, [])   # infrastructure: no JFrog token, even with a jfrog_url input
 
     def test_apply_logs_to_its_own_job(self):
         j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
@@ -464,15 +488,25 @@ class JobTests(unittest.TestCase):
         self.assertTrue(done["result"]["destroyed"])
 
     def test_destroy_skips_jfrog_token_when_state_has_no_jfrog_resources(self):
-        state = stacks.stack_dir("gcp-foundation", self.root.dir) / "terraform.tfstate"
-        state.write_text(json.dumps({"resources": [{"type": "google_storage_bucket"}]}))
-        self._plan("gcp-foundation", [{"address": "a.b", "type": "x", "change": {"actions": ["delete"]}}], action="plan-destroy")
+        state = stacks.stack_dir("gcp-jfrog-trust", self.root.dir) / "terraform.tfstate"
+        state.write_text(json.dumps({"resources": [{"type": "google_service_account"}]}))
+        self._plan("gcp-jfrog-trust", [{"address": "a.b", "type": "x", "change": {"actions": ["delete"]}}], action="plan-destroy")
         self.assertEqual(self.minted, [])
         state.write_text(json.dumps({"resources": [{"type": "platform_oidc_configuration"}]}))
-        self._plan("gcp-foundation", [{"address": "a.b", "type": "x", "change": {"actions": ["delete"]}}], action="plan-destroy")
+        self._plan("gcp-jfrog-trust", [{"address": "a.b", "type": "x", "change": {"actions": ["delete"]}}], action="plan-destroy")
         self.assertEqual(self.minted, ["acme.jfrog.io"])
-        self._plan("gcp-foundation", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        self._plan("gcp-jfrog-trust", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
         self.assertEqual(len(self.minted), 2)
+
+    def test_infrastructure_terraform_never_sees_a_jfrog_token(self):
+        self.jobs.environ = {"JFROG_ACCESS_TOKEN": "operator-admin-token", "JFROG_URL": "https://acme.jfrog.io"}
+        for sid in ("gcp-foundation", "gcp-cloud-run"):
+            self._plan(sid, [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+            p = stacks.stack_dir(sid, self.root.dir) / ".fake_calls"
+            self.assertFalse(any(json.loads(l)["jfrog_token_env"] for l in p.read_text().splitlines()), sid)
+        self._plan("gcp-jfrog-trust", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        p = stacks.stack_dir("gcp-jfrog-trust", self.root.dir) / ".fake_calls"
+        self.assertTrue(any(json.loads(l)["jfrog_token_env"] for l in p.read_text().splitlines()))
 
     def test_plan_refused_until_inputs_filled(self):
         (self.root.state / "test" / "azure-container-apps.tfvars.json").unlink()

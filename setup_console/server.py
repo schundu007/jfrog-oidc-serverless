@@ -49,6 +49,7 @@ class SetupServer:
         self.token, self.base, self.host, self.port, self.log = token, base, host, port, log
         self.env_name, self.root, self.state_root = env_name, root, state_root
         self.jobs = jobs or Jobs(env_name=env_name, root=root, state_root=state_root)
+        stacks.separate_jfrog_inputs(env_name, root, state_root)   # infrastructure inputs hold nothing for JFrog
         self.static_files = {p.name for p in STATIC_DIR.iterdir() if p.is_file() and p.suffix in CONTENT_TYPES}
 
     def allowed_hosts(self) -> set:

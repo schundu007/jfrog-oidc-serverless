@@ -1,7 +1,9 @@
 # Google Cloud pipelines, test environment: ADO settings only, nothing shared with other clouds.
 # Not credentials: every job authenticates with its service connection's OIDC token.
-# Target values (JFrog URL and integration, project or subscription, identities) are not
+# Target values (project or subscription, identities) are not
 # here: terraform/stacks/serverless/gcp/gcp-foundation writes them to the variable group jfrog-oidc-gcp-<env>.
+# JFrog values (JFROG_URL, JFROG_OIDC_PROVIDER) come only from jfrog-oidc-gcp-<env>-jfrog, written by
+# terraform/stacks/oidc/gcp/gcp-jfrog-trust, and only build-deploy and onboarding runs read it.
 variables:
   ENVIRONMENT: test
   # Written by terraform/stacks/serverless/gcp/gcp-foundation (token issuers only, no Azure access);

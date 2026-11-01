@@ -420,6 +420,35 @@ def _write(p: Path, data: dict) -> None:
     tmp.replace(p)
 
 
+def separate_jfrog_inputs(env: str, root: Path = STACKS_DIR, state_root: Path = STATE_ROOT) -> None:
+    """Infrastructure inputs hold nothing for JFrog. Values a foundation no longer declares but its
+    cloud's JFrog OIDC stack does (inputs saved before the split) move there, without overwriting
+    what that stack already has; the infrastructure prefill drops every name no stack of its own
+    kind and cloud declares. Idempotent; run when Setup starts."""
+    declared = {s["id"]: {v["name"] for v in variables(s["id"], root)} for s in CATALOGUE if stack_dir(s["id"], root).is_dir()}
+    for s in CATALOGUE:
+        dep = s.get("after")
+        if s["kind"] != "JFrog OIDC" or dep not in declared or s["id"] not in declared:
+            continue
+        saved = read_inputs(dep, env, state_root)
+        extra = {k: v for k, v in saved.items() if k not in declared[dep]}
+        if not extra:
+            continue
+        moved = {k: v for k, v in extra.items() if k in declared[s["id"]]}
+        if moved:
+            mine = read_inputs(s["id"], env, state_root)
+            _write(inputs_file(s["id"], env, state_root), {**moved, **mine})
+        _write(inputs_file(dep, env, state_root), {k: v for k, v in saved.items() if k in declared[dep]})
+    by_file = {}
+    for s in CATALOGUE:
+        if s["kind"] != "JFrog OIDC" and s["id"] in declared:
+            by_file.setdefault(_shared_file(env, state_root, s["id"]), set()).update(declared[s["id"]])
+    for f, names in by_file.items():
+        shared = _load(f)
+        if any(k not in names for k in shared):
+            _write(f, {k: v for k, v in shared.items() if k in names})
+
+
 def missing(stack_id: str, env: str, root: Path = STACKS_DIR, state_root: Path = STATE_ROOT) -> list:
     saved = read_inputs(stack_id, env, state_root)
     return [v["name"] for v in variables(stack_id, root) if v["required"] and not v["sensitive"] and v["name"] not in saved]

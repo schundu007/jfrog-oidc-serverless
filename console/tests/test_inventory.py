@@ -67,8 +67,8 @@ class InventoryTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.repo, True)
         setup = self.repo / ".console" / "setup" / "test"
         setup.mkdir(parents=True)
-        (setup / "gcp-foundation.tfvars.json").write_text(json.dumps({"jfrog_url": "https://acme.jfrog.io/"}))
-        (setup / "azure-foundation.tfvars.json").write_text(json.dumps({"jfrog_url": "https://other.jfrog.io"}))
+        (setup / "gcp-jfrog-trust.tfvars.json").write_text(json.dumps({"jfrog_url": "https://acme.jfrog.io/"}))
+        (setup / "azure-jfrog-trust.tfvars.json").write_text(json.dumps({"jfrog_url": "https://other.jfrog.io"}))
 
     def test_gcp(self):
         sh = Fake()

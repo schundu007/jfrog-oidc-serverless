@@ -36,16 +36,16 @@ ECS_FAMILY_CAP = 50
 LOCATION = "cloud.googleapis.com/location"
 
 
-# The foundation whose Setup inputs name the JFrog platform a cloud's pipelines use.
-FOUNDATION = {"gcp": "gcp-foundation", "azure": "azure-foundation"}
+# The JFrog OIDC stack whose Setup inputs name the JFrog platform a cloud uses (infrastructure has none).
+JFROG_TRUST = {"gcp": "gcp-jfrog-trust", "azure": "azure-jfrog-trust"}
 
 
 def _jfrog_url(cloud: str, repo_root, env: str = "test") -> str:
-    """jfrog_url from this cloud's own foundation inputs (Setup page), the platform its pipelines
+    """jfrog_url from this cloud's own JFrog OIDC stack inputs (Setup, JFrog OIDC page), the platform its pipelines
     use. Never another cloud's: clouds share nothing."""
-    if repo_root is None or cloud not in FOUNDATION:
+    if repo_root is None or cloud not in JFROG_TRUST:
         return ""
-    p = Path(repo_root) / ".console" / "setup" / env / f"{FOUNDATION[cloud]}.tfvars.json"
+    p = Path(repo_root) / ".console" / "setup" / env / f"{JFROG_TRUST[cloud]}.tfvars.json"
     try:
         url = json.loads(p.read_text()).get("jfrog_url") or ""
     except (OSError, ValueError, AttributeError):
