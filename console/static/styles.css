@@ -957,3 +957,32 @@ tbody tr, .ov-tile, .tile, .nav-item, a, button, .blade-opt, .chip, .kind-folder
   background: #f3f8ec; box-shadow: inset 3px 0 0 var(--brand, #5ba908); }
 #groups tbody tr:hover > td { background: transparent; }
 .ov-tile:hover, .ov-tile:focus-visible { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(40, 70, 10, 0.10); background: #fbfdf8; }
+
+/* Sidebar sub-items, Azure DevOps style (shell.js): a top item unfolds into its sub-items; the open
+   section's top row is tinted, its current sub-item shaded with the green edge. */
+.sidenav .nav-block { position: relative; }
+.sidenav .nav-block > .nav-item { padding-right: 44px; }
+.sidenav .nav-chev {
+  position: absolute; top: 5px; right: 8px; width: 32px; height: 32px; display: grid; place-items: center;
+  padding: 0; border: 0; border-radius: 6px; background: none; color: var(--fg-3); cursor: pointer;
+}
+.sidenav .nav-chev:hover { background: var(--side-hover); color: var(--fg); }
+.sidenav .nav-chev:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sidenav .nav-chev .ico { width: 16px; height: 16px; stroke-width: 2; transition: transform 200ms ease; }
+.sidenav .nav-block.open .nav-chev .ico { transform: rotate(90deg); }
+.sidenav .nav-kids { display: grid; grid-template-rows: 0fr; visibility: hidden; }
+.sidenav .nav-block.open .nav-kids { grid-template-rows: 1fr; visibility: visible; }
+.sidenav.nav-ready .nav-kids { transition: grid-template-rows 220ms ease, visibility 220ms; }
+.sidenav .nav-kids-in { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.sidenav .nav-item.nav-child { min-height: 36px; padding: 7px var(--s-5) 7px 52px; font-size: 14px; gap: 10px; }
+.sidenav .nav-item.nav-child > svg { width: 18px; height: 18px; }
+.sidenav .nav-block.here > [data-nav][aria-current="true"] { background: var(--side-on); color: var(--fg); font-weight: 700; }
+.sidenav .nav-item.nav-child[aria-current] { background: var(--side-on); color: var(--accent); font-weight: 600; }
+.sidenav .nav-item.nav-child[aria-current]::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--brand);
+}
+.sidenav .nav-item.nav-child[aria-current="page"] { background: color-mix(in srgb, var(--brand) 16%, var(--side)); color: var(--fg); }
+@media (max-width: 860px) {
+  .sidenav .nav-chev, .sidenav .nav-kids { display: none; }
+  .sidenav .nav-block { display: contents; }
+}

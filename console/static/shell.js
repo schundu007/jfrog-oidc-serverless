@@ -1,6 +1,6 @@
-// The console's one navigation, on every page: six flat items, each one list page in the Azure portal
-// style (Home, Infrastructure, Serverless, Kubernetes, JFrog OIDC, Runs). Cloud and service type are
-// filters on those lists, never menu items. A classic script placed inside <aside class="sidenav">: it
+// The console's one navigation, on every page: six items (Home, Infrastructure, Serverless, Kubernetes,
+// JFrog OIDC, Runs), each a list page that unfolds into its sub-items, as in Azure DevOps: a sub-item is
+// that list filtered (a service type, a cloud, a run area). A classic script placed inside <aside class="sidenav">: it
 // writes the menu where it stands, before the page's own module runs, so the first paint already has it.
 // Also window.consoleBlade: the list pages' filter bar ("Filter for any field…" and filter pills).
 (() => {
@@ -33,13 +33,41 @@
   }
   const sectionOfKind = (kind) => (SECTIONS[kind] ? kind : null);
 
-  const NAV = [["home", "Home", "/", "home"], ["infra", "Infrastructure", "/setup", "infra"],
-    ["serverless", "Serverless", "/serverless/", "serverless"], ["k8s", "Kubernetes", "/k8s/clusters", "k8s"],
-    ["oidc", "JFrog OIDC", "/setup/oidc", "boot"], ["runs", "Runs", "/runs", "runs"]];
+  // Six top items, as in Azure DevOps: each opens its own sub-items (a filtered view of its list).
+  // [key, label, href, icon, [[label, href, icon, when(path, query) → current?]]]
+  const q = (k, v) => (p, u) => u.get(k) === v;
+  const SHORT = { azure_container_app_job: "Container Apps jobs", azure_container_app: "Container Apps",
+    azure_functions_aca: "Functions on ACA", azure_functions_premium: "Functions Premium", azure_functions_flex: "Functions Flex",
+    gcp_run_job: "Cloud Run jobs", gcp_run_service: "Cloud Run services", gcp_run_function: "Cloud Run functions",
+    gcp_run_worker_pool: "Worker pools" };
+  const SERVERLESS = KINDS.filter(([, , g]) => g === "Serverless").flatMap(([c, , , items]) =>
+    items.map(([k, , ic]) => [SHORT[k], `/serverless/${c}?type=${k}`, ic, (p, u) => u.get("type") === k || sel.kind === k]));
+  const BY_CLOUD = (base, path) => [["Azure", `${base}${path("azure")}`, "azure", (p, u) => u.get("cloud") === "azure" || p.endsWith("-azure")],
+    ["Google Cloud", `${base}${path("gcp")}`, "gcp", (p, u) => u.get("cloud") === "gcp" || p.endsWith("-gcp")]];
+  const NAV = [["home", "Home", "/", "home", []],
+    ["infra", "Infrastructure", "/setup", "infra", BY_CLOUD("/setup", (c) => `?cloud=${c}`)],
+    ["serverless", "Serverless", "/serverless/", "serverless", SERVERLESS],
+    ["k8s", "Kubernetes", "/k8s/clusters", "k8s", [["AKS clusters", "/k8s/clusters/aks", "aks", (p) => /^\/k8s\/clusters\/aks(\/|$)/.test(p)],
+      ["GKE clusters", "/k8s/clusters/gke", "gke", (p) => /^\/k8s\/clusters\/gke(\/|$)/.test(p)]]],
+    ["oidc", "JFrog OIDC", "/setup/oidc", "boot", BY_CLOUD("/setup/oidc", (c) => `-${c}`)],
+    ["runs", "Runs", "/runs", "runs", [["Serverless", "/runs?area=serverless", "serverless", q("area", "serverless")],
+      ["Kubernetes", "/runs?area=kubernetes", "k8s", q("area", "kubernetes")],
+      ["Infrastructure", "/runs?area=infrastructure", "infra", q("area", "infrastructure")]]]];
 
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const link = ([key, label, href, icon]) =>
-    `<a class="nav-item" href="${esc(href)}" data-section data-nav="${key}">${ICON[icon]}<span>${esc(label)}</span></a>`;
+  const glyph = (k) => (k === "boot" ? BOOT : CLOUD_LOGO[k] || ICON[k] || "");
+  const CHEV = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+  const OPEN_KEY = "console.nav.open";
+  const opened = (() => { try { return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || "[]")); } catch { return new Set(); } })();
+  const keep = () => { try { localStorage.setItem(OPEN_KEY, JSON.stringify([...opened])); } catch { /* per-viewer convenience only */ } };
+  const block = ([key, label, href, icon, kids]) => {
+    const top = `<a class="nav-item" href="${esc(href)}" data-section data-nav="${key}">${glyph(icon)}<span>${esc(label)}</span></a>`;
+    if (!kids.length) return `<div class="nav-block" data-block="${key}">${top}</div>`;
+    const sub = kids.map(([l, h, ic], i) =>
+      `<a class="nav-item nav-child" href="${esc(h)}" data-child="${key}:${i}">${glyph(ic)}<span>${esc(l)}</span></a>`).join("");
+    return `<div class="nav-block" data-block="${key}">${top}<button type="button" class="nav-chev" aria-label="Show ${esc(label)} items" aria-expanded="false" aria-controls="nav-kids-${key}">${CHEV}</button>` +
+      `<div class="nav-kids" id="nav-kids-${key}"><div class="nav-kids-in">${sub}</div></div></div>`;
+  };
   function fromPath() {
     const p = location.pathname;
     if (p === "/") return "home";
@@ -55,21 +83,52 @@
 
   const me = document.currentScript;
   me.parentElement.id ||= "sidenav";
-  me.insertAdjacentHTML("beforebegin", `${DEFS}<nav aria-label="Console">${NAV.map(link).join("")}</nav>`);
+  me.insertAdjacentHTML("beforebegin", `${DEFS}<nav aria-label="Console">${NAV.map(block).join("")}</nav>`);
+  const root = me.parentElement;
+
+  function setOpen(b, on, remember = true) {
+    b.classList.toggle("open", on);
+    b.querySelector(".nav-chev")?.setAttribute("aria-expanded", String(on));
+    if (remember) { on ? opened.add(b.dataset.block) : opened.delete(b.dataset.block); keep(); }
+  }
+  root.addEventListener("click", (e) => {
+    const c = e.target.closest(".nav-chev");
+    if (c) { const b = c.closest(".nav-block"); setOpen(b, !b.classList.contains("open")); }
+  });
 
   // A service kind (Cloud Run job) or platform (aks) selects the list it belongs to.
-  function select(key) {
-    const s = SECTIONS[key];
-    const nav = s ? (s.group === "Kubernetes" ? "k8s" : "serverless") : key;
-    for (const a of document.querySelectorAll(".sidenav [data-nav]")) {
-      if (a.dataset.nav === nav) a.setAttribute("aria-current", atTop() ? "page" : "true");
-      else a.removeAttribute("aria-current");
+  const sel = { nav: null, kind: null };
+  function mark() {
+    const p = location.pathname, u = new URLSearchParams(location.search);
+    for (const [key, , , , kids] of NAV) {
+      const b = root.querySelector(`[data-block="${key}"]`), top = b.querySelector("[data-nav]");
+      const here = key === sel.nav;
+      const hit = here ? kids.findIndex(([, , , when]) => when(p, u)) : -1;
+      if (here) top.setAttribute("aria-current", atTop() && hit < 0 ? "page" : "true"); else top.removeAttribute("aria-current");
+      b.classList.toggle("here", here);
+      b.querySelectorAll(".nav-child").forEach((a, i) => {
+        if (i === hit) a.setAttribute("aria-current", atTop() ? "page" : "true"); else a.removeAttribute("aria-current");
+      });
+      if (kids.length) setOpen(b, here || opened.has(key), false);
     }
   }
+  function select(key) {
+    const s = SECTIONS[key];
+    sel.nav = s ? (s.group === "Kubernetes" ? "k8s" : "serverless") : key;
+    sel.kind = s ? key : null;
+    mark();
+  }
   select(fromPath());
+  requestAnimationFrame(() => root.classList.add("nav-ready"));   // no slide on first paint
+  // List filters live in the address: follow them as they change.
+  for (const fn of ["pushState", "replaceState"]) {
+    const orig = history[fn].bind(history);
+    history[fn] = (...a) => { const r = orig(...a); queueMicrotask(mark); return r; };
+  }
+  addEventListener("popstate", mark);
   // Service icons for other pages (list rows, Home): constant inline SVG, no user data.
-  const icon = (k) => (k === "boot" ? BOOT : CLOUD_LOGO[k] || ICON[k] || "");
-  window.consoleNav = { icon, select, SECTIONS, sectionOfKind, section: (key) => SECTIONS[key] || null, current: fromPath };
+  const icon = glyph;
+  window.consoleNav = { icon, select, SECTIONS, sectionOfKind, section: (key) => SECTIONS[key] || null, current: () => sel.nav };
 
   // ------------------------------------------------------------------ filter bar
   // bar({placeholder, q, onQuery, pills: [{label, value, options: [[value, text]], onChange}]}) → element.
