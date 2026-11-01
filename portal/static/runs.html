@@ -33,15 +33,11 @@
       <button type="button" id="runs-confirm-no" class="btn secondary">Keep</button>
     </div>
     <p id="runs-done" class="muted small" role="status" hidden></p>
-    <!-- Every run of every workload and cluster, newest first: one list for the whole console. -->
-    <div class="filter-row runs-filters">
-      <select id="runs-cloud" aria-label="Cloud"><option value="">All clouds</option><option value="gcp">Google Cloud</option><option value="azure">Azure</option></select>
-      <select id="runs-status" aria-label="Status"><option value="">Any status</option><option value="active">In progress</option><option value="succeeded">Succeeded</option><option value="failed">Failed</option></select>
-      <input id="runs-filter" type="search" placeholder="Filter by name or type" aria-label="Filter runs" spellcheck="false" autocomplete="off">
-    </div>
+    <!-- Every run of every workload, cluster and infrastructure stack, newest first: one list for the whole console. -->
+    <div id="runs-filters"></div>
     <div class="table-card">
       <table class="list-table">
-        <thead><tr><th scope="col" class="sel"><input type="checkbox" id="runs-all" aria-label="Select all finished runs shown"></th><th scope="col">Status</th><th scope="col">Workload or cluster</th><th scope="col">Type</th><th scope="col">Cloud</th><th scope="col">Started</th></tr></thead>
+        <thead><tr><th scope="col" class="sel"><input type="checkbox" id="runs-all" aria-label="Select all finished runs shown"></th><th scope="col">Status</th><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Cloud</th><th scope="col">Started</th></tr></thead>
         <tbody id="runs-rows"></tbody>
       </table>
     </div>

@@ -470,6 +470,33 @@ class JobTests(unittest.TestCase):
         self.assertTrue(any(line.startswith("Applied the Terraform plan: ok") for line in done["log"]), done["log"])
         self.assertEqual(len(self.jobs.get(j["id"])["log"]), planned)
 
+    def test_finished_changes_are_kept_and_listed(self):
+        # Runs lists every deploy and destroy after a restart; automatic state reads are not kept.
+        j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        wait(self.jobs, self.jobs.start("gcp-cloud-run", "status"))
+        again = Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state)
+        rows = again.history()
+        self.assertEqual([(r["id"], r["stack"], r["action"], r["state"], r["cloud"]) for r in rows],
+                         [(j["id"], "gcp-cloud-run", "plan-apply", "done", "gcp")])
+        self.assertNotIn("log", rows[0])
+        kept = again.get(j["id"])
+        self.assertEqual(kept["log"], j["log"])
+        self.assertNotIn("outputs", kept["result"] or {})
+        self.assertEqual(again.remove(j["id"]), {"deleted": j["id"]})
+        self.assertEqual(again.history(), [])
+        for bad in (j["id"], "../../x"):
+            with self.assertRaises(JobError) as e:
+                again.remove(bad)
+            self.assertEqual(e.exception.status, 404)
+
+    def test_kept_runs_are_redacted(self):
+        j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        secret = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJlc2lnbmF0dXJl"
+        self.jobs._jobs[j["id"]]["log"].append(f"token {secret}")
+        self.jobs._keep(self.jobs._jobs[j["id"]])
+        text = (self.root.state / "test" / "jobs" / f"{j['id']}.json").read_text()
+        self.assertNotIn(secret, text)
+
     def test_stacks_name_the_running_job(self):
         # A page that closed the drawer (or was reloaded) finds the running job here and follows it again.
         gate = threading.Event()
@@ -852,6 +879,10 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.req("POST", "/api/stacks/azure-container-apps/jobs", {"action": "plan-apply"})[0], 400)
         self.assertEqual(self.req("POST", "/api/stacks/nope/jobs", {"action": "plan-apply"})[0], 400)
         self.assertEqual(self.req("GET", "/api/options/nope")[0], 404)
+        st, body, _ = self.req("GET", "/api/jobs")
+        self.assertEqual(st, 200)
+        self.assertEqual([r["stack"] for r in json.loads(body)["jobs"]], ["gcp-cloud-run"])
+        self.assertEqual(self.req("DELETE", "/api/jobs/000000000000")[0], 404)
 
 class LiveOptionTests(unittest.TestCase):
     """Approvers and operators are picked from live ADO, Entra and Google Cloud data, by email."""

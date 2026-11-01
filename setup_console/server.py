@@ -208,8 +208,13 @@ def make_handler(console: SetupServer):
             if m == ("GET", "options", 2):
                 scope = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("scope", [None])[0]
                 return self._json(200, {"options": console.options(parts[1], scope)})
+            if m == ("GET", "jobs", 1):
+                return self._json(200, {"jobs": console.jobs.history()})
             if m == ("GET", "jobs", 2):
                 return self._json(200, console.jobs.get(parts[1]))
+            if m == ("DELETE", "jobs", 2):
+                console.jobs.audit(parts[1], "delete-run", self.headers.get("User-Agent"))
+                return self._json(200, console.jobs.remove(parts[1]))
             raise HttpError(404, "not found")
 
     return Handler

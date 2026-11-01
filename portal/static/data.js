@@ -103,7 +103,7 @@ async function serverless() {
     const known = Boolean(r.name && r.kind);
     return { cloud: known ? cloudOf(r.kind) : null, section: known ? sectionOfKind(r.kind) : null,
       name: known ? r.name : "Unknown workload", type: known ? label(r.kind) : "No workload recorded",
-      mark: known ? markOfKind(r.kind) : null, status: r.status, created: r.created, id: r.id, api: `/serverless/api/runs/${encodeURIComponent(r.id)}`,
+      mark: known ? markOfKind(r.kind) : null, status: r.status, created: r.created, id: r.id, area: "serverless", api: `/serverless/api/runs/${encodeURIComponent(r.id)}`,
       href: known ? `/serverless/${cloudOf(r.kind)}/w/${encodeURIComponent(r.name)}/runs/${encodeURIComponent(r.id)}` : null };
   });
   return { items, runs: runRows };
@@ -127,17 +127,35 @@ async function kubernetes() {
     const known = Boolean(p);
     return { cloud: p ? SECTIONS[p]?.[0] || null : null, section: p, name: r.config || r.cluster || "Unknown cluster",
       type: `${(p && SECTIONS[p]?.[1].replace(/s$/, "")) || "Cluster (configuration deleted)"} · ${words(r.name || r.kind)}`, mark: p,
-      status: r.status, created: r.created, id: r.id, api: `/k8s/api/runs/${encodeURIComponent(r.id)}`,
+      status: r.status, created: r.created, id: r.id, area: "kubernetes", api: `/k8s/api/runs/${encodeURIComponent(r.id)}`,
       href: known ? `/k8s/clusters/${p}/${encodeURIComponent(r.config)}/runs/${encodeURIComponent(r.id)}` : null };
   });
   return { items, runs: runRows };
 }
 
+// Infrastructure and JFrog OIDC: every deploy, destroy and apply run on the Setup pages or through a
+// stack's stack-setup pipeline. Each row opens its log on the page it was run from.
+const SETUP_STATE = { done: "succeeded", failed: "failed", running: "running" };
+const SETUP_ACTION = { "plan-apply": "Deploy plan", "plan-destroy": "Destroy plan", apply: "Apply", forget: "Forget" };
+async function infrastructure() {
+  const { jobs } = await get("/setup/api/jobs");
+  const iso = (t) => t ? new Date(t * 1000).toISOString().replace(/\.\d+Z$/, "Z") : "";
+  const runRows = jobs.map((j) => {
+    const page = j.kind === "JFrog OIDC" ? "/setup/oidc" : "/setup";
+    return { cloud: j.cloud, section: null, name: j.title, mark: j.cloud,
+      type: `${j.kind === "JFrog OIDC" ? "JFrog OIDC" : `${j.kind} infrastructure`} · ${SETUP_ACTION[j.action] || words(j.action)}`,
+      status: SETUP_STATE[j.state] || j.state, created: iso(j.started), id: j.id, area: "infrastructure",
+      api: `/setup/api/jobs/${encodeURIComponent(j.id)}`, href: `${page}?job=${encodeURIComponent(j.id)}` };
+  });
+  return { items: [], runs: runRows };
+}
+
 // Everything, newest run first. A source that fails is reported, not shown as empty.
+const SOURCES = [["Serverless", serverless], ["Kubernetes", kubernetes], ["Infrastructure", infrastructure]];
 export async function loadAll() {
-  const results = await Promise.allSettled([serverless(), kubernetes()]);
+  const results = await Promise.allSettled(SOURCES.map(([, f]) => f()));
   const ok = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
-  const errors = results.map((r, i) => r.status === "rejected" ? { source: i ? "Kubernetes" : "Serverless", message: r.reason?.message } : null)
+  const errors = results.map((r, i) => r.status === "rejected" ? { source: SOURCES[i][0], message: r.reason?.message } : null)
     .filter(Boolean);
   return { items: ok.flatMap((v) => v.items), runs: ok.flatMap((v) => v.runs).sort((a, b) => String(b.created).localeCompare(String(a.created))),
     errors, signedOut: errors.some((e) => e.message === "signed-out") };

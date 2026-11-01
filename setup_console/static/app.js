@@ -412,5 +412,18 @@ $("auth-form").onsubmit = (e) => {
   const m = $("auth-input").value.match(/#t=([A-Za-z0-9_-]+)/);
   if (m) { setToken(m[1]); $("auth-banner").hidden = true; load(); }
 };
+// ?job=<id> (from Runs): that run's log, followed while it runs, read-only once finished.
+async function openRun(id) {
+  const job = await api(`/api/jobs/${encodeURIComponent(id)}`);
+  const stack = byId[job.stack];
+  if (!stack) return;
+  const panel = flyout(`${stack.group} · ${stack.title}: ${ACTION_NAME[job.action] || job.action}`);
+  if (job.state === "running") return follow(stack, job, panel);
+  fill(panel.status, job.state === "failed" ? statusPill("failed", "Failed") : statusPill("succeeded", "Done"));
+  fill(panel.body, job.state === "failed" ? h("pre", { class: "pf-log" }, job.error || "") : null,
+    job.started ? h("p", { class: "muted", text: `Started ${new Date(job.started * 1000).toLocaleString()}` }) : null, logBox(job));
+}
+const RUN_ID = new URLSearchParams(location.search).get("job");
+
 if (!hasToken()) $("auth-banner").hidden = false;
-else load().catch((e) => { if (e.status === 401) $("auth-banner").hidden = false; });
+else load().then(() => RUN_ID && openRun(RUN_ID)).catch((e) => { if (e.status === 401) $("auth-banner").hidden = false; });

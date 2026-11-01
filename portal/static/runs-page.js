@@ -1,11 +1,13 @@
-// Runs (/runs): every run of every workload and cluster, newest first, filtered by cloud, status and
-// text. Each row opens the run's own page. Data: data.js.
+// Runs (/runs): every run of every workload, cluster and infrastructure stack, newest first, filtered
+// by text and the Cloud, Area and Status pills (kept in the address). Each row opens its run. Data: data.js.
 import { CLOUD_NAMES, LIVE_STATES, h, markEl, when, runPill, loadAll, removeRun } from "./data.js";
 
 const $ = (id) => document.getElementById(id);
 let all = [], shown = [];
 const picked = new Set();  // run api paths
 let pending = null;  // runs awaiting the inline Delete/Keep answer
+const F = Object.fromEntries(["q", "cloud", "area", "status"].map((k) => [k, new URLSearchParams(location.search).get(k) || ""]));
+const AREAS = [["serverless", "Serverless"], ["kubernetes", "Kubernetes"], ["infrastructure", "Infrastructure"]];
 
 const STATUS = { active: (s) => LIVE_STATES.has(s), succeeded: (s) => s === "succeeded",
   failed: (s) => ["failed", "cancelled", "refused"].includes(s) };
@@ -29,10 +31,24 @@ function row(r) {
   return tr;
 }
 
+function saveQuery() {
+  const u = new URLSearchParams(Object.entries(F).filter(([, v]) => v));
+  history.replaceState(null, "", `/runs${u.toString() ? `?${u}` : ""}`);
+}
+
+function filters() {
+  const set = (k) => (v) => { F[k] = v; saveQuery(); filters(); render(); };
+  $("runs-filters").replaceChildren(window.consoleBlade.bar({ q: F.q, onQuery: (v) => { F.q = v; saveQuery(); render(); }, pills: [
+    { label: "Cloud", value: F.cloud, options: [["gcp", "Google Cloud"], ["azure", "Azure"]], onChange: set("cloud") },
+    { label: "Area", value: F.area, options: AREAS, onChange: set("area") },
+    { label: "Status", value: F.status, options: [["active", "In progress"], ["succeeded", "Succeeded"], ["failed", "Failed"]], onChange: set("status") },
+  ] }));
+}
+
 function render() {
-  const cloud = $("runs-cloud").value, status = $("runs-status").value, q = $("runs-filter").value.trim().toLowerCase();
-  shown = all.filter((r) => (!cloud || r.cloud === cloud) && (!status || STATUS[status](r.status))
-    && (!q || [r.name, r.type].some((v) => String(v).toLowerCase().includes(q))));
+  const q = F.q.trim().toLowerCase();
+  shown = all.filter((r) => (!F.cloud || r.cloud === F.cloud) && (!F.area || r.area === F.area) && (!F.status || STATUS[F.status]?.(r.status))
+    && (!q || [r.name, r.type, CLOUD_NAMES[r.cloud]].some((v) => String(v || "").toLowerCase().includes(q))));
   $("runs-rows").replaceChildren(...shown.map(row));
   $("runs-none").hidden = shown.length > 0;
   $("runs-count").textContent = all.length ? String(all.length) : "";
@@ -87,8 +103,7 @@ async function load() {
   render();
 }
 
-for (const id of ["runs-cloud", "runs-status"]) $(id).addEventListener("change", render);
-$("runs-filter").addEventListener("input", render);
+filters();
 $("runs-refresh").addEventListener("click", load);
 $("runs-all").addEventListener("change", (e) => {
   picked.clear();

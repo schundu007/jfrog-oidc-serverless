@@ -30,6 +30,7 @@ from .ado import AdoError
 
 
 MAX_LOG = 5000   # lines kept per job
+JOB_ID = re.compile(r"[0-9a-f]{12}")
 POLL_SECONDS = 10
 RUN_TIMEOUT = 90 * 60   # a pipeline run that takes longer is reported, not waited on
 
@@ -101,9 +102,90 @@ class Jobs:
     def get(self, job_id: str) -> dict:
         with self._lock:
             j = self._jobs.get(job_id)
-            if not j:
-                raise JobError(404, "no such job")
-            return {k: (list(v) if k in ("log", "log_times") else v) for k, v in j.items() if not k.startswith("_")}
+            if j:
+                return {k: (list(v) if k in ("log", "log_times") else v) for k, v in j.items() if not k.startswith("_")}
+        kept = self._read_kept(job_id)
+        if not kept:
+            raise JobError(404, "no such job")
+        return kept
+
+    # -- history: every deploy, destroy and apply, kept after it finishes -----------------------------
+
+    def _history_dir(self):
+        return stacks.Path(self.state_root) / self.env_name / "jobs"
+
+    def _read_kept(self, job_id: str):
+        if not JOB_ID.fullmatch(str(job_id)):
+            return None
+        try:
+            return json.loads((self._history_dir() / f"{job_id}.json").read_text())
+        except (OSError, ValueError):
+            return None
+
+    def _keep(self, job) -> None:
+        """A finished change (not an automatic state read) on disk, outside git, so Runs lists it after a
+        restart. The log is redacted again; Terraform outputs are not kept."""
+        if job["action"] == "status":
+            return
+        rec = {k: job.get(k) for k in ("id", "stack", "action", "state", "started", "finished", "error", "next")}
+        rec["error"] = redact.text(rec["error"]) if rec["error"] else None
+        rec["log"] = [redact.text(x) for x in job.get("log", [])]
+        rec["log_times"] = list(job.get("log_times", []))
+        res = job.get("result")
+        rec["result"] = {k: v for k, v in res.items() if k != "outputs"} if isinstance(res, dict) else None
+        d = self._history_dir()
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            tmp = d / f".{job['id']}.tmp"
+            tmp.write_text(json.dumps(rec, default=str))
+            os.replace(tmp, d / f"{job['id']}.json")
+        except OSError:
+            pass
+
+    def history(self) -> list:
+        """Every change run here or through its stack-setup pipeline, newest first, without logs."""
+        fields = ("id", "stack", "action", "state", "started", "finished", "error")
+        out = {}
+        try:
+            files = list(self._history_dir().glob("*.json"))
+        except OSError:
+            files = []
+        for f in files:
+            try:
+                rec = json.loads(f.read_text())
+            except (OSError, ValueError):
+                continue
+            if isinstance(rec, dict) and JOB_ID.fullmatch(str(rec.get("id", ""))):
+                out[rec["id"]] = {k: rec.get(k) for k in fields}
+        with self._lock:
+            for j in self._jobs.values():
+                if j["action"] != "status":
+                    out[j["id"]] = {k: j.get(k) for k in fields}
+        rows = []
+        for r in out.values():
+            meta = next((s for s in stacks.CATALOGUE if s["id"] == r["stack"]), None)
+            if meta:
+                r.update(kind=meta["kind"], group=meta["group"], title=meta["title"], cloud={"Google Cloud": "gcp", "Azure": "azure"}.get(meta["group"]),
+                         error=(r["error"] or "").splitlines()[0][:300] if r["error"] else "")
+                rows.append(r)
+        return sorted(rows, key=lambda r: r["started"] or 0, reverse=True)
+
+    def remove(self, job_id: str) -> dict:
+        """Forget one finished run: its record and log. A running one answers 409."""
+        with self._lock:
+            j = self._jobs.get(job_id)
+            if j and j["state"] == "running":
+                raise JobError(409, "the run is still going")
+            if j:
+                del self._jobs[job_id]
+        f = self._history_dir() / f"{job_id}.json"
+        if not JOB_ID.fullmatch(str(job_id)) or (not j and not f.is_file()):
+            raise JobError(404, "no such job")
+        try:
+            f.unlink(missing_ok=True)
+        except OSError as exc:
+            raise JobError(500, f"could not delete the run: {exc.strerror}") from None
+        return {"deleted": job_id}
 
     @staticmethod
     def _public_plan(p):
@@ -447,6 +529,7 @@ class Jobs:
     def _finish(self, job, state, result=None, error=None):
         with self._lock:
             job.update(state=state, result=result, error=error, finished=time.time())
+        self._keep(job)
 
 
 def state_store(kind: str, found: dict) -> dict | None:
