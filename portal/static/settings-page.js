@@ -95,8 +95,9 @@ function pending(tool, p) {
   return box;
 }
 const signInLabel = (s) => (s.source === "console" ? "Sign in again" : "Sign in");
+// Sign out ends the login shown in Connection, so it sits there, under the account it signs out of.
 const signOut = (tool, s) => (s.source === "console"
-  ? button("Sign out", async () => { await post(tool, "signout"); await load(); }, "secondary", signingIn(s)) : null);
+  ? actions(button("Sign out", async () => { await post(tool, "signout"); await load(); }, "secondary", signingIn(s))) : null);
 
 async function choices(tool) {
   const r = await api(`/api/settings/${tool}/choices`, { abs: true });
@@ -114,7 +115,7 @@ const CONNECTORS = [
     panel: (s) => {
       const pick = state.choices?.gcp;
       return [
-        section("Connection", facts([["Account", s.account], ["Project", s.project], ["Login", SOURCE[s.source]]]), missing(s, "gcloud")),
+        section("Connection", facts([["Account", s.account], ["Project", s.project], ["Login", SOURCE[s.source]]]), missing(s, "gcloud"), signOut("gcp", s)),
         pending("gcp", s.pending),
         s.signed_in ? section("Project", pick
           ? h("div", { class: "conn-inline" },
@@ -123,7 +124,7 @@ const CONNECTORS = [
               need(signingIn(s), filled(["gcp", "project"]), changed([[["gcp", "project"], s.project]]))))
           : actions(button("Change project", () => choices("gcp"), "secondary", signingIn(s)))) : null,
         actions(button(signInLabel(s), async () => { await post("gcp", "signin"); await load(); }, "primary",
-          need(signingIn(s), () => (s.cli === false ? "gcloud is not installed" : ""))), signOut("gcp", s)),
+          need(signingIn(s), () => (s.cli === false ? "gcloud is not installed" : "")))),
       ];
     } },
   { id: "azure", name: "Azure", category: "cloud",
@@ -133,7 +134,7 @@ const CONNECTORS = [
       const pick = state.choices?.azure;
       return [
         section("Connection", facts([["Account", s.account], ["Subscription", s.subscription], ["Tenant", s.tenant], ["Login", SOURCE[s.source]]]),
-          missing(s, "Azure CLI")),
+          missing(s, "Azure CLI"), signOut("azure", s)),
         pending("azure", s.pending),
         s.signed_in ? section("Subscription", pick
           ? h("div", { class: "conn-inline" },
@@ -145,8 +146,7 @@ const CONNECTORS = [
           field("azure", "tenant", "Tenant", { value: s.tenant_wanted, placeholder: "Default tenant",
             tip: "Optional. A tenant ID or domain (contoso.onmicrosoft.com) when the account belongs to more than one." }),
           actions(button(signInLabel(s), async () => { await post("azure", "signin", { tenant: val("azure", "tenant") }); await load(); }, "primary",
-            need(signingIn(s), () => (s.cli === false ? "Azure CLI is not installed" : ""))),
-            signOut("azure", s))),
+            need(signingIn(s), () => (s.cli === false ? "Azure CLI is not installed" : ""))))),
       ];
     } },
   { id: "aws", name: "AWS", category: "cloud",
@@ -194,7 +194,7 @@ const CONNECTORS = [
     panel: (s) => [
       section("Connection", facts([["Platform", s.url], ["Admin token", s.token_present ? (s.source === "console" ? "Entered here" : "This machine's") : ""],
         ["Admin rights", s.admin === null || s.admin === undefined ? "" : s.admin ? "Yes" : "No"], ["Console operator", s.operator]]),
-        s.error ? h("p", { class: "conn-msg bad" }, s.error) : null),
+        s.error ? h("p", { class: "conn-msg bad" }, s.error) : null, signOut("jfrog", s)),
       section("Sign in",
         h("div", { class: "conn-fields" },
           field("jfrog", "url", "Platform URL", { type: "url", value: s.url, placeholder: "https://acme.jfrog.io" }),
@@ -205,7 +205,7 @@ const CONNECTORS = [
           delete drafts["f-jfrog-url"];
           await load();
         }, "primary", need(() => (/^https:\/\/[A-Za-z0-9.-]+(:\d+)?\/?$/.test(val("jfrog", "url")) ? "" : "Enter the platform URL (https://…)"),
-          () => ($("f-jfrog-token")?.value ? "" : "Paste an admin token"))), signOut("jfrog", s))),
+          () => ($("f-jfrog-token")?.value ? "" : "Paste an admin token"))))),
     ] },
 ];
 
