@@ -2,8 +2,8 @@
 OIDC token (stdlib only).
 
 The worker's Google identity token is exchanged for a JFrog access token in-process; the client
-caches it and exchanges again before it expires. Every JFROG_POLL_SECONDS (default 300) the worker
-checks its claims, the exchange and, with JFROG_HEALTHCHECK_PATH (<repo>/<path>), an artifact read,
+caches it and exchanges again before it expires. Every JFROG_POLL_SECONDS (default 60) the worker
+checks its claims, a fresh exchange and, with JFROG_HEALTHCHECK_PATH (<repo>/<path>), an artifact read,
 and logs one JSON line with the result. The token itself is never printed.
 
 Env: the client's (JFROG_URL, JFROG_OIDC_PROVIDER, JFROG_OIDC_AUDIENCE, JFROG_OIDC_SOURCE), set by
@@ -23,7 +23,7 @@ stop = threading.Event()
 
 
 def check(provider) -> dict:
-    result = selftest(os.environ.get("JFROG_HEALTHCHECK_PATH") or None, provider=provider)
+    result = selftest(os.environ.get("JFROG_HEALTHCHECK_PATH") or None, provider=provider, fresh=True)
     print(json.dumps({"event": "jfrog_check", "ok": result["ok"], "claims": result.get("claims"),
                       "check": result.get("check"), "read": result.get("read")}), flush=True)
     return result
@@ -31,7 +31,7 @@ def check(provider) -> dict:
 
 def main() -> int:
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
-    every = max(10, int(os.environ.get("JFROG_POLL_SECONDS", "300")))
+    every = max(10, int(os.environ.get("JFROG_POLL_SECONDS", "60")))
     try:
         provider = JFrogTokenProvider.from_env()
     except (JFrogOidcError, ValueError) as exc:

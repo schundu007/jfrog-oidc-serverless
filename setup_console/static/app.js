@@ -480,7 +480,23 @@ function workloadRow(w) {
     h("td", {}, pillOf(w.cfg ? "ok" : "idle", w.cfg ? "Onboarded" : "Not onboarded")),
     h("td", {}, link(`/serverless/${w.cloud}?type=${encodeURIComponent(w.kind)}`, live.kinds[w.kind]?.label || w.kind)),
     h("td", { text: w.region || "—" }),
-    h("td", {}, go(open, w.cfg ? "Open" : "Onboard", !w.cfg)));
+    h("td", {}, h("div", { class: "setup-row-actions nowrap" }, go(open, w.cfg ? "Open" : "Onboard", !w.cfg),
+      w.cfg ? h("button", { type: "button", class: "secondary", text: "Prove", onclick: (ev) => proveWorkload(w, ev.currentTarget) }) : null)));
+}
+
+// Prove: a prove-only run on the workload's own config (the run page holds the approval and the evidence).
+async function proveWorkload(w, btn) {
+  btn.disabled = true;
+  const name = encodeURIComponent(w.cfg.name);
+  try {
+    const { config } = await api(`/serverless/api/configs/${name}`, { abs: true });
+    const res = await api("/serverless/api/runs", { abs: true, method: "POST", body: { config, steps: ["prove"] } });
+    location.assign(`/serverless/${w.cloud}/w/${name}/runs/${encodeURIComponent(res.run_id)}`);
+  } catch (e) {
+    btn.disabled = false;
+    btn.title = e.message;
+    btn.textContent = "Prove failed";
+  }
 }
 
 function clusterRow(c) {
@@ -491,7 +507,8 @@ function clusterRow(c) {
     h("td", {}, pillOf(tone, text), c.problem ? help(c.problem) : null),
     h("td", {}, link(`/k8s/clusters/${c.platform}`, c.platform === "gke" ? "GKE cluster" : "AKS cluster")),
     h("td", { text: c.location || c.cluster || "—" }),
-    h("td", {}, go(href, tone === "ok" ? "Open" : "Onboard", tone !== "ok")));
+    h("td", {}, h("div", { class: "setup-row-actions nowrap" }, go(href, tone === "ok" ? "Open" : "Onboard", tone !== "ok"),
+      tone === "ok" ? go(`${href}?tab=proof`, "Prove") : null)));
 }
 
 function drawOidc(data, withFilters) {

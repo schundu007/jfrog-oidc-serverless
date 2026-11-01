@@ -22,6 +22,7 @@ from .. import model
 GCP_ID_TOKEN = ["gcloud", "auth", "print-identity-token"]
 EXCHANGED = "exchanged identity for a JFrog token"
 WAKE_TRIES, WAKE_WAIT = 4, 15
+POOL_POLL, POOL_WAIT = 20, 420
 sleep = time.sleep   # seam for tests
 
 
@@ -164,7 +165,9 @@ def _from_selftest(kind, where, status, body):
     return _fail(kind, "health endpoint", f"exchange failed: {reason}", **common)
 
 
-def _get(sh, kind, url, headers=None):
+def _get(sh, kind, url, headers=None, fresh=False):
+    if fresh:   # the workload drops its cached JFrog token and exchanges again
+        url += "?fresh=1"
     res = sh.http("GET", url, headers=headers or {}, timeout=90, sensitive=False)
     if res.status == 0:
         return _fail(kind, "health endpoint", f"no answer from {url}: {res.error}", where=url)
@@ -173,7 +176,7 @@ def _get(sh, kind, url, headers=None):
     return _from_selftest(kind, url, res.status, res.body)
 
 
-def _cloud_run_http(cfg, sh, kind):
+def _cloud_run_http(cfg, sh, kind, opts):
     r = sh.run(gcp_url_argv(cfg), timeout=60)
     url = r.stdout.strip()
     if not r.ok or not url:
@@ -182,17 +185,18 @@ def _cloud_run_http(cfg, sh, kind):
     if not tok.ok or not tok.stdout.strip():
         return _fail(kind, "health endpoint", "could not get an identity token for the call (gcloud auth)")
     try:
-        return _get(sh, kind, url.rstrip("/") + "/healthz/jfrog", {"Authorization": "Bearer " + tok.stdout.strip()})
+        return _get(sh, kind, url.rstrip("/") + "/healthz/jfrog", {"Authorization": "Bearer " + tok.stdout.strip()},
+                    opts.get("fresh"))
     finally:
         del tok
 
 
-def _container_app(cfg, sh, kind):
+def _container_app(cfg, sh, kind, opts):
     r = sh.run(aca_fqdn_argv(cfg), timeout=90)
     fqdn = r.stdout.strip()
     if not r.ok or not fqdn:
         return _fail(kind, "health endpoint", f"no ingress host: {r.error_text() or 'ingress is off'}")
-    return _get(sh, kind, f"https://{fqdn}/healthz/jfrog")
+    return _get(sh, kind, f"https://{fqdn}/healthz/jfrog", fresh=opts.get("fresh"))
 
 
 def _first_value(obj):
@@ -216,7 +220,7 @@ def _first_value(obj):
     return None
 
 
-def _functions_aca(cfg, sh, kind):
+def _functions_aca(cfg, sh, kind, opts):
     r = sh.run(aca_fqdn_argv(cfg), timeout=90)
     fqdn = r.stdout.strip()
     if not r.ok or not fqdn:
@@ -236,12 +240,12 @@ def _functions_aca(cfg, sh, kind):
         why = (err.get("message") if isinstance(err, dict) else None) or keys.error_text(200) or "no key returned"
         return _fail(kind, "health endpoint", f"Azure could not list the function keys: {why}", where=f"https://{fqdn}")
     try:
-        return _get(sh, kind, f"https://{fqdn}/api/healthz/jfrog", {"x-functions-key": key})
+        return _get(sh, kind, f"https://{fqdn}/api/healthz/jfrog", {"x-functions-key": key}, opts.get("fresh"))
     finally:
         del key, keys, data
 
 
-def _function_app(cfg, sh, kind):
+def _function_app(cfg, sh, kind, opts):
     r = sh.run(site_host_argv(cfg), timeout=90)
     host = r.stdout.strip()
     if not r.ok or not host:
@@ -251,16 +255,25 @@ def _function_app(cfg, sh, kind):
     if not k.ok or not key:
         return _fail(kind, "health endpoint", "Azure could not list the function keys", where=f"https://{host}")
     try:
-        return _get(sh, kind, f"https://{host}/api/healthz/jfrog", {"x-functions-key": key})
+        return _get(sh, kind, f"https://{host}/api/healthz/jfrog", {"x-functions-key": key}, opts.get("fresh"))
     finally:
         del key, k
 
 
-def _worker_pool(cfg, sh, kind):
-    r = sh.run(worker_pool_logs_argv(cfg), timeout=90)
-    entries = r.json([]) if r.ok else None
-    if entries is None:
-        return _fail(kind, "workload logs", f"could not read the logs: {r.error_text()}")
+def _worker_pool(cfg, sh, kind, opts):
+    # With opts["since"], wait for a check logged after that time (the worker checks every minute).
+    since, waited = opts.get("since"), 0
+    while True:
+        r = sh.run(worker_pool_logs_argv(cfg), timeout=90)
+        entries = r.json([]) if r.ok else None
+        if entries is None:
+            return _fail(kind, "workload logs", f"could not read the logs: {r.error_text()}")
+        if not since or (entries and str(entries[0].get("timestamp") or "") > since) or waited >= POOL_WAIT:
+            break
+        sleep(POOL_POLL)
+        waited += POOL_POLL
+    if since and not (entries and str(entries[0].get("timestamp") or "") > since):
+        return _fail(kind, "workload logs", f"no JFrog check logged since {since}")
     if not entries:
         return _fail(kind, "workload logs", "no JFrog check logged in the last hour; is the worker pool running?")
     e = entries[0]
@@ -290,7 +303,7 @@ def _from_job_lines(kind, lines, where, when=None, identity=None):
     return _fail(kind, "last job run", failed or "the run logged no JFrog exchange and read", **common)
 
 
-def _gcp_job(cfg, sh, kind):
+def _gcp_job(cfg, sh, kind, opts=None):
     r = sh.run(gcp_executions_argv(cfg), timeout=90)
     ex = r.json([]) if r.ok else None
     if ex is None:
@@ -308,7 +321,7 @@ def _gcp_job(cfg, sh, kind):
     return _from_job_lines(kind, lines, name, st.get("completionTime"), sa)
 
 
-def _azure_job(cfg, sh, kind):
+def _azure_job(cfg, sh, kind, opts=None):
     r = sh.run(caj_executions_argv(cfg), timeout=120)
     ex = r.json([]) if r.ok else None
     if ex is None:
@@ -344,9 +357,11 @@ METHODS = {
 }
 
 
-def run(cfg: dict, sh) -> dict:
+def run(cfg: dict, sh, fresh: bool = False, since: str | None = None) -> dict:
+    """fresh: the workload exchanges again instead of answering from its cached token (Prove).
+    since: a worker pool's check must be logged after this time."""
     kind = model.get_path(cfg, "target.kind")
     fn = METHODS.get(kind)
     if fn is None:
         return _result(kind, "none", "skipped", reason="no live check for this kind yet (runtime path only)")
-    return fn(cfg, sh, kind)
+    return fn(cfg, sh, kind, {"fresh": fresh, "since": since})

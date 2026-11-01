@@ -264,8 +264,10 @@ class Shell:
 
     def _replay_http(self, method, url) -> HttpResult:
         key = f"{method} {url}"
-        for fx in self.fixtures:
+        for i, fx in enumerate(self.fixtures):
             if fx.get("http") == key:
+                if fx.get("consume"):
+                    del self.fixtures[i]
                 return HttpResult(method, url, int(fx.get("status", 200)), fx.get("body", ""))
         self.misses.append(key)
         return HttpResult(method, url, 0, "", "no recorded fixture for this request")

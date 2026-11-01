@@ -193,6 +193,47 @@ function viewWire(step, ev) {
   return out;
 }
 
+// Prove: the same proof the KCP console gives a cluster. Rows in order; the trust is removed only after the
+// approval (bound to the mapping's hash) and always restored. Evidence downloads as JSON, built here.
+const ROW_TONE = { ok: "succeeded", done: "succeeded", warn: "warn", failed: "failed", running: "running",
+  needs_approval: "needs_approval", pending: "pending", skipped: "skipped" };
+function viewProve(step, ev) {
+  const out = [];
+  const a = step.approval;
+  if (step.status === "needs_approval" && a) {
+    const errBox = h("div");
+    const btn = h("button", { type: "button", class: "primary", text: `Approve: remove ${a.mapping} for a moment` });
+    btn.addEventListener("click", () => approve("prove", { prove_sha256: a.sha256 }, btn, errBox));
+    out.push(h("div", { class: "gate" }, kv([["Mapping", a.mapping], ["Provider", a.provider], ["JFrog", a.jfrog],
+      ["Hash", a.sha256.slice(0, 16) + "…"]]), h("p", {}, btn,
+      help("The identity mapping is saved, removed, a fresh download must be refused, then it is put back (always, even after a failure or cancel).")), errBox));
+  }
+  const rows = ev.rows || [];
+  if (rows.length) {
+    out.push(h("div", { class: "table-wrap" }, h("table", { class: "kv-table" },
+      h("thead", {}, h("tr", {}, ["", "Check", "Result"].map((t) => h("th", { scope: "col", text: t })))),
+      h("tbody", {}, rows.map((r) => h("tr", {}, h("td", {}, statusIcon(ROW_TONE[r.status] || r.status)),
+        h("td", { text: r.title }), h("td", { class: "mono", text: r.text || r.status })))))));
+  }
+  const f = ev.facts;
+  if (f?.who) out.push(kv([["Artifact", f.who.artifact], ["Last downloaded by", f.who.last_downloaded_by],
+    ["When", f.who.last_downloaded ? stamp(f.who.last_downloaded) : null], ["Downloads", f.who.downloads]]));
+  if (ev.result) {
+    out.unshift(outcome(ev.result.proved ? "Proved: JFrog is read only through the OIDC trust" : `Not proved: ${ev.result.failed.join(", ")}`,
+      ev.result.proved));
+    const dl = h("button", { type: "button", text: "Download evidence" });
+    dl.addEventListener("click", () => {
+      const blob = new Blob([JSON.stringify({ run: rs.id, workload: rs.name, result: ev.result, rows, facts: f }, null, 2)],
+        { type: "application/json" });
+      const link = h("a", { href: URL.createObjectURL(blob), download: `prove-${rs.name}-${rs.id}.json` });
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    });
+    out.push(h("p", {}, dl));
+  }
+  return out;
+}
+
 // ----------------------------------------------------------------- log
 
 // A log line reads "<event> → <result> (<seconds>)": each part gets its own column.
@@ -395,7 +436,7 @@ function renderDetail(step) {
   if (step.error) parts.push(h("p", { class: "error-box", text: step.error }));
   if (step.note) parts.push(h("p", { class: "muted small", text: step.note }));
   const view = { preflight: viewPreflight, discover: viewDiscover, simulate: viewSimulate, publish: viewPublish,
-    plan: viewPlan, apply: viewApply, wire: viewWire, verify: viewVerify }[step.name];
+    plan: viewPlan, apply: viewApply, wire: viewWire, verify: viewVerify, prove: viewProve }[step.name];
   if (view) parts.push(...view(step, ev));
   if (parts.length === 1) parts.push(h("p", { class: "muted", text: step.status === "pending" ? "Not started yet." : "No evidence." }));
   fill($("run-detail"), parts);

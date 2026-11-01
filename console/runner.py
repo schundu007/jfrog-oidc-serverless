@@ -28,17 +28,18 @@ import uuid
 from pathlib import Path
 
 from . import deliver, model, redact
-from .steps import discover, preflight, tfgen, verify
+from . import jfrog_operator
+from .steps import discover, preflight, prove, tfgen, verify
 from .steps import terraform as tf
 from .steps import wire as wiremod
 
-STEPS = ["preflight", "discover", "simulate", "publish", "plan", "apply", "wire", "verify", "report"]
+STEPS = ["preflight", "discover", "simulate", "publish", "plan", "apply", "wire", "verify", "prove", "report"]
 DEFAULT_STEPS = ["preflight", "discover", "simulate", "plan", "apply", "wire"]
 DELIVERY_STEPS = ["preflight", "discover", "simulate", "publish"]
 LOCAL_ONLY = {"plan", "apply", "wire"}
 LATER = {"report"}
 TITLES = {"preflight": "Preflight", "discover": "Discover", "simulate": "Simulate", "publish": "Deliver", "plan": "Plan", "apply": "Apply",
-          "wire": "Wire target", "verify": "Verify", "report": "Report"}
+          "wire": "Wire target", "verify": "Verify", "prove": "Prove", "report": "Report"}
 MAX_RUNS_KEPT = 50
 EXPECTED_ERRORS = (ValueError, RuntimeError, TimeoutError, PermissionError, OSError)
 
@@ -158,19 +159,26 @@ class Run:
 
     def summary(self) -> dict:
         with self.cond:
-            v = self.steps["verify"]
+            v, p = self.steps["verify"], self.steps["prove"]
             ran = [s for s in STEPS if self.steps[s]["status"] != "skipped"]
             return {"id": self.id, "name": self.name, "kind": model.get_path(self.cfg, "target.kind"),
                     "status": self.status, "created": self.created, "current": self.current,
                     # A verify-only run proves the live workload; any other run onboards it.
                     "verify_only": ran == ["verify"],
+                    # A prove-only run proves the trust is the only way in; it onboards nothing either.
+                    "prove_only": ran == ["prove"],
                     "verify": None if v["status"] == "skipped" else
-                    {"status": v["status"], "finished": v["finished"], "error": v["error"]}}
+                    {"status": v["status"], "finished": v["finished"], "error": v["error"]},
+                    "prove": None if p["status"] == "skipped" else
+                    {"status": p["status"], "finished": p["finished"], "error": p["error"]}}
 
 
 class RunManager:
-    def __init__(self, root, cloud_shell, tf_shell, env=None, simulate=None, store=None, delivery=None, repo_root=None):
+    def __init__(self, root, cloud_shell, tf_shell, env=None, simulate=None, store=None, delivery=None, repo_root=None,
+                 jfrog_operator_for=None):
         self.root = Path(root)
+        # Prove's JFrog calls: the console operator's own short-lived token (a seam for tests).
+        self.jfrog_operator_for = jfrog_operator_for or (lambda sh, host: jfrog_operator.Operator(sh, host))
         self.cloud_shell, self.tf_shell = cloud_shell, tf_shell
         self.env = os.environ if env is None else env
         self.simulate = simulate
@@ -204,6 +212,8 @@ class RunManager:
                            "plan, apply and wire run in the <cloud>-workload-onboard pipeline; deliver instead")
         if not self.delivery and "publish" in steps:
             raise RunError(400, "no_delivery", "publishing needs pipelines/delivery.json")
+        if "prove" in steps and steps != ["prove"]:
+            raise RunError(400, "prove_alone", "prove runs on its own, against a workload that is already onboarded")
         if "apply" in steps and "plan" not in steps:
             raise RunError(400, "apply_needs_plan", "apply only runs a plan made in the same run; include 'plan'")
         errors = model.validate(cfg)["errors"]
@@ -445,6 +455,25 @@ class RunManager:
             run.set_step("verify", status="skipped", note=res.get("reason"))
         elif res["status"] != "pass":
             raise RuntimeError(f"not verified: {res.get('reason')}")
+
+    def _step_prove(self, run, ctx):
+        sh = self._shell(run, ctx)
+
+        def update(rows, facts):
+            self._evidence(run, "prove", rows=copy.deepcopy(rows))
+
+        def approve(info):
+            def check(p, info=info):
+                if p.get("prove_sha256") != info["sha256"]:
+                    raise wiremod.WireRefused("not_approved", "approve removing the shown mapping (its hash) to continue")
+            run.log(f"waiting for approval to remove {info['mapping']} for a moment")
+            self._wait_approval(run, "prove", info, check)
+
+        res = prove.Prove(run.cfg, sh, lambda host: self.jfrog_operator_for(sh, host), approve, update,
+                          run.dir / "prove", log=run.log).run()
+        self._evidence(run, "prove", result={k: res[k] for k in ("proved", "failed")}, facts=res["facts"])
+        if not res["proved"]:
+            raise RuntimeError("not proved: " + (", ".join(res["failed"]) or "a step did not finish"))
 
     def _step_plan(self, run, ctx):
         rendered = tfgen.render(run.cfg, self.root, on_wait=run.log)

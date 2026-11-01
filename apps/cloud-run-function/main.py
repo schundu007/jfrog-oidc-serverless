@@ -31,7 +31,7 @@ def jfrog() -> JFrogTokenProvider:
 @functions_framework.http
 def handler(request):
     if request.path == "/healthz/jfrog":
-        result = selftest(os.environ.get("JFROG_HEALTHCHECK_PATH") or None, provider=jfrog())
+        result = selftest(os.environ.get("JFROG_HEALTHCHECK_PATH") or None, provider=jfrog(), fresh=request.args.get("fresh") == "1")
         return result, (200 if result["ok"] else 503)
 
     folder = request.args.get("path", "generic-local/models")

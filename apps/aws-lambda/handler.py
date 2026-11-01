@@ -41,7 +41,7 @@ def handler(event, context):
     path = event.get("rawPath") or event.get("path") or ("/healthz/jfrog" if event.get("healthz") else "/")
     query = event.get("queryStringParameters") or {}
     if path == "/healthz/jfrog":
-        result = selftest(os.environ.get("JFROG_HEALTHCHECK_PATH") or None, provider=jfrog())
+        result = selftest(os.environ.get("JFROG_HEALTHCHECK_PATH") or None, provider=jfrog(), fresh=query.get("fresh") == "1")
         return _reply(200 if result["ok"] else 503, result)
     folder = query.get("path", "generic-local/models")
     try:

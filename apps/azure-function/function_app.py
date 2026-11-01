@@ -57,6 +57,6 @@ def healthz_jfrog(req: func.HttpRequest) -> func.HttpResponse:
     except ValueError as exc:
         return func.HttpResponse(json.dumps({"ok": False, "check": {"error": str(exc)}}), status_code=503,
                                  mimetype="application/json")
-    result = selftest(os.environ.get("JFROG_HEALTHCHECK_PATH") or None, provider=provider)
+    result = selftest(os.environ.get("JFROG_HEALTHCHECK_PATH") or None, provider=provider, fresh=req.params.get("fresh") == "1")
     return func.HttpResponse(json.dumps(result), status_code=200 if result["ok"] else 503,
                              mimetype="application/json")

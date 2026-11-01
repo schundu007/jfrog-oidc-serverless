@@ -47,6 +47,15 @@ class SelfTestTests(BaseCase):
         self.assertIsNone(result["read"])
         self.assertEqual(result["claims"]["sub"], "1234567890")  # claims still shown for debugging
 
+    def test_fresh_selftest_exchanges_again_and_sees_a_removed_trust(self):
+        p = self.gcp_provider()
+        self.assertTrue(probe.selftest(provider=p)["ok"])          # token now cached
+        FakeCloud.state["provider"] = "something-else"             # JFrog stops trusting this identity
+        self.assertTrue(probe.selftest(provider=p)["ok"])          # the cached token still answers
+        fresh = probe.selftest(provider=p, fresh=True)
+        self.assertFalse(fresh["ok"])
+        self.assertIn("401", fresh["check"]["error"])
+
     def test_selftest_without_path_skips_read(self):
         result = probe.selftest(provider=self.gcp_provider())
         self.assertTrue(result["ok"])

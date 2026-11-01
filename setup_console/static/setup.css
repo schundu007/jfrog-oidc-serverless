@@ -1,4 +1,5 @@
 .setup-row-actions { display: flex; gap: var(--s-2); justify-content: flex-end; flex-wrap: wrap; }
+.setup-row-actions.nowrap { flex-wrap: nowrap; white-space: nowrap; }
 .setup-actions { display: flex; gap: var(--s-2); margin-top: var(--s-3); flex-wrap: wrap; }
 .setup-actions input { flex: 1; min-width: 180px; font-family: var(--mono); }
 .setup-form { display: flex; flex-direction: column; gap: var(--s-3); }

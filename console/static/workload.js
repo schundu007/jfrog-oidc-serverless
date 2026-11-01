@@ -27,7 +27,8 @@ function renderFacts(cfg) {
   const t = cfg.target?.[CLOUD] || {};
   const d = cfg.target?.discovered && (!cfg.target.discovered.kind || cfg.target.discovered.kind === cfg.target.kind) ? cfg.target.discovered : {};
   const idn = identityOf(cfg);
-  const last = ws.runs.find((r) => !r.verify_only) || null;
+  const last = ws.runs.find((r) => !r.verify_only && !r.prove_only) || null;
+  const prv = ws.runs.find((r) => r.prove);
   const ver = ws.runs.find((r) => r.verify);
   const tone = !last ? "" : last.status === "succeeded" ? "ok" : LIVE.has(last.status) || last.status === "waiting_approval" ? "warn" : "fail";
   const where = {
@@ -43,6 +44,8 @@ function renderFacts(cfg) {
   fill($("wl-ess-right"),
     ...pair("Verified", ver ? h("a", { class: `blade-state ${verifyTone(ver.verify.status)}`, href: href.run(ws.name, ver.id),
       text: `${verifyText(ver.verify.status)} · ${ago(ver.verify.finished || ver.created)}` }) : "Not verified yet"),
+    ...pair("Proved", prv ? h("a", { class: `blade-state ${verifyTone(prv.prove.status)}`, href: href.run(ws.name, prv.id),
+      text: `${{ succeeded: "Proved", failed: "Not proved", cancelled: "Cancelled" }[prv.prove.status] || "Proving"} · ${ago(prv.prove.finished || prv.created)}` }) : "Not proved yet"),
     ...pair("Identity", idn.text || "Not discovered"),
     ...(d.client_id && d.client_id !== idn.text ? pair("Client ID", d.client_id) : []),
     ...pair("JFrog platform", /^https:\/\//.test(url) ? h("a", { href: url, target: "_blank", rel: "noopener", text: url.replace(/^https:\/\//, "") }) : url),
@@ -202,11 +205,14 @@ async function runPipeline() {
 }
 
 // Verify: one read-only step against the live workload; the run page shows what it proved.
-async function verifyNow() {
+async function verifyNow() { return liveRun("verify", "Verifying…"); }
+async function proveNow() { return liveRun("prove", "Starting the proof…"); }
+
+async function liveRun(step, busy) {
   if (isBusy()) return;
-  cfgStatus("Verifying…", "busy");
+  cfgStatus(busy, "busy");
   try {
-    const res = await api("/api/runs", { method: "POST", body: { config: currentConfig(), steps: ["verify"] } });
+    const res = await api("/api/runs", { method: "POST", body: { config: currentConfig(), steps: [step] } });
     location.assign(href.run(ws.name, res.run_id));
   } catch (e) {
     cfgStatus(e.message, "error");
@@ -254,6 +260,7 @@ export async function mountWorkload(page, { name, schema }) {
   }
   $("wl-run").addEventListener("click", runPipeline);
   $("wl-verify").addEventListener("click", verifyNow);
+  $("wl-prove").addEventListener("click", proveNow);
   $("runs-refresh").addEventListener("click", () => loadRuns().then(() => runsNote("", "")).catch((e) => runsNote(e.message, "error")));
   $("runs-clear").addEventListener("click", clearFinished);
   $("wl-refresh").addEventListener("click", () => loadRuns().catch((e) => runsNote(e.message, "error")));

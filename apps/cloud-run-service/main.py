@@ -31,7 +31,7 @@ def jfrog() -> JFrogTokenProvider:
 
 def handle(path: str, query: dict) -> tuple[int, dict]:
     if path == "/healthz/jfrog":
-        result = selftest(os.environ.get("JFROG_HEALTHCHECK_PATH") or None, provider=jfrog())
+        result = selftest(os.environ.get("JFROG_HEALTHCHECK_PATH") or None, provider=jfrog(), fresh=query.get("fresh", [""])[0] == "1")
         return (200 if result["ok"] else 503), result
     folder = query.get("path", ["generic-local/models"])[0]
     listing = get_json(jfrog(), f"/artifactory/api/storage/{folder}")

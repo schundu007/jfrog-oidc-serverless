@@ -309,3 +309,42 @@ class VerifyRunTests(Base):
         snap = self.wait(run, "succeeded", "failed")
         self.assertEqual(snap["status"], "failed")
         self.assertIn("not verified", self.step(snap, "verify")["error"])
+
+
+class ProveRunTests(Base):
+    """A prove-only run: approval bound to the mapping before it is removed; restored afterwards."""
+    from console.steps import prove as _p, verify as _v
+    from console.tests.test_prove import ENV, OK, REFUSED, FakeJfrog
+    IDT = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln"
+    cloud_fixtures = [
+        {"argv": _p.settings_argv(cfg()), "stdout": json.dumps({"spec": {"template": {"spec": {"containers": [{"env": ENV}]}}}})},
+        {"argv": _v.gcp_url_argv(cfg()), "stdout": "https://orders-abc.a.run.app\n"},
+        {"argv": _v.GCP_ID_TOKEN, "stdout": IDT},
+        *[{"http": "GET https://orders-abc.a.run.app/healthz/jfrog?fresh=1", "consume": True, "status": 200 if a["ok"] else 503,
+           "body": json.dumps({**a, "check": {**a["check"], "username": "gcp-cloudrun/orders-runtime"}} if a["ok"] else a)}
+          for a in (OK, REFUSED, OK)],
+    ]
+
+    def test_prove_waits_for_a_bound_approval_then_restores(self):
+        from console.tests import test_prove
+        test_prove.MAPPING["name"] = "orders-runtime"
+        self.addCleanup(test_prove.MAPPING.__setitem__, "name", "t-runtime")
+        jf = self.FakeJfrog(by="gcp-cloudrun/orders-runtime")
+        self.mgr.jfrog_operator_for = lambda sh, host: jf
+        run = self.mgr.start(cfg(), ["prove"])
+        snap = self.wait(run, "waiting_approval")
+        info = self.step(snap, "prove")["approval"]
+        self.assertEqual(info["mapping"], "orders-runtime")
+        self.assertEqual([c[0] for c in jf.calls if c[0] != "GET"], [])
+        with self.assertRaises(RunError):
+            self.mgr.approve(run.id, "prove", {"prove_sha256": "0" * 64})
+        self.mgr.approve(run.id, "prove", {"prove_sha256": info["sha256"]})
+        snap = self.wait(run, "succeeded", "failed")
+        self.assertEqual(snap["status"], "succeeded", json.dumps(self.step(snap, "prove"))[:2000])
+        self.assertEqual([c[0] for c in jf.calls if c[0] != "GET"], ["DELETE", "POST"])
+        self.assertTrue(run.summary()["prove_only"])
+        self.assertNotIn(self.IDT, json.dumps(snap))
+
+    def test_prove_runs_alone(self):
+        with self.assertRaises(RunError):
+            self.mgr.start(cfg(), ["verify", "prove"])

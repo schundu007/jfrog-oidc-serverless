@@ -47,8 +47,12 @@ def read(provider: JFrogTokenProvider, repo_path: str, timeout: float = 30.0) ->
 def selftest(
     artifact_path: Optional[str] = None,
     provider: Optional[JFrogTokenProvider] = None,
+    fresh: bool = False,
 ) -> dict:
     """Check identity claims, the exchange and (optionally) an artifact read.
+
+    fresh=True drops the cached JFrog token first, so the check exchanges again: it shows
+    what JFrog answers to this identity now, not what it answered when the token was cached.
 
     Each part reports an "error" string instead of raising, so a health
     endpoint can always answer with what went wrong.
@@ -66,6 +70,8 @@ def selftest(
     except JFrogOidcError as exc:
         result["claims"] = {"error": str(exc)}
 
+    if fresh:
+        provider.invalidate()
     try:
         tok = provider.token()
     except JFrogOidcError as exc:
