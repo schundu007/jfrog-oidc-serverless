@@ -1,3 +1,4 @@
-# The build-deploy pipeline copies the jfrog_oidc client into the package
-# (pipelines/scripts/gcp-build-deploy.sh), so no package index reaches JFrog.
+# The build-deploy pipeline (pipelines/scripts/gcp-build-deploy.sh) downloads these as wheels
+# from the JFrog PyPI remote with its OIDC token and copies in the jfrog_oidc client, so
+# Google's build installs only from the package and never reaches public PyPI.
 functions-framework==3.*

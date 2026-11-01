@@ -4,6 +4,9 @@
     python -m jfrog_oidc check          # exchange and print username/expiry (no token)
     python -m jfrog_oidc token          # print the access token (for piping only)
     python -m jfrog_oidc docker-login   # docker login <host> --password-stdin
+    python -m jfrog_oidc pip --repo pypi-remote -- download ...
+                                        # run pip against a JFrog PyPI repo; the token goes to
+                                        # pip through PIP_INDEX_URL in its environment, never argv
 """
 
 from __future__ import annotations
@@ -23,10 +26,18 @@ from .exchange import _jwt_claims
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="jfrog_oidc")
-    parser.add_argument("command", choices=["claims", "check", "token", "docker-login"])
+    parser.add_argument("command", choices=["claims", "check", "token", "docker-login", "pip"])
     parser.add_argument("--registry", help="registry host for docker-login (default: JFROG_URL host)")
+    parser.add_argument("--repo", default=os.environ.get("JFROG_PYPI_REPO", ""),
+                        help="JFrog PyPI repository key for pip (default: JFROG_PYPI_REPO)")
     parser.add_argument("-v", "--verbose", action="store_true")
-    args = parser.parse_args(argv)
+    argv = list(sys.argv[1:] if argv is None else argv)
+    pip_args = argv[argv.index("--") + 1:] if "--" in argv else []
+    args = parser.parse_args(argv[:argv.index("--")] if "--" in argv else argv)
+    if args.command == "pip" and (not args.repo or not pip_args):
+        parser.error("pip needs --repo (or JFROG_PYPI_REPO) and pip arguments after --")
+    if args.command != "pip" and pip_args:
+        parser.error(f"unexpected arguments: {' '.join(pip_args)}")
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING, stream=sys.stderr)
 
     if args.command == "claims":
@@ -66,6 +77,14 @@ def main(argv=None) -> int:
             return 2
         sys.stdout.write(tok.access_token)
         return 0
+
+    if args.command == "pip":
+        quote = lambda v: urllib.parse.quote(v, safe="")  # noqa: E731
+        parts = urllib.parse.urlsplit(provider.jfrog_url)
+        index = (f"{parts.scheme}://{quote(tok.username)}:{quote(tok.access_token)}@{parts.netloc}"
+                 f"/artifactory/api/pypi/{quote(args.repo)}/simple")
+        env = dict(os.environ, PIP_INDEX_URL=index, PIP_EXTRA_INDEX_URL="", PIP_NO_INPUT="1")
+        return subprocess.run([sys.executable, "-m", "pip", *pip_args], env=env).returncode
 
     registry = args.registry or urllib.parse.urlsplit(provider.jfrog_url).hostname
     proc = subprocess.run(

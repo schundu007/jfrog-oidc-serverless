@@ -553,3 +553,8 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
 - No pull path and no rotator on any cloud. `rotator/` and `terraform/modules/gcp-pull-path` are deleted (AR remote repos, Secret Manager secret, rotator job, scheduler, alert). GCP images come in at build time: the build-deploy pipeline pulls from JFrog with its OIDC token and pushes to the stack's AR, and Cloud Run pulls with its own identity. This also retires the JFrog Cloud AR-remote 403 blocker.
 - Console: `pull_path` config, the first-rotation step, pull mappings and the pull-path outputs are gone; tfgen writes runtime mappings only. Simulator: Secret Manager/AR emulation, platform pull behaviour and the rotator are removed; scenarios min-ttl-refusal, rotator-down-5h and rotator-misses-2-runs deleted. 15 scenarios pass.
 - UI: no pull-path fields; the timeline shows instances, requests and faults.
+
+## 2026-10-31: Cloud Run function packages vendored from JFrog
+
+- `python -m jfrog_oidc pip --repo <key> -- <pip args>` runs pip against a JFrog PyPI repo with the OIDC token (passed in pip's environment as `PIP_INDEX_URL`, never in argv or logs).
+- The function build downloads `functions-framework` and its dependencies as linux/cp312 wheels from `pypi-remote` (`JFROG_PYPI_REPO` in `pipelines/vars/gcp-test.yml`) into `wheels/`, and the package's `requirements.txt` is `--no-index --find-links wheels`, so Google's build never reaches public PyPI. Not yet run in ADO.

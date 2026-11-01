@@ -376,5 +376,33 @@ class DetectTests(unittest.TestCase):
                 detect_source()
 
 
+class PipCommandTests(unittest.TestCase):
+    def _run(self, argv):
+        from jfrog_oidc import __main__ as cli
+        tok = mock.Mock(username="svc user", access_token="s3cr/et")
+        provider = mock.Mock(jfrog_url="https://acme.jfrog.io")
+        provider.token.return_value = tok
+        with mock.patch.object(cli.JFrogTokenProvider, "from_env", return_value=provider), \
+                mock.patch.object(cli.subprocess, "run", return_value=mock.Mock(returncode=0)) as run:
+            rc = cli.main(argv)
+        return rc, run
+
+    def test_token_goes_to_pip_env_not_argv(self):
+        rc, run = self._run(["pip", "--repo", "pypi-remote", "--", "download", "-d", "w", "flask"])
+        self.assertEqual(rc, 0)
+        argv, env = run.call_args.args[0], run.call_args.kwargs["env"]
+        self.assertEqual(argv[1:], ["-m", "pip", "download", "-d", "w", "flask"])
+        self.assertNotIn("s3cr", " ".join(argv))
+        self.assertEqual(env["PIP_INDEX_URL"],
+                         "https://svc%20user:s3cr%2Fet@acme.jfrog.io/artifactory/api/pypi/pypi-remote/simple")
+        self.assertEqual(env["PIP_EXTRA_INDEX_URL"], "")
+
+    def test_pip_needs_repo_and_args(self):
+        with mock.patch.dict(os.environ, {}, clear=True), self.assertRaises(SystemExit):
+            self._run(["pip", "--", "download", "flask"])
+        with self.assertRaises(SystemExit):
+            self._run(["pip", "--repo", "pypi-remote"])
+
+
 if __name__ == "__main__":
     unittest.main()

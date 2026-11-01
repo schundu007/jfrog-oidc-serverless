@@ -4,7 +4,8 @@
 #             update the job and run it to completion
 #   service   same image build, then update the service and check it is ready
 #   worker-pool  same image build, then update the worker pool (gcloud beta: no GA group yet)
-#   function  deploy apps/$APP from source (gen2) with the jfrog_oidc client in the package;
+#   function  deploy apps/$APP from source (gen2) with the jfrog_oidc client and its packages
+#             vendored from JFrog (wheels/, so Google's build never reaches public PyPI);
 #             before the stack has created it, upload the first package to its source bucket
 # Every login comes from the service connection's OIDC token; nothing is stored.
 set -euo pipefail
@@ -66,7 +67,13 @@ case "$KIND" in
     src=$(mktemp -d)
     cp "apps/${APP}/main.py" "$src/"
     cp -R client/src/jfrog_oidc "$src/"
-    echo 'functions-framework==3.*' > "$src/requirements.txt"
+    : "${JFROG_PYPI_REPO:?}"
+    # Wheels for the function runtime (python312, linux x86_64), pulled from JFrog with the
+    # OIDC token; requirements.txt then installs only from them.
+    python3 -m jfrog_oidc pip --repo "$JFROG_PYPI_REPO" -- download --quiet --dest "$src/wheels" \
+      --only-binary=:all: --platform manylinux2014_x86_64 --python-version 3.12 --implementation cp \
+      -r "apps/${APP}/requirements.txt"
+    { echo '--no-index'; echo '--find-links wheels'; grep -v '^\s*#' "apps/${APP}/requirements.txt"; } > "$src/requirements.txt"
     # Not created yet: the stack (gcp-cloud-run-function) creates it from a package in its source bucket.
     gcloud run services describe "$WORKLOAD" "${loc[@]}" --format='value(name)' >/dev/null 2>&1 || {
       object="${WORKLOAD}-${BUILD_SOURCEVERSION:0:12}.zip"

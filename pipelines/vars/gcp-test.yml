@@ -10,3 +10,5 @@ variables:
   SETUP_SERVICE_CONNECTION: jfrog-oidc-gcp-setup
   TERRAFORM_VERSION: 1.17.1
   JFROG_DOCKER_REMOTE: docker-remote
+  # PyPI remote the function build vendors its packages from (no public PyPI in the build).
+  JFROG_PYPI_REPO: pypi-remote
