@@ -576,3 +576,10 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
 - Build-deploy runs a job (Cloud Run or Container Apps) only once JFrog OIDC onboarding has set `JFROG_ARTIFACT_PATH`; before that it deploys the image and stops.
 - The portal runs with no JFrog token. The admin token was used once, for the first `gcp-jfrog-trust` apply (it creates the console operator's OIDC integration); since then the trust stacks use only the operator's OIDC.
 - Every Infrastructure and Build and deploy pipeline is green (runs 128–165).
+- 2026-11-01 runtime OIDC onboarded live, from the consoles:
+  - Serverless: every workload published (Preflight, Discover, Simulate, Deliver); the onboard pipelines applied and wired them (runs 166–173, all green). Live proof:
+    - `/healthz/jfrog` answered ok on the Cloud Run service and function, the Container App, Functions Premium and Flex.
+    - The worker pool logs `jfrog_check ok` every 5 minutes as `gcp-cloudrun/crwp-jfrog-runtime`.
+    - Both jobs ran to completion from build-deploy (runs 174, 175).
+  - Not yet proven at runtime: Functions on Container Apps. Its key API (`az containerapp function keys list`, preview) fails on the platform with "Failed to get or create ephemeral container", so the function-key endpoint can't be called.
+  - KCP: direct setup (DryRun, then the approved run) on `gke-jfrog-test` and `aks-jfrog-test`. Verify passed every link: service-account annotation, the provider trusts the cluster's issuer, the mapping to `kcp-pull-user`, the DaemonSet ready, 401 anonymously, a pull with no pull secret, and JFrog logged the download as `kcp-pull-user`.
