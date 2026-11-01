@@ -21,7 +21,8 @@
       ["Serverless", [sl("azure", "azure_container_app_job", "Container Apps jobs", "aca"),
         sl("azure", "azure_container_app", "Container Apps", "aca"),
         sl("azure", "azure_functions_aca", "Functions on Container Apps", "func"),
-        sl("azure", "azure_functions_premium", "Functions Premium", "func")]],
+        sl("azure", "azure_functions_premium", "Functions Premium", "func"),
+        sl("azure", "azure_functions_flex", "Functions Flex Consumption", "func")]],
       ["Kubernetes", [k8s("aks", "AKS clusters")]],
       ["JFrog OIDC", [oidc("azure")]]]],
     ["Google Cloud", "gcp", [

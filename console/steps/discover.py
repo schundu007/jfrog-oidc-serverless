@@ -3,7 +3,7 @@
 Returns {status, kind, corrections[], facts{}, warnings[], errors[], config_patch{}}.
 
 - corrections: the cloud's answer overrides the operator's kind choice
-  (a Cloud Run service managed by Cloud Functions is a
+  (an FC1 plan is Flex; a Cloud Run service managed by Cloud Functions is a
   function; a Container App with kind=functionapp is Functions on ACA; a name
   that only exists as the other resource type moves families).
 - facts become config.target.discovered; the mapping subject comes from here
@@ -375,12 +375,11 @@ class Discover(AwsDiscover, OpenShiftDiscover):
                 self.warn("plan_unreadable", "could not read the App Service plan; hosting model guessed from the app",
                           res.error_text(200))
         if sku.upper() in FLEX_SKUS or tier.upper() in FLEX_SKUS or _prop(d, "functionAppConfig") is not None:
-            self.error("flex_unsupported", f"Flex Consumption ({sku or tier or 'functionAppConfig'}) is not supported",
-                       "Move the app to Premium, Dedicated or Functions on Container Apps.")
+            self.correct("azure_functions_flex", f"the plan is Flex Consumption ({sku or tier or 'functionAppConfig'})")
             return ("functionapp", d)
         if sku.upper() in CONSUMPTION_SKUS or tier.upper() in CONSUMPTION_SKUS:
             self.error("consumption_plan", "Linux/Windows Consumption (Y1) is not supported",
-                       "Move the app to Premium, Dedicated or Functions on Container Apps.")
+                       "Move the app to Flex Consumption, Premium, Dedicated or Functions on Container Apps.")
             return ("functionapp", d)
         self.correct("azure_functions_premium", f"the plan is {sku or tier or 'Premium/Dedicated'}")
         fx = str(_dig(d, "siteConfig", "linuxFxVersion") or "")

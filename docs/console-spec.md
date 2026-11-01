@@ -18,7 +18,7 @@ In scope:
   - `azure_container_app`
   - `azure_functions_aca` (Functions on Container Apps)
   - `azure_functions_premium` (Premium or Dedicated)
-  - Flex Consumption is not a kind: Discover refuses it (`flex_unsupported`).
+  - `azure_functions_flex`: Flex Consumption. OIDC only; the pipeline deploys the code package, which the platform reads from its deployment container with the app's managed identity.
   - `aws_lambda`, `aws_ecs_task`, `aws_app_runner` (runtime path only, §11)
   - `openshift_knative_service` (OpenShift Serverless or any Knative cluster; runtime path only, §12)
 - For each target:
@@ -144,7 +144,7 @@ Required tools: `terraform` ≥ 1.6, and `gcloud` and/or `az` depending on the t
 | azure_container_app / functions_aca | `az containerapp show -g RG -n NAME` | `identity.userAssignedIdentities{principalId,clientId}`, `kind`, `properties.configuration.registries` |
 | azure_functions_premium | `az functionapp show -g RG -n NAME` + `az functionapp plan show` | identity, `keyVaultReferenceIdentity`, plan SKU (EP*/P*/FC1) |
 
-Discovery can correct the user's chosen kind; the UI shows the correction. A Function App on an FC1 (Flex Consumption) plan is refused.
+Discovery can correct the user's chosen kind; the UI shows the correction. A Function App on an FC1 (Flex Consumption) plan is corrected to `azure_functions_flex`.
 
 GCP default compute service accounts make the mapping overly broad, because every workload in the project would share one identity. In that case, warn and offer to create a dedicated SA. The console doesn't swap the target's SA automatically.
 

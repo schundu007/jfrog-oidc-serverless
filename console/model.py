@@ -19,6 +19,7 @@ KINDS = {
     "azure_container_app_job": {"cloud": "azure", "label": "Container Apps job"},
     "azure_functions_aca": {"cloud": "azure", "label": "Functions on Container Apps"},
     "azure_functions_premium": {"cloud": "azure", "label": "Functions Premium/Dedicated"},
+    "azure_functions_flex": {"cloud": "azure", "label": "Functions Flex Consumption"},
     "aws_lambda": {"cloud": "aws", "label": "Lambda function"},
     "aws_ecs_task": {"cloud": "aws", "label": "ECS Fargate task/service"},
     "aws_app_runner": {"cloud": "aws", "label": "App Runner service"},

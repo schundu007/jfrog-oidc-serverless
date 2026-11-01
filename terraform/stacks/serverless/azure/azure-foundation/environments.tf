@@ -5,7 +5,7 @@
 # The stacks with a stack-setup pipeline (serverless workloads and the test cluster). Fixed by the
 # repo, not a target input: pipelines/<kind>/azure/<stack>/stack-setup.yml exists for each.
 locals {
-  pipeline_stacks = ["azure-container-apps", "azure-container-app", "azure-functions-aca", "azure-functions-premium", "aks-cluster"]
+  pipeline_stacks = ["azure-container-apps", "azure-container-app", "azure-functions-aca", "azure-functions-premium", "azure-functions-flex", "aks-cluster"]
 }
 
 variable "ado_approvers" {

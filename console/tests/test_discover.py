@@ -84,19 +84,20 @@ class AllKindsTests(unittest.TestCase):
         self.assertEqual(res["facts"]["image"], "acme.jfrog.io/docker-virtual/fn:1.0")
         self.assertEqual(res["facts"]["identity_resource_id"], UAMI)
 
-    def test_azure_functions_flex_is_refused(self):
-        res, sh = run(azure_cfg("azure_functions_premium", "fn-flex"), "azure_functions_flex")
-        self.assertEqual(sh.misses, [])
-        self.assertIn("flex_unsupported", {e["code"] for e in res["errors"]})
+    def test_azure_functions_flex(self):
+        res = self.check(azure_cfg("azure_functions_flex", "fn-flex"), "azure_functions_flex", "azure_functions_flex",
+                         "aaaaaaaa-0000-0000-0000-000000000003")
+        self.assertEqual(res["corrections"], [])
 
 
 class CorrectionTests(unittest.TestCase):
-    def test_fc1_plan_is_refused(self):
+    def test_fc1_plan_corrects_premium_to_flex(self):
         res, _ = run(azure_cfg("azure_functions_premium", "fn-flex"), "azure_premium_is_flex")
-        self.assertEqual(res["status"], "fail")
-        err = next(e for e in res["errors"] if e["code"] == "flex_unsupported")
-        self.assertIn("FC1", err["message"])
-        self.assertNotEqual(res.get("kind"), "azure_functions_flex")
+        self.assertEqual(res["kind"], "azure_functions_flex")
+        fields = {c["field"]: c for c in res["corrections"]}
+        self.assertEqual(fields["target.kind"]["from"], "azure_functions_premium")
+        self.assertIn("FC1", fields["target.kind"]["reason"])
+        self.assertEqual(res["errors"], [])
 
     def test_containerapp_with_functionapp_kind(self):
         res, _ = run(azure_cfg("azure_container_app", "fn-aca"), "azure_functions_aca")

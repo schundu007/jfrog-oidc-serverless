@@ -1,9 +1,9 @@
 """Azure Function (Python v2 model) that reads from Artifactory with a short-lived token.
 
-The same code runs on Premium/Dedicated and Functions on Container Apps; only the
-hosting differs.
+The same code runs on Flex Consumption, Premium/Dedicated and Functions on Container Apps;
+only the hosting differs.
 
-App settings (AZURE_CLIENT_ID and host storage from its stack, azure-functions-premium / -aca;
+App settings (AZURE_CLIENT_ID and host storage from its stack, azure-functions-flex / -premium / -aca;
 JFROG_* from the console's wire step):
     JFROG_URL, JFROG_OIDC_PROVIDER=azure-entra, JFROG_OIDC_AUDIENCE=api://<audience-app-id>,
     JFROG_OIDC_SOURCE=azure, AZURE_CLIENT_ID=<user-assigned identity client ID>

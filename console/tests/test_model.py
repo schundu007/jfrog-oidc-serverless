@@ -14,8 +14,8 @@ class DefaultsTests(unittest.TestCase):
             res = model.validate(cfg)
             self.assertEqual(res["errors"], [], kind)
 
-    def test_flex_is_not_a_kind(self):
-        self.assertNotIn("azure_functions_flex", model.KINDS)
+    def test_flex_is_a_kind(self):
+        self.assertEqual(model.cloud_of("azure_functions_flex"), "azure")
 
     def test_azure_is_runtime_only(self):
         for kind in [k for k in model.KINDS if model.cloud_of(k) == "azure"]:

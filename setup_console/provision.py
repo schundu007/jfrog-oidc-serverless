@@ -28,10 +28,11 @@ STACKS = {
     "azure_container_app": ("azure-container-app", "app_image", "deploy_app"),
     "azure_functions_aca": ("azure-functions-aca", "function_image", "deploy_function"),
     "azure_functions_premium": ("azure-functions-premium", None, None),
+    "azure_functions_flex": ("azure-functions-flex", None, None),
 }
 # The stack names its resources from `workload`: caj-<workload>, <workload>-<6 hex> for function apps.
 _PREFIX = {"azure_container_app_job": "caj-"}
-_SUFFIXED = {"azure_functions_premium"}
+_SUFFIXED = {"azure_functions_premium", "azure_functions_flex"}
 _FIRST = re.compile(r"(?:pushed|uploaded) (\S+?)\.(?:\s|$)")
 JOB_POLL, BUILD_POLL, BUILD_TIMEOUT = 2, 15, 60 * 60
 

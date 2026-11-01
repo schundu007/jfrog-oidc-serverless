@@ -124,7 +124,7 @@ class PortalTests(unittest.TestCase):
         for s in ('"/"', '"/setup"', '"/runs"', "`/serverless/${cloud}?type=${kind}`", "`/k8s/clusters/${p}`"):
             self.assertIn(s, text)
         order = ['"Azure"', '"Serverless"', '"azure_container_app_job"', '"azure_container_app"',
-                 '"azure_functions_aca"', '"azure_functions_premium"', '"Kubernetes"', 'k8s("aks"',
+                 '"azure_functions_aca"', '"azure_functions_premium"', '"azure_functions_flex"', '"Kubernetes"', 'k8s("aks"',
                  '"Google Cloud"', '"Serverless"', '"gcp_run_job"', '"gcp_run_service"', '"gcp_run_function"', '"Kubernetes"',
                  'k8s("gke"']
         at = 0

@@ -558,3 +558,9 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
 
 - `python -m jfrog_oidc pip --repo <key> -- <pip args>` runs pip against a JFrog PyPI repo with the OIDC token (passed in pip's environment as `PIP_INDEX_URL`, never in argv or logs).
 - The function build downloads `functions-framework` and its dependencies as linux/cp312 wheels from `pypi-remote` (`JFROG_PYPI_REPO` in `pipelines/vars/gcp-test.yml`) into `wheels/`, and the package's `requirements.txt` is `--no-index --find-links wheels`, so Google's build never reaches public PyPI. Not yet run in ADO.
+
+## 2026-10-31: Flex Consumption restored
+
+- Flex Consumption is back: kind `azure_functions_flex`, stack `azure-functions-flex`, its stack-setup and build-deploy pipelines, the Setup row, the portal and sidebar, Discover (an FC1 plan is corrected to Flex), inventory, live and preflight.
+- OIDC only: the pipeline builds the code package and zip-deploys it; the platform reads it from its deployment container with the app's managed identity. At runtime the app exchanges its identity for a JFrog token.
+- The `azure-functions-flex-<env>` ADO environment comes back at the next azure-foundation apply.

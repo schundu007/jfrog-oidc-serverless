@@ -177,10 +177,8 @@ def azure(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, list
                 kind = "azure_container_app_job"
             elif what == "containerapp":
                 kind = "azure_functions_aca" if "functionapp" in str(d.get("kind") or "").lower() else "azure_container_app"
-            elif "flex" in str(d.get("sku") or "").lower():
-                continue                    # Flex Consumption is not supported
             else:
-                kind = "azure_functions_premium"
+                kind = "azure_functions_flex" if "flex" in str(d.get("sku") or "").lower() else "azure_functions_premium"
             out.append({"kind": kind, "name": d.get("name", ""), "subscription": sub,
                         "resource_group": d.get("resourceGroup", ""), "region": d.get("location", ""),
                         "supported": supported})
