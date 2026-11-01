@@ -297,9 +297,12 @@ function row(s, section) {
       link(nameHref(s), h("b", { text: s.title })), s.about ? help(s.about) : null)),
     h("td", {}, h("div", { class: "stack-status" }, stackStatus(s), notes.length ? help(notes.join(" ")) : null)),
     // The section heading above the rows names the type, so no Type column.
-    h("td", { class: "stack-id" }, link(s.links?.source, s.id, true)),
+    // On JFrog OIDC the columns are Type and Location, as for workloads and clusters: the trust is a JFrog
+    // integration (its stack linked), and it has no region.
+    OIDC ? h("td", { class: "stack-id", title: s.id }, link(s.links?.source, "JFrog OIDC trust", true))
+      : h("td", { class: "stack-id" }, link(s.links?.source, s.id, true)),
     OIDC ? null : h("td", {}, link(runsIn(s) === "ADO pipeline" ? s.links?.pipeline : runsHref(s), runsIn(s), runsIn(s) === "ADO pipeline")),
-    h("td", {}, checkedAt(s) ? link(runsHref(s), shortWhen(checkedAt(s))) : "—"),
+    OIDC ? h("td", { text: "Global" }) : h("td", {}, checkedAt(s) ? link(runsHref(s), shortWhen(checkedAt(s))) : "—"),
     h("td", {}, h("div", { class: "setup-row-actions" },
       progress,
       plan,
