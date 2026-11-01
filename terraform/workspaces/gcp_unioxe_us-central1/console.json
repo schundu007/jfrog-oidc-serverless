@@ -16,6 +16,15 @@
     }
   },
   "targets": {
+    "cr-fn-jfrog": {
+      "dedicated_identity": null,
+      "dedicated_roles": [],
+      "kind": "gcp_run_function",
+      "name": "cr-fn-jfrog",
+      "runtime_enabled": true,
+      "runtime_ttl": 3600,
+      "subject": "116966851103459206937"
+    },
     "cr-svc-jfrog": {
       "dedicated_identity": null,
       "dedicated_roles": [],
