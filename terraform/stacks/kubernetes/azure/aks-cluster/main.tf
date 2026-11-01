@@ -21,6 +21,8 @@ resource "azurerm_kubernetes_cluster" "cluster" {
     name       = "system"
     node_count = var.node_count
     vm_size    = var.node_size
+    # Which nodes get the kubelet credential provider (aks-jfrog-trust installs it on them).
+    node_labels = var.node_labels
   }
 
   node_provisioning_profile {

@@ -336,7 +336,7 @@ let byId = {};
 // Each stack's service icon (the sidebar's), and each cloud's logo: constant SVG from shell.js.
 const STACK_ICON = { "gcp-foundation": "boot", "azure-foundation": "boot", "gcp-cloud-run": "run", "gcp-cloud-run-service": "run", "gcp-cloud-run-worker-pool": "run",
   "gcp-cloud-run-function": "fn", "gke-cluster": "gke", "azure-container-apps": "aca", "azure-container-app": "aca",
-  "azure-functions-aca": "func", "azure-functions-premium": "func", "azure-functions-flex": "func", "aks-cluster": "aks",
+  "azure-functions-aca": "func", "azure-functions-premium": "func", "azure-functions-flex": "func", "aks-cluster": "aks", "aks-jfrog-trust": "aks",
   "gcp-jfrog-trust": "boot", "azure-jfrog-trust": "boot" };
 const CLOUD_ID = { "Google Cloud": "gcp", Azure: "azure" };
 function iconEl(key, cls) {
@@ -393,7 +393,8 @@ function draw(withFilters = true) {
   // both kinds), Serverless and Kubernetes, each its own table. JFrog OIDC is not infrastructure: it
   // has its own page per cloud (/setup/oidc-<cloud>), made only once that cloud's infrastructure exists.
   const ORDER = ["Common", "Serverless", "Kubernetes", "JFrog OIDC"];
-  const sectionOf = (s) => (s.id.endsWith("-foundation") ? "Common" : s.kind);
+  // On JFrog OIDC, a cluster's trust is its own Kubernetes section, never mixed with the pipelines' trust.
+  const sectionOf = (s) => (s.id.endsWith("-foundation") ? "Common" : (OIDC && s.section) || s.kind);
   $("page-title").textContent = OIDC ? "JFrog OIDC" : "Infrastructure";
   const all = data.stacks.filter((s) => (OIDC ? s.kind === "JFrog OIDC" : s.kind !== "JFrog OIDC"));
   if (withFilters) drawFilters(ORDER.filter((k) => all.some((s) => sectionOf(s) === k)));
@@ -413,7 +414,7 @@ function draw(withFilters = true) {
     OIDC ? h("a", { href: `/setup/oidc-${CLOUD_ID[g]}` }, g) : h("a", { href: `/setup?cloud=${CLOUD_ID[g]}` }, g),
     h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }));
   // Under each cloud, CI/CD, Serverless and Kubernetes never mix: each has its own heading and rows.
-  const LABEL = { Common: "CI/CD" };
+  const LABEL = { Common: "CI/CD", "JFrog OIDC": "Pipelines" };
   const sections = ORDER.filter((k) => shown.some((s) => sectionOf(s) === k));
   const subHead = (k, list) => h("tr", { class: "home-group home-subgroup" }, h("th", { scope: "colgroup", colspan: String(cols.length) },
     h("span", { class: "home-group-name" }, h("a", { href: `${OIDC ? "/setup/oidc" : "/setup"}?${new URLSearchParams({ ...(list[0] && !OIDC ? { cloud: CLOUD_ID[list[0].group] } : {}), kind: k })}` }, LABEL[k] || k), h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }))));

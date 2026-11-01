@@ -214,13 +214,16 @@ class StackTests(unittest.TestCase):
 
     def test_kubernetes_stacks_use_their_cloud_foundation_for_state_and_pipeline(self):
         # The real stacks: a cluster keeps remote state in its own cloud's foundation store and has
-        # its own stack-setup pipeline; nothing stands on it.
+        # its own stack-setup pipeline. Only JFrog OIDC stands on it (aks-jfrog-trust: its issuer
+        # in JFrog), never another infrastructure stack.
         for sid, backend, dep in (("gke-cluster", "gcs", "gcp-foundation"), ("aks-cluster", "azurerm", "azure-foundation")):
             self.assertEqual(stacks.get(sid)["kind"], "Kubernetes")
             self.assertEqual(stacks.backend_kind(sid), backend)
             self.assertEqual(stacks.depends_on(sid), dep)
             self.assertTrue((stacks.REPO_ROOT / "pipelines" / stacks.rel_dir(sid) / "stack-setup.yml").is_file(), sid)
-            self.assertFalse(any(stacks.depends_on(o) == sid for o in stacks.IDS), sid)
+            self.assertTrue(all(stacks.get(o)["kind"] == "JFrog OIDC" for o in stacks.IDS if stacks.depends_on(o) == sid), sid)
+        self.assertEqual(stacks.depends_on("aks-jfrog-trust"), "aks-cluster")
+        self.assertEqual(stacks.backend_kind("aks-jfrog-trust"), "azurerm")
         self.assertEqual({s["kind"] for s in stacks.CATALOGUE}, {"Serverless", "Kubernetes", "JFrog OIDC"})
         # Prefill never crosses from Serverless to Kubernetes, even in the same cloud.
         self.root.save("gcp-foundation", GCP_FOUNDATION)
@@ -275,7 +278,9 @@ class StackTests(unittest.TestCase):
         import re as _re
         for cloud in ("gcp", "azure"):
             tf = (stacks.STACKS_DIR / "serverless" / cloud / f"{cloud}-foundation" / "environments.tf").read_text()
-            listed = set(_re.findall(r'"([a-z0-9-]+)"', _re.search(r"pipeline_stacks = \[([^\]]*)\]", tf).group(1)))
+            m = _re.search(r"pipeline_stacks = \[([^\]]*)\]", tf)
+            listed = set(_re.findall(r'"([a-z0-9-]+)"', m.group(1)) if m else
+                         _re.findall(r'"([a-z0-9-]+)"\s*=', _re.search(r"pipeline_stack_kind = \{([^}]*)\}", tf).group(1)))
             have = {p.parent.name for p in (stacks.REPO_ROOT / "pipelines").glob(f"*/{cloud}/*/stack-setup.yml")}
             self.assertEqual(listed, have, cloud)
 

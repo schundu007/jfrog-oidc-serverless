@@ -16,13 +16,16 @@ import secrets
 import threading
 import time
 
-from . import direct, knowledge, logic, model, redact
+from . import direct, knowledge, logic, model, platforms, redact
 from .ado import Ado, AdoError, param_args
 from .jfrog import Jfrog, OperatorToken
 from .parse import events, summary
 
 PILOT_EXTRAS = {"TEST_POD_IMAGE", "TEST_POD_NAME", "TEST_POD_SA", "DiagnosticImage", "ChartRepo"}
 DIRECT_PLANS = ("setup", "verify", "prove", "teardown")
+# Install and removal on AKS belong to the aks-jfrog-trust pipeline, never to this console.
+PIPELINE_OWNED = ("setup", "teardown")
+TITLES = {"setup": "Set up", "teardown": "Tear down"}
 JFROG_ACTIONS = {"create-provider", "create-mapping", "promote", "delete-mapping", "delete-provider"}
 POLL_LIMIT_SECONDS = 3600
 
@@ -141,6 +144,11 @@ def build_request(cfg: dict, kind: str, name: str, params: dict, status: dict | 
         guards += direct.problems(cfg, name)
         if name != "verify" and cfg["values"]["provider_name"] in cfg["jfrog"]["protected_providers"]:
             guards.append(f"{cfg['values']['provider_name']} is protected: another cluster's provider. The console never edits or deletes it.")
+        if name in PIPELINE_OWNED and platforms.kind(cfg) == "aks":
+            # AKS: the ADO pipeline aks-jfrog-trust installs and removes the provider (Terraform, Argo CD).
+            # The console only verifies and proves; nothing is installed from this machine.
+            guards.append(f"{TITLES[name]} runs in Azure DevOps on AKS: the aks-jfrog-trust stack-setup pipeline "
+                          "(Setup → JFrog OIDC). The console only verifies and proves.")
         if name == "setup":
             # The issuer is read by the plan's first step, so a blank one is not an error here.
             errs = [e for e in model.errors(model.validate(cfg)) if e["field"] not in ("cluster.oidc_issuer", "values.provider_name")]

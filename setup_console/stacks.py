@@ -20,8 +20,9 @@ own state store.
 Infrastructure never touches JFrog: no foundation, workload or cluster stack has a JFrog provider,
 input or setting. JFrog is OIDC configuration, made only once the infrastructure exists: the
 "JFrog OIDC" stacks (terraform/stacks/oidc/<cloud>/<cloud>-jfrog-trust: the pipelines' JFrog
-integration, mappings and JFrog variable group; on GCP also the console operator) and, per
-workload, the console's workspaces. Its stacks' remote state is
+integration, mappings and JFrog variable group; on GCP also the console operator; aks-jfrog-trust: the
+AKS cluster's issuer, mapping and credential provider, in its own ADO pipeline) and, per workload,
+the console's workspaces. Its stacks' remote state is
 -backend-config derived from that foundation's inputs only: gcs bucket <gcp_project_id>-tfstate;
 azurerm account st<ado_org>tfstate in the ADO identity's resource group. Foundations keep local state.
 Prefill is kept per kind and cloud: never across clouds, never between Serverless and Kubernetes.
@@ -116,6 +117,14 @@ CATALOGUE = (
      "about": "A test AKS cluster, in its own resource group, with its OIDC issuer on, and the Argo CD hub "
               "(gitops/argocd/values.yaml) whose repo-server signs in with its own managed identity.",
      "next": "Run the credentials command, then use the cluster from the Kubernetes console."},
+    # The AKS cluster's JFrog OIDC: after the cluster, in its own stack-setup pipeline (JFrog token from
+    # the setup connection's OIDC token). Each redeployed cluster has a new issuer, trusted again here.
+    {"id": "aks-jfrog-trust", "kind": "JFrog OIDC", "section": "Kubernetes", "group": "Azure",
+     "title": "AKS credential provider", "after": "aks-cluster",
+     "about": "The AKS cluster's issuer trusted in JFrog, its credential provider's service account mapped "
+              "to a JFrog user, and an Argo CD Application that installs the kubelet credential provider "
+              "on the labelled nodes. Nothing runs from your machine: it is an ADO pipeline.",
+     "next": "Verify and prove it from the Kubernetes console."},
 )
 IDS = tuple(s["id"] for s in CATALOGUE)
 # Only cloud-level inputs prefill another stack's form. A workload's own name, image and switches

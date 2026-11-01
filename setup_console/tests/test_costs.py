@@ -138,6 +138,23 @@ class CostsTest(unittest.TestCase):
             self.runner(jobs, FakeAdo([])).up("aks-cluster")
         self.assertEqual(jobs.calls, [])
 
+    def test_the_clusters_jfrog_trust_comes_up_after_it_and_goes_down_before_it(self):
+        self.save("aks-cluster", {"node_count": 1})
+        self.save("aks-jfrog-trust", {"cluster_name": "c"})
+        jobs = FakeJobs(self.tmp)
+        self.runner(jobs, FakeAdo([])).up("aks-cluster")
+        self.assertEqual([c[0] for c in jobs.calls if c[1] == "apply"], ["aks-cluster", "aks-jfrog-trust"])
+        jobs = FakeJobs(self.tmp)
+        costs.run_all(self.runner(jobs, FakeAdo([])), "down", ["aks-cluster"])
+        self.assertEqual([c[0] for c in jobs.calls if c[1] == "apply"], ["aks-jfrog-trust", "aks-cluster"])
+
+    def test_up_stops_when_the_clusters_jfrog_trust_is_not_filled_in(self):
+        self.save("aks-cluster", {"node_count": 1})
+        jobs = FakeJobs(self.tmp)
+        with self.assertRaisesRegex(costs.CostError, "aks-jfrog-trust"):
+            self.runner(jobs, FakeAdo([])).up("aks-cluster")
+        self.assertEqual(jobs.calls, [])
+
     def test_a_cluster_has_no_build_deploy(self):
         self.save("gke-cluster", {"node_count": 1})
         ado = FakeAdo([])

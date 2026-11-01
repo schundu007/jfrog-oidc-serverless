@@ -132,13 +132,15 @@ function header(c) {
       h("p", { class: "facts" }, facts.filter(Boolean).join(" · "))),
     h("div", { class: "head-actions" },
       // Until the first read says otherwise, the cluster is taken as installed: the button waits on the read.
-      h("button", { class: "primary", disabled: busy || s.loading || !s.facts, onclick: () => start(rel ? "verify" : "setup") }, rel || !s.facts ? "Verify" : "Set up"),
-      rel ? h("button", { class: "secondary", disabled: busy, onclick: () => start("setup") }, "Set up again") : null,
+      // AKS: the aks-jfrog-trust pipeline installs and removes the provider; here it is only verified.
+      gke ? h("button", { class: "primary", disabled: busy || s.loading || !s.facts, onclick: () => start(rel ? "verify" : "setup") }, rel || !s.facts ? "Verify" : "Set up")
+        : h("button", { class: "primary", disabled: busy || s.loading || !s.facts, onclick: () => start("verify") }, "Verify"),
+      gke && rel ? h("button", { class: "secondary", disabled: busy, onclick: () => start("setup") }, "Set up again") : null,
       moreMenu([
         { label: s.loading ? "Reading…" : "Refresh", disabled: s.loading || busy, onclick: () => readStatus(c.name) },
         { label: "Edit", onclick: () => go(clusterPath(c.name, "config")) },
         { label: "Clear old runs", danger: true, disabled: busy, onclick: () => clearRuns(c.name) },
-        rel ? { label: "Tear down", danger: true, disabled: busy, onclick: () => { go(clusterPath(c.name)); start("teardown"); } } : null,
+        gke && rel ? { label: "Tear down", danger: true, disabled: busy, onclick: () => { go(clusterPath(c.name)); start("teardown"); } } : null,
         { label: "Remove from console", danger: true, disabled: busy, onclick: () => remove(c.name) },
       ], "More actions")));
 }

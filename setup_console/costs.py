@@ -5,7 +5,8 @@ serverless workload stack and the two test clusters. Their monitoring and loggin
 (each Azure workload's Log Analytics workspace; the AKS cluster's Log Analytics workspace and
 Container Insights rule; GKE's cluster logging and managed Prometheus). Foundations and the JFrog
 trust stacks stay: they cost nothing, hold the pipelines' trust and the state stores, and keep the
-saved inputs valid.
+saved inputs valid. A stack that stands on a costing one (aks-jfrog-trust on aks-cluster: the new
+cluster's issuer in JFrog and its credential provider) comes up right after it and goes down before it.
 
 Every change goes through the Setup console's own gates (Jobs): a plan, then an apply of exactly
 that plan, approved by its sha256 with the stack name typed. Stacks with a stack-setup pipeline run
@@ -43,6 +44,11 @@ SWITCHES = {"gcp-cloud-run": "deploy_job", "gcp-cloud-run-service": "deploy_serv
 # build-deploy's first-image warning: "... pushed X. In Setup, set <input> to it and <switch> on, ..."
 FIRST = re.compile(r"(?:pushed|uploaded) (\S+?)\. In Setup, set (\w+) to it and (\w+) on")
 POLL = 5
+
+
+def followers(sid) -> list:
+    """Stacks that stand on this one ("after"): up after it, down before it."""
+    return [s["id"] for s in stacks.CATALOGUE if s.get("after") == sid]
 BUILD_TIMEOUT = 45 * 60
 
 
@@ -118,9 +124,21 @@ class Runner:
     # -- one stack ----------------------------------------------------------------------------
 
     def up(self, sid) -> str:
-        gaps = stacks.missing(sid, self.env, self.root, self.state_root)
-        if gaps:   # a stack that gained an input since it was saved: fill it in Setup first
-            raise CostError(f"inputs not set: {', '.join(gaps)} (fill them in Setup)")
+        for x in (sid, *followers(sid)):   # stop before any run when one of them is not filled in
+            gaps = stacks.missing(x, self.env, self.root, self.state_root)
+            if gaps:   # a stack that gained an input since it was saved: fill it in Setup first
+                raise CostError(f"{x}: inputs not set: {', '.join(gaps)} (fill them in Setup)")
+        done = self._up(sid)
+        for f in followers(sid):
+            self.say(f, self.deploy(f))
+        return done
+
+    def down(self, sid) -> str:
+        for f in followers(sid):
+            self.say(f, self.destroy(f))
+        return self.destroy(sid)
+
+    def _up(self, sid) -> str:
         inputs = stacks.read_inputs(sid, self.env, self.state_root)
         switch = SWITCHES.get(sid)
         build = self.build_pipeline(sid) and inputs.get("workload")
@@ -172,7 +190,7 @@ def run_all(runner: Runner, action: str, picked: list, parallel: int = 1) -> dic
                 r = runner.read(sid)
                 res = "deployed" if r.get("deployed") else "not deployed"
             else:
-                res = runner.destroy(sid) if action == "down" else runner.up(sid)
+                res = runner.down(sid) if action == "down" else runner.up(sid)
             runner.say(sid, res)
             return sid, res
         except Exception as exc:   # one stack failing never stops the others

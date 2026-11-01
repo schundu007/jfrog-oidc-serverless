@@ -53,3 +53,9 @@ variable "argocd_chart_version" {
   type        = string
   default     = "10.11.6"
 }
+
+variable "node_labels" {
+  description = "Labels on the nodes, e.g. {credentialsProviderEnabled = \"true\"} for the nodes the credential provider runs on."
+  type        = map(string)
+  default     = {}
+}

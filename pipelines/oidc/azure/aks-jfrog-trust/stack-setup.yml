@@ -1,0 +1,33 @@
+# AKS cluster's JFrog OIDC: plan -> approve -> apply (or destroy) terraform/stacks/oidc/azure/aks-jfrog-trust only.
+# Runs after aks-cluster: trusts the cluster's issuer in JFrog, maps the provider's service account and
+# has Argo CD install the kubelet credential provider. The apply waits for approval on aks-jfrog-trust-<environment>.
+trigger: none
+pr: none
+
+parameters:
+  - name: action
+    type: string
+    default: apply
+    values: [apply, destroy]
+  - name: environment
+    type: string
+    default: test
+    values: [test]
+  # The stack's variables as JSON, as the Infrastructure page saves them (.console/setup/<env>/aks-jfrog-trust.tfvars.json).
+  - name: inputs
+    type: object
+    default: {}
+  # Where state lives: this cloud's foundation inputs it derives from.
+  - name: state
+    type: object
+    default: {}
+
+extends:
+  template: /pipelines/templates/azure-stack-setup.yml
+  parameters:
+    stack: aks-jfrog-trust
+    action: ${{ parameters.action }}
+    environment: ${{ parameters.environment }}
+    inputs: ${{ parameters.inputs }}
+    state: ${{ parameters.state }}
+    jfrog: true

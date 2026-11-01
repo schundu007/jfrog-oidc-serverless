@@ -615,5 +615,16 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
 
 - `python -m setup_console.costs status|down|up`: only the stacks that bill (9 workload stacks, `gke-cluster`, `aks-cluster`, with their Log Analytics workspaces and Container Insights rule). Same gates as the page: plan, approve its sha256, stack name typed; ADO stacks run their stack-setup pipelines.
 - `up` re-creates a workload whose registry/bucket was destroyed: switch off → build-deploy (first image) → set image + switch → deploy → build-deploy.
-- After `up`, the workloads have new identities: run Configure again for each in the Serverless console (onboarding subjects), and reinstall the credential provider on the new AKS cluster from the Kubernetes console.
+- After `up`, the workloads have new identities: run Configure again for each in the Serverless console (onboarding subjects), then verify the AKS credential provider from the Kubernetes console (the redeploy installs it).
 - `aks-cluster` installs the Argo CD hub (chart argo/argo-cd 10.11.6, `gitops/argocd/values.yaml`) with the cluster: helm provider on the cluster's own credentials, repo-server on a managed identity federated to `argocd:argocd-repo-server`. `argocd_enabled` turns it off. - Argo CD's account: `azure-foundation` (`argocd-account.tf`) creates the managed identity `<azure_identity.name>-argocd`, adds it to ADO (Basic) and the project's Readers group, and outputs it as `argocd_identity`; `aks-cluster` (input `argocd_identity`) federates it to each new cluster's issuer for `argocd:argocd-repo-server` in its own pipeline run (Azure RBAC only: the setup identity gets no ADO rights). Destroying the cluster removes only the federation. Replaces `pipelines/scripts/kcp-argocd-ado-reader.sh` (removed). `costs up` stops before any run when a stack's saved inputs miss a required input.
+
+## AKS credential provider from ADO (2026-11-01)
+
+- Nothing installs the provider from a laptop any more. `terraform/stacks/oidc/azure/aks-jfrog-trust` (kind JFrog OIDC, after `aks-cluster`, Kubernetes section of the JFrog OIDC page) runs in its own pipeline `pipelines/oidc/azure/aks-jfrog-trust/stack-setup.yml`:
+  - JFrog: provider `<cluster>-oidc` (type Azure, the cluster's issuer read from azurerm) and mapping `<cluster>-mapping` (`system:serviceaccount:jfrog:jfrog-provider-sa` → `mapped_user`).
+  - Cluster: namespace and service account (`JFrogExchange: "true"`), and an Argo CD Application installing `jfrog-credential-provider` 1.4.0 from charts.jfrog.io (values as `kcp_console.model.render_values`), auto-sync with prune and self-heal.
+  - `aks-cluster` labels its nodes from the `node_labels` input (`credentialsProviderEnabled=true`).
+- `azure-stack-setup.yml` takes `jfrog: true`: that run reads `jfrog-oidc-azure-<env>-jfrog` and `terraform-stack.sh` exchanges the setup connection's OIDC token (ado-setup mapping) for the JFrog admin token. A plan that would create a JFrog provider or mapping that already exists imports it, then plans again.
+- `azure-foundation` adds the `aks-jfrog-trust-<env>` environment and registers the pipeline (`pipelines.tf`, input `ado_repository`).
+- `costs up` deploys `aks-jfrog-trust` right after `aks-cluster`; `down` destroys it first.
+- KCP console: Set up and Tear down are refused on AKS (guard names the pipeline); Verify and Prove stay.

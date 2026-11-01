@@ -271,10 +271,21 @@ class RunnerTest(unittest.TestCase):
 
 class RequestTest(unittest.TestCase):
     def test_dry_run_is_default_and_read_only(self):
-        r = build_request(cfg(), "direct", "setup", {}, root="/tmp/x")
+        r = build_request(cfg(), "direct", "verify", {}, root="/tmp/x")
         self.assertIs(r["request"]["parameters"]["DryRun"], True)
         self.assertFalse(r["changes_state"])
         self.assertEqual(r["guards"], [])
+
+    def test_aks_install_and_removal_belong_to_the_pipeline(self):
+        # The aks-jfrog-trust stack-setup pipeline installs and removes the provider; the console
+        # refuses both, dry or not, and still verifies and proves.
+        for name in ("setup", "teardown"):
+            for dry in (True, False):
+                r = build_request(cfg(), "direct", name, {"DryRun": dry}, root="/tmp/x")
+                self.assertTrue(any("aks-jfrog-trust" in g for g in r["guards"]), (name, dry))
+        for name in ("verify", "prove"):
+            r = build_request(cfg(), "direct", name, {"DryRun": False}, root="/tmp/x")
+            self.assertFalse(any("aks-jfrog-trust" in g for g in r["guards"]), name)
 
     def test_hash_binds_the_commands(self):
         a = build_request(cfg(), "direct", "setup", {"DryRun": True}, root="/tmp/x")
@@ -300,15 +311,17 @@ class RequestTest(unittest.TestCase):
 class ManagerTest(unittest.TestCase):
     def test_prepare_approve_run_and_store_without_token(self):
         root = Path(tempfile.mkdtemp())
-        sh = FakeShell()
+        sh = FakeShell(**set_up())
         m = RunManager(RunStore(root), lambda log: sh, env={}, sleep=lambda s: None, root=root, tokens=StaticToken(TOKEN))
-        run = m.prepare(cfg(), "direct", "setup", {"DryRun": False})
+        refused = m.prepare(cfg(), "direct", "setup", {"DryRun": False})   # AKS: the pipeline installs
+        self.assertEqual(refused["status"], "refused")
+        run = m.prepare(cfg(), "direct", "verify", {"DryRun": False})
         with self.assertRaises(RunError):
             m.approve(run["id"], run["request_sha256"], approved=False)
         m.approve(run["id"], run["request_sha256"], approved=True)
         done = m.wait(run["id"])
         self.assertEqual(done["status"], "succeeded", done.get("events"))
-        self.assertEqual(len(done["result"]["steps"]), len(direct.STEPS))
+        self.assertEqual(len(done["result"]["steps"]), len(direct.VERIFY_STEPS))
         stored = "".join(p.read_text() for p in root.rglob("*") if p.is_file())
         self.assertNotIn(TOKEN, stored)
 
