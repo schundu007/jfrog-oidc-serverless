@@ -53,7 +53,7 @@ class SetupServer:
         self.static_files = {p.name for p in STATIC_DIR.iterdir() if p.is_file() and p.suffix in CONTENT_TYPES}
 
     def allowed_hosts(self) -> set:
-        return {f"127.0.0.1:{self.port}", f"localhost:{self.port}"}
+        return {f"127.0.0.1:{self.port}", f"localhost:{self.port}"} | set(getattr(self, "public_hosts", ()))
 
     def options(self, source: str, scope: str | None = None) -> list:
         """Live choices for a picker (read-only listings): [{id, name}]. People are listed by email:
@@ -139,7 +139,8 @@ def make_handler(console: SetupServer):
                 site = self.headers.get("Sec-Fetch-Site", "same-origin")
                 return site in ("same-origin", "none") or (
                     self.command == "GET" and self.headers.get("Sec-Fetch-Mode") == "navigate" and not self.path.startswith("/api/"))
-            return origin in {f"http://{h}" for h in console.allowed_hosts()}
+            return origin in ({f"http://{h}" for h in console.allowed_hosts()}
+                              | {f"https://{h}" for h in getattr(console, "public_hosts", ())})
 
         def _token_ok(self) -> bool:
             given = self.headers.get("X-Console-Token", "")

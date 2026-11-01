@@ -610,3 +610,8 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
   - Onboard runs 184 and 185 wired `JFROG_HEALTHCHECK_PATH`.
   - All 9 workloads verified. The 6 image workloads match their ADO run by commit.
   - The Prove on `cr-svc-jfrog` passed every step before the approval (secret, granted, keys, who). It waits for the operator's approval.
+
+## Public demo (2026-11-01)
+
+- `python -m portal --demo`: both sections on recorded fixtures, Setup writes refused, no cloud logins; `--public-host` adds a TLS proxy's hostname to every console's Host/Origin checks.
+- Fly.io app `jfrog-oidc-portal` (`Dockerfile`, `fly.toml`) at app.oidc.sudhakarchundu.org; Vercel project `jfrog-oidc` (`deploy/vercel/`) landing at oidc.sudhakarchundu.org.

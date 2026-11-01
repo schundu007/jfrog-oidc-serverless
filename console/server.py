@@ -307,7 +307,7 @@ class ConsoleServer:
         hosts = {f"127.0.0.1:{self.port}", f"localhost:{self.port}"}
         if self.host not in ("127.0.0.1", "localhost"):
             hosts.add(f"{self.host}:{self.port}")
-        return hosts
+        return hosts | set(getattr(self, "public_hosts", ()))
 
     def url(self) -> str:
         return f"http://127.0.0.1:{self.port}/#t={self.token}"
@@ -401,7 +401,8 @@ def _make_handler(console: ConsoleServer):
                 # gets only the static shell; the API still refuses it.
                 return (self.command == "GET" and self.headers.get("Sec-Fetch-Mode") == "navigate"
                         and not self.path.startswith("/api/"))
-            return origin in {f"http://{h}" for h in console.allowed_hosts()}
+            return origin in ({f"http://{h}" for h in console.allowed_hosts()}
+                              | {f"https://{h}" for h in getattr(console, "public_hosts", ())})
 
         def _token_ok(self) -> bool:
             given = self.headers.get("X-Console-Token", "")
