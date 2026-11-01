@@ -572,3 +572,7 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
 - JFrog OIDC (`/setup/oidc`) lists, per cloud and never mixed: Serverless (each live workload, Onboarded or Not onboarded, with Onboard/Open), Kubernetes (each cluster's KCP state) and Pipelines (the `<cloud>-jfrog-trust` stacks, optional in prod).
 - gcp-foundation: the setup identity also gets `roles/storage.admin` and `roles/cloudfunctions.admin` (the function stack's source bucket and function).
 - Full test environment deployed through the Setup gates: both foundations, both trust stacks, every serverless workload stack, `gke-cluster` and `aks-cluster`.
+- Live deploy fixes: the GCP trust's `ado_token_audience` must be the audience ADO's job token actually carries (check with `python -m jfrog_oidc claims`), not the default; AKS node size must be one the subscription allows and has quota for (westus2: `Standard_D2as_v7`); a workload stack's `deployer_principal_id` is the foundation's build identity (`id-ado-<org>`).
+- Build-deploy runs a job (Cloud Run or Container Apps) only once JFrog OIDC onboarding has set `JFROG_ARTIFACT_PATH`; before that it deploys the image and stops.
+- The portal runs with no JFrog token. The admin token was used once, for the first `gcp-jfrog-trust` apply (it creates the console operator's OIDC integration); since then the trust stacks use only the operator's OIDC.
+- Every Infrastructure and Build and deploy pipeline is green (runs 128–165).
