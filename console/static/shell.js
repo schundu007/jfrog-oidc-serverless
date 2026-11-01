@@ -178,4 +178,35 @@
     return el("div", { class: "blade-filters" }, onQuery ? wrapBox : null, pills.filter((p) => p.options.length > 1 || p.value).map(pill));
   }
   window.consoleBlade = { bar, el };
+
+  // Essentials grid: at most 4 columns, rows as even as the item count allows (4 → 2x2, 6 → 3x2, 8 → 4x2,
+  // 9 → 3x3; 1–3 in one row). Among 4, 3 and 2 columns, the fewest empty cells without more rows than
+  // columns; on a tie, the squarer. Set as --ess-cols on every Essentials block whenever its items change.
+  function gridCols(n) {
+    if (n <= 3) return Math.max(n, 1);
+    let best = 4;
+    for (const c of [4, 3, 2]) {
+      const rows = Math.ceil(n / c), empty = rows * c - n;
+      if (rows > c) continue;
+      const bRows = Math.ceil(n / best), bEmpty = bRows * best - n;
+      if (empty < bEmpty || (empty === bEmpty && Math.abs(c - rows) < Math.abs(best - bRows))) best = c;
+    }
+    return best;
+  }
+  let queued = false;
+  const fit = () => {
+    queued = false;
+    for (const b of document.querySelectorAll(".ess-body, .essentials")) {
+      const n = b.matches(".essentials") ? b.querySelectorAll(":scope > div").length : b.querySelectorAll(".ess-pair").length;
+      const v = String(gridCols(n));
+      if (n && b.style.getPropertyValue("--ess-cols") !== v) b.style.setProperty("--ess-cols", v);
+    }
+  };
+  const start = () => {
+    fit();
+    new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(fit); } })
+      .observe(document.body, { childList: true, subtree: true });
+  };
+  document.body ? start() : document.addEventListener("DOMContentLoaded", start);
+  window.consoleBlade.gridCols = gridCols;
 })();

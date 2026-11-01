@@ -18,14 +18,14 @@ html body .ess-col dt { padding: 10px 0 2px; color: var(--fg); font-weight: 400;
 html body .ess-col dd { padding: 0 0 4px; white-space: normal; overflow-wrap: anywhere; }
 html body .ess-col dd::before { content: none; }
 html body .ess-col dd a { color: var(--accent); text-decoration: underline; }
-/* Three columns: each label and value is one .ess-pair; the two lists flow into one grid, row by row. */
-html body .ess-body:has(.ess-pair) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* Columns from the item count (shell.js sets --ess-cols, at most 4): each label and value is one .ess-pair; the two lists flow into one grid, row by row. */
+html body .ess-body:has(.ess-pair) { grid-template-columns: repeat(var(--ess-cols, 3), minmax(0, 1fr)); }
 html body .ess-col:has(.ess-pair) { display: contents; }
 html body .ess-pair { display: grid; align-content: start; }
 @media (max-width: 860px) { html body .ess-body:has(.ess-pair) { grid-template-columns: minmax(0, 1fr); } }
 
 /* Essentials on Kubernetes pages: the same, without cards or capitals. */
-html body .essentials { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 var(--s-6, 32px); }
+html body .essentials { grid-template-columns: repeat(var(--ess-cols, 3), minmax(0, 1fr)); gap: 0 var(--s-6, 32px); }
 html body .essentials > div { padding: 6px 0; border: 0; background: none; gap: 2px; }
 html body .essentials dt { font-size: 14px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--fg); }
 html body .essentials dd { font-size: 14px; font-weight: 400; }
@@ -36,9 +36,10 @@ html body .essentials dd a { color: var(--accent); text-decoration: underline; }
 /* :not(#_) lifts this above every sidebar rule in styles.css without !important. */
 html body .sidenav .nav-item:not(#_) { font-weight: 400; }
 
-/* One left edge on every page: the title logo, the first command, Essentials and the table's first
-   column all start where the page content starts. */
-html body .home-logo svg.mark { width: auto; height: 26px; }
-html body .home-logo svg:not(.mark) { margin-left: -4px; }
+/* One left edge on every page: the first command, Essentials and the table's first column all start
+   where the page content starts. */
+/* The title logo hangs about two spaces (8px) left of that edge, so the words line up under the title. */
+html body .home-logo svg.mark { width: auto; height: 26px; margin-left: -8px; stroke: none; }
+html body .home-logo svg:not(.mark) { margin-left: -12px; }
 html body .blade-cmds > .blade-cmd:first-child { padding-left: 0; }
 html body :is(.blade-table, .table, .dash-table) :is(th, td):first-child:not(#_) { padding-left: 0; }
