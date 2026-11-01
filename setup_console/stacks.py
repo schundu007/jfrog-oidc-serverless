@@ -86,10 +86,6 @@ CATALOGUE = (
      "about": "Its own resource group with the function's identity, host storage, an Elastic Premium "
               "(or Dedicated) plan and the function app.",
      "next": "Run this stack's build-deploy pipeline to deploy the code."},
-    {"id": "azure-functions-flex", "kind": "Serverless", "group": "Azure", "title": "Functions Flex Consumption",
-     "about": "Its own resource group with the function's identity, host storage with its deployment "
-              "container, a Flex Consumption plan and the function app.",
-     "next": "Run this stack's build-deploy pipeline to deploy the code."},
     {"id": "gke-cluster", "kind": "Kubernetes", "group": "Google Cloud", "title": "GKE cluster",
      "about": "A test GKE cluster and node pool with its OIDC issuer on.",
      "next": "Run the credentials command, then use the cluster from the Kubernetes console."},

@@ -3,12 +3,8 @@
 - Cloud Run (all GCP kinds): a cold start pulls through an AR remote repo.
   Cached artifacts are served without contacting JFrog; an uncached pull
   resolves the repo's secret-version pointer and authenticates upstream.
-- Container Apps / Functions on ACA: a replica start pulls from the JFrog
-  registry with the registry secret the platform has cached. The engine
-  refreshes that cache 5–30 min after each new Key Vault version.
-- Premium Functions: the container pull uses the resolved Key Vault reference,
-  cached for 24 h unless the rotator refreshes it through ARM.
-- Flex never pulls.
+- Azure kinds pull from the app's own ACR with its managed identity, which
+  the simulator does not model: Azure is runtime path only.
 
 These model the *platforms*, not the code under test, so they are allowed to
 read emulator state directly. They still authenticate to the JFrog emulator
@@ -85,33 +81,3 @@ class ArPlatform(Platform):
         if status == 200:
             return _pull_result(True, False, version)
         return _pull_result(False, False, version, status, f"AR upstream fetch: registry {status}: {msg}")
-
-
-class KvPlatform(Platform):
-    """A platform that pulls with a cached copy of a Key Vault secret."""
-
-    def __init__(self, azure, jfrog_url: str, vault: str, secret: str, username: str, label: str, action: str):
-        self.azure, self.jfrog_url, self.vault, self.secret, self.username = azure, jfrog_url, vault, secret, username
-        self.label, self.action = label, action
-        self.held = None
-        self.loaded_at = None
-
-    def load(self, now: float) -> None:
-        v = self.azure.latest(self.vault, self.secret)
-        self.held = {"label": v["label"], "value": v["value"], "exp": v["exp"]}
-        self.loaded_at = now
-
-    def holds(self):
-        return self.held["label"] if self.held else None
-
-    def pull(self, rng) -> dict:
-        status, msg = registry_pull(self.jfrog_url, self.username, self.held["value"])
-        if status == 200:
-            return _pull_result(True, False, self.held["label"])
-        return _pull_result(False, False, self.held["label"], status, f"registry {status}: {msg}")
-
-
-class FlexPlatform(Platform):
-    pulls = False
-    label = "Flex Consumption"
-    action = "instance start"

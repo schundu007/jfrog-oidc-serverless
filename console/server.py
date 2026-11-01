@@ -73,7 +73,7 @@ CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; c
 # knobs that decide outcomes, and nothing else reaches the emulated world.
 SIM_OVERRIDES = {
     "pull_path.enabled", "pull_path.ttl_seconds", "pull_path.rotation_cron", "pull_path.alert_after_seconds",
-    "pull_path.min_ttl_seconds", "pull_path.function_app_refresh", "runtime.ttl_seconds",
+    "pull_path.min_ttl_seconds", "runtime.ttl_seconds",
     "sim.runtime_audience", "sim.access_token_version", "sim.app_role_gate",
 }
 

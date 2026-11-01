@@ -7,7 +7,7 @@ The AKS pilot (JFrog kubelet credential provider 1.4.0, Option B: the cluster's 
 | Projected SA token, `iss` = the cluster's OIDC issuer | GCP: Google ID token, `iss=https://accounts.google.com`, `sub` = SA unique ID. Azure: Entra v2 token for the audience app, `oid`/`tid`/`aud` |
 | One integration per cluster (`aks-sandbox-oidc`) | One per cloud issuer (`gcp-cloudrun`, `azure-entra` per tenant) |
 | Mapping `sub: system:serviceaccount:jfrog:jfrog-provider-sa` | One mapping per workload identity (`modules/jfrog-oidc`) |
-| kubelet calls the plugin at pull time; result cached `defaultCacheDuration` | Pull path: the rotator writes a 4 h token into Secret Manager / Key Vault every hour. Runtime: the in-process client refreshes 5 min before expiry |
+| kubelet calls the plugin at pull time; result cached `defaultCacheDuration` | Pull path: the rotator writes a 4 h token into Secret Manager every hour (GCP; Azure pulls from its own ACR with its managed identity). Runtime: the in-process client refreshes 5 min before expiry |
 | Plugin binary mirrored into `aks-sandbox-generic-local` (TLS interception) | Rotator image hosted in AR/ACR; base image overridable (`BASE_IMAGE`) |
 
 The Azure side here uses an Entra app registration as the token audience, so it is the AAD-backed shape (closer to AZURE.md's Option A). That matches the workforce IAM standard's AAD preference, which the pilot's security review flagged as an open deviation for Option B on AKS.
@@ -15,7 +15,7 @@ The Azure side here uses an Entra app registration as the token audience, so it 
 ## What changed in this repo because of the pilot
 
 1. **Docker pulls use the repo's dedicated host.** On the pilot's instance, the repository-path method (`example.jfrog.io/<repo-key>/<image>`) failed for local repos with `Unsupported v2 repository request for ''`, and the token realm came back without the repo key. Every Docker repo answers on `<server>-<repo-key>.jfrog.io` instead.
-   - Container Apps / Functions on ACA: `registry.server` and the image are on that host (`terraform/reference/all-targets/azure.tf`, console wire step).
+   - Container Apps / Functions on ACA: `registry.server` and the image are on that host (the Azure workload stacks).
    - Functions Premium: `DOCKER_REGISTRY_SERVER_URL` and `image_name` likewise.
    - GCP: each AR Docker remote proxies one JFrog repo through its own host, so images resolve as `<ar-repo>/<image>`. The module rejects a Docker `upstream_uri` with a path. The console warns when it is the platform host.
    - Console: `jfrog.docker_repo` derives the host; `jfrog.docker_host` overrides it (self-hosted platforms).

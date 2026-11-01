@@ -58,14 +58,9 @@ AZURE_PROVIDERS_BY_KIND = {
     "azure_container_app_job": ["Microsoft.App"],
     "azure_functions_aca": ["Microsoft.App", "Microsoft.Web"],
     "azure_functions_premium": ["Microsoft.Web"],
-    "azure_functions_flex": ["Microsoft.Web"],
 }
-AZURE_PROVIDERS_PULL = ["Microsoft.App", "Microsoft.KeyVault"]   # rotator job + registry secret
-# Role assignments and a custom role are created, so plain Contributor is not enough.
-AZURE_WRITE_ROLES = {"Owner"}
-AZURE_CONTRIB_ROLES = {"Contributor"}
-AZURE_RBAC_ROLES = {"User Access Administrator", "Role Based Access Control Administrator"}
-AZURE_KV_ROLES = {"Key Vault Secrets Officer", "Key Vault Administrator"}
+# The workspace creates user-assigned identities and Wire attaches them: Contributor is enough.
+AZURE_WRITE_ROLES = {"Owner", "Contributor"}
 
 
 def _check(cid, title, status, detail="", fix=""):
@@ -343,29 +338,19 @@ class Preflight(AwsPreflight, OpenShiftPreflight):
         oid = self._azure_principal_id(user)
         if not oid:
             self.add("azure_permissions", "Role assignments", "warn", "could not resolve your principal's object ID",
-                     "Check manually: Owner, or Contributor + User Access Administrator on the resource group.")
+                     "Check manually: Owner or Contributor on the resource group.")
             return
         roles = self._roles(oid, rg_id, sub)
         if roles is None:
             self.add("azure_permissions", "Role assignments on the resource group", "warn",
                      "could not list role assignments", "Check manually.")
-        elif roles & AZURE_WRITE_ROLES or (roles & AZURE_CONTRIB_ROLES and roles & AZURE_RBAC_ROLES):
+        elif roles & AZURE_WRITE_ROLES:
             self.add("azure_permissions", "Role assignments on the resource group", "ok", ", ".join(sorted(roles)))
         else:
             self.add("azure_permissions", "Role assignments on the resource group", "warn",
                      f"found: {', '.join(sorted(roles)) or 'none'}",
-                     "The workspace creates role assignments and a custom role: needs Owner, or Contributor plus "
-                     "User Access Administrator (or RBAC Administrator), on the resource group.")
-
-        kv = model.get_path(self.cfg, "target.azure.key_vault_id")
-        if model.get_path(self.cfg, "pull_path.enabled") and kv:
-            kv_roles = self._roles(oid, kv, sub)
-            if kv_roles is not None and kv_roles & AZURE_KV_ROLES:
-                self.add("azure_kv_permissions", "Key Vault data-plane role", "ok", ", ".join(sorted(kv_roles & AZURE_KV_ROLES)))
-            else:
-                self.add("azure_kv_permissions", "Key Vault data-plane role", "warn",
-                         "no Key Vault Secrets Officer/Administrator on the vault (Owner does not grant data-plane access)",
-                         "Terraform writes the placeholder secret: grant yourself Key Vault Secrets Officer on the vault.")
+                     "The workspace creates managed identities and attaches them to the app: needs Owner or "
+                     "Contributor on the resource group.")
         self.add("azure_entra", "Entra app registration rights", "skip",
                  "not checked: the workspace creates an app registration for the audience",
                  "You need Application Developer (or the tenant's 'users can register applications' setting).")
@@ -386,10 +371,7 @@ class Preflight(AwsPreflight, OpenShiftPreflight):
             self.add("gcp_apis", "Target APIs enabled", "ok", ", ".join(need))
 
     def _azure_providers(self, sub):
-        need = list(AZURE_PROVIDERS_COMMON + AZURE_PROVIDERS_BY_KIND.get(self.kind, []))
-        if model.get_path(self.cfg, "pull_path.enabled"):
-            need += AZURE_PROVIDERS_PULL
-        need = sorted(set(need))
+        need = sorted(set(AZURE_PROVIDERS_COMMON + AZURE_PROVIDERS_BY_KIND.get(self.kind, [])))
         res = self.sh.run(["az", "provider", "list", "--subscription", sub, "--query",
                            "[].{namespace:namespace,state:registrationState}", "-o", "json"], timeout=120)
         if not res.ok:

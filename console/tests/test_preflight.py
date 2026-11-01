@@ -10,7 +10,6 @@ from console.steps import preflight
 
 FX = Path(__file__).parent / "fixtures" / "preflight"
 SUB = "11111111-2222-3333-4444-555555555555"
-KV = f"/subscriptions/{SUB}/resourceGroups/rg-apps/providers/Microsoft.KeyVault/vaults/kv-demo"
 TOKEN_ENV = {"JFROG_ACCESS_TOKEN": "test-admin-token-value"}
 
 
@@ -22,7 +21,7 @@ def gcp_cfg(kind="gcp_run_service"):
 
 def azure_cfg(kind="azure_container_app"):
     cfg = model.default_config(kind, name="orders")
-    cfg["target"]["azure"].update(subscription=SUB, resource_group="rg-apps", name="orders", key_vault_id=KV)
+    cfg["target"]["azure"].update(subscription=SUB, resource_group="rg-apps", name="orders")
     return cfg
 
 
@@ -150,9 +149,8 @@ class AzurePreflightTests(unittest.TestCase):
         res = preflight.run(azure_cfg(), sh, env=TOKEN_ENV)
         self.assertEqual(sh.misses, [])
         checks = by_id(res)
-        self.assertEqual(checks["azure_permissions"]["status"], "warn")
-        self.assertIn("User Access Administrator", checks["azure_permissions"]["fix"])
-        self.assertEqual(checks["azure_kv_permissions"]["status"], "warn")
+        self.assertEqual(checks["azure_permissions"]["status"], "ok")   # no RBAC writes: Contributor is enough
+        self.assertNotIn("azure_kv_permissions", checks)
         self.assertEqual(checks["jfrog_token"]["status"], "fail")
         self.assertIn("admin", checks["jfrog_token"]["detail"])
         self.assertIn("--subscription", checks["az_default_subscription"]["detail"])
@@ -173,7 +171,6 @@ class AzurePreflightTests(unittest.TestCase):
         checks = by_id(res)
         self.assertEqual(checks["azure_subscription_prod"]["status"], "warn")
         self.assertEqual(checks["azure_permissions"]["status"], "ok")
-        self.assertEqual(checks["azure_kv_permissions"]["status"], "ok")
         self.assertEqual(checks["jfrog_integration"]["status"], "warn")
         self.assertEqual(checks["jfrog_group"]["status"], "fail")
 
@@ -237,8 +234,8 @@ class ProviderAndApiTests(unittest.TestCase):
         self.assertIn("Microsoft.App", c["detail"])
         self.assertIn(f"az provider register -n Microsoft.App --subscription {SUB} --wait", c["fix"])
 
-    def test_flex_needs_web_not_app_without_pull_path(self):
-        cfg_kind = "azure_functions_flex"   # pull path off by default for Flex
+    def test_premium_needs_web_not_app(self):
+        cfg_kind = "azure_functions_premium"
         checks, _ = self._azure({"Microsoft.App"}, kind=cfg_kind)
         self.assertEqual(checks["azure_providers"]["status"], "ok")
         checks, _ = self._azure({"Microsoft.Web"}, kind=cfg_kind)

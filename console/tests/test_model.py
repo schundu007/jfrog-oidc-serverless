@@ -34,8 +34,15 @@ class DefaultsTests(unittest.TestCase):
             res = model.validate(cfg)
             self.assertEqual(res["errors"], [], kind)
 
-    def test_flex_has_no_pull_path(self):
-        self.assertFalse(model.default_config("azure_functions_flex")["pull_path"]["enabled"])
+    def test_flex_is_not_a_kind(self):
+        self.assertNotIn("azure_functions_flex", model.KINDS)
+
+    def test_azure_is_runtime_only(self):
+        for kind in [k for k in model.KINDS if model.cloud_of(k) == "azure"]:
+            cfg = model.default_config(kind, name="orders")
+            self.assertFalse(cfg["pull_path"]["enabled"], kind)
+            cfg["pull_path"]["enabled"] = True
+            self.assertIn("no_pull_path", codes(model.validate(cfg)["errors"]), kind)
 
 
 class AwsOpenShiftModelTests(unittest.TestCase):
@@ -73,7 +80,7 @@ class AwsOpenShiftModelTests(unittest.TestCase):
 
 
 class ValidateTests(unittest.TestCase):
-    def cfg(self, kind="azure_container_app", **dotted):
+    def cfg(self, kind="gcp_run_service", **dotted):
         cfg = model.default_config(kind, name="orders-prod")
         for k, v in dotted.items():
             model.set_path(cfg, k.replace("__", "."), v)
@@ -87,24 +94,14 @@ class ValidateTests(unittest.TestCase):
         self.assertIn("name", codes(res["errors"]))
         self.assertIn("cron", codes(res["errors"]))
 
-    def test_ttl_math_aca(self):
-        cfg = self.cfg()
-        cfg["pull_path"]["rotator_image"] = "platformacr.azurecr.io/jfrog-oidc-rotator:0.1.0"
-        res = model.validate(cfg)
-        m = res["ttl_math"]
-        self.assertEqual(m["rotation_interval_seconds"], 3600)
-        self.assertEqual(m["pickup_lag_seconds"], 1800)
-        self.assertEqual(m["survives_missed_rotations"], 2)   # 3 misses fail (see rotator-misses-3-runs)
-        self.assertEqual(m["min_safe_ttl_seconds"], 2 * 3600 + 1800)
-        self.assertEqual(res["warnings"], [])
-
     def test_ttl_math_gcp_no_lag(self):
-        m = model.validate(self.cfg("gcp_run_service"))["ttl_math"]
+        m = model.validate(self.cfg())["ttl_math"]
+        self.assertEqual(m["rotation_interval_seconds"], 3600)
         self.assertEqual(m["pickup_lag_seconds"], 0)
         self.assertEqual(m["survives_missed_rotations"], 2)
 
     def test_pull_ttl_too_short_for_rotation(self):
-        res = model.validate(self.cfg(pull_path__ttl_seconds=7200))
+        res = model.validate(self.cfg(pull_path__ttl_seconds=3600))
         self.assertIn("pull_ttl_vs_rotation", codes(res["warnings"]))
 
     def test_pull_ttl_below_min_ttl(self):
@@ -114,11 +111,6 @@ class ValidateTests(unittest.TestCase):
 
     def test_min_ttl_default_matches_rotator_and_modules(self):
         self.assertEqual(model.default_config("azure_container_app")["pull_path"]["min_ttl_seconds"], 1800)
-
-    def test_premium_without_refresh_lag_is_24h(self):
-        res = model.validate(self.cfg("azure_functions_premium", pull_path__function_app_refresh=False))
-        self.assertEqual(res["ttl_math"]["pickup_lag_seconds"], 86400)
-        self.assertIn("pull_ttl_vs_rotation", codes(res["warnings"]))
 
     def test_runtime_ttl_bounds(self):
         self.assertIn("runtime_ttl_short", codes(model.validate(self.cfg(runtime__ttl_seconds=600))["warnings"]))
@@ -148,7 +140,7 @@ class ValidateTests(unittest.TestCase):
         self.assertIn("docker_host_is_platform", codes(model.validate(self.cfg(jfrog__docker_host="acme.jfrog.io"))["warnings"]))
 
     def test_system_assigned_identity_warns(self):
-        res = model.validate(self.cfg(target__azure__identity_type="system_assigned"))
+        res = model.validate(self.cfg("azure_container_app", target__azure__identity_type="system_assigned"))
         self.assertIn("system_assigned_identity", codes(res["warnings"]))
 
     def test_alert_after_must_beat_ttl(self):
@@ -167,7 +159,8 @@ if __name__ == "__main__":
 
 class RotatorImageTests(unittest.TestCase):
     def test_missing_rotator_image_warns_only_with_pull_path(self):
-        cfg = model.default_config("azure_container_app", name="t")
+        cfg = model.default_config("gcp_run_service", name="t")
+        cfg["pull_path"]["rotator_image"] = ""
         self.assertIn("rotator_image_missing", [w["code"] for w in model.validate(cfg)["warnings"]])
         cfg["pull_path"]["enabled"] = False
         self.assertNotIn("rotator_image_missing", [w["code"] for w in model.validate(cfg)["warnings"]])

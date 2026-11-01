@@ -55,7 +55,7 @@ class JobTests(unittest.TestCase):
         self.assertTrue(any(c[:4] == ["az", "containerapp", "job", "show"] for c in sh.calls))
         self.assertFalse(any(c[:3] == ["az", "containerapp", "show"] for c in sh.calls))
         self.assertNotIn("fail", res["status"], res)
-        self.assertTrue(res["config_patch"]["target.azure.environment_id"].endswith("/cae-x"))
+        self.assertNotIn("target.azure.environment_id", res["config_patch"])
 
     def test_wire_updates_the_job(self):
         c = cfg()

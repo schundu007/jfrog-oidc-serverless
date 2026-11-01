@@ -1,7 +1,7 @@
 """Terraform workspace rendering (spec §4.3).
 
 One workspace per GCP project+region or per Azure subscription, shared by every
-config that targets it: the pull path (rotator, AR remotes / Key Vault secret)
+config that targets it: the pull path (GCP only: rotator, AR remotes)
 and the Entra audience app exist once per scope, so per-config workspaces would
 create duplicates. Each config adds its own entries (runtime mapping, readers,
 assignees) to the shared workspace under a file lock.
@@ -72,8 +72,6 @@ PULL_PATHS = {
     "ttl_seconds": "pull_path.ttl_seconds", "rotation_cron": "pull_path.rotation_cron",
     "min_ttl_seconds": "pull_path.min_ttl_seconds", "alert_after_seconds": "pull_path.alert_after_seconds",
     "registry_username": "pull_path.registry_username", "rotator_image": "pull_path.rotator_image",
-    "rotator_acr_id": "pull_path.rotator_acr_id", "key_vault_id": "target.azure.key_vault_id",
-    "key_vault_uri": "target.azure.key_vault_uri", "environment_id": "target.azure.environment_id",
 }
 
 
@@ -279,7 +277,7 @@ def _check_complete(state: dict) -> None:
     if not any(t.get("pull_enabled") for t in state["targets"].values()):
         return
     pull = state["shared"].get("pull") or {}
-    need = ["rotator_image", "registry_username"] + (["key_vault_id", "environment_id"] if state["cloud"] == "azure" else [])
+    need = ["rotator_image", "registry_username"]
     missing = [PULL_PATHS[k] for k in need if not pull.get(k)]
     if missing:
         raise TfgenError(f"the pull path needs {', '.join(missing)}")
@@ -415,32 +413,17 @@ def _gcp_entry(cfg: dict):
 
 def _azure_entry(cfg: dict):
     d, shared, target = _common(cfg, "azure")
-    if target["kind"] == "azure_functions_flex":
-        target["pull_enabled"] = False      # Flex runs code packages; Discover turns this off too
-    _require_rotator_image(cfg, target)
+    if target["pull_enabled"]:
+        raise TfgenError("pull_path.enabled: Azure has no console pull path (Azure signs in to a non-ACR registry "
+                         "only with a username and password); the build pipeline brings images into ACR with OIDC")
     a = model.get_path(cfg, "target.azure") or {}
-    pp = model.get_path(cfg, "pull_path") or {}
-    kv, env = a.get("key_vault_id") or "", a.get("environment_id") or d.get("environment_id") or ""
-    for path, v in (("target.azure.key_vault_id", kv), ("target.azure.environment_id", env)):
-        if v and not ARM_ID_RE.match(v):
-            raise TfgenError(f"{path} is not an ARM resource ID")
-    kv_uri = a.get("key_vault_uri") or (f"https://{kv.rstrip('/').rsplit('/', 1)[-1]}.vault.azure.net/" if kv else "")
-    acr = pp.get("rotator_acr_id") or None
-    if acr and not ARM_ID_RE.match(acr):
-        raise TfgenError("pull_path.rotator_acr_id is not an ARM resource ID")
-    if acr and not str(pp.get("rotator_image", "")).split("/", 1)[0].endswith(".azurecr.io"):
-        raise TfgenError("pull_path.rotator_acr_id is set but pull_path.rotator_image is not in an *.azurecr.io registry")
     if not d.get("location"):
         raise TfgenError("the target's location is unknown: run Discover again")
     shared.update(resource_group_name=a.get("resource_group"), location=d["location"])
-    if target["pull_enabled"]:
-        shared["pull"].update(key_vault_id=kv, key_vault_uri=kv_uri, environment_id=env, rotator_acr_id=acr)
-    refresh = target["kind"] == "azure_functions_premium" and target["pull_enabled"] and pp.get("function_app_refresh", True)
     target.update(
         principal_id=d.get("principal_id") or str(d.get("mapping_subject") or ""),
         identity_resource_group=a.get("resource_group"), identity_location=d["location"],
         identity_type=d.get("identity_type"),
-        function_app_id=(d.get("resource_id") or None) if refresh else None,
     )
     return shared, target, []
 
@@ -591,21 +574,12 @@ def _gcp_tfvars(state: dict) -> dict:
 
 def _azure_tfvars(state: dict) -> dict:
     s, targets = state["shared"], state["targets"]
-    p = s.get("pull") or {}
-    pulling = {n: t for n, t in targets.items() if t["pull_enabled"]}
-    acr = p.get("rotator_acr_id") if pulling else None
     return {
         **_common_tfvars(state, "azure"),
         "azure_subscription_id": state["key"].split(":", 1)[1],
         "location": s["location"],
         "resource_group_name": s["resource_group_name"],
-        "key_vault_id": p.get("key_vault_id") or None,
-        "key_vault_uri": p.get("key_vault_uri") or None,
-        "container_app_environment_id": p.get("environment_id") or None,
-        "rotator_registry": {"server": p["rotator_image"].split("/", 1)[0], "acr_id": acr} if acr else None,
         "audience_assignees": {n: t["principal_id"] for n, t in sorted(targets.items()) if t["runtime_enabled"]},
-        "secret_readers": {n: t["principal_id"] for n, t in sorted(pulling.items())},
-        "function_app_ids": {n: t["function_app_id"] for n, t in sorted(pulling.items()) if t.get("function_app_id")},
         "dedicated_identities": {n: {"name": t["dedicated_identity"], "resource_group_name": t["identity_resource_group"],
                                      "location": t["identity_location"]}
                                  for n, t in sorted(targets.items()) if t.get("dedicated_identity")},
@@ -786,13 +760,7 @@ def _azure_main(modules: str | None = None) -> dict:
             "azure_subscription_id": _var("string"),
             "location": _var("string"),
             "resource_group_name": _var("string"),
-            "key_vault_id": _var("string", None),
-            "key_vault_uri": _var("string", None),
-            "container_app_environment_id": _var("string", None),
-            "rotator_registry": _var("object({server = string, acr_id = string})", None),
             "audience_assignees": _var("map(string)", {}),
-            "secret_readers": _var("map(string)", {}),
-            "function_app_ids": _var("map(string)", {}),
             "dedicated_identities": _var("map(object({name = string, resource_group_name = string, location = string}))", {},
                                          "Existing apps with no managed identity: <config> => new user-assigned identity"),
         },
@@ -812,51 +780,29 @@ def _azure_main(modules: str | None = None) -> dict:
             "azuread": {},
         },
         "locals": {
-            "pull_workloads": _pull_workload_local("azure", "module.azure.rotator_principal_id",
-                                                   "Container Apps / Functions registry credential (rotated)"),
             "dedicated_subjects": "${{ for n, i in azurerm_user_assigned_identity.dedicated : n => i.principal_id }}",
             "runtime_workloads": RUNTIME_WORKLOADS,
             "audience_assignees": "${{ for n, p in var.audience_assignees : n => lookup(local.dedicated_subjects, n, p) }}",
-            "secret_readers": "${{ for n, p in var.secret_readers : n => lookup(local.dedicated_subjects, n, p) }}",
         },
         "module": {
             "azure": {
-                "source": f"{mod}/azure-identity-and-pull-path",
-                "pull_path_enabled": "${var.pull_path.enabled}",
+                "source": f"{mod}/azure-identity",
                 "name_prefix": "${var.name_prefix}",
-                "location": "${var.location}",
-                "resource_group_name": "${var.resource_group_name}",
-                "jfrog_url": "${var.jfrog_url}",
-                "jfrog_provider_name": "${var.jfrog_provider_name}",
-                "registry_username": "${var.pull_path.registry_username}",
-                "key_vault_id": "${var.key_vault_id}",
-                "key_vault_uri": "${var.key_vault_uri}",
-                "container_app_environment_id": "${var.container_app_environment_id}",
-                "rotator_image": "${var.pull_path.rotator_image}",
-                "rotator_registry": "${var.rotator_registry}",
-                "rotation_cron": "${var.pull_path.rotation_cron}",
-                "min_ttl_seconds": "${var.pull_path.min_ttl_seconds}",
                 "audience_assignees": "${local.audience_assignees}",
-                "secret_readers": "${local.secret_readers}",
-                "function_app_ids": "${var.function_app_ids}",
             },
             "jfrog_oidc": {
                 "source": f"{mod}/jfrog-oidc",
                 "azure": {"provider_name": "${var.jfrog_provider_name}", "tenant_id": "${module.azure.tenant_id}",
                           "audience_app_id": "${module.azure.audience_app_id}"},
                 "project_key": "${var.jfrog_project_key}",
-                "workloads": "${merge(local.runtime_workloads, local.pull_workloads)}",
+                "workloads": "${local.runtime_workloads}",
             },
         },
         "output": {
             "jfrog_provider_name": {"value": "${module.jfrog_oidc.azure_provider_name}"},
             "audience_uri": {"value": "${module.azure.audience_uri}"},
             "tenant_id": {"value": "${module.azure.tenant_id}"},
-            "mapping_names": {"value": "${keys(merge(local.runtime_workloads, local.pull_workloads))}"},
-            "registry_username": {"value": "${var.pull_path.enabled ? var.pull_path.registry_username : null}"},
-            "registry_secret_versionless_url": {"value": "${module.azure.registry_secret_versionless_url}"},
-            "rotator_job_name": {"value": "${module.azure.rotator_job_name}"},
-            "first_run_command": {"value": "${module.azure.first_run_command}"},
+            "mapping_names": {"value": "${keys(local.runtime_workloads)}"},
             "dedicated_identities": {"value": "${{ for n, i in azurerm_user_assigned_identity.dedicated : "
                                               "n => { id = i.id, client_id = i.client_id, principal_id = i.principal_id } }}"},
         },

@@ -1,7 +1,7 @@
 {
   "name": "rotator-misses-2-runs",
-  "description": "Rotator runs fail 03:00\u201305:00 (ACA). The 02:23 token is valid until 06:23; the 05:23 run succeeds with time left for the ACA refresh lag.",
-  "target_kind": "azure_container_app",
+  "description": "Rotator runs fail 03:00\u201305:00 (Cloud Run service). The 02:23 token is valid until 06:23; the 05:23 run succeeds before it expires.",
+  "target_kind": "gcp_run_service",
   "duration": "24h",
   "clock_start": "2026-01-01T00:00:00Z",
   "seed": 1,

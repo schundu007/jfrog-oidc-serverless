@@ -106,13 +106,12 @@ function onFieldInput(ev) {
   renderSummary();
 }
 
-// Flex Consumption runs code packages and never pulls an image, so it has no image choice.
 function applyKindVisibility() {
   const kind = st.cfg.target.kind;
   for (const el of $("cfg-form").querySelectorAll("[data-kinds]")) el.hidden = !el.dataset.kinds.split(" ").includes(kind);
   const pullChoice = $("cfg-form").querySelector('[data-path="pull_path.enabled"]').closest("label");
-  // Flex has no image; AWS and Knative pull from their own registry (runtime path only).
-  pullChoice.hidden = kind === "azure_functions_flex" || !st.schema.pull_clouds.includes(cloud);
+  // Only GCP has a pull path; Azure, AWS and Knative pull from their own registry (runtime path only).
+  pullChoice.hidden = !st.schema.pull_clouds.includes(cloud);
   $("cfg-pull-fields").hidden = pullChoice.hidden || !st.cfg.pull_path?.enabled;
   renderSummary();
 }
@@ -416,11 +415,10 @@ const HELP = {
   '[data-path="jfrog.url"]': "Your JFrog Platform address, for example yourcompany.jfrog.io.",
   '[data-path="jfrog.reader_group"]': "The JFrog group the issued tokens belong to. It decides what the workload can read.",
   "#step-needs > h2": "How the workload gets JFrog tokens. Turn on one or both.",
-  '[data-path="pull_path.enabled"]': "The platform pulls the container image from JFrog. A rotator keeps a short-lived pull token in Secret Manager or Key Vault and points the registry at it.",
+  '[data-path="pull_path.enabled"]': "The platform pulls the container image from JFrog. A rotator keeps a short-lived pull token in Secret Manager and points Artifact Registry at it.",
   '[data-path="runtime.enabled"]': "The running code swaps its cloud identity for a JFrog token whenever it needs one, for example to download packages. Nothing is stored.",
   '[data-path="jfrog.docker_repo"]': "The JFrog Docker repository the images are pulled from.",
-  '[data-path="pull_path.rotator_image"]': "The rotator job's image in Artifact Registry or ACR, pinned by digest.",
-  '[data-path="target.azure.key_vault_id"]': "The Key Vault that holds the rotated pull token. The app reads it by reference.",
+  '[data-path="pull_path.rotator_image"]': "The rotator job's image in Artifact Registry, pinned by digest.",
 };
 
 // ----------------------------------------------------------------- mount

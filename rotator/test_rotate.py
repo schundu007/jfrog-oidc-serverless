@@ -47,8 +47,6 @@ class Fake(BaseHTTPRequestHandler):
             return self._send(200, _jwt({"sub": "42", "aud": q["audience"]}), "text/plain")
         if u.path.endswith("/default/token"):
             return self._send(200, {"access_token": "gcp-api-token", "expires_in": 3599})
-        if u.path == "/msi":
-            return self._send(200, {"access_token": f"azure-token-for:{q['resource']}", "expires_on": "9999999999"})
         if u.path.startswith("/sm/projects/p/secrets/jfrog-upstream/versions"):
             versions = [{"name": f"projects/123/secrets/jfrog-upstream/versions/{n}", "state": "ENABLED"} for n in Fake.state["enabled"]]
             return self._send(200, {"versions": versions})
@@ -65,10 +63,6 @@ class Fake(BaseHTTPRequestHandler):
             Fake.state["enabled"].append(n)
             return self._send(200, {"name": f"projects/123/secrets/jfrog-upstream/versions/{n}"})
         if u.path.endswith(":destroy"):
-            return self._send(200, {})
-        if u.path.endswith("/appsettings/refresh"):
-            if Fake.state.get("refresh_fail"):
-                return self._send(403, {"error": "AuthorizationFailed"})
             return self._send(200, {})
         self._send(404, {"error": u.path})
 
@@ -108,7 +102,6 @@ class RotatorTests(unittest.TestCase):
             "JFROG_OIDC_ALLOW_HTTP": "1",
             "SECRET_MANAGER_API": f"{self.base}/sm",
             "ARTIFACT_REGISTRY_API": f"{self.base}/ar",
-            "ARM_API": f"{self.base}/arm",
             "NO_PROXY": "127.0.0.1",
             "no_proxy": "127.0.0.1",
         }
@@ -188,40 +181,19 @@ class RotatorTests(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertFalse([c for c in Fake.calls if c[1].endswith(":addVersion")])
 
-    def azure_env(self, **extra):
-        return {
-            "ROTATOR_TARGET": "azure",
-            "IDENTITY_ENDPOINT": f"{self.base}/msi",
-            "IDENTITY_HEADER": "h",
-            "AZURE_CLIENT_ID": "rotator-mi",
-            "JFROG_OIDC_PROVIDER": "azure-entra",
-            "JFROG_OIDC_AUDIENCE": "api://app-id",
-            "KEY_VAULT_URI": f"{self.base}/kv",
-            "KEY_VAULT_SECRET": "jfrog-pull-token",
-            **extra,
-        }
+    def gcp_env(self, **extra):
+        return {"ROTATOR_TARGET": "gcp", "GCE_METADATA_HOST": self.base,
+                "JFROG_OIDC_PROVIDER": "gcp-cloudrun", "JFROG_OIDC_AUDIENCE": "jfrog",
+                "GCP_SECRET": "projects/p/secrets/jfrog-upstream",
+                "AR_REPOSITORIES": "projects/p/locations/us/repositories/jfrog-docker", **extra}
 
-    def test_azure_rotation_with_function_refresh(self):
-        app = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Web/sites/func-orders"
-        rc = self.run_rotator(self.azure_env(FUNCTION_APP_IDS=app))
-        self.assertEqual(rc, 0)
-        put = [c for c in Fake.calls if c[0] == "PUT"][0]
-        self.assertEqual(put[1], "/kv/secrets/jfrog-pull-token")
-        self.assertEqual(put[2]["tags"]["username"], "puller")
-        self.assertIn("exp", put[2]["attributes"])
-        msi_resources = [c[2]["resource"] for c in Fake.calls if c[1] == "/msi"]
-        self.assertEqual(msi_resources, ["api://app-id", "https://vault.azure.net", "https://management.azure.com/"])
-        self.assertTrue([c for c in Fake.calls if c[1] == f"/arm{app}/config/configreferences/appsettings/refresh"])
-
-    def test_azure_refresh_failure_fails_run(self):
-        Fake.state["refresh_fail"] = True
-        app = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Web/sites/func-orders"
-        self.assertEqual(self.run_rotator(self.azure_env(FUNCTION_APP_IDS=app)), 1)
+    def test_azure_target_refused(self):
+        with self.assertRaises(SystemExit):
+            self.run_rotator({**self.gcp_env(), "ROTATOR_TARGET": "azure"})
 
     def test_dry_run_writes_nothing(self):
-        self.assertEqual(self.run_rotator(self.azure_env(DRY_RUN="1")), 0)
-        self.assertFalse([c for c in Fake.calls if c[0] == "PUT"])
-
+        self.assertEqual(self.run_rotator(self.gcp_env(DRY_RUN="1")), 0)
+        self.assertFalse([c for c in Fake.calls if c[1].endswith(":addVersion") or c[0] == "PATCH"])
 
 if __name__ == "__main__":
     unittest.main()

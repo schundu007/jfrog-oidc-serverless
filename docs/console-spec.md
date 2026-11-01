@@ -17,8 +17,8 @@ In scope:
   - `gcp_run_worker_pool` (Cloud Run worker pool: always on, no HTTP; `gcloud beta run worker-pools`)
   - `azure_container_app`
   - `azure_functions_aca` (Functions on Container Apps)
-  - `azure_functions_premium` (Premium or Dedicated, custom container)
-  - `azure_functions_flex` (Flex Consumption, code)
+  - `azure_functions_premium` (Premium or Dedicated)
+  - Flex Consumption is not a kind: Discover refuses it (`flex_unsupported`).
   - `aws_lambda`, `aws_ecs_task`, `aws_app_runner` (runtime path only, §11)
   - `openshift_knative_service` (OpenShift Serverless or any Knative cluster; runtime path only, §12)
 - For each target:
@@ -64,7 +64,7 @@ console/
       server.py        one in-process HTTP server, path-prefixed per emulator
       jfrog.py         OIDC integrations, mappings, token minting, Artifactory reads, registry auth
       gcp.py           metadata identity/token, Secret Manager, Artifact Registry remote repos
-      azure.py         managed identity endpoint, Entra token versions, app-role gate, Key Vault, ARM refresh
+      azure.py         managed identity endpoint, Entra token versions, app-role gate
       platforms.py     pull behaviour: AR cache, ACA secret refresh lag, App Service KV-ref cache
     __main__.py        python -m console.sim run <scenario|config> [--json]
     scenarios/*.json   built-in scenarios (section 7.4)
@@ -155,9 +155,9 @@ Required tools: `terraform` ≥ 1.6, and `gcloud` and/or `az` depending on the t
 | gcp_run_function | `gcloud functions describe NAME --region R --gen2 --format=json` | `serviceConfig.serviceAccountEmail`, `buildConfig.serviceAccount` |
 | all GCP | `gcloud iam service-accounts describe EMAIL --format=json` | `uniqueId` (mapping subject) |
 | azure_container_app / functions_aca | `az containerapp show -g RG -n NAME` | `identity.userAssignedIdentities{principalId,clientId}`, `kind`, `properties.configuration.registries` |
-| azure_functions_premium / flex | `az functionapp show -g RG -n NAME` + `az functionapp plan show` | identity, `keyVaultReferenceIdentity`, plan SKU (EP*/P*/FC1) |
+| azure_functions_premium | `az functionapp show -g RG -n NAME` + `az functionapp plan show` | identity, `keyVaultReferenceIdentity`, plan SKU (EP*/P*/FC1) |
 
-Discovery can correct the user's chosen kind. For example, a Function App on an FC1 plan becomes `azure_functions_flex`; the UI shows the correction.
+Discovery can correct the user's chosen kind; the UI shows the correction. A Function App on an FC1 (Flex Consumption) plan is refused.
 
 GCP default compute service accounts make the mapping overly broad, because every workload in the project would share one identity. In that case, warn and offer to create a dedicated SA. The console doesn't swap the target's SA automatically.
 
@@ -168,7 +168,7 @@ GCP default compute service accounts make the mapping overly broad, because ever
 - Module instances per target:
   - `jfrog-oidc`: integrations for the needed cloud(s); mappings `<target>-runtime` and, if the pull path is on, `<target>-pull`.
   - `gcp-pull-path` (GCP with the pull path on, or any `gcp_run_function` using remote package repos). One instance per project+region is **shared** across targets; key it in the workspace by project/region and merge repositories.
-  - `azure-identity-and-pull-path`: one instance per subscription and tenant, shared. Add the target's identity to `audience_assignees` and `secret_readers`, and Premium apps to `function_app_ids`.
+  - `azure-identity`: one instance per subscription and tenant, shared: the Entra audience app. Add the target's identity to `audience_assignees`. Azure has no pull path (§4.4).
 - Several configs that share a project or subscription must share one workspace. A per-config workspace would create duplicate audience apps and rotators. Rule: workspace key = `gcp:<project>:<region>` or `azure:<subscription>`. A config adds its own entries to the shared workspace's tfvars maps, under a file lock.
 - `terraform plan -out=plan.bin -input=false -lock-timeout=60s`, then `terraform show -json plan.bin`. Summarise the `resource_changes` actions per resource, and any `delete`/`replace`.
 - Apply only `plan.bin`, and only if the plan file's hash matches the plan the operator approved.
@@ -182,10 +182,11 @@ Compute the desired settings, read the current ones, show a diff, and apply on a
 |---|---|---|
 | gcp_run_service / job | `gcloud run services|jobs update --update-env-vars JFROG_URL=…,JFROG_OIDC_PROVIDER=…,JFROG_OIDC_AUDIENCE=…,JFROG_OIDC_SOURCE=gcp` | Show the recommended image path through AR (`<region>-docker.pkg.dev/<p>/jfrog-docker/<image>`). Don't redeploy the image automatically |
 | gcp_run_function | `gcloud functions deploy NAME --update-env-vars …` is a redeploy, so prefer `gcloud run services update` on the underlying service | Show the `--index-url` line for `requirements.txt` |
-| azure_container_app | `az containerapp update --set-env-vars …` (plus AZURE_CLIENT_ID) | `az containerapp secret set --secrets jfrog-registry-token=keyvaultref:<url>,identityref:<mi>`, then `az containerapp registry set --server <host> --username <u> --password-secret-name jfrog-registry-token` |
-| azure_functions_aca | as container app | as container app |
-| azure_functions_premium | `az functionapp config appsettings set` | `az functionapp config container set` with the registry password set to `@Microsoft.KeyVault(SecretUri=…)`, plus `keyVaultReferenceIdentity` |
-| azure_functions_flex | `az functionapp config appsettings set` | none |
+| azure_container_app | `az containerapp update --set-env-vars …` (plus AZURE_CLIENT_ID) | none: the app pulls from its own ACR with its managed identity |
+| azure_functions_aca | as container app | none |
+| azure_functions_premium | `az functionapp config appsettings set` | none (code deploy) |
+
+Azure never gets a registry username or password. The build-deploy pipeline pulls from JFrog with its service connection's OIDC token and pushes to the app's own ACR.
 
 Also emit IaC snippets for the operator's own repo, Terraform/Bicep for the same settings, so GitOps-managed targets don't drift back.
 
@@ -215,9 +216,7 @@ Use the same probe with deliberately wrong inputs. Each must fail with 401/403:
 ### 5.3 Pull probe — "the platform can pull through the pull path"
 
 - GCP: a probe job whose image is `…-docker.pkg.dev/<p>/jfrog-docker/<verify.probe_image_pull>`. Starting it proves AR → JFrog with the rotated token. To prove an uncached pull, use a unique tag the operator publishes once (`probe-<run-id>`), or skip that and mark it "cached pull only".
-- Container Apps / Functions on ACA: a probe job with the same `registries` and `secrets` config as the target, pulling `<jfrog-host>/<probe_image_pull>`.
-- Premium Functions: `GET …/sites/<app>/config/configreferences/appsettings?api-version=2022-03-01` must show `DOCKER_REGISTRY_SERVER_PASSWORD` with status `Resolved`. Then restart the app with approval and confirm it reaches `Running`.
-- Flex: not applicable.
+- Azure: not applicable (no pull path; images come from the app's ACR through its managed identity).
 
 ### 5.4 Self-test endpoint (fallback for system-assigned identities)
 
@@ -226,7 +225,7 @@ Use the same probe with deliberately wrong inputs. Each must fail with 401/403:
 ### 5.5 Pull-path health
 
 - Read the rotator's last success time from the logs.
-- Read the expiry of the current secret: Key Vault `attributes.exp`, or the Secret Manager version create time plus TTL.
+- Read the expiry of the current secret: the Secret Manager version create time plus TTL (GCP only).
 - Fail if remaining validity is less than 2 × the rotation interval.
 
 ## 6. Server (server.py)
@@ -307,14 +306,9 @@ These behaviours must match the real services, because they decide outcomes.
 - The MI endpoint requires `X-IDENTITY-HEADER` and honours `client_id`.
 - The token version follows the audience app's `requestedAccessTokenVersion`. v1 tokens use `iss=https://sts.windows.net/<tid>/` and `aud=api://<app>`; v2 tokens use the v2 issuer and `aud=<app-id>`.
 - If the app-role gate is on and the identity is unassigned, return `AADSTS501051`-style 400.
-- Key Vault secrets are versioned and carry `exp`.
-- ARM `configreferences/appsettings/refresh` returns 200, or 403 when the rotator lacks permission.
 
 **Platforms** (`platforms.py`):
 - Cloud Run cold start pulls through AR.
-- A Container Apps replica start reads its cached registry secret. The cache refreshes at a random time 5–30 min after a new Key Vault version.
-- Premium Functions cache KV references for 24 h unless refreshed through ARM.
-- Flex never pulls.
 - Runtime requests call the client's `token()`, then an artifact read.
 
 ### 7.3 Engine
@@ -346,14 +340,11 @@ Each built-in scenario has an asserted expected verdict, enforced in tests.
 |---|---|---|
 | happy-gcp-function | none, 24 h | pass |
 | happy-aca | none, 24 h | pass |
-| happy-functions-premium | none, 24 h | pass |
+| happy-functions-premium | none, 24 h, runtime path only | pass |
 | jfrog-outage-90m | JFrog 503 02:00–03:30 | degraded: uncached pulls fail inside the window; runtime serves cached tokens until expiry |
-| rotator-misses-2-runs | rotator runs fail 03:00–05:00 (ACA) | pass: the 02:23 token is valid until 06:23, and the 05:23 run succeeds with time left for the ACA refresh lag |
-| rotator-misses-3-runs | rotator runs fail 03:00–06:00 (ACA) | fail: the new token arrives at 06:23, exactly when the old one expires, so replica starts during the ACA lag fail. Alert fires ≈05:23, an hour before the first failure. This is why the default alert is 3 h |
+| rotator-misses-2-runs | rotator runs fail 03:00–05:00 (Cloud Run service) | pass: the 02:23 token is valid until 06:23, and the 05:23 run succeeds |
 | rotator-down-5h | rotator runs fail 03:00–08:00 | fail: pulls fail from 06:23; alert fired ≈05:23 |
-| ttl-too-short | pull mapping TTL 3600, hourly rotation, ACA | fail. `MIN_TTL_SECONDS` defaults to 1800, so rotations succeed, but each token expires at the next rotation and ACA takes 5–30 min to pick up the new one: replica starts in that gap fail. Root cause names the pull TTL vs interval + pickup lag |
-| min-ttl-refusal | pull mapping TTL 1200 (below `MIN_TTL_SECONDS` 1800), ACA | fail. Every rotation is refused by `MIN_TTL_SECONDS`, so the platform keeps the bootstrap placeholder |
-| premium-no-refresh-permission | ARM refresh 403, TTL 4 h | fail: KV ref cache serves an expired token; rotator runs are marked failed |
+| min-ttl-refusal | pull mapping TTL 1200 (below `MIN_TTL_SECONDS` 1800), Cloud Run service | fail. Every rotation is refused by `MIN_TTL_SECONDS`, so the platform keeps the bootstrap placeholder |
 | azure-v1-tokens | audience app v1 | fail at the first exchange: issuer mismatch; root cause names `requestedAccessTokenVersion` |
 | wrong-audience | runtime env audience typo | fail: 401 on every runtime request; pull path unaffected |
 | sa-recreated | at 05:00 the SA is recreated (new `uniqueId`) | runtime fails from 05:00 with "no mapping matched sub" |
@@ -379,7 +370,7 @@ The layout has three tabs: **Configure**, **Simulate** and **Runs**.
   - Reader group, typeahead from `/access/api/v2/groups`.
   - Optional project key.
 - Target card: a kind selector with icons for the 7 kinds; fields per kind; a **Discover** button that fills identity facts and corrects the kind.
-- Pull path card: an on/off toggle; repo rows for GCP; Key Vault and registry username for Azure.
+- Pull path card: an on/off toggle; repo rows; GCP only (hidden for Azure).
 - TTL card: runtime TTL, pull TTL and rotation cron. Show a live "survives N missed rotations" figure and pickup-lag warnings from `/api/validate`.
 - Buttons: Save · Simulate this config · Run pipeline.
 
@@ -454,7 +445,6 @@ Build in order. Each milestone ends with its tests green and a short demo note i
   - `terraform validate` passes for generated workspaces for every kind.
   - A fake `terraform` binary in tests covers the approval gates.
   - Apply is refused without approval, refused on a plan-hash mismatch, and refused on a delete without typed confirmation.
-- Before M4 is accepted, run `terraform validate` on `terraform/reference/all-targets` and fix whatever the real providers reject. That code has never seen real providers.
 
 **M5 — First rotation + Verify + Report**
 - Implement §5 in full.
@@ -475,7 +465,7 @@ Build in order. Each milestone ends with its tests green and a short demo note i
   3. presses Simulate and sees `pass`,
   4. presses Run, then approves the plan and the wire diff,
   5. gets a Ready report with all probes green,
-  6. receives no JFrog secret anywhere: not in UI logs, `.console/`, Terraform state, or app settings beyond the Key Vault reference.
+  6. receives no JFrog secret anywhere: not in UI logs, `.console/`, Terraform state, or app settings.
 - `python -m console.sim check-all` and all unit tests run in CI without cloud access.
 
 ## 11. AWS targets (Lambda, ECS, App Runner)

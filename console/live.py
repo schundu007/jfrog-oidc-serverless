@@ -91,7 +91,7 @@ def azure(cfgs: list, sh: Shell) -> dict:
             result[cfg["name"]] = {"state": "unknown", "detail": "no subscription, resource group or name"}
             continue
         rid = (model.get_path(cfg, "target.discovered.resource_id") or "").lower()
-        web = kind in ("azure_functions_premium", "azure_functions_flex") or "/microsoft.web/" in rid
+        web = kind == "azure_functions_premium" or "/microsoft.web/" in rid
         found = listing(["az", "functionapp", "list"] if web else CONTAINER_LISTS[kind], sub)
         if isinstance(found, Exception):
             result[cfg["name"]] = {"state": "unknown", "detail": str(found)}

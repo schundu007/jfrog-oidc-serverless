@@ -5,7 +5,6 @@
 #   app                Container App: image (cloud-run-service) -> its ACR, update, check it runs
 #   functions-aca      Functions on Container Apps: image (azure-function) -> its ACR, update
 #   functions-premium  Premium / Dedicated function app: code package (azure-function), zip deploy
-#   functions-flex     Flex Consumption function app: code package (azure-function), zip deploy
 # Base images come through JFrog (OIDC token); every login comes from the service connection's
 # OIDC token, nothing is stored. Until the stack has created the workload, an image kind only
 # pushes and says what to set in Setup.
@@ -93,8 +92,8 @@ case "$KIND" in
     state=$(az containerapp show --name "$WORKLOAD" --resource-group "$rg" --query properties.runningStatus -o tsv --only-show-errors)
     echo "deployed ${image} (${state:-unknown})"
     ;;
-  functions-premium|functions-flex)
+  functions-premium)
     zip_deploy
     ;;
-  *) echo "unknown KIND: $KIND (job, app, functions-aca, functions-premium or functions-flex)" >&2; exit 2 ;;
+  *) echo "unknown KIND: $KIND (job, app, functions-aca or functions-premium)" >&2; exit 2 ;;
 esac

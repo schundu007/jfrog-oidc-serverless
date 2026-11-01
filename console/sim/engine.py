@@ -15,10 +15,8 @@ Modelling choices (read these before trusting a verdict):
   while new ones cannot get one. A cold start whose pull fails adds no instance.
 - AR caching is modelled as a per-pull probability (load.uncached_pull_ratio)
   that the artifact is not yet cached; cached pulls never contact JFrog.
-- Container Apps picks up a new Key Vault version 5–30 min after it is
-  written (uniform, seeded). Premium Functions resolve the reference at
-  rotation time when the rotator's ARM refresh succeeds, otherwise 24 h after
-  the last resolution.
+- Azure is runtime path only: images come from the app's own ACR (managed
+  identity), so no registry credential exists to rotate.
 - Before clock_start the rotator runs once at the previous cron tick and the
   platforms load whatever that produced, so a day starts in steady state.
 
@@ -53,7 +51,7 @@ from .emulators.azure import AzureEmulator
 from .emulators.gcp import GOOGLE_ISSUER, GcpEmulator
 from .emulators.jfrog import SERVICES, JFrogEmulator
 from .emulators.k8s import K8sEmulator
-from .emulators.platforms import ArPlatform, FlexPlatform, KvPlatform
+from .emulators.platforms import ArPlatform
 from .emulators.server import EmulatorServer
 
 SIM_LOCK = threading.Lock()
@@ -66,10 +64,7 @@ K8S_AUDIENCE = "jfrog-k8s"        # tfgen.K8S_AUDIENCE
 TENANT = "72f988bf-0000-4000-8000-000000000001"
 APP_ID = "5d1c2b3a-0000-4000-8000-00000000a0d1"
 RUNTIME_ID = {"client": "c0ffee00-0000-4000-8000-000000000011", "principal": "0b1d0000-0000-4000-8000-000000000011"}
-ROTATOR_ID = {"client": "c0ffee00-0000-4000-8000-000000000022", "principal": "0b1d0000-0000-4000-8000-000000000022"}
 ALERT_EVERY = 900
-ACA_LAG = (5 * 60, 30 * 60)
-PREMIUM_CACHE = 24 * 3600
 
 # Every variable the client or rotator reads. Cleared and restored around each
 # call so the operator's own environment never leaks into a simulation.
@@ -78,8 +73,8 @@ _ENV_KEYS = (
     "JFROG_OIDC_ALLOW_HTTP", "JFROG_PROJECT_KEY", "GCE_METADATA_HOST", "IDENTITY_ENDPOINT", "IDENTITY_HEADER",
     "MSI_ENDPOINT", "AZURE_CLIENT_ID", "AZURE_FEDERATED_TOKEN_FILE", "K_SERVICE", "CLOUD_RUN_JOB", "FUNCTION_TARGET",
     "ROTATOR_TARGET", "GCP_SECRET", "AR_REPOSITORIES", "AR_UPDATE_MASK", "KEEP_VERSIONS", "MIN_TTL_SECONDS",
-    "DRY_RUN", "KEY_VAULT_URI", "KEY_VAULT_SECRET", "FUNCTION_APP_IDS", "SECRET_MANAGER_API",
-    "ARTIFACT_REGISTRY_API", "ARM_API", "JFROG_OIDC_AWS_REGION", "AWS_REGION", "AWS_DEFAULT_REGION",
+    "DRY_RUN", "SECRET_MANAGER_API",
+    "ARTIFACT_REGISTRY_API", "JFROG_OIDC_AWS_REGION", "AWS_REGION", "AWS_DEFAULT_REGION",
     "AWS_ENDPOINT_URL", "AWS_ENDPOINT_URL_STS", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
     "AWS_LAMBDA_FUNCTION_NAME", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "AWS_CONTAINER_CREDENTIALS_FULL_URI",
     "AWS_CONTAINER_AUTHORIZATION_TOKEN", "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE", "AWS_PROFILE",
@@ -154,8 +149,7 @@ class Simulation:
         self.end = self.start + scenario["duration_s"]
         self.rng = random.Random(scenario["seed"])
         self.on_event = on_event
-        self.pull_enabled = (bool(self.cfg["pull_path"].get("enabled")) and self.kind != "azure_functions_flex"
-                             and self.cloud in model.PULL_CLOUDS)
+        self.pull_enabled = bool(self.cfg["pull_path"].get("enabled")) and self.cloud in model.PULL_CLOUDS
         self.cron = model.Cron(self.cfg["pull_path"]["rotation_cron"]) if self.pull_enabled else None
 
         self.events: list = []
@@ -247,13 +241,11 @@ class Simulation:
         else:
             version = int(sim.get("access_token_version", 2))
             self.azure.set_app(APP_ID, version=version, role_gate=bool(sim.get("app_role_gate", False)),
-                               assigned={RUNTIME_ID["principal"], ROTATOR_ID["principal"]})
+                               assigned={RUNTIME_ID["principal"]})
             self.jfrog.add_integration(integ, self.azure.v2_issuer, APP_ID)
-            self.headers = {"runtime": secrets.token_hex(8), "rotator": secrets.token_hex(8)}
+            self.headers = {"runtime": secrets.token_hex(8)}
             self.azure.add_workload("runtime", self.headers["runtime"], {RUNTIME_ID["client"]: RUNTIME_ID["principal"]})
-            self.azure.add_workload("rotator", self.headers["rotator"], {ROTATOR_ID["client"]: ROTATOR_ID["principal"]})
             runtime_claims = {"oid": RUNTIME_ID["principal"], "tid": TENANT}
-            pull_claims = {"oid": ROTATOR_ID["principal"], "tid": TENANT}
             self.runtime_env = {**common, "JFROG_OIDC_AUDIENCE": sim.get("runtime_audience", f"api://{APP_ID}"),
                                 "JFROG_OIDC_SOURCE": "azure", "IDENTITY_ENDPOINT": f"{base}/azure/mi/runtime",
                                 "IDENTITY_HEADER": self.headers["runtime"], "AZURE_CLIENT_ID": RUNTIME_ID["client"]}
@@ -283,28 +275,6 @@ class Simulation:
                 "AR_REPOSITORIES": f"projects/{self.gcp.project_id}/locations/{region}/repositories/{repo}",
                 "KEEP_VERSIONS": "2", "MIN_TTL_SECONDS": min_ttl,
             }
-        else:
-            self.vault, self.secret = "kv-sim", "jfrog-registry-token"
-            self.azure.add_secret(self.vault, self.secret, PLACEHOLDER)
-            if kind == "azure_functions_flex":
-                self.platform = FlexPlatform()
-            elif kind == "azure_functions_premium":
-                self.platform = KvPlatform(self.azure, self.jfrog_url, self.vault, self.secret, pp["registry_username"],
-                                           "Premium Functions", "scale-out")
-            else:
-                label = "Functions on ACA" if kind == "azure_functions_aca" else "Container Apps"
-                self.platform = KvPlatform(self.azure, self.jfrog_url, self.vault, self.secret, pp["registry_username"],
-                                           label, "replica start")
-            self.function_app_id = (f"/subscriptions/{cfg['target']['azure'].get('subscription') or 'sub'}/resourceGroups/"
-                                    f"{cfg['target']['azure'].get('resource_group') or 'rg'}/providers/Microsoft.Web/sites/{name}")
-            self.rotator_env = {
-                **common, "ROTATOR_TARGET": "azure", "JFROG_OIDC_AUDIENCE": f"api://{APP_ID}",
-                "IDENTITY_ENDPOINT": f"{base}/azure/mi/rotator", "IDENTITY_HEADER": self.headers["rotator"],
-                "AZURE_CLIENT_ID": ROTATOR_ID["client"], "KEY_VAULT_URI": f"{base}/azure/kv/{self.vault}",
-                "KEY_VAULT_SECRET": self.secret, "MIN_TTL_SECONDS": min_ttl,
-            }
-            if kind == "azure_functions_premium" and pp.get("function_app_refresh", True):
-                self.rotator_env["FUNCTION_APP_IDS"] = self.function_app_id
         self.base = base
 
         # Fault windows in absolute time; open-ended faults last to the end.
@@ -347,9 +317,7 @@ class Simulation:
     # ------------------------------------------------------------- secrets
 
     def _latest_label(self):
-        if self.cloud == "gcp":
-            return f"v{self.gcp.latest(self.secret)['n']}"
-        return self.azure.latest(self.vault, self.secret)["label"]
+        return f"v{self.gcp.latest(self.secret)['n']}"
 
     def _note_hold(self, t: float) -> None:
         held = self.platform.holds() if self.pull_enabled else None
@@ -363,10 +331,8 @@ class Simulation:
 
     def _rotation(self, t: float, warmup: bool = False) -> None:
         before = self._latest_label()
-        refreshes_before = len(self.azure.refreshes)
         rotate.SM = f"{self.base}/gcp/sm/v1"
         rotate.AR = f"{self.base}/gcp/ar/v1"
-        rotate.ARM = f"{self.base}/azure/arm"
         out = io.StringIO()
         with _workload_env(self.rotator_env), contextlib.redirect_stdout(out):
             try:
@@ -388,8 +354,8 @@ class Simulation:
 
         after = self._latest_label()
         wrote = after != before
-        exp = next((r.get("expires_at") for r in lines if r["event"] in ("secret_version_added", "keyvault_secret_set")), None)
-        # The summary error plus any per-step failure detail (e.g. an ARM refresh 403).
+        exp = next((r.get("expires_at") for r in lines if r["event"] == "secret_version_added"), None)
+        # The summary error plus any per-step failure detail.
         details = [r.get("error") for r in lines if r["event"].endswith("_failed") and r.get("error")]
         error = "; ".join(dict.fromkeys(details)) or None
         if wrote:
@@ -401,19 +367,6 @@ class Simulation:
         self.rotations.append(rec)
         if ok:
             self.last_success = t
-
-        if isinstance(self.platform, KvPlatform):
-            if self.kind == "azure_functions_premium":
-                if len(self.azure.refreshes) > refreshes_before:
-                    self._load_platform(self.clock.now())
-            elif wrote and not warmup:
-                self._push(t + self.rng.uniform(*ACA_LAG), "kv_refresh")
-
-    def _load_platform(self, t: float) -> None:
-        self.platform.load(t)
-        if self.kind == "azure_functions_premium":
-            self._push(t + PREMIUM_CACHE, "premium_reresolve", t)
-        self._note_hold(t)
 
     def _new_instance(self, t: float) -> None:
         with _workload_env(self.runtime_env):
@@ -486,7 +439,7 @@ class Simulation:
         if ftype == "jfrog_outage":
             self.jfrog.set_down((params.get("services") or SERVICES) if opening else ())
         elif ftype == "rotator_down":
-            (self.gcp if self.cloud == "gcp" else self.azure).set_identity_down("rotator", opening)
+            self.gcp.set_identity_down("rotator", opening)
         elif ftype == "federation_disabled":
             self.aws.federation_enabled = not opening
         elif ftype in ("sa_recreated", "identity_recreated") and opening:
@@ -498,8 +451,6 @@ class Simulation:
                 self.gcp.recreate_account("runtime", "100000000000000000099")
             else:
                 self.azure.workloads["runtime"]["identities"][RUNTIME_ID["client"]] = "0b1d0000-0000-4000-8000-000000000099"
-        elif ftype == "arm_refresh_forbidden":
-            self.azure.refresh_forbidden = opening
         elif ftype == "mapping_revoked":
             self.jfrog.revoke_mapping(self.mapping_names[params.get("mapping", "runtime")], opening)
         elif ftype == "integration_misconfigured":
@@ -541,8 +492,6 @@ class Simulation:
                 self._emit(self.clock.now(), "sim", f"simulation {self.sc['name']} starts: {model.KINDS[self.kind]['label']}")
                 if self.pull_enabled:
                     self._rotation(self.clock.now(), warmup=True)
-                    if isinstance(self.platform, KvPlatform):
-                        self._load_platform(self.clock.now())
                     self._note_hold(self.clock.now())
                 self.clock.advance_to(self.start)
                 self._new_instance(self.start)
@@ -591,8 +540,6 @@ class Simulation:
             "fault_open": lambda t, d: self._fault(t, d, True),
             "fault_close": lambda t, d: self._fault(t, d, False),
             "alert_eval": lambda t, d: self._alert_eval(t),
-            "kv_refresh": lambda t, d: self._load_platform(t),
-            "premium_reresolve": lambda t, d: self._load_platform(t) if self.platform.loaded_at == d else None,
         }
         while self._queue:
             t, _, kind, data = heapq.heappop(self._queue)
@@ -681,10 +628,8 @@ class Simulation:
             newer = [v for v, i in self.cred_info.items() if i["written"] <= t_abs and (info is None or i["written"] > info["written"])]
             if newer:
                 n = newer[-1]
-                lag = ("Key Vault reference cache, up to 24 h without ARM refresh" if self.kind == "azure_functions_premium"
-                       else "secret refresh lag, 5–30 min")
                 chain.append(f"{n} was written {self.hhmm(self.cred_info[n]['written'])} but {self.platform.label} "
-                             f"had not picked it up ({lag})")
+                             "had not picked it up")
             if first["kind"] == "pull":
                 chain.append(f"{self.platform.label} {self.platform.action} {self.hhmm(t_abs)} failed: {rec['reason']}")
             else:
@@ -726,10 +671,6 @@ class Simulation:
         if "no identity mapping matched" in text:
             return ("The identity's claims no longer match any JFrog identity mapping (for example the service account "
                     "was recreated and has a new uniqueId). Re-run Discover and re-apply so the mapping uses the current ID.")
-        if "refresh" in rot_errors and "403" in rot_errors:
-            return ("The rotator cannot refresh Key Vault references on the function app (needs "
-                    "Microsoft.Web/sites/config/configreferences/appsettings/refresh/action, e.g. Website Contributor). "
-                    "Premium Functions then cache the reference for up to 24 h and pull with an expired token.")
         if any("rotator_down" in r["faults"] for r in self.rotations) or "fault rotator_down" in text:
             return (f"The rotator missed consecutive runs. This config survives {math_.get('survives_missed_rotations')} "
                     f"missed rotation(s): TTL {math_.get('pull_ttl_seconds')}s, interval "

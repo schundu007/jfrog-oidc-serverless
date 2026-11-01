@@ -11,9 +11,10 @@ apply() refuses unless approval.diff_sha256 matches, re-reads the target and
 
 Never exposed: app settings other than the managed keys (an App Service
 settings list holds storage keys and connection strings, so that read is a
-sensitive call and everything else is dropped), and current registry
-passwords. Key Vault references are references, not secrets, but redact masks
-`keyvaultref:` in logs anyway.
+sensitive call and everything else is dropped).
+
+Azure gets no registry credential here: the app pulls from its own ACR with its
+managed identity, and images reach that ACR through the build pipeline (OIDC).
 """
 
 from __future__ import annotations
@@ -26,8 +27,6 @@ from ..shell import Shell
 from .aws import AwsWire
 from .openshift import OpenShiftWire
 
-SECRET_NAME = "jfrog-registry-token"
-HIDDEN = "[set, not shown]"
 CONTAINER_KINDS = ("azure_container_app", "azure_container_app_job", "azure_functions_aca")
 
 
@@ -67,13 +66,12 @@ class Wire(AwsWire, OpenShiftWire):
         # Registry server for image pulls: the Docker repo's dedicated host, never the
         # platform host (repository-path pulls failed on the AKS pilot's instance).
         self.docker_host = model.docker_host(cfg)
-        self.pull = (bool(model.get_path(cfg, "pull_path.enabled")) and self.kind != "azure_functions_flex"
-                     and self.cloud in model.PULL_CLOUDS)
+        self.pull = bool(model.get_path(cfg, "pull_path.enabled")) and self.cloud in model.PULL_CLOUDS
         self._aws_cache = {}
         self.runtime = bool(model.get_path(cfg, "runtime.enabled", True))
         self.dedicated = self._dedicated()
         if self.dedicated and self.cloud == "azure":
-            # The app runs as the identity the workspace created: env and Key Vault references use it.
+            # The app runs as the identity the workspace created: AZURE_CLIENT_ID points at it.
             self.d = {**self.d, "identity_type": "user_assigned", "identity_resource_id": self.dedicated["id"],
                       "client_id": self.dedicated.get("client_id")}
 
@@ -98,11 +96,6 @@ class Wire(AwsWire, OpenShiftWire):
             raise WireError(f"workspace outputs missing ({', '.join(missing)}): run Plan and Apply first")
         return [self.out[k] for k in keys]
 
-    def _need_docker_host(self):
-        if not self.docker_host:
-            raise WireError("no Docker registry host: set jfrog.docker_repo (or jfrog.docker_host) to the repo "
-                            "the app pulls from")
-
     def desired_env(self) -> dict:
         if not self.runtime:
             return {}
@@ -120,9 +113,6 @@ class Wire(AwsWire, OpenShiftWire):
         if self.d.get("identity_type") == "user_assigned" and self.d.get("client_id"):
             env["AZURE_CLIENT_ID"] = self.d["client_id"]
         return dict(sorted(env.items()))
-
-    def _identity_ref(self):
-        return self.d.get("identity_resource_id") if self.d.get("identity_type") == "user_assigned" else "system"
 
     # -- plan --------------------------------------------------------------------------
 
@@ -244,46 +234,17 @@ class Wire(AwsWire, OpenShiftWire):
         if changed:
             commands.append([*self._ca(), "update", *self._az_target(), "--container-name",
                              container.get("name") or self.cfg["name"], "--set-env-vars", *changed, "-o", "none"])
-        if self.pull:
-            url, user = self._need("registry_secret_versionless_url", "registry_username")
-            self._need_docker_host()
-            ident = self._identity_ref()
-            s = {x.get("name"): x for x in _dig(props, "configuration", "secrets") or []}.get(SECRET_NAME)
-            cur = None if s is None else (f"Key Vault {s['keyVaultUrl']} via {s.get('identity')}" if s.get("keyVaultUrl") else HIDDEN)
-            e = _entry("secret", SECRET_NAME, cur, f"Key Vault {url} via {ident}")
-            diff.append(e)
-            if e["action"] != "same":
-                commands.append([*self._ca(), "secret", "set", *self._az_target(), "--secrets",
-                                 f"{SECRET_NAME}=keyvaultref:{url},identityref:{ident}", "-o", "none"])
-            r = {x.get("server"): x for x in _dig(props, "configuration", "registries") or []}.get(self.docker_host)
-            cur = None if r is None else (f"{r.get('username')} / secret {r.get('passwordSecretRef')}"
-                                          if r.get("passwordSecretRef") else f"identity {r.get('identity')}")
-            e = _entry("registry", self.docker_host, cur, f"{user} / secret {SECRET_NAME}")
-            diff.append(e)
-            if e["action"] != "same":
-                commands.append([*self._ca(), "registry", "set", *self._az_target(), "--server", self.docker_host,
-                                 "--username", user, "--password-secret-name", SECRET_NAME, "-o", "none"])
-            image = container.get("image") or ""
-            if image and not image.startswith(self.docker_host + "/"):
-                notes.append(f"The app runs {image}, not an image from {self.docker_host}; the registry credential "
-                             "takes effect once your next deploy points the image at JFrog.")
         return diff, commands, notes
 
-    # -- Azure App Service (Premium / Flex / legacy Functions on ACA) -----------------------------
+    # -- Azure App Service (Premium / legacy Functions on ACA) -----------------------------------
 
     def _webapp(self, env):
         res = self.sh.run(["az", "functionapp", "config", "appsettings", "list", *self._az_target(), "-o", "json"],
                           timeout=120, sensitive=True)
         if not res.ok:
             raise WireError(f"could not read the app settings: {res.error_text(300)}")
-        wanted = set(env) | {"DOCKER_REGISTRY_SERVER_URL", "DOCKER_REGISTRY_SERVER_USERNAME", "DOCKER_REGISTRY_SERVER_PASSWORD"}
-        cur = {}
-        for s in res.json() or []:          # keep only the managed keys; everything else is dropped unread
-            if isinstance(s, dict) and s.get("name") in wanted:
-                v = s.get("value")
-                if s["name"] == "DOCKER_REGISTRY_SERVER_PASSWORD" and v and not str(v).startswith("@Microsoft.KeyVault("):
-                    v = HIDDEN
-                cur[s["name"]] = v
+        cur = {s["name"]: s.get("value") for s in res.json() or []   # only the managed keys; the rest is dropped unread
+               if isinstance(s, dict) and s.get("name") in env}
         app = self.sh.run(["az", "functionapp", "show", *self._az_target(), "-o", "json"], timeout=120)
         if not app.ok:
             raise WireError(f"could not read the target: {app.error_text(300)}")
@@ -293,28 +254,6 @@ class Wire(AwsWire, OpenShiftWire):
         settings = [f"{d['setting']}={d['desired']}" for d in diff if d["action"] != "same"]
         first = self._assign_identity(app, diff, ["az", "functionapp", "identity", "assign", *self._az_target(), "--identities"])
         notes = []
-        if self.pull and self.kind == "azure_functions_premium":
-            url, user = self._need("registry_secret_versionless_url", "registry_username")
-            self._need_docker_host()
-            for k, v in (("DOCKER_REGISTRY_SERVER_URL", f"https://{self.docker_host}"),
-                         ("DOCKER_REGISTRY_SERVER_USERNAME", user),
-                         ("DOCKER_REGISTRY_SERVER_PASSWORD", f"@Microsoft.KeyVault(SecretUri={url})")):
-                e = _entry("registry", k, cur.get(k), v)
-                diff.append(e)
-                if e["action"] != "same":
-                    settings.append(f"{k}={v}")
-            want = self.d.get("identity_resource_id") if self.d.get("identity_type") == "user_assigned" else "SystemAssigned"
-            e = _entry("setting", "keyVaultReferenceIdentity", app.get("keyVaultReferenceIdentity"), want)
-            diff.append(e)
-            if e["action"] != "same":
-                # The identity has to be in place before App Service resolves the new reference.
-                first.append(["az", "functionapp", "update", *self._az_target(), "--set",
-                              f"keyVaultReferenceIdentity={want}", "-o", "none"])
-            fx = str(_dig(app, "siteConfig", "linuxFxVersion") or "")
-            image = fx.split("|", 1)[1] if "|" in fx else ""
-            if image and not image.startswith(self.docker_host + "/"):
-                notes.append(f"The app runs {image}, not an image from {self.docker_host}; point the image at JFrog "
-                             "in your next deploy.")
         commands = first
         if settings:
             commands = first + [["az", "functionapp", "config", "appsettings", "set", *self._az_target(),
@@ -343,16 +282,6 @@ class Wire(AwsWire, OpenShiftWire):
 
     def _iac(self, env) -> dict:
         iac = {"env": env, "note": "Add these to the target's own IaC or deploy pipeline so the next deploy keeps them."}
-        url, user = self.out.get("registry_secret_versionless_url"), self.out.get("registry_username")
-        if self.cloud == "azure" and self.pull and url:
-            if self._is_container_app():
-                iac["azurerm_container_app"] = {
-                    "secret": [{"name": SECRET_NAME, "key_vault_secret_id": url, "identity": self._identity_ref()}],
-                    "registry": [{"server": self.docker_host, "username": user, "password_secret_name": SECRET_NAME}]}
-            elif self.kind == "azure_functions_premium":
-                iac["app_settings"] = {"DOCKER_REGISTRY_SERVER_URL": f"https://{self.docker_host}",
-                                       "DOCKER_REGISTRY_SERVER_USERNAME": user,
-                                       "DOCKER_REGISTRY_SERVER_PASSWORD": f"@Microsoft.KeyVault(SecretUri={url})"}
         return iac
 
     # -- apply ------------------------------------------------------------------------------------

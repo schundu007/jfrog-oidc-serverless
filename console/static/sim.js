@@ -23,11 +23,11 @@ const SETTING_LABELS = {
 const FAULT_LABELS = {
   jfrog_outage: "JFrog outage", rotator_down: "Rotator can't get its identity",
   identity_recreated: "App identity recreated", sa_recreated: "Service account recreated",
-  arm_refresh_forbidden: "Key Vault refresh forbidden", mapping_revoked: "JFrog mapping removed",
+  mapping_revoked: "JFrog mapping removed",
   integration_misconfigured: "JFrog trust has the wrong issuer",
   federation_disabled: "AWS outbound federation off",
 };
-const CLOUD_ONLY_FAULTS = { arm_refresh_forbidden: ["azure"], sa_recreated: ["gcp"], rotator_down: ["gcp", "azure"],
+const CLOUD_ONLY_FAULTS = { sa_recreated: ["gcp"], rotator_down: ["gcp"],
   federation_disabled: ["aws"] };
 const faultLabel = (t) => FAULT_LABELS[t] || t.replaceAll("_", " ");
 const ACRONYMS = { jfrog: "JFrog", gcp: "GCP", aws: "AWS", sa: "SA", aca: "ACA", ecs: "ECS", arm: "ARM" };

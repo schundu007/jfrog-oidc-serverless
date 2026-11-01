@@ -1,7 +1,7 @@
 {
   "name": "min-ttl-refusal",
   "description": "Pull TTL 1200 s is below MIN_TTL_SECONDS (1800): every rotation is refused and the platform keeps the bootstrap placeholder.",
-  "target_kind": "azure_container_app",
+  "target_kind": "gcp_run_service",
   "duration": "24h",
   "clock_start": "2026-01-01T00:00:00Z",
   "seed": 1,

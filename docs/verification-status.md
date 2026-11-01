@@ -4,8 +4,7 @@
 
 These come from the README's "Verify in your environment" section. Fix them in code when real providers or APIs disagree:
 
-- The wire step's az flags: `az containerapp secret set --secrets name=keyvaultref:<url>,identityref:<id>` and `az containerapp registry set --password-secret-name`.
-- The dedicated-identity attach flag `az containerapp [job] identity assign --user-assigned <id>` (`az functionapp identity assign --identities <id>` worked live on Flex, 2026-10-30).
+- The dedicated-identity attach flag `az containerapp [job] identity assign --user-assigned <id>` (`az functionapp identity assign --identities <id>` worked live, 2026-10-30).
 - AWS (built from the AWS docs; account 365506438424 read-only so far: `get-outbound-web-identity-federation-info` returns `FeatureDisabled`, recorded as the Preflight fixture):
   - The JWT's `sub` for a workload's assumed-role session: the docs' example shows the role ARN; the mapping and the sim assume that. It may be the assumed-role ARN (`arn:aws:sts::<acct>:assumed-role/<role>/<session>`).
   - App Runner's instance-role credentials: assumed to be the container credentials endpoint (`AWS_CONTAINER_CREDENTIALS_*_URI`), and that App Runner accepts `JFROG_OIDC_AWS_REGION` (it reserves some `AWS_*` names).
@@ -20,6 +19,6 @@ These come from the README's "Verify in your environment" section. Fix them in c
 
 Verified live (2026-10-30): all eight workload types exchanged their identity for a JFrog token after console onboarding (docs/progress.md); Functions on ACA with `kind = functionapp`; the Container Apps log table `ContainerAppConsoleLogs_CL`; JFrog accepts `provider_type = "Azure"` (the `azure-entra` integration issued the Azure tokens).
 
-Verified in M4 by `terraform validate` (azurerm 5.12.0): the `azurerm_function_app_flex_consumption` argument names. Verified by `terraform validate` (Terraform 1.15.5 then 1.17.1, jfrog/platform 2.2.11, google 8.9.0, azurerm 5.12.0) on both stacks: the `jfrog-oidc` module validations from the AKS pilot lessons. Verified live: the AR PATCH `updateMask` (gcloud sends the same mask).
+Verified by `terraform validate` (Terraform 1.15.5 then 1.17.1, jfrog/platform 2.2.11, google 8.9.0, azurerm 5.12.0) on both stacks: the `jfrog-oidc` module validations from the AKS pilot lessons. Verified live: the AR PATCH `updateMask` (gcloud sends the same mask).
 
 Known blocker (2026-10-30, JFrog Cloud trial): Artifact Registry remote repos get 403 from the JFrog Cloud edge for any credentials (even anonymous); the requests never reach Artifactory's request log. GCP image pulls through AR need JFrog to allow that traffic. The runtime path (in-process exchange) works, and so does bringing images in at build time (OIDC token, pull from JFrog by repository path, push to AR), which avoids the AR remote. Proven with Cloud Build; CI/CD is Azure DevOps (for both Azure and GCP targets), so build and deploy pipelines are ADO only. Cloud Build and GitHub Actions are out of scope for now.

@@ -119,17 +119,17 @@ class ServerTests(unittest.TestCase):
 
     def test_validate(self):
         from console import model
-        cfg = model.default_config("azure_container_app", name="orders")
+        cfg = model.default_config("gcp_run_service", name="orders")
         cfg["pull_path"]["ttl_seconds"] = 3600
         body = json.loads(self.req("POST", "/api/validate", {"config": cfg})[2])
         self.assertEqual(body["errors"], [])
         self.assertIn("pull_ttl_vs_rotation", {w["code"] for w in body["warnings"]})
-        self.assertEqual(body["ttl_math"]["pickup_lag_seconds"], 1800)
+        self.assertEqual(body["ttl_math"]["pickup_lag_seconds"], 0)
 
     def test_scenarios(self):
         body = json.loads(self.req("GET", "/api/sim/scenarios")[2])
         names = {s["name"] for s in body["scenarios"]}
-        self.assertIn("rotator-misses-3-runs", names)
+        self.assertIn("rotator-down-5h", names)
         self.assertIn("rotator_down", body["fault_types"])
 
     def test_sim_bad_request(self):
@@ -138,7 +138,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.req("GET", "/api/sim/doesnotexist")[0], 404)
 
     def test_sim_sse_stream_and_result(self):
-        st, _, raw = self.req("POST", "/api/sim", {"scenario": "rotator-misses-3-runs"})
+        st, _, raw = self.req("POST", "/api/sim", {"scenario": "rotator-down-5h"})
         self.assertEqual(st, 202)
         sim_id = json.loads(raw)["sim_id"]
 
@@ -160,7 +160,7 @@ class ServerTests(unittest.TestCase):
 
     def test_sim_overrides_and_faults(self):
         st, _, raw = self.req("POST", "/api/sim", {
-            "scenario": "happy-aca", "overrides": {"pull_path.ttl_seconds": 1800},
+            "scenario": "happy-gcp-function", "overrides": {"pull_path.ttl_seconds": 1800},
             "faults": [], "load": {"cold_starts_per_hour": 3}, "duration": "6h"})
         self.assertEqual(st, 202)
         sim_id = json.loads(raw)["sim_id"]

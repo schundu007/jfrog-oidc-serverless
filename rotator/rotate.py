@@ -1,8 +1,7 @@
-"""Image-pull credential rotator.
+"""Image-pull credential rotator (GCP only).
 
-Platforms that pull images or packages *before* your code runs (Artifact Registry
-remote repos, Container Apps registries, Functions custom containers) only accept
-a static username/password. This job closes that gap: it runs on a schedule as
+Artifact Registry remote repos pull images and packages *before* your code runs
+and only accept a static username/password. This job closes that gap: it runs on a schedule as
 its own workload identity, exchanges that identity for a short-lived, read-only
 JFrog token, and writes it where the platform reads it.
 
@@ -12,13 +11,9 @@ ROTATOR_TARGET=gcp
     AR_REPOSITORIES       comma-separated projects/<p>/locations/<l>/repositories/<r>
     KEEP_VERSIONS         live secret versions to keep; older ones are destroyed (default 2)
 
-ROTATOR_TARGET=azure
-    JFROG_URL, JFROG_OIDC_PROVIDER, JFROG_OIDC_AUDIENCE (api://<app-id>), AZURE_CLIENT_ID
-    KEY_VAULT_URI         https://<vault>.vault.azure.net
-    KEY_VAULT_SECRET      secret name
-    FUNCTION_APP_IDS      optional, comma-separated ARM IDs of Premium/Dedicated
-                          function apps whose Key Vault references to refresh now
-                          (otherwise App Service picks up the new version within 24h)
+Azure has no rotator: images reach the app's own ACR through the ADO pipeline
+(OIDC to JFrog) and the app pulls with its managed identity, so no registry
+username/password exists anywhere.
 
 Common:
     MIN_TTL_SECONDS       fail if JFrog issues a token shorter than this (default 1800)
@@ -39,7 +34,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from jfrog_oidc import AzureManagedIdentitySource, GcpMetadataSource, JFrogTokenProvider
+from jfrog_oidc import GcpMetadataSource, JFrogTokenProvider
 
 
 def log(event: str, **fields) -> None:
@@ -144,50 +139,6 @@ def rotate_gcp(provider: JFrogTokenProvider, dry_run: bool, clock=time.time, sle
         log("secret_version_destroyed", version=stale["name"])
 
 
-# ------------------------------------------------------------------------- Azure
-
-KV_API = "7.4"
-ARM = os.environ.get("ARM_API", "https://management.azure.com")
-ARM_RESOURCE = "https://management.azure.com/"
-
-
-def rotate_azure(provider: JFrogTokenProvider, dry_run: bool, clock=time.time, sleep=time.sleep) -> None:
-    vault = require("KEY_VAULT_URI").rstrip("/")
-    name = require("KEY_VAULT_SECRET")
-    function_apps = [a.strip() for a in os.environ.get("FUNCTION_APP_IDS", "").split(",") if a.strip()]
-
-    tok = provider.token()
-    check_ttl(tok, clock)
-    if dry_run:
-        log("dry_run", username=tok.username, expires_at=int(tok.expires_at))
-        return
-
-    msi = provider.source if isinstance(provider.source, AzureManagedIdentitySource) else AzureManagedIdentitySource()
-    kv_token = msi.get_access_token("https://vault.azure.net")
-    result = http("PUT", f"{vault}/secrets/{name}?api-version={KV_API}", kv_token, {
-        "value": tok.access_token,
-        "contentType": "jfrog-access-token",
-        "attributes": {"enabled": True, "exp": int(tok.expires_at)},
-        "tags": {"username": tok.username, "rotated-by": "jfrog-oidc-rotator"},
-    }, sleep=sleep)
-    log("keyvault_secret_set", secret_id=result.get("id", "").rsplit("/", 1)[-1],
-        username=tok.username, expires_at=int(tok.expires_at))
-
-    if function_apps:
-        arm_token = msi.get_access_token(ARM_RESOURCE)
-        failures = 0
-        for app_id in function_apps:
-            try:
-                http("POST", f"{ARM}{app_id}/config/configreferences/appsettings/refresh?api-version=2022-03-01", arm_token, {},
-                     sleep=sleep)
-                log("function_app_refreshed", app=app_id.rsplit("/", 1)[-1])
-            except RuntimeError as exc:
-                failures += 1
-                log("function_app_refresh_failed", app=app_id.rsplit("/", 1)[-1], error=str(exc), severity="ERROR")
-        if failures:
-            raise SystemExit(f"{failures} function app refresh(es) failed")
-
-
 # -------------------------------------------------------------------------- main
 
 
@@ -206,17 +157,14 @@ def main(clock=time.time, sleep=time.sleep) -> int:
     run this unmodified on virtual time; the defaults are the real ones."""
     target = require("ROTATOR_TARGET").lower()
     dry_run = os.environ.get("DRY_RUN", "") in ("1", "true", "yes")
-    if target == "gcp":
-        source = GcpMetadataSource()
-    elif target == "azure":
-        source = AzureManagedIdentitySource()
-    else:
-        raise SystemExit("ROTATOR_TARGET must be gcp or azure")
+    if target != "gcp":
+        raise SystemExit("ROTATOR_TARGET must be gcp")
+    source = GcpMetadataSource()
 
     provider = JFrogTokenProvider.from_env(source=source, clock=clock, sleep=sleep)
     started = clock()
     try:
-        (rotate_gcp if target == "gcp" else rotate_azure)(provider, dry_run, clock=clock, sleep=sleep)
+        rotate_gcp(provider, dry_run, clock=clock, sleep=sleep)
     except SystemExit as exc:
         log("rotation_failed", error=str(exc), severity="ERROR")
         return 1

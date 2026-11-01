@@ -114,7 +114,7 @@ class ProvisionTests(unittest.TestCase):
 
     def test_azure_names_map_back_to_the_stack_workload(self):
         self.assertEqual(provision.workload_name("azure_container_app_job", "caj-artifact-reader"), "artifact-reader")
-        self.assertEqual(provision.workload_name("azure_functions_flex", "func-flex-demo-0a1b2c"), "func-flex-demo")
+        self.assertEqual(provision.workload_name("azure_functions_premium", "func-prem-demo-0a1b2c"), "func-prem-demo")
         self.assertEqual(provision.workload_name("gcp_run_job", "artifact-reader"), "artifact-reader")
 
     def test_first_image_is_read_from_the_build_warning(self):

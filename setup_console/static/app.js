@@ -315,7 +315,7 @@ let byId = {};
 // Each stack's service icon (the sidebar's), and each cloud's logo: constant SVG from shell.js.
 const STACK_ICON = { "gcp-foundation": "boot", "azure-foundation": "boot", "gcp-cloud-run": "run", "gcp-cloud-run-service": "run", "gcp-cloud-run-worker-pool": "run",
   "gcp-cloud-run-function": "fn", "gke-cluster": "gke", "azure-container-apps": "aca", "azure-container-app": "aca",
-  "azure-functions-aca": "func", "azure-functions-premium": "func", "azure-functions-flex": "func", "aks-cluster": "aks" };
+  "azure-functions-aca": "func", "azure-functions-premium": "func", "aks-cluster": "aks" };
 const CLOUD_ID = { "Google Cloud": "gcp", Azure: "azure" };
 function iconEl(key, cls) {
   const span = h("span", { class: cls });

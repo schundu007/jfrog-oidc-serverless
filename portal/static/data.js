@@ -19,7 +19,6 @@ export const SECTIONS = {
   azure_container_app: sl("azure", "azure_container_app", "Container Apps", "aca"),
   azure_functions_aca: sl("azure", "azure_functions_aca", "Functions on Container Apps", "func"),
   azure_functions_premium: sl("azure", "azure_functions_premium", "Functions Premium", "func"),
-  azure_functions_flex: sl("azure", "azure_functions_flex", "Functions Flex Consumption", "func"),
   aks: k8s("azure", "aks", "AKS clusters"),
   eks: k8s("aws", "eks", "EKS clusters"),
   openshift: k8s("openshift", "openshift", "OpenShift clusters"),
@@ -28,7 +27,6 @@ export const SECTIONS = {
 export const FAMILY = {
   azure_container_app_job: ["Container Apps", "Jobs"], azure_container_app: ["Container Apps", "Apps"],
   azure_functions_aca: ["Functions", "On Container Apps"], azure_functions_premium: ["Functions", "Premium / Dedicated"],
-  azure_functions_flex: ["Functions", "Flex Consumption"],
   gcp_run_job: ["Cloud Run", "Jobs"], gcp_run_service: ["Cloud Run", "Services"],
   gcp_run_function: ["Cloud Run", "Functions"], gcp_run_worker_pool: ["Cloud Run", "Worker pools"],
 };

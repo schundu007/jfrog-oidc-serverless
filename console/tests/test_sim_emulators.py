@@ -160,24 +160,6 @@ class AzureTests(Base):
         self.assertEqual(st, 400)
         self.assertIn("AADSTS501051", raw.decode())
 
-    def test_key_vault_versions_and_arm_refresh(self):
-        self.azure.add_secret("kv-sim", "jfrog-registry-token", "bootstrap-placeholder")
-        kv = j(self.mi(resource="https://vault.azure.net")[1])["access_token"]
-        url = f"{self.base}/azure/kv/kv-sim/secrets/jfrog-registry-token?api-version=7.4"
-        st, raw = call(url, "PUT", {"Authorization": f"Bearer {kv}"}, {"value": "t2", "attributes": {"enabled": True, "exp": int(T0 + 100)}})
-        self.assertEqual(st, 200)
-        self.assertNotIn("t2", raw.decode())  # never echo the value
-        latest = self.azure.latest("kv-sim", "jfrog-registry-token")
-        self.assertEqual((latest["value"], latest["exp"], latest["label"]), ("t2", T0 + 100, "v2"))
-
-        arm = j(self.mi(resource="https://management.azure.com/")[1])["access_token"]
-        app = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Web/sites/f"
-        refresh = f"{self.base}/azure/arm{app}/config/configreferences/appsettings/refresh?api-version=2022-03-01"
-        self.assertEqual(call(refresh, "POST", {"Authorization": f"Bearer {arm}"}, {})[0], 200)
-        self.assertEqual(self.azure.refreshes[-1]["app"], app)
-        self.azure.refresh_forbidden = True
-        self.assertEqual(call(refresh, "POST", {"Authorization": f"Bearer {arm}"}, {})[0], 403)
-
 
 class JFrogTests(Base):
     def setUp(self):

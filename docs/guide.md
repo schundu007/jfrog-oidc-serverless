@@ -23,7 +23,6 @@ stored anywhere: not in the cloud, not in Azure DevOps, not on your machine.
    - 5.2 Container App
    - 5.3 Functions on Container Apps
    - 5.4 Functions Premium / Dedicated
-   - 5.5 Functions Flex Consumption
 6. JFrog OIDC for a workload (the Serverless console)
 7. Kubernetes clusters (GKE, AKS) and the Kubernetes console
 8. Tear down
@@ -160,7 +159,7 @@ Result of the run: **31 added, 1 changed** (environment `azure-container-apps-te
 In Azure DevOps: service connections `jfrog-oidc-azure-build` / `jfrog-oidc-azure-setup`,
 variable group `jfrog-oidc-azure-test`, and an environment with an approval check per Azure
 workload stack (`azure-container-apps-test`, `azure-container-app-test`,
-`azure-functions-aca-test`, `azure-functions-premium-test`, `azure-functions-flex-test`).
+`azure-functions-aca-test`, `azure-functions-premium-test`).
 
 ## 4. Google Cloud workloads
 

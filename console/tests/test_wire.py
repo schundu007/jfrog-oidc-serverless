@@ -11,13 +11,11 @@ P, R = "demo-nonprod-1234", "us-central1"
 SUB = "11111111-2222-3333-4444-555555555555"
 RG_ID = f"/subscriptions/{SUB}/resourceGroups/rg-apps"
 UAMI = f"{RG_ID}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-orders"
-KV_URL = "https://kv-demo.vault.azure.net/secrets/jfrog-registry-token"
 
 GCP_OUT = {"jfrog_provider_name": "gcp-cloudrun", "jfrog_audience": "jfrog-gcp",
            "repository_urls": {"jfrog-docker": f"{R}-docker.pkg.dev/{P}/jfrog-docker",
                                "jfrog-pypi": f"https://{R}-python.pkg.dev/{P}/jfrog-pypi/simple/"}}
-AZ_OUT = {"jfrog_provider_name": "azure-entra", "audience_uri": "api://dddddddd-0000-0000-0000-000000000001",
-          "registry_username": "svc-azure-registry-pull", "registry_secret_versionless_url": KV_URL}
+AZ_OUT = {"jfrog_provider_name": "azure-entra", "audience_uri": "api://dddddddd-0000-0000-0000-000000000001"}
 GCP_ENV = {"JFROG_OIDC_AUDIENCE": "jfrog-gcp", "JFROG_OIDC_PROVIDER": "gcp-cloudrun", "JFROG_OIDC_SOURCE": "gcp",
            "JFROG_URL": "https://acme.jfrog.io"}
 
@@ -187,7 +185,7 @@ class DedicatedIdentityTests(unittest.TestCase):
                                                "--subscription", SUB, "--user-assigned", made["id"], "-o", "none"])
         env = {d["setting"]: d["desired"] for d in plan["diff"] if d["scope"] == "env"}
         self.assertEqual(env["AZURE_CLIENT_ID"], made["client_id"])
-        self.assertIn(f"identityref:{made['id']}", " ".join(" ".join(c) for c in plan["commands"]))
+        self.assertEqual(plan["commands"][1][:3], ["az", "containerapp", "update"])
 
     def test_identity_recreated_under_the_same_id_is_attached_again(self):
         # Re-created with the same resource ID: the app still holds the deleted one's client ID.
@@ -205,7 +203,7 @@ class DedicatedIdentityTests(unittest.TestCase):
             ["az", "containerapp", "identity", "assign", *target, "--user-assigned", made["id"], "-o", "none"]])
         self.assertEqual(plan["diff"][0]["action"], "change")
 
-    def test_premium_assigns_identity_before_key_vault_reference(self):
+    def test_premium_assigns_identity_before_settings(self):
         cfg = azure_cfg("azure_functions_premium", "fn")
         cfg["target"]["discovered"].update(dedicated_identity="id-fn-jfrog", identity_resource_id=None, client_id=None)
         made = {"id": f"{RG_ID}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-fn-jfrog", "client_id": "c"}
@@ -213,7 +211,8 @@ class DedicatedIdentityTests(unittest.TestCase):
         sh = Shell(mode="replay", fixtures=fx)
         plan = wire.Wire(cfg, sh, {**AZ_OUT, "dedicated_identities": {"fn": made}}).plan()
         self.assertEqual(plan["commands"][0][:4], ["az", "functionapp", "identity", "assign"])
-        self.assertEqual(plan["commands"][1][-3], f"keyVaultReferenceIdentity={made['id']}")
+        self.assertEqual(plan["commands"][1][:5], ["az", "functionapp", "config", "appsettings", "set"])
+        self.assertIn("AZURE_CLIENT_ID=c", plan["commands"][1])
 
 
 class AzureTests(unittest.TestCase):
@@ -223,40 +222,17 @@ class AzureTests(unittest.TestCase):
         keys = {(d["scope"], d["setting"]): d for d in plan["diff"]}
         self.assertEqual(keys[("env", "AZURE_CLIENT_ID")]["desired"], "cccccccc-0000-0000-0000-000000000001")
         self.assertEqual(keys[("env", "JFROG_OIDC_AUDIENCE")]["desired"], AZ_OUT["audience_uri"])
-        self.assertEqual(keys[("secret", "jfrog-registry-token")]["desired"], f"Key Vault {KV_URL} via {UAMI}")
-        # The registry is the Docker repo's own host, never the platform host (AKS pilot, Phase 3b).
-        self.assertNotIn(("registry", "acme.jfrog.io"), keys)
-        self.assertEqual(keys[("registry", "acme-docker-virtual.jfrog.io")]["desired"],
-                         "svc-azure-registry-pull / secret jfrog-registry-token")
-        cmds = plan["commands"]
-        self.assertEqual(cmds[0][:3], ["az", "containerapp", "update"])
-        self.assertIn("--container-name", cmds[0])
-        self.assertIn(f"jfrog-registry-token=keyvaultref:{KV_URL},identityref:{UAMI}", cmds[1])
-        self.assertEqual(cmds[2], ["az", "containerapp", "registry", "set", "-g", "rg-apps", "-n", "orders", "--subscription", SUB,
-                                   "--server", "acme-docker-virtual.jfrog.io", "--username", "svc-azure-registry-pull",
-                                   "--password-secret-name", "jfrog-registry-token", "-o", "none"])
-        self.assertNotIn(KV_URL, redact.text(" ".join(cmds[1])))
-
-    def test_container_app_docker_host_override(self):
-        cfg = azure_cfg()
-        cfg["jfrog"]["docker_host"] = "example-aks-sandbox-test-docker-local.jfrog.io"
-        sh = Shell(mode="replay", fixtures=[{"argv": ACA_SHOW_ARGV, "stdout": aca_show([])}])
-        plan = wire.Wire(cfg, sh, AZ_OUT).plan()
-        self.assertIn("example-aks-sandbox-test-docker-local.jfrog.io", plan["commands"][-1])
-        self.assertTrue(any("not an image from example-aks-sandbox-test-docker-local.jfrog.io" in n for n in plan["notes"]))
-
-    def test_container_app_without_docker_host_refuses(self):
-        cfg = azure_cfg()
-        cfg["jfrog"]["docker_repo"] = ""
-        sh = Shell(mode="replay", fixtures=[{"argv": ACA_SHOW_ARGV, "stdout": aca_show([])}])
-        with self.assertRaisesRegex(wire.WireError, "docker_repo"):
-            wire.Wire(cfg, sh, AZ_OUT).plan()
+        # No registry credential: the app pulls from its own ACR with its managed identity.
+        self.assertEqual({d["scope"] for d in plan["diff"]}, {"env"})
+        self.assertEqual(len(plan["commands"]), 1)
+        self.assertEqual(plan["commands"][0][:3], ["az", "containerapp", "update"])
+        self.assertIn("--container-name", plan["commands"][0])
+        self.assertFalse(any("registry" in a or "secret" in a for a in plan["commands"][0]))
 
     def test_system_assigned_has_no_client_id(self):
         sh = Shell(mode="replay", fixtures=[{"argv": ACA_SHOW_ARGV, "stdout": aca_show([])}])
         plan = wire.Wire(azure_cfg(identity="system_assigned"), sh, AZ_OUT).plan()
         self.assertNotIn("AZURE_CLIENT_ID", [d["setting"] for d in plan["diff"]])
-        self.assertIn("identityref:system", " ".join(plan["commands"][1]))
 
     def _premium(self, settings, kv_identity="SystemAssigned"):
         return [
@@ -275,15 +251,10 @@ class AzureTests(unittest.TestCase):
         text = json.dumps(plan)
         self.assertNotIn("AccountKey", text)
         self.assertNotIn("a-real-old-password", text)
-        pw = [d for d in plan["diff"] if d["setting"] == "DOCKER_REGISTRY_SERVER_PASSWORD"][0]
-        self.assertEqual(pw["current"], "[set, not shown]")
-        self.assertEqual(pw["desired"], f"@Microsoft.KeyVault(SecretUri={KV_URL})")
-        ident = [d for d in plan["diff"] if d["setting"] == "keyVaultReferenceIdentity"][0]
-        self.assertEqual((ident["current"], ident["desired"]), ("SystemAssigned", UAMI))
-        settings_cmd = [c for c in plan["commands"] if c[3:5] == ["appsettings", "set"]][0]
-        self.assertEqual(settings_cmd[-2:], ["-o", "none"])
-        self.assertIn(["az", "functionapp", "update", "-g", "rg-apps", "-n", "fn", "--subscription", SUB,
-                       "--set", f"keyVaultReferenceIdentity={UAMI}", "-o", "none"], plan["commands"])
+        self.assertNotIn("DOCKER_REGISTRY_SERVER", text)
+        self.assertEqual({d["scope"] for d in plan["diff"]}, {"env"})
+        self.assertEqual(len(plan["commands"]), 1)
+        self.assertEqual(plan["commands"][0][-2:], ["-o", "none"])
 
     def test_premium_settings_read_is_sensitive(self):
         settings = [{"name": "AzureWebJobsStorage", "value": "AccountKey=c2VjcmV0c2VjcmV0"}]
@@ -292,14 +263,6 @@ class AzureTests(unittest.TestCase):
             argv, 0, json.dumps(settings) if "appsettings" in argv else json.dumps({"keyVaultReferenceIdentity": "SystemAssigned"}))
         wire.Wire(azure_cfg("azure_functions_premium", "fn"), sh, AZ_OUT).plan()
         self.assertNotIn("AccountKey", json.dumps(sh.recorded))
-
-    def test_flex_env_only(self):
-        sh = Shell(mode="replay", fixtures=self._premium([]))
-        cfg = azure_cfg("azure_functions_flex", "fn")
-        cfg["pull_path"]["enabled"] = False
-        plan = wire.Wire(cfg, sh, dict(AZ_OUT, registry_username=None, registry_secret_versionless_url=None)).plan()
-        self.assertEqual({d["scope"] for d in plan["diff"]}, {"env"})
-        self.assertEqual(len(plan["commands"]), 1)
 
 
 if __name__ == "__main__":

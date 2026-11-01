@@ -134,11 +134,10 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(st, 400)
         self.assertNotIn(JWT, json.dumps(body))
 
-    def test_discover_corrects_kind(self):
+    def test_discover_refuses_flex(self):
         st, body = self.req("POST", "/api/discover", {"config": flex_cfg()})
         self.assertEqual(st, 200)
-        self.assertEqual(body["kind"], "azure_functions_flex")
-        self.assertEqual(body["corrections"][0]["to"], "azure_functions_flex")
+        self.assertIn("flex_unsupported", {e["code"] for e in body["errors"]})
         self.assertNotIn("fixture_misses", body)
 
     def test_discover_bad_request(self):

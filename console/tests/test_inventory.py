@@ -92,7 +92,7 @@ class InventoryTests(unittest.TestCase):
         kinds = {w["name"]: (w["kind"], w["supported"], w["resource_group"]) for w in res["workloads"]}
         self.assertEqual(kinds, {
             "api": ("azure_container_app", True, "rg-api"), "fn": ("azure_functions_aca", True, "rg-fn"),
-            "flex": ("azure_functions_flex", True, "rg-f"), "prem": ("azure_functions_premium", True, "rg-p"),
+            "prem": ("azure_functions_premium", True, "rg-p"),
             "caj-x": ("azure_container_app_job", True, "rg-x")})
 
     def test_list_failure_is_reported_not_raised(self):

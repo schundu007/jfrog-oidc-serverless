@@ -18,7 +18,6 @@ from console.steps import tfgen
 
 SUB = "11111111-2222-3333-4444-555555555555"
 RG_ID = f"/subscriptions/{SUB}/resourceGroups/rg-apps"
-KV = f"{RG_ID}/providers/Microsoft.KeyVault/vaults/kv-demo"
 ENV = f"{RG_ID}/providers/Microsoft.App/managedEnvironments/cae-demo"
 UAMI = f"{RG_ID}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-orders"
 
@@ -36,9 +35,7 @@ def gcp_cfg(kind="gcp_run_service", name="orders", project="demo-nonprod-1234", 
 
 def azure_cfg(kind="azure_container_app", name="orders", principal="aaaaaaaa-0000-0000-0000-000000000001"):
     cfg = model.default_config(kind, name=name)
-    cfg["target"]["azure"].update(subscription=SUB, resource_group="rg-apps", name=name, key_vault_id=KV, environment_id=ENV,
-                                  identity_resource_id=UAMI)
-    cfg["pull_path"]["rotator_image"] = "platformacr.azurecr.io/jfrog-oidc-rotator:0.1.0"
+    cfg["target"]["azure"].update(subscription=SUB, resource_group="rg-apps", name=name, identity_resource_id=UAMI)
     provider = "Microsoft.App/containerApps" if kind in ("azure_container_app", "azure_functions_aca") else "Microsoft.Web/sites"
     cfg["target"]["discovered"] = {"kind": kind, "mapping_subject": principal, "principal_id": principal,
                                    "client_id": "cccccccc-0000-0000-0000-000000000001", "identity_type": "user_assigned",
@@ -292,36 +289,25 @@ class AzureRenderTests(Base):
         self.assertEqual(t["azure_subscription_id"], SUB)
         self.assertEqual(t["location"], "eastus")
         self.assertEqual(t["resource_group_name"], "rg-apps")
-        self.assertEqual(t["key_vault_uri"], "https://kv-demo.vault.azure.net/")
-        self.assertEqual(t["container_app_environment_id"], ENV)
-        self.assertTrue(t["pull_path"]["enabled"])
         self.assertEqual(t["audience_assignees"], {"orders": "aaaaaaaa-0000-0000-0000-000000000001"})
-        self.assertEqual(t["secret_readers"], {"orders": "aaaaaaaa-0000-0000-0000-000000000001"})
-        self.assertEqual(t["function_app_ids"], {})
         self.assertEqual(t["workloads"]["orders-runtime"]["cloud"], "azure")
-        self.assertEqual(t["pull_mapping_name"], "azure-11111111-pull")
-
-    def test_premium_refresh_and_acr(self):
-        cfg = azure_cfg("azure_functions_premium", name="fn-orders")
-        cfg["pull_path"]["rotator_acr_id"] = f"{RG_ID}/providers/Microsoft.ContainerRegistry/registries/platformacr"
-        t = self.files(self.render(cfg))["terraform.tfvars.json"]
-        self.assertEqual(t["function_app_ids"], {"fn-orders": f"{RG_ID}/providers/Microsoft.Web/sites/fn-orders"})
-        self.assertEqual(t["rotator_registry"], {"server": "platformacr.azurecr.io", "acr_id": cfg["pull_path"]["rotator_acr_id"]})
-
-    def test_flex_only_subscription_has_no_pull_path(self):
-        cfg = azure_cfg("azure_functions_flex", name="fn-flex")
-        cfg["target"]["azure"]["key_vault_id"] = ""
-        cfg["target"]["azure"]["environment_id"] = ""
-        cfg["pull_path"]["rotator_image"] = ""
-        t = self.files(self.render(cfg))["terraform.tfvars.json"]
+        for gone in ("key_vault_uri", "container_app_environment_id", "secret_readers", "function_app_ids",
+                     "rotator_registry"):
+            self.assertNotIn(gone, t)
         self.assertFalse(t["pull_path"]["enabled"])
-        self.assertEqual(t["secret_readers"], {})
-        self.assertEqual(t["audience_assignees"], {"fn-flex": "aaaaaaaa-0000-0000-0000-000000000001"})
 
-    def test_pull_path_needs_vault_and_environment(self):
+    def test_premium_is_runtime_only(self):
+        f = self.files(self.render(azure_cfg("azure_functions_premium", name="fn-orders")))
+        t, m = f["terraform.tfvars.json"], f["main.tf.json"]
+        self.assertEqual(t["audience_assignees"], {"fn-orders": "aaaaaaaa-0000-0000-0000-000000000001"})
+        self.assertTrue(m["module"]["azure"]["source"].endswith("/azure-identity"))
+        self.assertNotIn("registry_username", m["output"])
+        self.assertNotIn("password", json.dumps(m).lower())
+
+    def test_pull_path_is_refused(self):
         cfg = azure_cfg()
-        cfg["target"]["azure"]["environment_id"] = ""
-        with self.assertRaisesRegex(tfgen.TfgenError, "environment_id"):
+        cfg["pull_path"]["enabled"] = True
+        with self.assertRaises(tfgen.TfgenError):
             self.render(cfg)
 
 
@@ -358,9 +344,8 @@ class DedicatedIdentityTests(Base):
         self.assertEqual(t["dedicated_identities"],
                          {"orders": {"name": "id-orders-jfrog", "resource_group_name": "rg-apps", "location": "eastus"}})
         self.assertEqual(t["audience_assignees"], {"orders": ""})
-        self.assertEqual(t["secret_readers"], {"orders": ""})
         self.assertEqual(m["module"]["azure"]["audience_assignees"], "${local.audience_assignees}")
-        self.assertEqual(m["module"]["azure"]["secret_readers"], "${local.secret_readers}")
+        self.assertNotIn("secret_readers", m["module"]["azure"])
         self.assertIn("dedicated_identities", m["output"])
 
     def test_dedicated_identity_must_belong_to_the_config(self):
@@ -432,7 +417,7 @@ class TerraformValidateTests(Base):
             self.validate(cfg)
 
     def test_pull_path_off(self):
-        for cfg in (gcp_cfg(), azure_cfg("azure_functions_flex", name="fx")):
+        for cfg in (gcp_cfg(), azure_cfg("azure_functions_premium", name="fx")):
             cfg["pull_path"]["enabled"] = False
             self.validate(cfg)
 

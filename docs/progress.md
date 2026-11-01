@@ -539,3 +539,11 @@ New GCP serverless kind `gcp_run_worker_pool`, end to end in code: the console (
 Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group), so the ADO agent's gcloud must have the beta commands; the `describe`/`list` JSON is read as v2 (`template.containers`, `template.serviceAccount`, name `projects/P/locations/R/workerPools/N`) or v1, whichever is there; `roles/run.developer` on the build identity is assumed to cover `run.workerPools.update`.
 
 - 2026-10-31: Test infrastructure cleared (GCP and Azure resources, ADO service connections/variable groups/environments, the foundations' JFrog integrations, both onboarding workspaces). Setup inputs: no JSON (list, name/value and per-field editors); approvers and operators are emails picked from live ADO, Entra and project-member data, tinted green (found) or red (not found); field descriptions behind the ?. Simple status colors (green, amber, red, grey). Home splits each cloud into Serverless and Kubernetes sections.
+
+## 2026-10-31: Azure is OIDC only; Flex Consumption removed
+
+- No registry username or password anywhere on Azure. The Key Vault rotator, `DOCKER_REGISTRY_SERVER_*` settings and Container Apps registry secrets are gone. Each Azure stack pulls from its own ACR with its managed identity; the build-deploy pipeline pulls from JFrog with its service connection's OIDC token and pushes to that ACR. At runtime, the workload exchanges its managed identity token for a JFrog token.
+- `rotator/` is GCP only (`ROTATOR_TARGET=azure` is refused). The `azure-identity-and-pull-path` module is now `azure-identity` (Entra audience app only). `terraform/reference/all-targets` is deleted.
+- Flex Consumption is removed everywhere: kind, stack, pipelines, Setup row, portal and sidebar. Discover refuses FC1 apps (`flex_unsupported`).
+- Simulator: KV/ARM emulation and the Azure rotator are removed. The scenarios premium-no-refresh-permission, rotator-misses-3-runs and ttl-too-short are deleted; min-ttl-refusal and rotator-misses-2-runs now run on a Cloud Run service.
+- In ADO: the Flex pipeline definitions may still be registered. The `azure-functions-flex-<env>` environment is removed at the next azure-foundation apply.

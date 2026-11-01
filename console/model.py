@@ -19,7 +19,6 @@ KINDS = {
     "azure_container_app_job": {"cloud": "azure", "label": "Container Apps job"},
     "azure_functions_aca": {"cloud": "azure", "label": "Functions on Container Apps"},
     "azure_functions_premium": {"cloud": "azure", "label": "Functions Premium/Dedicated"},
-    "azure_functions_flex": {"cloud": "azure", "label": "Functions Flex Consumption"},
     "aws_lambda": {"cloud": "aws", "label": "Lambda function"},
     "aws_ecs_task": {"cloud": "aws", "label": "ECS Fargate task/service"},
     "aws_app_runner": {"cloud": "aws", "label": "App Runner service"},
@@ -38,8 +37,7 @@ TARGET_FIELDS = {
 }
 EMPTY_TARGET = {
     "gcp": {"project": "", "region": "", "name": ""},
-    "azure": {"subscription": "", "resource_group": "", "name": "", "environment_id": "", "key_vault_id": "",
-              "identity_type": "user_assigned"},
+    "azure": {"subscription": "", "resource_group": "", "name": "", "identity_type": "user_assigned"},
     "aws": {"account": "", "region": "", "name": "", "profile": "", "cluster": ""},
     "openshift": {"context": "", "cluster": "", "namespace": "", "name": ""},
 }
@@ -49,17 +47,16 @@ SAMPLE_TARGET = {
     "aws": {"account": "123456789012", "region": "us-east-1"},
     "openshift": {"context": "default", "cluster": "my-cluster", "namespace": "default"},
 }
-# Clouds with a console-managed image pull path (rotator). AWS and OpenShift run the runtime path only.
-PULL_CLOUDS = ("gcp", "azure")
+# Clouds with a console-managed image pull path (rotator). Azure, AWS and OpenShift run the runtime
+# path only: Azure signs in to a non-ACR registry only with a username and password, so images reach
+# the app's own ACR through the build pipeline (OIDC to JFrog) and the app pulls with its identity.
+PULL_CLOUDS = ("gcp",)
 # Default integration names. Each AWS account and each cluster is its own issuer, so Discover
 # turns the defaults into aws-<account> / openshift-<cluster>.
 DEFAULT_INTEGRATIONS = {"gcp": "gcp-cloudrun", "azure": "azure-entra", "aws": "aws-sts", "openshift": "openshift-knative"}
 ACCOUNT_RE = re.compile(r"^\d{12}$")
 AWS_REGION_RE = re.compile(r"^[a-z]{2}(-gov)?-[a-z]+-\d$")
 CLUSTER_RE = re.compile(r"^[a-z][a-z0-9-]{0,30}[a-z0-9]$")
-
-ACA_PICKUP_LAG = 30 * 60          # Container Apps refreshes KV-backed secrets within ~30 min
-PREMIUM_NO_REFRESH_LAG = 24 * 3600  # App Service caches KV references for 24 h
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 HOST_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$")
@@ -161,20 +158,18 @@ def default_config(kind: str, name: str = "new-target") -> dict:
         },
         "runtime": {"enabled": True, "ttl_seconds": 3600, "username": f"svc-{cloud}-{short}"},
         "pull_path": {
-            "enabled": kind != "azure_functions_flex" and cloud in PULL_CLOUDS,
+            "enabled": cloud in PULL_CLOUDS,
             "ttl_seconds": 14400,
             "rotation_cron": "23 * * * *",
             "min_ttl_seconds": 1800,   # rotate.py and module default
             "alert_after_seconds": 10800,
-            "function_app_refresh": True,
             # An empty DOCKER upstream_uri means https://<docker_host(cfg)>.
             "gcp_repositories": {"jfrog-docker": {"format": "DOCKER", "upstream_uri": ""}}
             if cloud == "gcp" else {},
             "registry_username": f"svc-{cloud}-registry-pull",
-            # Rotator image: host it outside JFrog (AR / ACR) so it still starts
-            # when the token it refreshes has lapsed.
+            # Rotator image: host it in Artifact Registry, outside JFrog, so it still
+            # starts when the token it refreshes has lapsed.
             "rotator_image": "",
-            "rotator_acr_id": None,       # Azure: ACR resource ID; the rotator identity gets AcrPull
             "name_prefix": "jfrog",       # resource names; must differ per region in one GCP project
         },
         "verify": {
@@ -289,14 +284,7 @@ class Cron:
 
 
 def pickup_lag_seconds(cfg: dict):
-    """How long after a new credential version the platform starts using it."""
-    kind = get_path(cfg, "target.kind")
-    if kind in ("azure_container_app", "azure_container_app_job", "azure_functions_aca"):
-        return ACA_PICKUP_LAG
-    if kind == "azure_functions_premium":
-        return 0 if get_path(cfg, "pull_path.function_app_refresh", True) else PREMIUM_NO_REFRESH_LAG
-    if kind == "azure_functions_flex":
-        return None
+    """How long after a new credential version the platform starts using it (GCP: at once)."""
     return 0
 
 
@@ -395,12 +383,12 @@ def validate(cfg: dict) -> dict:
     if pp.get("enabled") and cloud not in PULL_CLOUDS:
         err("pull_path.enabled", "no_pull_path",
             f"the image pull path is not available for {KINDS[kind]['label']}: "
-            + ("ECR pull-through cache does not accept JFrog as an upstream, so mirror images into ECR at build time"
-               if cloud == "aws" else "use the cluster's own image pull secret")
+            + ({"aws": "ECR pull-through cache does not accept JFrog as an upstream, so mirror images into ECR at build time",
+                "azure": "Azure signs in to a non-ACR registry only with a username and password; the build pipeline "
+                         "brings images from JFrog into the app's ACR with OIDC and the app pulls with its identity"}
+               .get(cloud, "use the cluster's own image pull secret"))
             + "; the runtime token exchange works without it")
     elif pp.get("enabled"):
-        if kind == "azure_functions_flex":
-            warn("pull_path.enabled", "flex_no_pull", "Flex Consumption runs code packages and never pulls images; the pull path is not needed")
         ttl = int(pp.get("ttl_seconds") or 0)
         if not 300 <= ttl <= 86400:
             err("pull_path.ttl_seconds", "pull_ttl_range", "pull TTL must be between 300 s and 24 h")
@@ -412,7 +400,7 @@ def validate(cfg: dict) -> dict:
             err("pull_path.registry_username", "required", "registry username is required")
         if not pp.get("rotator_image"):
             warn("pull_path.rotator_image", "rotator_image_missing",
-                 "push the rotator image to your own registry (Artifact Registry or ACR, not JFrog) and enter it here")
+                 "push the rotator image to Artifact Registry (not JFrog) and enter it here")
         math = ttl_math(cfg)
         if math:
             if ttl < math["min_safe_ttl_seconds"]:
@@ -435,7 +423,7 @@ def schema() -> dict:
     return {
         "kinds": {k: {"cloud": v["cloud"], "label": v["label"]} for k, v in KINDS.items()},
         "defaults": {k: default_config(k) for k in KINDS},
-        "pickup_lag_seconds": {"gcp": 0, "aca": ACA_PICKUP_LAG, "premium_no_refresh": PREMIUM_NO_REFRESH_LAG},
+        "pickup_lag_seconds": {"gcp": 0},
         "target_fields": {c: list(f) for c, f in TARGET_FIELDS.items()},
         "pull_clouds": list(PULL_CLOUDS),
     }

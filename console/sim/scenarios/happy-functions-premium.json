@@ -1,6 +1,6 @@
 {
   "name": "happy-functions-premium",
-  "description": "Premium Functions with ARM refresh permitted, no faults, 24 h.",
+  "description": "Premium Functions, runtime path only, no faults, 24 h.",
   "target_kind": "azure_functions_premium",
   "duration": "24h",
   "clock_start": "2026-01-01T00:00:00Z",

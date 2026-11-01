@@ -70,7 +70,7 @@ class AllKindsTests(unittest.TestCase):
                          "aaaaaaaa-0000-0000-0000-000000000001")
         self.assertEqual(res["facts"]["client_id"], "cccccccc-0000-0000-0000-000000000001")
         self.assertEqual(res["config_patch"]["target.azure.identity_type"], "user_assigned")
-        self.assertTrue(res["config_patch"]["target.azure.environment_id"].endswith("/cae-dev"))
+        self.assertNotIn("target.azure.environment_id", res["config_patch"])
 
     def test_azure_functions_aca(self):
         res = self.check(azure_cfg("azure_functions_aca", "fn-aca"), "azure_functions_aca", "azure_functions_aca",
@@ -84,22 +84,19 @@ class AllKindsTests(unittest.TestCase):
         self.assertEqual(res["facts"]["image"], "acme.jfrog.io/docker-virtual/fn:1.0")
         self.assertEqual(res["facts"]["identity_resource_id"], UAMI)
 
-    def test_azure_functions_flex(self):
-        res = self.check(azure_cfg("azure_functions_flex", "fn-flex"), "azure_functions_flex", "azure_functions_flex",
-                         "aaaaaaaa-0000-0000-0000-000000000003")
-        self.assertEqual(res["corrections"], [])  # default config already has the pull path off for Flex
+    def test_azure_functions_flex_is_refused(self):
+        res, sh = run(azure_cfg("azure_functions_premium", "fn-flex"), "azure_functions_flex")
+        self.assertEqual(sh.misses, [])
+        self.assertIn("flex_unsupported", {e["code"] for e in res["errors"]})
 
 
 class CorrectionTests(unittest.TestCase):
-    def test_fc1_plan_corrects_premium_to_flex(self):
+    def test_fc1_plan_is_refused(self):
         res, _ = run(azure_cfg("azure_functions_premium", "fn-flex"), "azure_premium_is_flex")
-        self.assertEqual(res["kind"], "azure_functions_flex")
-        fields = {c["field"]: c for c in res["corrections"]}
-        self.assertEqual(fields["target.kind"]["from"], "azure_functions_premium")
-        self.assertIn("FC1", fields["target.kind"]["reason"])
-        self.assertIs(fields["pull_path.enabled"]["to"], False)
-        self.assertIs(res["config_patch"]["pull_path.enabled"], False)
-        self.assertEqual(res["status"], "warn")
+        self.assertEqual(res["status"], "fail")
+        err = next(e for e in res["errors"] if e["code"] == "flex_unsupported")
+        self.assertIn("FC1", err["message"])
+        self.assertNotEqual(res.get("kind"), "azure_functions_flex")
 
     def test_containerapp_with_functionapp_kind(self):
         res, _ = run(azure_cfg("azure_container_app", "fn-aca"), "azure_functions_aca")
@@ -110,7 +107,6 @@ class CorrectionTests(unittest.TestCase):
         res, sh = run(azure_cfg("azure_container_app", "fn-code"), "azure_containerapp_is_functionapp")
         self.assertEqual(sh.misses, [])
         self.assertEqual(res["kind"], "azure_functions_premium")
-        self.assertIn("code_deployment", {w["code"] for w in res["warnings"]})
 
     def test_service_type_on_a_job_is_corrected(self):
         res, sh = run(gcp_cfg("gcp_run_service", "nightly"), "gcp_service_is_job")
@@ -215,14 +211,12 @@ class WarningAndErrorTests(unittest.TestCase):
         self.assertEqual(res["errors"][0]["code"], "not_found")
 
     def test_result_is_json_and_patch_applies(self):
-        res, _ = run(azure_cfg("azure_functions_premium", "fn-flex"), "azure_premium_is_flex")
+        cfg = azure_cfg("azure_container_app", "fn-aca")
+        res, _ = run(cfg, "azure_functions_aca")
         json.dumps(res)
-        cfg = azure_cfg("azure_functions_premium", "fn-flex")
-        cfg["pull_path"]["enabled"] = True
-        res, _ = run(cfg, "azure_premium_is_flex")
         for k, v in res["config_patch"].items():
             model.set_path(cfg, k, v)
-        self.assertEqual(cfg["target"]["kind"], "azure_functions_flex")
+        self.assertEqual(cfg["target"]["kind"], "azure_functions_aca")
         self.assertFalse(cfg["pull_path"]["enabled"])
         self.assertEqual(model.validate(cfg)["errors"], [])
 

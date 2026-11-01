@@ -29,15 +29,13 @@ FAULT_TYPES = {
     "rotator_down": "the rotator's identity endpoint fails, so every run in the window fails",
     "identity_recreated": "the runtime identity is recreated with a new uniqueId / principal ID",
     "sa_recreated": "alias of identity_recreated for GCP service accounts",
-    "arm_refresh_forbidden": "ARM Key Vault reference refresh returns 403 to the rotator",
     "mapping_revoked": "an identity mapping is removed (params.mapping: runtime | pull)",
     "integration_misconfigured": "the JFrog integration's issuer is wrong (params.issuer)",
     "federation_disabled": "AWS outbound identity federation is off: STS GetWebIdentityToken returns 403",
 }
 # Faults that only exist on some clouds (the rest apply everywhere).
 FAULT_CLOUDS = {
-    "rotator_down": ("gcp", "azure"),
-    "arm_refresh_forbidden": ("azure",),
+    "rotator_down": ("gcp",),
     "sa_recreated": ("gcp",),
     "federation_disabled": ("aws",),
 }
