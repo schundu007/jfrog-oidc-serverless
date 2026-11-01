@@ -143,11 +143,12 @@ class Shell:
     # -- commands ----------------------------------------------------------------
 
     def run(self, argv: list, timeout: float = 60.0, sensitive: bool = False, extra_env: dict | None = None,
-            shown: list | None = None, stream: bool = False) -> Result:
+            shown: list | None = None, stream: bool = False, meaning: dict | None = None) -> Result:
         """shown: what to log and record instead of argv, for an argv that carries values nobody may see
         (e.g. a whole Lambda environment sent back with one managed change).
         stream: log each stdout line (redacted) as the command prints it, for long commands whose
-        progress the operator watches (terraform plan and apply). Never for sensitive output."""
+        progress the operator watches (terraform plan and apply). Never for sensitive output.
+        meaning: {rc: words} for an exit code that is an answer, not a failure (git diff --quiet: 1 = changed)."""
         if not isinstance(argv, (list, tuple)) or not argv or not all(isinstance(a, str) for a in argv):
             raise TypeError("argv must be a non-empty list of strings")
         argv = list(argv)
@@ -160,7 +161,7 @@ class Shell:
                 self.recorded.append({"argv": [Path(logged[0]).name, *redact.argv(logged[1:])], "rc": res.rc,
                                       "stdout": REDACTED_OUTPUT if sensitive else redact.text(res.stdout),
                                       "stderr": redact.text(res.stderr)})
-        self._log(redact.text(words.command(redact.argv(logged), res.rc, res.seconds)))
+        self._log(redact.text(words.command(redact.argv(logged), res.rc, res.seconds, meaning)))
         return res
 
     def _exec(self, argv, timeout, extra_env, stream=False) -> Result:

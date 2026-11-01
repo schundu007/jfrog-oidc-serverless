@@ -948,3 +948,12 @@ input.is-unknown { border-color: var(--bad-line); background: var(--bad-bg); }
 .blade-cloud { display: inline-flex; align-items: center; gap: 6px; }
 .blade-cloud svg { width: 16px; height: 16px; }
 .sidenav nav[aria-label="Console"] { padding-top: var(--s-2); }
+
+/* Smooth hover everywhere (Home, Serverless, Kubernetes, Infrastructure, Runs): rows, tiles, links ease
+   in and out; a row being pointed at gets a soft tint and a green edge. */
+tbody tr, .ov-tile, .tile, .nav-item, a, button, .blade-opt, .chip, .kind-folder {
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease, transform 180ms ease; }
+.list-table tbody tr.row-link:hover, .blade-table tbody tr:hover, .ov-table tr.row-link:hover, #groups tbody tr:hover {
+  background: #f3f8ec; box-shadow: inset 3px 0 0 var(--brand, #5ba908); }
+#groups tbody tr:hover > td { background: transparent; }
+.ov-tile:hover, .ov-tile:focus-visible { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(40, 70, 10, 0.10); background: #fbfdf8; }

@@ -55,16 +55,17 @@ def _positionals(args: list) -> list:
     return out
 
 
-def _result(rc: int, seconds: float) -> str:
-    return f"{'ok' if rc == 0 else f'failed (exit {rc})'}, {seconds:.1f}s"
+def _result(rc: int, seconds: float, meaning: dict | None = None) -> str:
+    said = (meaning or {}).get(rc)
+    return f"{said or ('ok' if rc == 0 else f'failed (exit {rc})')}, {seconds:.1f}s"
 
 
-def command(argv: list, rc: int, seconds: float) -> str:
+def command(argv: list, rc: int, seconds: float, meaning: dict | None = None) -> str:
     """One plain-language line for a finished command."""
     tool = Path(argv[0]).name
     name = TOOLS.get(tool, tool)
     words = _positionals(argv[1:])
-    return f"{_what(tool, name, words, argv[1:])}: {_result(rc, seconds)}"
+    return f"{_what(tool, name, words, argv[1:])}: {_result(rc, seconds, meaning)}"
 
 
 def _what(tool, name, words, args) -> str:

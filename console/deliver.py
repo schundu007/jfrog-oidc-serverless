@@ -166,8 +166,8 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
                             "Manager for dev.azure.com")
     fix = f"sign in once with `git push {repo_url} HEAD:{base}` (Git Credential Manager), or `az login`"
 
-    def git(*args, cwd=repo, timeout=120.0, env=None):
-        return sh.run(["git", "-C", str(cwd), *args], timeout=timeout, extra_env=env)
+    def git(*args, cwd=repo, timeout=120.0, env=None, meaning=None):
+        return sh.run(["git", "-C", str(cwd), *args], timeout=timeout, extra_env=env, meaning=meaning)
 
     def must(res, what):
         if not res.ok:
@@ -195,7 +195,7 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
         for w in out["warnings"]:
             log(f"warning: {w}")
         must(git("add", "--", *out["files"], cwd=wt), "git add")
-        if git("diff", "--cached", "--quiet", cwd=wt).rc == 0:
+        if git("diff", "--cached", "--quiet", cwd=wt, meaning={0: "no changes", 1: "changes found"}).rc == 0:
             log(f"{out['workspace']} already matches {base}: nothing to propose")
             return {"changed": False, "branch": None, "workspace": out["workspace"], "pull_request": None}
         must(git("commit", "--quiet", "-m", f"Onboard {cfg['name']} ({cfg['target']['kind']}) via the console",

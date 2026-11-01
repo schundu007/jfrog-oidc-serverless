@@ -61,6 +61,7 @@ function render() {
     { label: "Type", value: F.type, options: kinds.map((k) => [k, kindLabel(k)]), onChange: set("type") },
     { label: "Status", value: F.state, options: [["on", "Onboarded"], ["off", "Not onboarded"]], onChange: set("state") },
   ] }));
+  if ($("wl-create-panel")?.childElementCount) fill($("wl-create-panel"), createPanel());
   rows();
 }
 
@@ -76,7 +77,7 @@ function rows() {
 // + Create: every service type, by cloud, each opening New workload on that type.
 function createPanel() {
   const kinds = Object.keys(ls.schema?.kinds || {}).filter((k) => LIVE.includes(cloudOf(k)));
-  return LIVE.map((c) => h("section", { class: "ov-group" }, h("h2", { class: "ov-group-title" }, iconEl(c, "blade-ico"), NAMES[c]),
+  return LIVE.filter((c) => !F.cloud || c === F.cloud).map((c) => h("section", { class: "ov-group" }, h("h2", { class: "ov-group-title" }, iconEl(c, "blade-ico"), NAMES[c]),
     h("div", { class: "ov-tiles" }, kinds.filter((k) => cloudOf(k) === c).map((k) =>
       h("a", { class: "ov-tile", href: `${BASE}/${c}/new?kind=${encodeURIComponent(k)}` }, iconEl(iconOf(k), "ov-tile-icon"), h("span", { text: kindLabel(k) }))))));
 }
