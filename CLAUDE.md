@@ -40,6 +40,9 @@ PYTHONPATH=client/src:. python3 -m unittest discover -s portal/tests -t .
 PYTHONPATH=client/src:. python -m portal
 # Setup console (test infrastructure): tests
 PYTHONPATH=client/src:. python3 -m unittest discover -s setup_console/tests -t .
+# Costing test infra only (workload stacks + gke/aks clusters, with their Log Analytics/Container Insights);
+# foundations and JFrog trust stay. down destroys, up redeploys from saved inputs (re-pushes first images)
+PYTHONPATH=client/src:. python3 -m setup_console.costs status|down|up [--cloud gcp|azure] [--only STACK ...]
 # KCP JFrog access: no stored token and nothing to set; the console reads its operator identity from gcp-jfrog-trust's console_operator_env output
 ```
 

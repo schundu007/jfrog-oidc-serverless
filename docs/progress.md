@@ -615,3 +615,9 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
 
 - `python -m portal --demo`: both sections on recorded fixtures, Setup writes refused, no cloud logins; `--public-host` adds a TLS proxy's hostname to every console's Host/Origin checks.
 - Fly.io app `jfrog-oidc-portal` (`Dockerfile`, `fly.toml`) at jfrog-oidc-portal.fly.dev; Vercel project `jfrog-oidc` (`deploy/vercel/`) landing. No custom domain.
+
+## Cost teardown (2026-11-01)
+
+- `python -m setup_console.costs status|down|up`: only the stacks that bill (9 workload stacks, `gke-cluster`, `aks-cluster`, with their Log Analytics workspaces and Container Insights rule). Same gates as the page: plan, approve its sha256, stack name typed; ADO stacks run their stack-setup pipelines.
+- `up` re-creates a workload whose registry/bucket was destroyed: switch off → build-deploy (first image) → set image + switch → deploy → build-deploy.
+- After `up`, the workloads have new identities: run Configure again for each in the Serverless console (onboarding subjects), and reinstall the credential provider on the new AKS cluster from the Kubernetes console.
