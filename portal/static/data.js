@@ -60,6 +60,18 @@ async function get(path) {
   return r.json();
 }
 
+// Serverless Prove: starts a prove-only run of the saved configuration and answers its page.
+export async function startProve(cloud, name) {
+  const headers = { "X-Console-Token": TOKEN || "", "Content-Type": "application/json" };
+  const n = encodeURIComponent(name);
+  const c = await get(`/serverless/api/configs/${n}`);
+  const r = await fetch("/serverless/api/runs", { method: "POST", headers, credentials: "omit", cache: "no-store",
+    body: JSON.stringify({ config: c.config || c, steps: ["prove"] }) });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
+  return `/serverless/${cloud}/w/${n}/runs/${encodeURIComponent(body.run_id)}`;
+}
+
 // Admin: forget one finished run (its record and log). Active runs answer 409.
 export async function removeRun(path) {
   const r = await fetch(path, { method: "DELETE", headers: { "X-Console-Token": TOKEN || "" }, credentials: "omit", cache: "no-store" });
@@ -94,20 +106,24 @@ async function serverless() {
   const label = (k) => schema.kinds?.[k]?.label || k;
   const cloudOf = (k) => String(k).split("_")[0];
   // Status comes from the last onboarding run; Verified from the last Verify (runs come newest first).
-  const latest = new Map(), verified = new Map();
+  const latest = new Map(), verified = new Map(), proved = new Map();
   for (const r of runs) {
     if (!r.verify_only && !r.prove_only && !latest.has(r.name)) latest.set(r.name, r);
     if (r.verify && !verified.has(r.name)) verified.set(r.name, r);
+    if (r.prove && ["succeeded", "failed"].includes(r.prove.status) && !proved.has(r.name)) proved.set(r.name, r);
   }
   const items = configs.map((c) => {
-    const last = latest.get(c.name), ver = verified.get(c.name);
+    const last = latest.get(c.name), ver = verified.get(c.name), pr = proved.get(c.name);
+    const runHref = (r) => `/serverless/${cloudOf(c.kind)}/w/${encodeURIComponent(c.name)}/runs/${encodeURIComponent(r.id)}`;
     return { kind: "workload", cloud: cloudOf(c.kind), section: sectionOfKind(c.kind), name: c.name, type: label(c.kind),
       mark: markOfKind(c.kind), href: `/serverless/${cloudOf(c.kind)}/w/${encodeURIComponent(c.name)}`,
       typeHref: `/serverless/${cloudOf(c.kind)}?type=${encodeURIComponent(c.kind)}`,
       ok: last?.status === "succeeded", state: last ? runPill(last.status) : ["", "No runs"],
       detail: last ? `last run ${when(last.created)}` : null,
       verified: ver ? { ok: ver.verify.status === "succeeded", state: VERIFY[ver.verify.status] || ["warn", "Checking"],
-        when: when(ver.verify.finished || ver.created), href: `/serverless/${cloudOf(c.kind)}/w/${encodeURIComponent(c.name)}/runs/${encodeURIComponent(ver.id)}` } : null };
+        when: when(ver.verify.finished || ver.created), href: runHref(ver) } : null,
+      proof: pr ? { ok: pr.prove.status === "succeeded", state: pr.prove.status === "succeeded" ? ["ok", "OIDC proven"] : ["bad", "Not proven"],
+        when: when(pr.prove.finished || pr.created), href: runHref(pr) } : null };
   });
   // A run cut off before its workload was recorded has no name or kind, so no page to open.
   const runRows = runs.map((r) => {
@@ -154,13 +170,13 @@ async function kubernetes() {
     if (r) { try { run = await get(`/k8s/api/runs/${encodeURIComponent(r.id)}`); } catch { run = null; } }
     return proofOf(it, run?.run || run);
   }));
-  return { items: [...items, ...proofs], runs: runRows };
+  items.forEach((it, i) => { it.proof = proofs[i]; });
+  return { items, runs: runRows };
 }
 
-// One cluster's proof, from the steps of its Prove run: each claim with the words the run recorded.
+// One cluster's proof (its Proof column), from the steps of its Prove run; null before the first.
 function proofOf(it, run) {
-  const base = { ...it, kind: "proof", href: `${it.href}?tab=proof` };
-  if (!run || !run.result) return { ...base, ok: false, state: ["", "Not proved yet"], claims: null };
+  if (!run || !run.result) return null;
   const step = Object.fromEntries((run.result.steps || []).map((s) => [s.id, s]));
   const good = (id) => ["ok", "done"].includes(step[id]?.status);
   const http = (id) => step[id]?.facts?.jfrog?.status;
@@ -174,8 +190,10 @@ function proofOf(it, run) {
     restored: claim(good("repull"), good("repull") ? "Pulled" : "Failed"),
   };
   const ok = run.status === "succeeded" && Object.values(claims).every((c) => c.ok);
-  return { ...base, ok, state: ok ? ["ok", "OIDC proven"] : ["bad", "Not proven"], claims,
-    proved: when(run.finished || run.created), runHref: `${it.href}/runs/${encodeURIComponent(run.id)}` };
+  const detail = `Stored secret ${claims.secret.text} · JFrog exchange ${claims.exchange.text} · pull with OIDC ${claims.pull.text}`
+    + ` · without trust ${claims.refused.text} · trust restored ${claims.restored.text}`;
+  return { ok, state: ok ? ["ok", "OIDC proven"] : ["bad", "Not proven"], claims, detail,
+    when: when(run.finished || run.created), href: `${it.href}/runs/${encodeURIComponent(run.id)}` };
 }
 
 // Infrastructure and JFrog OIDC: every deploy, destroy and apply run on the Setup pages or through a
