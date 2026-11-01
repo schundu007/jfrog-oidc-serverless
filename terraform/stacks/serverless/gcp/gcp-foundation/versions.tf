@@ -9,21 +9,11 @@ terraform {
       source  = "microsoft/azuredevops"
       version = ">= 1.16"
     }
-    platform = {
-      source  = "jfrog/platform"
-      version = ">= 2.2.1"
-    }
     google = {
       source  = "hashicorp/google"
       version = ">= 6.13"
     }
   }
-}
-
-# Admin token from JFROG_ACCESS_TOKEN for this bootstrap apply; afterwards the
-# setup pipeline gets admin through OIDC (mapping ado-setup) instead.
-provider "platform" {
-  url = var.jfrog_url
 }
 
 provider "google" {

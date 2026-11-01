@@ -8,7 +8,7 @@ variable "azure_location" {
 }
 
 variable "workload" {
-  description = "Workload name: resource group, identity, job and JFrog mapping are named after it."
+  description = "Workload name: resource group, identity and job are named after it."
   type        = string
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{1,17}$", var.workload))
@@ -46,12 +46,6 @@ variable "deploy_job" {
 
 variable "job_image" {
   description = "<repository>:<tag> in the stack's ACR the job is created with; later rollouts come from the build pipeline."
-  type        = string
-  default     = ""
-}
-
-variable "artifact_path" {
-  description = "<repo>/<path> the job reads from JFrog."
   type        = string
   default     = ""
 }

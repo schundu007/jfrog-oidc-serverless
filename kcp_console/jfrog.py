@@ -8,7 +8,7 @@ No JFrog token is stored anywhere. The console mints a short-lived one by OIDC e
 shortly before it expires, is sent only as an Authorization header to the configured
 host (redirects are never followed), and is never logged, stored or returned.
 
-The identity (configuration, not secrets) is the gcp-foundation stack's `console_operator_env` output,
+The identity (configuration, not secrets) is the gcp-jfrog-trust stack's `console_operator_env` output (JFrog OIDC, made after the infrastructure),
 read from its state: the JFrog provider that trusts Google ID tokens, its audience, and the operator
 service account the identity mapping matches. Nothing to set before starting the console.
 """
@@ -26,11 +26,11 @@ from . import logic
 IDENTITY_KEYS = ("JFROG_OIDC_PROVIDER", "JFROG_OIDC_AUDIENCE", "JFROG_OIDC_SERVICE_ACCOUNT")
 EXCHANGE_PATH = "/access/api/v1/oidc/token"
 REFRESH_BEFORE = 120  # seconds: mint a new token this long before the old one expires
-OPERATOR_STATE = pathlib.Path(__file__).resolve().parent.parent / "terraform/stacks/serverless/gcp/gcp-foundation/terraform.tfstate"
+OPERATOR_STATE = pathlib.Path(__file__).resolve().parent.parent / "terraform/stacks/oidc/gcp/gcp-jfrog-trust/terraform.tfstate"
 
 
 def operator_identity(state_file=OPERATOR_STATE) -> dict:
-    """gcp-foundation's console_operator_env output, or empty values when the stack has none."""
+    """gcp-jfrog-trust's console_operator_env output, or empty values when the stack has none."""
     try:
         out = json.loads(pathlib.Path(state_file).read_text())["outputs"]["console_operator_env"]["value"] or {}
     except (OSError, ValueError, KeyError, TypeError):
@@ -52,7 +52,7 @@ class OperatorToken:
         self._lock = threading.Lock()
 
     def _load(self):
-        """Read the identity from gcp-foundation's state on every use: deploying or destroying the stack
+        """Read the identity from gcp-jfrog-trust's state on every use: deploying or destroying the stack
         while the console runs changes it. A changed identity drops the cached tokens."""
         ident = tuple(operator_identity(self.state_file).values())
         if ident != self._identity:
@@ -66,7 +66,7 @@ class OperatorToken:
 
     def get(self, shell, host: str) -> str:
         if not self.configured:
-            raise TokenError("no console operator identity: gcp-foundation is not deployed (or has no console_operators)")
+            raise TokenError("no console operator identity: gcp-jfrog-trust is not deployed (or has no console_operators)")
         with self._lock:
             tok, exp = self._cache.get(host, ("", 0.0))
             if tok and exp - REFRESH_BEFORE > self.clock():

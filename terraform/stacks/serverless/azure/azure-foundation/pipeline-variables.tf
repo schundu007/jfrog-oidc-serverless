@@ -10,14 +10,6 @@ resource "azuredevops_variable_group" "azure" {
   allow_access = true
 
   variable {
-    name  = "JFROG_URL"
-    value = var.jfrog_url
-  }
-  variable {
-    name  = "JFROG_OIDC_PROVIDER"
-    value = platform_oidc_configuration.ado.name
-  }
-  variable {
     name  = "BUILD_SERVICE_CONNECTION_ID"
     value = local.connections.build.id
   }

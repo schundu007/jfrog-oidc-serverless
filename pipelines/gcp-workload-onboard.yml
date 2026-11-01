@@ -19,6 +19,7 @@ parameters:
 variables:
   - template: vars/gcp-test.yml
   - group: jfrog-oidc-gcp-test
+  - group: jfrog-oidc-gcp-test-jfrog   # JFrog OIDC (gcp-jfrog-trust)
 
 pool:
   vmImage: ubuntu-24.04

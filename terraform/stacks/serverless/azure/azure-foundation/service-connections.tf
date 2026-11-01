@@ -1,6 +1,6 @@
 # This cloud's own ADO service connections (workload identity federation), one per role,
 # backed by the managed identities in main.tf. Their subjects feed the federated credentials
-# and the JFrog mappings, so nothing about them is entered by hand.
+# (and, later, the OIDC side's JFrog mappings), so nothing about them is entered by hand.
 
 resource "azuredevops_serviceendpoint_azurerm" "ado" {
   for_each = local.azure_identity

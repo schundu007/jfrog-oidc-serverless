@@ -1,12 +1,3 @@
-variable "jfrog_url" {
-  description = "JFrog platform origin, e.g. https://acme.jfrog.io"
-  type        = string
-  validation {
-    condition     = can(regex("^https://[a-z0-9.-]+$", var.jfrog_url))
-    error_message = "jfrog_url must be the platform origin only: https, no path, no trailing slash."
-  }
-}
-
 variable "ado_org" {
   description = "Azure DevOps organization name (used in resource names)."
   type        = string
@@ -49,7 +40,3 @@ variable "pipeline_environment" {
   default     = "test"
 }
 
-variable "jfrog_reader_group" {
-  description = "Group the build mapping gets (read, plus cache on remote repos)."
-  type        = string
-}

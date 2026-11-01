@@ -14,8 +14,14 @@ Serverless and Kubernetes are separate kinds of infrastructure: no stack of one 
 of the other, and prefill never crosses between them. The cluster stacks (gke-cluster, aks-cluster)
 use their cloud's foundation only for remote state and pipeline trust (their stack-setup pipeline,
 pipelines/kubernetes/<cloud>/<stack>/stack-setup.yml); nothing stands on them. Clouds are completely separate, as in production: each has its own foundation stack
-(gcp-foundation, azure-foundation) with its own ADO trust, its own JFrog integration and
-mappings, its own pipeline variable group and its own state store. Its stacks' remote state is
+(gcp-foundation, azure-foundation) with its own ADO trust, its own pipeline variable group and its
+own state store.
+
+Infrastructure never touches JFrog: no foundation, workload or cluster stack has a JFrog provider,
+input or setting. JFrog is OIDC configuration, made only once the infrastructure exists: the
+"JFrog OIDC" stacks (terraform/stacks/oidc/<cloud>/<cloud>-jfrog-trust: the pipelines' JFrog
+integration, mappings and JFrog variable group; on GCP also the console operator) and, per
+workload, the console's workspaces. Its stacks' remote state is
 -backend-config derived from that foundation's inputs only: gcs bucket <gcp_project_id>-tfstate;
 azurerm account st<ado_org>tfstate in the ADO identity's resource group. Foundations keep local state.
 Prefill is kept per kind and cloud: never across clouds, never between Serverless and Kubernetes.
@@ -37,10 +43,10 @@ STATE_ROOT = REPO_ROOT / ".console" / "setup"
 # about: what the stack creates, in plain words. next: what to do once it is deployed.
 CATALOGUE = (
     {"id": "gcp-foundation", "kind": "Serverless", "group": "Google Cloud", "title": "CI/CD bootstrap",
-     "about": "Lets the Google Cloud pipelines sign in to Google Cloud and JFrog with their OIDC token, "
-              "with no stored keys: the workload identity provider, the pipeline service accounts, "
-              "their ADO service connections and variable group, the JFrog integration, the image "
-              "repository, and the bucket that holds each Google Cloud workload stack's Terraform state.",
+     "about": "Lets the Google Cloud pipelines sign in to Google Cloud with their OIDC token, with no "
+              "stored keys: the workload identity provider, the pipeline service accounts, their ADO "
+              "service connections and variable group, the image repository, and the bucket that holds "
+              "each Google Cloud workload stack's Terraform state. Nothing in JFrog.",
      "next": "Deploy the workload stacks you need, each on its own."},
     {"id": "gcp-cloud-run", "kind": "Serverless", "group": "Google Cloud", "title": "Cloud Run job",
      "about": "The job's own service account, and the Cloud Run job itself once deploy_job is on.",
@@ -61,10 +67,10 @@ CATALOGUE = (
      "next": "Run this stack's build-deploy pipeline to push the first image, then set worker_pool_image, "
              "turn on deploy_worker_pool (Inputs) and deploy again."},
     {"id": "azure-foundation", "kind": "Serverless", "group": "Azure", "title": "CI/CD bootstrap",
-     "about": "Lets the Azure pipelines sign in to Azure and JFrog with their OIDC token, with no "
-              "stored secrets: the setup identity and its federated credentials, its ADO service "
-              "connections and variable group, the JFrog integration, and the storage account that "
-              "holds each Azure workload stack's Terraform state.",
+     "about": "Lets the Azure pipelines sign in to Azure with their OIDC token, with no stored "
+              "secrets: the setup identity and its federated credentials, its ADO service connections "
+              "and variable group, and the storage account that holds each Azure workload stack's "
+              "Terraform state. Nothing in JFrog.",
      "next": "Deploy the workload stacks you need, each on its own."},
     {"id": "azure-container-apps", "kind": "Serverless", "group": "Azure", "title": "Container Apps job",
      "about": "Its own resource group with a container registry, the job's identity, a Container Apps "
@@ -86,6 +92,19 @@ CATALOGUE = (
      "about": "Its own resource group with the function's identity, host storage, an Elastic Premium "
               "(or Dedicated) plan and the function app.",
      "next": "Run this stack's build-deploy pipeline to deploy the code."},
+    # JFrog OIDC: only after the infrastructure exists. Local state, run here with the operator's
+    # JFrog admin token; each stands on its cloud's foundation (it reads the service connections).
+    {"id": "gcp-jfrog-trust", "kind": "JFrog OIDC", "group": "Google Cloud", "title": "Pipelines' JFrog trust",
+     "after": "gcp-foundation",
+     "about": "The JFrog OIDC integration for the Google Cloud pipelines' service connections, its build "
+              "(reader) and setup (admin) mappings, the pipelines' JFrog variable group, and the console "
+              "operator's identity.",
+     "next": "Run the build-deploy pipelines, then configure each workload in the Serverless console."},
+    {"id": "azure-jfrog-trust", "kind": "JFrog OIDC", "group": "Azure", "title": "Pipelines' JFrog trust",
+     "after": "azure-foundation",
+     "about": "The JFrog OIDC integration for the Azure pipelines' service connections, its build "
+              "(reader) and setup (admin) mappings, and the pipelines' JFrog variable group.",
+     "next": "Run the build-deploy pipelines, then configure each workload in the Serverless console."},
     {"id": "gke-cluster", "kind": "Kubernetes", "group": "Google Cloud", "title": "GKE cluster",
      "about": "A test GKE cluster and node pool with its OIDC issuer on.",
      "next": "Run the credentials command, then use the cluster from the Kubernetes console."},
@@ -96,7 +115,8 @@ CATALOGUE = (
 IDS = tuple(s["id"] for s in CATALOGUE)
 # Only cloud-level inputs prefill another stack's form. A workload's own name, image and switches
 # never do: each workload stack is separate and two must never get the same resources.
-SHARED_INPUTS = frozenset({"jfrog_url", "jfrog_reader_group", "ado_org", "gcp_project_id", "gcp_region",
+SHARED_INPUTS = frozenset({"jfrog_url", "jfrog_reader_group", "ado_org", "ado_project", "ado_tenant_id",
+                           "pipeline_environment", "gcp_project_id", "gcp_region",
                            "azure_subscription_id", "azure_tenant_id", "azure_location",
                            "deployer_service_account", "deployer_principal_id", "image_repository", "tags"})
 # The foundation whose inputs a remote backend's location derives from, by backend type.
@@ -122,13 +142,14 @@ def get(stack_id: str) -> dict:
 
 
 CLOUD_DIR = {"Google Cloud": "gcp", "Azure": "azure"}
+KIND_DIR = {"Serverless": "serverless", "Kubernetes": "kubernetes", "JFrog OIDC": "oidc"}
 
 
 def rel_dir(stack_id: str) -> str:
     """Where a stack lives under terraform/stacks: <kind>/<cloud>/<id>. Serverless and Kubernetes,
     and each cloud, have their own tree; the id (state key, ADO environment) never changes."""
     meta = get(stack_id)
-    return f"{meta['kind'].lower()}/{CLOUD_DIR[meta['group']]}/{stack_id}"
+    return f"{KIND_DIR[meta['kind']]}/{CLOUD_DIR[meta['group']]}/{stack_id}"
 
 
 def stack_dir(stack_id: str, root: Path = STACKS_DIR) -> Path:
@@ -256,8 +277,11 @@ def backend_kind(stack_id: str, root: Path = STACKS_DIR) -> str | None:
 
 
 def depends_on(stack_id: str, root: Path = STACKS_DIR) -> str | None:
-    """The foundation a stack stands on: its remote state, pipeline trust and JFrog integration live
-    there. None for a foundation (local state) itself."""
+    """The foundation a stack stands on: its remote state and pipeline trust live there (a JFrog OIDC
+    stack reads its service connections). None for a foundation (local state) itself."""
+    after = get(stack_id).get("after")
+    if after:
+        return after
     kind = backend_kind(stack_id, root)
     dep = FOUNDATION.get(kind) if kind else None
     return dep if dep != stack_id else None
@@ -293,6 +317,9 @@ def form(stack_id: str, env: str, root: Path = STACKS_DIR, state_root: Path = ST
     """The stack's variables with what to show: the saved value, else the last value saved for a
     shared name, else the default."""
     saved, shared = read_inputs(stack_id, env, state_root), _load(_shared_file(env, state_root, stack_id))
+    after = get(stack_id).get("after")
+    if after:   # a JFrog OIDC stack prefills from its own cloud's foundation, never another cloud's
+        shared = {**read_inputs(after, env, state_root), **shared}
     fields = []
     for v in variables(stack_id, root):
         if v["sensitive"]:

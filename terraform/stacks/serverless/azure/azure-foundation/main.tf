@@ -1,6 +1,7 @@
 # Azure foundation for the ADO pipelines (apply once, locally): federated credentials on the
 # service connections' managed identities, the setup identity's roles, and the Terraform
-# state storage of the Azure stacks. No GCP, JFrog or AWS resources here.
+# state storage of the Azure stacks. No GCP, JFrog or AWS resources here: the pipelines'
+# JFrog trust is OIDC configuration, made afterwards by terraform/stacks/oidc/azure/azure-jfrog-trust.
 
 locals {
   issuer = "https://login.microsoftonline.com/${var.azure_tenant_id}/v2.0"

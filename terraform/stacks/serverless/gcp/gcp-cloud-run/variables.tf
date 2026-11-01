@@ -8,7 +8,7 @@ variable "gcp_region" {
 }
 
 variable "workload" {
-  description = "Workload name: service account, Cloud Run job and JFrog mapping."
+  description = "Workload name: its service account and Cloud Run job are named after it."
   type        = string
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.workload))
@@ -44,8 +44,3 @@ variable "job_image" {
   }
 }
 
-variable "artifact_path" {
-  description = "<repo>/<path> the job reads from JFrog."
-  type        = string
-  default     = ""
-}

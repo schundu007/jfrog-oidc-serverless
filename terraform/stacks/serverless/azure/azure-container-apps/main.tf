@@ -58,10 +58,6 @@ resource "azurerm_container_app_job" "workload" {
         name  = "AZURE_CLIENT_ID"
         value = module.base.identity.client_id
       }
-      env {
-        name  = "JFROG_ARTIFACT_PATH"
-        value = var.artifact_path
-      }
     }
   }
 

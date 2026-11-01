@@ -4,7 +4,9 @@
 # at JFrog for a short-lived admin token (kcp_console/jfrog.py OperatorToken). Only members
 # of var.console_operators can mint it (Token Creator on the service account).
 #
-# The console reads console_operator_env from this stack's state: nothing to set before starting it.
+# The console reads console_operator_env from this root's state: nothing to set before starting it.
+# Its service account exists only for the JFrog exchange, so it is OIDC configuration, not
+# infrastructure: gcp-foundation never creates it.
 
 variable "console_operators" {
   description = "Emails of the people who may act as the console operator (Google accounts). Empty: no operator identity."
@@ -13,7 +15,7 @@ variable "console_operators" {
 }
 
 variable "console_jfrog_provider" {
-  description = "Name of the JFrog OIDC integration this stack creates for the operator (trusts Google ID tokens)."
+  description = "Name of the JFrog OIDC integration this root creates for the operator (trusts Google ID tokens)."
   type        = string
   default     = "console-operator-google"
 }
@@ -29,8 +31,6 @@ locals {
 }
 
 resource "google_service_account" "console_operator" {
-  depends_on = [google_project_service.apis]
-
   count        = local.console_operator ? 1 : 0
   account_id   = "jfrog-console-operator"
   display_name = "JFrog console operator (OIDC exchange, no stored token)"

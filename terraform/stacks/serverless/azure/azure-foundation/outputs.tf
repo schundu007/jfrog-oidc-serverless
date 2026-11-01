@@ -11,7 +11,3 @@ output "azure_setup_identity_principal_id" {
   description = "The setup pipelines' identity (object ID), for the console's Preflight checks."
   value       = azurerm_user_assigned_identity.setup.principal_id
 }
-
-output "jfrog_provider_name" {
-  value = platform_oidc_configuration.ado.name
-}

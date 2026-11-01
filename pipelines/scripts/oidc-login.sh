@@ -5,12 +5,14 @@
 # The service connection's OIDC token (requested from System.OidcRequestUri with
 # the job token: Entra-issued, aud api://AzureADTokenExchange, sub unique to the
 # connection) becomes:
-#   - the identity source for the JFrog exchange (jfrog_oidc, file source)
+#   - the identity source for the JFrog exchange (jfrog_oidc, file source), only in the runs that
+#     use JFrog (build-deploy, onboarding: JFROG_URL and JFROG_OIDC_PROVIDER from the JFrog OIDC
+#     variable group). Infrastructure runs (stack-setup) never touch JFrog.
 #   - a gcloud / Google ADC login through Workload Identity Federation
 # Everything lives in a private temp dir removed on exit. No token is printed.
 
 : "${SYSTEM_ACCESSTOKEN:?map SYSTEM_ACCESSTOKEN: \$(System.AccessToken) on the step}"
-: "${JFROG_OIDC_ADO_SERVICE_CONNECTION_ID:?}" "${JFROG_URL:?}" "${JFROG_OIDC_PROVIDER:?}"
+: "${JFROG_OIDC_ADO_SERVICE_CONNECTION_ID:?}"
 
 umask 077
 OIDC_DIR=$(mktemp -d)
@@ -30,8 +32,11 @@ export JFROG_OIDC_TOKEN_FILE="$OIDC_DIR/id-token"
 export JFROG_OIDC_AUDIENCE=api://AzureADTokenExchange
 export DOCKER_CONFIG="$OIDC_DIR/docker"
 
-python3 -m jfrog_oidc claims
-python3 -m jfrog_oidc check
+if [ -n "${JFROG_OIDC_PROVIDER:-}" ]; then
+  : "${JFROG_URL:?}"
+  python3 -m jfrog_oidc claims
+  python3 -m jfrog_oidc check
+fi
 
 if [ -n "${GCP_SERVICE_ACCOUNT:-}" ]; then
   : "${GCP_WIF_PROVIDER:?}" "${GCP_PROJECT:?}"

@@ -14,6 +14,8 @@ parameters:
 variables:
   - template: /pipelines/vars/azure-${{ parameters.environment }}.yml
   - group: jfrog-oidc-azure-${{ parameters.environment }}
+  # JFrog OIDC (written by azure-jfrog-trust, after the infrastructure): JFROG_URL, JFROG_OIDC_PROVIDER.
+  - group: jfrog-oidc-azure-${{ parameters.environment }}-jfrog
   - name: KIND
     value: ${{ parameters.kind }}
   - name: WORKLOAD

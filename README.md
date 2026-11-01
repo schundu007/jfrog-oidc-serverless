@@ -51,7 +51,7 @@ Images are pulled from the JFrog Docker repo's **own host**, `<server>-<repo-key
 
 **Azure.** Workloads request a token for `api://<audience-app-id>`. That app has `requestedAccessTokenVersion = 2`, so tokens carry `iss=https://login.microsoftonline.com/<tenant>/v2.0`, `aud=<app-id>` and `oid=sub=<identity principal ID>`. Each mapping requires `oid`, `tid` and `aud`. By default the audience app also requires an app role assignment, so only identities you list can get a token for it in the first place.
 
-**Tokens.** Runtime mappings issue purely group-scoped tokens (`applied-permissions/groups:"…"`) limited to Artifactory (`jfrt@*`). Only the foundations' setup and console-operator mappings carry a username. Use read-only groups for every mapping here. JFrog caps mapping token lifetime at 24h.
+**Tokens.** Runtime mappings issue purely group-scoped tokens (`applied-permissions/groups:"…"`) limited to Artifactory (`jfrt@*`). Only the JFrog trust stacks' setup and console-operator mappings carry a username. Use read-only groups for every mapping here. JFrog caps mapping token lifetime at 24h.
 
 ## Deploy
 

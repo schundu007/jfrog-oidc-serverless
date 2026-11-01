@@ -14,6 +14,7 @@ stored anywhere: not in the cloud, not in Azure DevOps, not on your machine.
 1. Start the console
 2. Google Cloud foundation
 3. Azure foundation
+   - 3.1 JFrog OIDC for the pipelines (after the infrastructure)
 4. Google Cloud workloads, one at a time
    - 4.1 Cloud Run job
    - 4.2 Cloud Run service
@@ -60,8 +61,8 @@ gcloud auth application-default login  # the same account, for Terraform
 az login                               # your Azure account (Owner on the subscription)
 ```
 
-Bootstrap JFrog admin token (only for the first deploy of the Google Cloud foundation, which
-creates the console's own OIDC login to JFrog; after that no stored token is used):
+Bootstrap JFrog admin token (only for the first deploy of the Google Cloud JFrog trust, §3.1,
+which creates the console's own OIDC login to JFrog; after that no stored token is used):
 JFrog → Administration → User Management → Access Tokens → **Generate Token** → Scoped Token,
 Token scope **Admin**, Expiration **Custom, 8 hours** → Generate → Copy. Save it to a file only
 you can read, e.g. `~/.jfrog-test-admin-token` (`chmod 600`). Never paste it into a form, a
@@ -100,8 +101,6 @@ Inputs used in the run:
 
 | Input | Value | Meaning |
 |---|---|---|
-| `jfrog_url` | `https://trial9hnw59.jfrog.io` | JFrog origin, https, no path |
-| `jfrog_reader_group` | `serverless-readers` | JFrog group the pipeline tokens get (read) |
 | `gcp_project_id` | `unioxe` | Project everything goes into |
 | `gcp_region` | `us-central1` | Region (default) |
 | `gcp_image_repository` | `platform` | Artifact Registry repository for images (default) |
@@ -109,7 +108,6 @@ Inputs used in the run:
 | `ado_tenant_id` | the Entra tenant of the ADO org | Issuer of the pipelines' OIDC tokens |
 | `ado_token_audience` | the `aud` the run's ADO tokens carry | Default `api://AzureADTokenExchange`; check with `python -m jfrog_oidc claims` in a pipeline |
 | `pipeline_environment` | `test` | Names the variable group `jfrog-oidc-gcp-test` |
-| `console_operators` | your Google account email (picked from the project's members) | Who may act as the console operator |
 | `ado_approvers` | `["<your ADO sign-in>"]` | Who approves each stack's pipeline apply |
 
 Result of the run: **47 added, 1 changed** (the existing ADO environment
@@ -119,8 +117,6 @@ Result of the run: **47 added, 1 changed** (the existing ADO environment
 |---|---|
 | Pipeline service accounts | `ado-build@unioxe.iam.gserviceaccount.com`, `ado-setup@unioxe.iam.gserviceaccount.com` |
 | Workload identity provider | `projects/851540983072/locations/global/workloadIdentityPools/azure-devops-d968/providers/cdoazure` |
-| JFrog OIDC integration for the pipelines | `ado-cdoazure-gcp` |
-| Console operator | `jfrog-console-operator@unioxe.iam.gserviceaccount.com` via JFrog integration `console-operator-google` |
 | Terraform state bucket | `unioxe-tfstate` |
 
 It also creates, in Azure DevOps: service connections `jfrog-oidc-gcp-build` and
@@ -128,8 +124,7 @@ It also creates, in Azure DevOps: service connections `jfrog-oidc-gcp-build` and
 approval check per Google Cloud workload stack (`gcp-cloud-run-test`,
 `gcp-cloud-run-service-test`, `gcp-cloud-run-function-test`).
 
-From here on the console gets its JFrog token by exchanging the operator's Google ID token;
-start it without `JFROG_ACCESS_TOKEN` and revoke the bootstrap token.
+Nothing in JFrog: the foundations are infrastructure only (§3.1 adds the JFrog side).
 
 ## 3. Azure foundation
 
@@ -140,7 +135,7 @@ Inputs used in the run:
 
 | Input | Value | Meaning |
 |---|---|---|
-| `jfrog_url`, `jfrog_reader_group`, `ado_org`, `ado_project`, `ado_token_audience`, `pipeline_environment`, `ado_approvers` | as in §2 | |
+| `ado_org`, `ado_project`, `pipeline_environment`, `ado_approvers` | as in §2 | |
 | `azure_tenant_id` | the Entra tenant | Issuer of the service connections' tokens |
 | `azure_subscription_id` | `0e56d318-75b3-43ef-a41b-6a1a3c95b458` | Subscription everything goes into |
 | `azure_location` | `westus2` | Region (default) |
@@ -154,12 +149,28 @@ Result of the run: **31 added, 1 changed** (environment `azure-container-apps-te
 | Resource group | `ado-cicd-rg` (build identity `id-ado-cdoazure`, setup identity `id-ado-cdoazure-setup`) |
 | Setup identity client ID | `81b613bd-daba-4df0-b618-d79f0b75d04d` |
 | Terraform state | storage account `stcdoazuretfstate`, container `tfstate` |
-| JFrog OIDC integration for the pipelines | `ado-cdoazure-azure` |
 
 In Azure DevOps: service connections `jfrog-oidc-azure-build` / `jfrog-oidc-azure-setup`,
 variable group `jfrog-oidc-azure-test`, and an environment with an approval check per Azure
 workload stack (`azure-container-apps-test`, `azure-container-app-test`,
 `azure-functions-aca-test`, `azure-functions-premium-test`).
+
+### 3.1 JFrog OIDC for the pipelines
+
+Infrastructure never touches JFrog. Once the foundations exist, the **JFrog OIDC** section of
+the same page has one row per cloud (`gcp-jfrog-trust`, `azure-jfrog-trust`, under
+`terraform/stacks/oidc/<cloud>/`). Each reads its own foundation's service connections and
+creates the JFrog side only: the integration `ado-<org>-<cloud>`, the `ado-build` (reader group)
+and `ado-setup` (admin) mappings, and the variable group `jfrog-oidc-<cloud>-<env>-jfrog`
+(`JFROG_URL`, `JFROG_OIDC_PROVIDER`) that the build-deploy and onboarding pipelines read; the
+stack-setup (infrastructure) pipelines never do. The Google Cloud one also makes the console
+operator (`jfrog-console-operator@<project>` via integration `console-operator-google`).
+
+Inputs: `jfrog_url`, `jfrog_reader_group`, `ado_token_audience`, and on Google Cloud
+`console_operators`; the rest prefills from that cloud's foundation. Deploy the Google Cloud one
+first with the bootstrap token; from then on the console gets its JFrog token by exchanging the
+operator's Google ID token, so start it without `JFROG_ACCESS_TOKEN` and revoke the bootstrap
+token. Deploy these before the first build-deploy run: that pipeline pulls from JFrog.
 
 ## 4. Google Cloud workloads
 
@@ -214,8 +225,8 @@ otherwise still need.
 | 1 | Each cloud's console workspace (`terraform/workspaces/<cloud>_*`): the workloads' JFrog integration and mappings, the Entra audience app | `terraform destroy` in the workspace, with a JFrog admin token in `JFROG_ACCESS_TOKEN` | GCP 2 destroyed, Azure 7 destroyed |
 | 2 | Each workload stack that is deployed | Infrastructure page → the stack's row → **Destroy** → type the stack name → **Approve and destroy** | Cloud Run job 3 destroyed; Container Apps job 9 destroyed (about 10 minutes: the Container Apps environment is slow to delete) |
 | 3 | Anything created outside Terraform | Delete by hand. In this run: Cloud Run service `jfrog-svc-demo`, function `jfrog-fn-demo`, the Cloud Functions build repository `gcf-artifacts` and its buckets `gcf-v2-sources-*`, `gcf-v2-uploads-*` | Deleted |
-| 4 | Azure foundation | Infrastructure page → Serverless → Azure → Foundation → **Destroy** | 20 destroyed |
-| 5 | GCP foundation (last: it holds the console operator identity that gives the JFrog admin token for steps 1, 2 and 4) | Empty the state bucket first (`gcloud storage rm -r --all-versions "gs://<project>-tfstate/**"`), then **Destroy** | 39 destroyed |
+| 4 | Azure JFrog trust, then Google Cloud JFrog trust (last of the JFrog side: it holds the console operator identity that gives the JFrog admin token for steps 1 and 2) | Infrastructure page → JFrog OIDC → the row → **Destroy** | |
+| 5 | Azure foundation, then GCP foundation | Infrastructure page → Serverless → the cloud → Foundation → **Destroy**; for GCP empty the state bucket first (`gcloud storage rm -r --all-versions "gs://<project>-tfstate/**"`), then **Destroy** | 39 destroyed |
 
 What is left afterwards: in GCP only the project's default service accounts
 (`<number>-compute@developer...`, `<project>@appspot...`); in Azure no resource group; in Azure

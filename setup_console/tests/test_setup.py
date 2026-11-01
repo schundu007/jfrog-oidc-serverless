@@ -219,12 +219,31 @@ class StackTests(unittest.TestCase):
             self.assertEqual(stacks.depends_on(sid), dep)
             self.assertTrue((stacks.REPO_ROOT / "pipelines" / stacks.rel_dir(sid) / "stack-setup.yml").is_file(), sid)
             self.assertFalse(any(stacks.depends_on(o) == sid for o in stacks.IDS), sid)
-        self.assertEqual({s["kind"] for s in stacks.CATALOGUE}, {"Serverless", "Kubernetes"})
+        self.assertEqual({s["kind"] for s in stacks.CATALOGUE}, {"Serverless", "Kubernetes", "JFrog OIDC"})
         # Prefill never crosses from Serverless to Kubernetes, even in the same cloud.
         self.root.save("gcp-foundation", GCP_FOUNDATION)
         self.root.save("gcp-cloud-run", {"gcp_project_id": "proj-9"})
         f = {x["name"]: x for x in stacks.form("gke-cluster", "test", self.root.dir, self.root.state)["fields"]}
         self.assertNotIn("current", f.get("gcp_project_id", {}))
+
+    def test_infrastructure_never_touches_jfrog(self):
+        # Infrastructure (foundations, workload and cluster stacks) has no JFrog provider, resource,
+        # input or setting: JFrog is OIDC configuration, made only once the infrastructure exists.
+        import re as _re
+        jfrog = _re.compile(r'jfrog/platform|platform_oidc|variable "jfrog_|var\.jfrog_|name\s*=\s*"JFROG_')
+        for s in stacks.CATALOGUE:
+            if s["kind"] == "JFrog OIDC":
+                continue
+            for f in stacks.stack_dir(s["id"]).glob("*.tf"):
+                self.assertIsNone(jfrog.search(f.read_text()), f"{s['id']}/{f.name}")
+
+    def test_jfrog_oidc_stacks_stand_on_their_own_cloud_foundation(self):
+        for sid, dep in (("gcp-jfrog-trust", "gcp-foundation"), ("azure-jfrog-trust", "azure-foundation")):
+            self.assertEqual(stacks.get(sid)["kind"], "JFrog OIDC")
+            self.assertEqual(stacks.depends_on(sid), dep)
+            self.assertIsNone(stacks.backend_kind(sid))   # local state, run here with the operator's token
+            self.assertEqual(stacks.rel_dir(sid), f"oidc/{dep.split('-')[0]}/{sid}")
+            self.assertIn('source  = "jfrog/platform"', (stacks.stack_dir(sid) / "versions.tf").read_text())
 
     def test_foundation_environments_cover_every_stack_setup_pipeline(self):
         # Each foundation makes the approval environment for exactly the stacks of its cloud that

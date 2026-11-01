@@ -48,10 +48,6 @@ resource "google_cloud_run_v2_job" "workload" {
       max_retries     = 0
       containers {
         image = var.job_image
-        env {
-          name  = "JFROG_ARTIFACT_PATH"
-          value = var.artifact_path
-        }
       }
     }
   }

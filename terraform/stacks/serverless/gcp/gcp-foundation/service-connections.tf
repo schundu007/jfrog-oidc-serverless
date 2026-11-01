@@ -2,7 +2,7 @@
 # token (System.OidcRequestUri): nothing signs in to Azure with them, so the Azure fields
 # ADO requires on this connection type are placeholders, not an Azure identity or
 # subscription. The pipelines reference them from a skipped task, which is all ADO needs
-# before it issues the token. Their subjects feed the WIF provider and the JFrog mappings.
+# before it issues the token. Their subjects feed the WIF provider (and, later, the OIDC side's JFrog mappings).
 
 locals {
   not_azure = "00000000-0000-0000-0000-000000000000"

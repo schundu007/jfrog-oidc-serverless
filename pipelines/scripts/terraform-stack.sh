@@ -7,16 +7,12 @@
 # ado_org and state_resource_group), the store that cloud's foundation stack creates. Nothing is read from
 # files in the repo. Azure
 # stacks authenticate through the AzureCLI@2 login; GCP stacks through WIF.
-# The JFrog provider gets an admin token from the setup connection's OIDC token
-# (JFrog mapping ado-setup); it stays in this process's environment only.
+# Infrastructure only: no stack here has a JFrog provider, so no JFrog token is requested.
 set -euo pipefail
 action=$1 stack=$2 environment=$3 plan_file=$4
 cd "$BUILD_SOURCESDIRECTORY"
 # shellcheck source=pipelines/scripts/oidc-login.sh
 source pipelines/scripts/oidc-login.sh
-
-JFROG_ACCESS_TOKEN=$(python3 -m jfrog_oidc token)
-export JFROG_ACCESS_TOKEN
 
 inputs="$AGENT_TEMPDIRECTORY/${stack}.tfvars.json" state="$AGENT_TEMPDIRECTORY/${stack}.state.json"
 printf '%s' "${STACK_INPUTS:-{\}}" > "$inputs"
