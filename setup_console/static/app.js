@@ -330,13 +330,16 @@ async function load() {
   // The environment every stack here deploys to: it picks the saved inputs, the ADO environments
   // <stack>-<env> and the variable groups jfrog-oidc-<cloud>-<env>.
   fill($("env"), `Environment: ${data.env}`, help(`Stacks deploy to the ${data.env} environment: saved inputs, ADO environments <stack>-${data.env} and variable groups jfrog-oidc-<cloud>-${data.env}.`));
-  // The cloud is the root: one column per cloud, and under it Common (the CI/CD bootstrap, used by
-  // both kinds), Serverless and Kubernetes, each its own table, then JFrog OIDC: made only once the
-  // infrastructure exists, never by an infrastructure stack. The kinds never share a table.
+  // Infrastructure (/setup): the cloud is the root, and under it Common (the CI/CD bootstrap, used by
+  // both kinds), Serverless and Kubernetes, each its own table. JFrog OIDC is not infrastructure: it
+  // has its own page per cloud (/setup/oidc-<cloud>), made only once that cloud's infrastructure exists.
   const ORDER = ["Common", "Serverless", "Kubernetes", "JFrog OIDC"];
   const sectionOf = (s) => (s.id.endsWith("-foundation") ? "Common" : s.kind);
+  const oidcCloud = location.pathname.match(/\/oidc-(gcp|azure)\/?$/)?.[1];
+  $("page-title").textContent = oidcCloud ? "JFrog OIDC" : "Infrastructure";
+  const shown = data.stacks.filter((s) => (oidcCloud ? s.kind === "JFrog OIDC" && CLOUD_ID[s.group] === oidcCloud : s.kind !== "JFrog OIDC"));
   const clouds = {};
-  for (const s of data.stacks) ((clouds[s.group] ||= {})[sectionOf(s)] ||= []).push(s);
+  for (const s of shown) ((clouds[s.group] ||= {})[sectionOf(s)] ||= []).push(s);
   const done = (list) => list.filter((x) => x.status?.deployed).length;
   // A thin meter of deployed / total: the count at a glance, no extra words.
   const meter = (n, of) => {

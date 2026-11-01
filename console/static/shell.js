@@ -11,6 +11,10 @@
   // item is one cluster platform. [key, label, href, icon, attrs]
   const sl = (cloud, kind, label, icon) => [kind, label, `/serverless/${cloud}?type=${kind}`, icon];
   const k8s = (p, label) => [p, label, `/k8s/clusters/${p}`, p, { "data-cloud": p }];
+  // JFrog OIDC is not infrastructure: it is made once the cloud's infrastructure exists, on its own page.
+  const oidc = (cloud) => [`oidc-${cloud}`, "Pipelines' JFrog trust", `/setup/oidc-${cloud}`, "boot"];
+  const BOOT = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.4 3.1 8.2 7.5 9.5 4.4-1.3 7.5-5.1 7.5-9.5V6z"/><circle cx="12" cy="10.5" r="2.2"/><path d="M12 12.7V16.5M12 15h1.8"/></svg>';
+  ICON.boot = BOOT;
   // Azure first, then Google Cloud (top to bottom everywhere).
   const CLOUDS = [
     ["Azure", "azure", [
@@ -18,11 +22,13 @@
         sl("azure", "azure_container_app", "Container Apps", "aca"),
         sl("azure", "azure_functions_aca", "Functions on Container Apps", "func"),
         sl("azure", "azure_functions_premium", "Functions Premium", "func")]],
-      ["Kubernetes", [k8s("aks", "AKS clusters")]]]],
+      ["Kubernetes", [k8s("aks", "AKS clusters")]],
+      ["JFrog OIDC", [oidc("azure")]]]],
     ["Google Cloud", "gcp", [
       ["Serverless", [sl("gcp", "gcp_run_job", "Cloud Run jobs", "run"), sl("gcp", "gcp_run_service", "Cloud Run services", "run"),
         sl("gcp", "gcp_run_function", "Cloud Run functions", "fn"), sl("gcp", "gcp_run_worker_pool", "Cloud Run worker pools", "run")]],
-      ["Kubernetes", [k8s("gke", "GKE clusters")]]]],
+      ["Kubernetes", [k8s("gke", "GKE clusters")]],
+      ["JFrog OIDC", [oidc("gcp")]]]],
   ];
   const TOP = [["home", "Home", "/", "home"], ["infra", "Infrastructure", "/setup", "infra"]];
   const BOTTOM = [["runs", "Runs", "/runs", "runs"]];
@@ -43,6 +49,8 @@
   function fromPath() {
     const p = location.pathname, type = new URLSearchParams(location.search).get("type");
     if (p === "/") return "home";
+    const o = p.match(/^\/setup\/oidc-(gcp|azure)\/?$/);
+    if (o) return `oidc-${o[1]}`;
     if (/^\/setup(\/|$)/.test(p)) return "infra";
     if (/^\/runs(\/|$)/.test(p)) return "runs";
     const s = p.match(/^(?:\/serverless)?\/(gcp|azure)(\/|$)/);
@@ -71,7 +79,7 @@
   };
   for (const [cloud, id, groups] of CLOUDS) {
     const body = groups.map(([group, items]) =>
-      fold(`${id}-${group.toLowerCase()}`, "nav-sub", group, items.map((i) => link(i, " nested")).join(""))).join("");
+      fold(`${id}-${group.toLowerCase().replace(/\s+/g, "-")}`, "nav-sub", group, items.map((i) => link(i, " nested")).join(""))).join("");
     html.push(`<nav class="nav-cloud" data-cloud-group="${esc(id)}" aria-label="${esc(cloud)}">${fold(id, "nav-group", cloud, body, CLOUD_LOGO[id] || "")}</nav>`);
   }
   html.push(`<nav aria-label="Runs">${BOTTOM.map((i) => link(i)).join("")}</nav>`);
@@ -108,7 +116,6 @@
   const selectAndReveal = (key) => { select(key); reveal(); };
   selectAndReveal(fromPath());
   // Service icons for other pages (Infrastructure rows, Home): constant inline SVG, no user data.
-  const BOOT = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.4 3.1 8.2 7.5 9.5 4.4-1.3 7.5-5.1 7.5-9.5V6z"/><circle cx="12" cy="10.5" r="2.2"/><path d="M12 12.7V16.5M12 15h1.8"/></svg>';
   const icon = (k) => (k === "boot" ? BOOT : CLOUD_LOGO[k] || ICON[k] || "");
   window.consoleNav = { icon, select: selectAndReveal, SECTIONS, sectionOfKind, section: (key) => SECTIONS[key] || null, current: fromPath };
 })();
