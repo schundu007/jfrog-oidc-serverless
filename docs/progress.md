@@ -564,3 +564,11 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
 - Flex Consumption is back: kind `azure_functions_flex`, stack `azure-functions-flex`, its stack-setup and build-deploy pipelines, the Setup row, the portal and sidebar, Discover (an FC1 plan is corrected to Flex), inventory, live and preflight.
 - OIDC only: the pipeline builds the code package and zip-deploys it; the platform reads it from its deployment container with the app's managed identity. At runtime the app exchanges its identity for a JFrog token.
 - The `azure-functions-flex-<env>` ADO environment comes back at the next azure-foundation apply.
+
+## 2026-11-01: JFrog OIDC is its own step, after Infrastructure
+
+- An OIDC run never deploys infrastructure. The provisioner is gone (`setup_console/provision.py`, the Discover Yes/No deploy gate, its UI). A workload Discover cannot find fails the run with "Deploy the workload on the Infrastructure page first".
+- Serverless "+ Create" tiles open Infrastructure on that cloud's Serverless stacks. Onboarding is the row's link.
+- JFrog OIDC (`/setup/oidc`) lists, per cloud and never mixed: Serverless (each live workload, Onboarded or Not onboarded, with Onboard/Open), Kubernetes (each cluster's KCP state) and Pipelines (the `<cloud>-jfrog-trust` stacks, optional in prod).
+- gcp-foundation: the setup identity also gets `roles/storage.admin` and `roles/cloudfunctions.admin` (the function stack's source bucket and function).
+- Full test environment deployed through the Setup gates: both foundations, both trust stacks, every serverless workload stack, `gke-cluster` and `aks-cluster`.

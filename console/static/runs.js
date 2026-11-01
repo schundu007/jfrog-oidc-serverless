@@ -58,36 +58,8 @@ function viewDiscover(step, ev) {
   for (const w of [...(r.errors || []), ...(r.warnings || [])]) {
     out.push(h("p", { class: "small" }, h("b", { text: w.message }), w.fix ? h("span", { class: "fix", text: ` — ${w.fix}` }) : null));
   }
-  const a = step.approval;
-  if (step.status === "needs_approval" && a?.kind === "deploy_missing") out.unshift(deployMissing(a));
   if (!out.length) out.push(outcome("Identity found", true));
   return out;
-}
-
-// The workload was not found: Yes deploys it with its stack's ADO pipelines (this exact plan), No ends the run.
-function deployMissing(a) {
-  const errBox = h("div");
-  const yes = h("button", { type: "button", class: "primary", text: "Yes, deploy" });
-  const no = h("button", { type: "button", class: "secondary", text: "No" });
-  let typed = null;
-  if (a.destructive?.length) {
-    typed = h("input", { type: "text", spellcheck: "false", autocomplete: "off", "aria-label": "Type the stack name to confirm" });
-    yes.disabled = true;
-    typed.addEventListener("input", () => { yes.disabled = typed.value !== a.confirmation_phrase; });
-  }
-  yes.addEventListener("click", () => approve("discover",
-    { answer: "yes", plan_sha256: a.plan_sha256, ...(typed ? { typed_confirmation: typed.value } : {}) }, yes, errBox));
-  no.addEventListener("click", () => approve("discover", { answer: "no" }, no, errBox));
-  return h("div", { class: "gate" },
-    h("p", {}, h("b", { text: a.question })),
-    kv([["Stack", a.stack], ["Plan sha256", a.plan_sha256.slice(0, 16) + "…"]]),
-    summaryChips(a.summary),
-    a.changes?.length ? h("div", { class: "table-wrap" }, h("table", {},
-      h("thead", {}, h("tr", {}, h("th", { text: "Action" }), h("th", { text: "Resource" }))),
-      h("tbody", {}, a.changes.map((c) => h("tr", { class: `act-${c.action}` },
-        h("td", {}, h("span", { class: `act-pill act-${c.action}`, text: c.action })), h("td", { class: "mono", text: c.address })))))) : null,
-    typed ? h("label", { class: "field" }, h("span", {}, "Type ", h("code", { text: a.confirmation_phrase }), " to confirm"), typed) : null,
-    h("div", { class: "row" }, yes, no), errBox);
 }
 
 function viewSimulate(step, ev) {

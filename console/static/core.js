@@ -73,10 +73,11 @@ export class ApiError extends Error {
   constructor(status, message, code) { super(code ? `${message} (${code})` : message); this.status = status; this.code = code; }
 }
 
-export async function api(path, { method = "GET", body } = {}) {
+// `abs`: a path of another portal section (/serverless/api/…, /k8s/api/…), not under this page's base.
+export async function api(path, { method = "GET", body, abs = false } = {}) {
   const headers = { "X-Console-Token": TOKEN };
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  const resp = await fetch(BASE + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body),
+  const resp = await fetch((abs ? "" : BASE) + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body),
     credentials: "omit", cache: "no-store" });
   const text = await resp.text();
   let data = null;

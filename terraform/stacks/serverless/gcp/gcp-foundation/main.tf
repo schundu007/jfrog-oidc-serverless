@@ -118,7 +118,10 @@ resource "google_project_iam_member" "setup" {
     "roles/artifactregistry.admin",
     "roles/run.admin",
     "roles/container.admin",                # gke-cluster stack
+    "roles/compute.viewer",                 # gke-cluster: reads the node pool's instance groups
     "roles/serviceusage.serviceUsageAdmin", # enables container.googleapis.com
+    "roles/storage.admin",                  # gcp-cloud-run-function: its source bucket and bucket IAM
+    "roles/cloudfunctions.admin",           # gcp-cloud-run-function: the function itself
   ])
 
   project = var.gcp_project_id

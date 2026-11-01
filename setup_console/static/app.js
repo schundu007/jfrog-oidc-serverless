@@ -345,7 +345,8 @@ function iconEl(key, cls) {
 // Filters over the grouped view: Cloud, Type, Status and free text, kept in the address.
 // JFrog OIDC (/setup/oidc) holds both clouds' trust stacks; /setup/oidc-<cloud> opens it on that cloud.
 const OIDC = /\/oidc(-[a-z]+)?\/?$/.test(location.pathname);
-const STATES = [["deployed", "Deployed"], ["not", "Not deployed"], ["attention", "Needs attention"]];
+const STATES = OIDC ? [["on", "Onboarded"], ["off", "Not onboarded"]]
+  : [["deployed", "Deployed"], ["not", "Not deployed"], ["attention", "Needs attention"]];
 const stateOf = (s) => (s.status?.deployed ? "deployed" : partlyDeleted(s) || lastFailure(s) || s.missing?.length ? "attention" : "not");
 const F = { q: "", cloud: location.pathname.match(/\/oidc-(gcp|azure)\/?$/)?.[1] || "", kind: "", state: "" };
 {
@@ -365,7 +366,7 @@ function drawFilters(kinds) {
   const set = (k) => (v) => { F[k] = v; saveQuery(); draw(); };
   fill($("filters"), window.consoleBlade.bar({ q: F.q, onQuery: (v) => { F.q = v; saveQuery(); draw(false); }, pills: [
     { label: "Cloud", value: F.cloud, options: [["azure", "Azure"], ["gcp", "Google Cloud"]], onChange: set("cloud") },
-    OIDC ? null : { label: "Type", value: F.kind, options: kinds.map((k) => [k, k]), onChange: set("kind") },
+    { label: "Type", value: F.kind, options: kinds.map((k) => [k, k]), onChange: set("kind") },
     { label: "Status", value: F.state, options: STATES, onChange: set("state") },
   ].filter(Boolean) }));
 }
@@ -373,6 +374,7 @@ function drawFilters(kinds) {
 async function load() {
   lastData = await api("/api/stacks");
   draw();
+  if (OIDC && !live.started) loadLive().catch(() => {});
   // While a job runs, keep the rows current so Running turns into its result without a reload.
   clearTimeout(load.timer);
   if (lastData.stacks.some((s) => s.busy)) load.timer = setTimeout(() => load().catch(() => {}), POLL_MS * 2);
@@ -381,6 +383,7 @@ async function load() {
 function draw(withFilters = true) {
   const data = lastData;
   byId = Object.fromEntries(data.stacks.map((s) => [s.id, s]));
+  if (OIDC) return drawOidc(data, withFilters);
   // The environment every stack here deploys to: it picks the saved inputs, the ADO environments
   // <stack>-<env> and the variable groups jfrog-oidc-<cloud>-<env>.
   // Infrastructure (/setup): the cloud is the root, and under it Common (the CI/CD bootstrap, used by
@@ -425,6 +428,114 @@ function draw(withFilters = true) {
     // A cloud heading only when more than one cloud is listed: alone, it repeats the filter.
     return h("section", { class: "cloud-block" }, groups.length > 1 ? head(g, inCloud) : null, table(bodies));
   })) : null);
+}
+
+// JFrog OIDC (/setup/oidc) is its own step, after Infrastructure: it never deploys anything there.
+// Per cloud, never mixed: Serverless (each live workload, onboarded for the runtime exchange or not),
+// Kubernetes (each cluster's kubelet credential provider) and Pipelines (the build pipelines' own JFrog
+// trust, optional: production adds only the runtime exchange to live services).
+const live = { started: false, loading: true, workloads: [], clusters: [], kinds: {}, errors: [] };
+const LIVE_CLOUDS = ["azure", "gcp"];
+const CLUSTER_CLOUD = { aks: "azure", gke: "gcp" };
+const CLUSTER_STATE = { working: ["ok", "Onboarded"], broken: ["attention", "Not working"] };
+const words = (v) => String(v || "").replaceAll("_", " ");
+
+async function loadLive() {
+  live.started = true;
+  const [schema, { configs }] = await Promise.all([api("/serverless/api/schema", { abs: true }), api("/serverless/api/configs", { abs: true })]);
+  live.kinds = schema.kinds || {};
+  const cfgOf = (w) => configs.find((c) => c.kind === w.kind && String(c.workload || "").split(" / ").pop() === w.name);
+  try {
+    const fleet = await api("/k8s/api/fleet", { abs: true });
+    live.clusters = (fleet.clusters || []).map((c) => ({ ...c, platform: c.cloud || c.platform || "aks" }));
+  } catch (e) { live.errors.push(`Kubernetes: ${e.message}`); }
+  draw();
+  for (const c of LIVE_CLOUDS) {   // one cloud at a time: they share the CLI lock
+    try {
+      const inv = await api(`/serverless/api/inventory/${c}`, { abs: true });
+      for (const w of inv.workloads || []) {
+        if (w.supported && live.kinds[w.kind]) live.workloads.push({ ...w, cloud: c, cfg: cfgOf(w) || null });
+      }
+      for (const e of inv.errors || []) live.errors.push(`${CLOUD_NAME[c]}: ${e}`);
+    } catch (e) { live.errors.push(`${CLOUD_NAME[c]}: ${e.message}`); }
+    draw();
+  }
+  live.loading = false;
+  draw();
+}
+
+const CLOUD_NAME = { azure: "Azure", gcp: "Google Cloud" };
+const go = (href, text, primary) => h("button", { type: "button", class: primary ? "primary" : "secondary", text,
+  onclick: () => location.assign(href) });
+const pillOf = (tone, text) => h("span", { class: `blade-state ${tone === "ok" ? "ok" : ""}`, "data-tone": tone, text });
+
+function workloadRow(w) {
+  const open = w.cfg ? `/serverless/${w.cloud}/w/${encodeURIComponent(w.cfg.name)}` : `/serverless/${w.cloud}/new?kind=${encodeURIComponent(w.kind)}`;
+  const icon = window.consoleNav?.section(w.kind)?.icon || "run";
+  return h("tr", { "data-state": w.cfg ? "ok" : "idle" },
+    h("td", {}, h("div", { class: "stack-name" }, iconEl(icon, "stack-icon"), link(open, h("b", { text: w.name })))),
+    h("td", {}, pillOf(w.cfg ? "ok" : "idle", w.cfg ? "Onboarded" : "Not onboarded")),
+    h("td", {}, link(`/serverless/${w.cloud}?type=${encodeURIComponent(w.kind)}`, live.kinds[w.kind]?.label || w.kind)),
+    h("td", { text: w.region || "—" }),
+    h("td", {}, go(open, w.cfg ? "Open" : "Onboard", !w.cfg)));
+}
+
+function clusterRow(c) {
+  const href = `/k8s/clusters/${c.platform}/${encodeURIComponent(c.name)}`;
+  const [tone, text] = CLUSTER_STATE[c.state] || ["idle", words(c.state) || "Not onboarded"];
+  return h("tr", { "data-state": tone },
+    h("td", {}, h("div", { class: "stack-name" }, iconEl(c.platform, "stack-icon"), link(href, h("b", { text: c.name })))),
+    h("td", {}, pillOf(tone, text), c.problem ? help(c.problem) : null),
+    h("td", {}, link(`/k8s/clusters/${c.platform}`, c.platform === "gke" ? "GKE cluster" : "AKS cluster")),
+    h("td", { text: c.location || c.cluster || "—" }),
+    h("td", {}, go(href, tone === "ok" ? "Open" : "Onboard", tone !== "ok")));
+}
+
+function drawOidc(data, withFilters) {
+  const SECTIONS = ["Serverless", "Kubernetes", "Pipelines"];
+  $("page-title").textContent = "JFrog OIDC";
+  const trust = data.stacks.filter((s) => s.kind === "JFrog OIDC");
+  // Every row as {cloud, section, on, text, el}: one list, so filters and counts treat them alike.
+  const rows = [
+    ...live.workloads.map((w) => ({ cloud: w.cloud, section: "Serverless", on: !!w.cfg,
+      text: [w.name, w.region, live.kinds[w.kind]?.label], el: () => workloadRow(w) })),
+    ...live.clusters.map((c) => ({ cloud: CLUSTER_CLOUD[c.platform], section: "Kubernetes", on: c.state === "working",
+      text: [c.name, c.platform, c.location], el: () => clusterRow(c) })),
+    ...trust.map((s) => ({ cloud: CLOUD_ID[s.group], section: "Pipelines", on: !!s.status?.deployed,
+      text: [s.title, s.id, s.about], el: () => row(s, "Pipelines") })),
+  ];
+  if (withFilters) drawFilters(SECTIONS);
+  const q = F.q.trim().toLowerCase();
+  const shown = rows.filter((r) => (!F.cloud || r.cloud === F.cloud) && (!F.kind || r.section === F.kind)
+    && (!F.state || (F.state === "on") === r.on) && (!q || r.text.some((v) => String(v || "").toLowerCase().includes(q))));
+  const mine = rows.filter((r) => !F.cloud || r.cloud === F.cloud);
+  essentials(data, trust);
+  fill($("ess-left"), ...[["Environment", data.env], ["Onboarded", `${mine.filter((r) => r.on).length} of ${mine.length}`]]
+    .map(([l, v]) => h("div", { class: "ess-pair" }, h("dt", { text: l }), h("dd", { text: v }))));
+  fill($("ess-right"), ...[["Serverless", mine.filter((r) => r.section === "Serverless").length],
+    ["Kubernetes", mine.filter((r) => r.section === "Kubernetes").length], ["Pipelines", mine.filter((r) => r.section === "Pipelines").length]]
+    .map(([l, v]) => h("div", { class: "ess-pair" }, h("dt", { text: l }), h("dd", { text: String(v) }))));
+  $("count").textContent = live.loading && !live.workloads.length ? "Reading the clouds…" : `Showing ${shown.length} of ${rows.length} records.`;
+  $("none").hidden = shown.length > 0 || live.loading;
+  const cols = ["Name", "Status", "Type", "Location", ""];
+  const clouds = ["azure", "gcp"].filter((c) => shown.some((r) => r.cloud === c));
+  const sections = SECTIONS.filter((k) => shown.some((r) => r.section === k));
+  const subHead = (k, list) => h("tr", { class: "home-group home-subgroup" }, h("th", { scope: "colgroup", colspan: String(cols.length) },
+    h("span", { class: "home-group-name" }, h("a", { href: `/setup/oidc?${new URLSearchParams({ cloud: list[0].cloud, kind: k })}`, text: k }),
+      h("small", { text: `${list.filter((r) => r.on).length} of ${list.length} onboarded` }))));
+  fill($("groups"), shown.length ? h("div", { class: "cloud-tables" }, clouds.map((c) => {
+    const inCloud = shown.filter((r) => r.cloud === c);
+    const bodies = sections.map((k) => {
+      const list = inCloud.filter((r) => r.section === k);
+      return list.length ? h("tbody", {}, sections.length > 1 ? subHead(k, list) : null, list.map((r) => r.el())) : null;
+    }).filter(Boolean);
+    return h("section", { class: "cloud-block" },
+      clouds.length > 1 ? h("h2", { class: "cloud-title home-group-name" }, iconEl(c, "home-group-logo"),
+        h("a", { href: `/setup/oidc-${c}` }, CLOUD_NAME[c]), h("small", { text: `${inCloud.filter((r) => r.on).length} of ${inCloud.length} onboarded` })) : null,
+      h("div", { class: "table-wrap" }, h("table", { class: `blade-table home-table stack-table cloud-table cols-${cols.length}` },
+        h("thead", {}, h("tr", {}, cols.map((t) => h("th", { scope: "col", text: t })))), bodies)));
+  })) : null);
+  if (live.errors.length) $("count").append(" ", help(live.errors.join(" ")));
 }
 
 // Where a stack runs: foundations and JFrog trust from this page; workload and cluster stacks as
