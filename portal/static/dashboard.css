@@ -129,8 +129,9 @@
 .bubble { display: grid; place-items: center; width: 52px; height: 52px; flex: none; border-radius: 50%; background: #ffffff; }
 .bubble svg { width: 22px; height: 22px; fill: none; stroke: var(--ink); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-/* One section per cloud, full width, so the clouds line up whatever their service count. */
-.bento { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-5); }
+/* One section per cloud, Azure and Google Cloud side by side (stacked on narrow screens). */
+.bento { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-5); align-items: stretch; }
+@media (max-width: 1100px) { .bento { grid-template-columns: minmax(0, 1fr); } }
 .board { padding: var(--s-5); background: #ffffff; border: 1px solid var(--edge); border-radius: var(--cute-r);
   box-shadow: var(--cute-shadow); backdrop-filter: none; -webkit-backdrop-filter: none; }
 .board-head { display: flex; align-items: baseline; gap: var(--s-3); justify-content: flex-start; margin-bottom: var(--s-4); }
