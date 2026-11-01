@@ -95,7 +95,7 @@ function render() {
 function essentials() {
   const n = (f) => all.filter((r) => f(r.status)).length;
   const last = all[0], oldest = all[all.length - 1];
-  const pair = (label, value, href) => [h("dt", { text: label }), h("dd", {}, href ? h("a", { href, text: value }) : value)];
+  const pair = (label, value, href) => [h("div", { class: "ess-pair" }, h("dt", { text: label }), h("dd", {}, href ? h("a", { href, text: value }) : value))];
   $("ess-left").replaceChildren(
     ...pair("Runs kept", String(all.length)),
     ...pair("Oldest kept", oldest ? when(oldest.created) : "—"));

@@ -97,7 +97,7 @@ function essentials() {
   const live = data.runs.filter((r) => LIVE_STATES.has(r.status)).length;
   const failed = data.runs.filter((r) => ["failed", "cancelled", "refused", "interrupted"].includes(r.status)).length;
   const last = data.runs[0];
-  const pair = (label, value, href) => [h("dt", { text: label }), h("dd", {}, href ? h("a", { href, text: value }) : value)];
+  const pair = (label, value, href) => [h("div", { class: "ess-pair" }, h("dt", { text: label }), h("dd", {}, href ? h("a", { href, text: value }) : value))];
   const tab = (t) => `/?tab=${t}`;
   $("ess-left").replaceChildren(
     ...pair("Workloads", `${wl.length} onboarded, ${wl.filter((it) => it.ok).length} working`, tab("serverless")),

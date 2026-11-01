@@ -425,7 +425,7 @@ function essentials(data, all) {
   })();
   fill($("page-logo"), one ? iconEl(CLOUD_ID[one], "") : null);
   if (!one) $("page-logo").innerHTML = OIDC ? (window.consoleNav?.icon("boot") || "") : '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>';
-  const pair = (label, value, helpText) => [h("dt", { text: label }), h("dd", {}, value, helpText ? help(helpText) : null)];
+  const pair = (label, value, helpText) => [h("div", { class: "ess-pair" }, h("dt", { text: label }), h("dd", {}, value, helpText ? help(helpText) : null))];
   fill($("ess-left"),
     pair("Environment", data.env, `Stacks deploy to the ${data.env} environment: saved inputs, ADO environments <stack>-${data.env} and variable groups jfrog-oidc-<cloud>-${data.env}.`),
     pair("Deployed", `${deployed} of ${mine.length}`));
