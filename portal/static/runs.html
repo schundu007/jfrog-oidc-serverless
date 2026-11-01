@@ -17,16 +17,16 @@
   </header>
   <aside class="sidenav"><script src="/serverless/static/shell.js"></script></aside>
   <div class="main-col">
-  <main>
-    <div class="page-top"><nav class="trail" aria-label="You are here"><span aria-current="page">Runs</span></nav></div>
-    <header class="page-header">
-      <div class="title-row"><h1>Runs</h1><span id="runs-count" class="count-badge"></span></div>
-      <div class="actions">
-        <button type="button" id="runs-delete" class="btn secondary" disabled>Delete selected</button>
-        <button type="button" id="runs-clear" class="btn secondary">Clear finished</button>
-        <button type="button" id="runs-refresh" class="btn secondary">Refresh</button>
-      </div>
+  <main id="dash" class="home runs-page">
+    <header class="home-title">
+      <span class="home-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h9"/><path d="m16 16 3 2-3 2z"/></svg></span>
+      <span><h1>Runs</h1><span class="blade-sub">Every run, newest first</span></span>
     </header>
+    <div class="blade-cmds" role="toolbar" aria-label="Runs">
+      <button id="runs-refresh" type="button" class="blade-cmd"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 4v3.5h-3.5"/></svg>Refresh</button>
+      <button id="runs-delete" type="button" class="blade-cmd" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 6h10M8 6V4h4v2M6.5 6l.7 10h5.6l.7-10"/></svg><span>Delete selected</span></button>
+      <button id="runs-clear" type="button" class="blade-cmd"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h8M4 15h5M13 13l4 4M17 13l-4 4"/></svg>Clear finished</button>
+    </div>
     <p id="runs-errors" class="error-box" role="alert" hidden></p>
     <div id="runs-confirm" class="runs-confirm" role="alertdialog" aria-labelledby="runs-confirm-text" hidden>
       <span id="runs-confirm-text"></span>
@@ -34,15 +34,28 @@
       <button type="button" id="runs-confirm-no" class="btn secondary">Keep</button>
     </div>
     <p id="runs-done" class="muted small" role="status" hidden></p>
-    <!-- Every run of every workload, cluster and infrastructure stack, newest first: one list for the whole console. -->
-    <div id="runs-filters"></div>
-    <div class="table-card">
-      <table class="list-table">
-        <thead><tr><th scope="col" class="sel"><input type="checkbox" id="runs-all" aria-label="Select all finished runs shown"></th><th scope="col">Status</th><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Cloud</th><th scope="col">Started</th></tr></thead>
-        <tbody id="runs-rows"></tbody>
-      </table>
+    <section class="ess" aria-labelledby="ess-h">
+      <button type="button" class="ess-fold" id="ess-h" aria-expanded="true" aria-controls="ess-body">Essentials</button>
+      <div class="ess-body" id="ess-body">
+        <dl class="ess-col" id="ess-left"></dl>
+        <dl class="ess-col" id="ess-right"></dl>
+      </div>
+    </section>
+    <div class="tabs" role="tablist" aria-label="Runs">
+      <button type="button" role="tab" id="tab-all" aria-controls="runs-panel" data-tab="">All</button>
+      <button type="button" role="tab" id="tab-serverless" aria-controls="runs-panel" data-tab="serverless">Serverless</button>
+      <button type="button" role="tab" id="tab-kubernetes" aria-controls="runs-panel" data-tab="kubernetes">Kubernetes</button>
+      <button type="button" role="tab" id="tab-infrastructure" aria-controls="runs-panel" data-tab="infrastructure">Infrastructure</button>
     </div>
-    <p id="runs-none" class="muted small" hidden>No run matches.</p>
+    <div id="runs-panel" role="tabpanel">
+      <div id="runs-filters"></div>
+      <p id="runs-count" class="blade-count"></p>
+      <div class="table-wrap"><table class="blade-table home-table list-table">
+        <thead><tr><th scope="col" class="sel"><input type="checkbox" id="runs-all" aria-label="Select all finished runs shown"></th><th scope="col">Name</th><th scope="col">Status</th><th scope="col">Type</th><th scope="col">Started</th></tr></thead>
+        <tbody id="runs-rows"></tbody>
+      </table></div>
+      <p id="runs-none" class="blade-empty" hidden></p>
+    </div>
   </main>
   </div>
 </div>
