@@ -16,6 +16,19 @@ const runsNote = (text, kind) => setStatus($("runs-status"), text, kind);
 
 // Essentials, as on an Azure resource page: where it lives on the left, how it reaches JFrog on the right.
 const CLOUD_NAME = { azure: "Azure", gcp: "Google Cloud", aws: "AWS", openshift: "Knative" };
+// Even grid, at most 4 columns: the column count that leaves the fewest empty cells, never more rows than
+// columns (4 items 2x2, 6 3x2, 8 4x2, 9 3x3).
+export function gridCols(n) {
+  if (n <= 3) return Math.max(n, 1);
+  let best = 4;
+  for (const c of [4, 3, 2]) {
+    const rows = Math.ceil(n / c), empty = rows * c - n;
+    if (rows > c) continue;
+    const bRows = Math.ceil(n / best), bEmpty = bRows * best - n;
+    if (empty < bEmpty || (empty === bEmpty && Math.abs(c - rows) < Math.abs(best - bRows))) best = c;
+  }
+  return best;
+}
 const pair = (label, value, extra) => [h("div", { class: "ess-pair" }, h("dt", { text: label }), h("dd", { title: typeof value === "string" ? value : null }, value || "—", extra || null))];
 function renderFacts(cfg) {
   if (cfg) ws.cfg = cfg;
@@ -42,6 +55,7 @@ function renderFacts(cfg) {
     ...pair("JFrog platform", /^https:\/\//.test(url) ? h("a", { href: url, target: "_blank", rel: "noopener", text: url.replace(/^https:\/\//, "") }) : url),
     ...pair("Reader group", cfg.jfrog?.reader_group),
     ...(last ? pair("Runs", h("a", { href: "?tab=runs", text: `${ws.runs.length} · last ${ago(last.created)}` })) : []));
+  $("wl-ess-body").style.setProperty("--ess-cols", String(gridCols($("wl-ess-body").querySelectorAll(".ess-pair").length)));
   $("wl-sub").textContent = `${CLOUD_NAME[CLOUD] || CLOUD} · ${kindLabel(ws.schema, cfg.target.kind)}`;
   $("wl-logo").innerHTML = window.consoleNav?.icon(window.consoleNav?.section(cfg.target.kind)?.icon || CLOUD) || "";  // constant SVG only
 }

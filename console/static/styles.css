@@ -1066,3 +1066,6 @@ tbody tr, .ov-tile, .tile, .nav-item, a, button, .blade-opt, .chip, .kind-folder
 #runs-refresh { display: none; }
 #runs-empty { border: 0; background: none; padding: 8px 0; }
 #runs-empty h2 { font-size: 14px; font-weight: 400; color: var(--fg-3); }
+/* Workload Essentials: an even grid, column count set by workload.js (gridCols). */
+html body #wl-ess-body.ess-body { grid-template-columns: repeat(var(--ess-cols, 3), minmax(0, 1fr)); }
+@media (max-width: 860px) { html body #wl-ess-body.ess-body { grid-template-columns: minmax(0, 1fr); } }
