@@ -73,6 +73,21 @@ async function loadFleet() {
   render();
   // What the cloud says now: a cluster that no longer exists is Missing, whatever its last run proved.
   const shown = fleet;
+  // Every live cluster the operator's logins can see is listed too, as Not set up until it is added.
+  for (const k of BUILT) {
+    if ((shown.platforms || {})[k] === false) continue;
+    try {
+      const { clusters = [] } = await api(SOURCES[k].api);
+      const saved = new Set(shown.clusters.map((r) => (r.cluster || r.name || "").toLowerCase()));
+      for (const c of clusters) {
+        if (saved.has(c.name.toLowerCase())) continue;
+        shown.clusters.push({ name: c.name, cluster: c.name, cloud: k, state: "not_installed", live: c, location: c.location || "",
+          resource_group: k === "gke" ? "" : c.resource_group || "",
+          subscription: k === "gke" ? c.project_name || c.project_id : c.subscription_name || c.subscription_id, links: c.links });
+      }
+      if (fleet === shown) render();
+    } catch { /* the saved clusters stay */ }
+  }
   try {
     const { clusters } = await api("/api/fleet/live");
     for (const r of shown.clusters) if (clusters[r.name] === "missing") r.state = "missing";
@@ -164,34 +179,41 @@ function table(all) {
   F.page = Math.min(Math.max(1, F.page), pages);
   const first = (F.page - 1) * PAGE;
   const turn = (p) => { setFilter({ page: p }); fillTable(); };
-  const heads = ["", "Name", "Status", "Platform", "Location", "Resource group", "Subscription / project", "Credential provider", "Last run", ""];
-  return [
-    muted(`Showing ${rows.length} of ${all.length} records.`),
-    h("table", { class: "table fleet-table blade-table" },
-      h("thead", {}, h("tr", {}, heads.filter((t) => t !== null).map((t, i) => h("th", { scope: "col", class: i === 0 ? "c-ico" : null,
+  // One table per cloud (AKS, GKE), each with its own columns, over the current page.
+  const page = rows.slice(first, first + PAGE);
+  const cloudTable = (c) => {
+    const az = c === "aks";
+    const heads = ["", "Name", "Status", "Location", ...(az ? ["Resource group", "Subscription"] : ["Project"]), "Credential provider", "Last run", ""];
+    return h("section", { class: "ov-group wl-cloud" },
+      h("h2", { class: "ov-group-title" }, h("span", { class: "blade-ico" }, markOf(c)), link(go, url, `/clusters/${c}`, CLOUD[c])),
+      h("table", { class: "table fleet-table blade-table" },
+      h("thead", {}, h("tr", {}, heads.map((t, i) => h("th", { scope: "col", class: i === 0 ? "c-ico" : null,
         "aria-label": i === 0 ? "Last run status" : t === "" ? "Actions" : null }, t)))),
-      h("tbody", {}, rows.slice(first, first + PAGE).map((r) => {
+      h("tbody", {}, page.filter((r) => (r.cloud || "aks") === c).map((r) => {
         const [cls, text] = STATE[r.state] || ["muted", r.state];
         const a = r.action;
-        const open = () => go(clusterPath(r.name));
+        const open = () => (r.live ? add(r.live, c) : go(clusterPath(r.name)));
         return h("tr", { tabindex: "0", onclick: open, onkeydown: (e) => { if (e.key === "Enter" && e.target === e.currentTarget) open(); } },
           h("td", { class: "c-ico" }, a ? icon(a.status) : icon("notrun", "No runs")),
-          h("td", {}, h("span", { class: "blade-name" }, h("span", { class: "blade-ico" }, markOf(r.cloud || "aks")), link(go, url, clusterPath(r.name), r.name)),
+          h("td", {}, h("span", { class: "blade-name" }, h("span", { class: "blade-ico" }, markOf(c)), r.live ? h("a", { href: "#", onclick: (e) => { e.preventDefault(); e.stopPropagation(); open(); } }, r.name) : link(go, url, clusterPath(r.name), r.name)),
             r.cluster !== r.name ? h("div", { class: "sub" }, r.cluster) : null),
           h("td", {}, h("span", { class: `badge ${cls}` }, text), r.problem ? help(brief(r.problem)) : null),
-          h("td", {}, link(go, url, `/clusters/${r.cloud || "aks"}`, CLOUD[r.cloud || "aks"])),
           h("td", { class: "wrap" }, r.location || muted("—")),
-          h("td", { class: "wrap" }, out(r.links?.resource_group, r.resource_group || muted("—"))),
+          az ? h("td", { class: "wrap" }, out(r.links?.resource_group, r.resource_group || muted("—"))) : null,
           h("td", { class: "wrap" }, out(r.links?.scope, r.subscription || muted("—"))),
           h("td", {}, r.chart ? h("div", {}, `v${r.chart}`) : muted("—"), r.ready ? h("div", { class: "sub" }, `${r.ready} nodes ready`) : null),
           h("td", {}, a?.id ? link(go, url, runPath(r.name, a.id), lastRun(a)) : lastRun(a)),
-          h("td", { class: "c-more", onclick: (e) => e.stopPropagation() }, moreMenu([
+          r.live ? h("td", {}) : h("td", { class: "c-more", onclick: (e) => e.stopPropagation() }, moreMenu([
             { label: "Open", onclick: open },
             { label: "Edit configuration", onclick: () => go(clusterPath(r.name, "config")) },
             { label: "Clear old runs", danger: true, onclick: () => clearRuns(r.name) },
             { label: "Remove from console", danger: true, onclick: () => remove(r.name) },
           ], `Actions for ${r.name}`)));
-      }))),
+      }))));
+  };
+  return [
+    muted(`Showing ${rows.length} of ${all.length} records.`),
+    ["aks", "gke"].filter((c) => page.some((r) => (r.cloud || "aks") === c)).map(cloudTable),
     pages > 1 ? h("div", { class: "pager" },
       muted(`${first + 1}–${Math.min(first + PAGE, rows.length)} of ${rows.length}`),
       h("button", { class: "ghost", disabled: F.page <= 1, onclick: () => turn(F.page - 1) }, "Previous"),
