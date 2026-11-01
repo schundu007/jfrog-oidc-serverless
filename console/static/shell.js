@@ -61,9 +61,9 @@
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const glyph = (k) => (k === "boot" ? BOOT : CLOUD_LOGO[k] || NAV_ICON[k] || ICON[k] || "");
   const CHEV = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
-  const OPEN_KEY = "console.nav.open";
-  const opened = (() => { try { return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || "[]")); } catch { return new Set(); } })();
-  const keep = () => { try { localStorage.setItem(OPEN_KEY, JSON.stringify([...opened])); } catch { /* per-viewer convenience only */ } };
+  // Every load starts collapsed: only the current section, and the cloud holding the current item, open.
+  // Folds made on the page last until the next load.
+  const opened = new Set();
   const block = ([key, label, href, icon, kids]) => {
     const top = `<a class="nav-item" href="${esc(href)}" data-section data-nav="${key}">${NAV_ICON[key] || glyph(icon)}<span>${esc(label)}</span></a>`;
     if (!kids.length) return `<div class="nav-block" data-block="${key}">${top}</div>`;
@@ -103,19 +103,14 @@
   function setOpen(b, on, remember = true) {
     b.classList.toggle("open", on);
     b.querySelector(".nav-chev")?.setAttribute("aria-expanded", String(on));
-    if (remember) { on ? opened.add(b.dataset.block) : opened.delete(b.dataset.block); keep(); }
+    if (remember) { if (on) opened.add(b.dataset.block); else opened.delete(b.dataset.block); }
   }
-  // Cloud groups inside a section: open unless the user folded them (remembered per viewer).
-  const FOLD_KEY = "console.nav.folded";
-  const folded = (() => { try { return new Set(JSON.parse(localStorage.getItem(FOLD_KEY) || "[]")); } catch { return new Set(); } })();
-  function setSub(s, on, remember = true) {
+  // Cloud groups inside a section start folded; mark() opens the one holding the current item.
+  function setSub(s, on) {
     s.classList.toggle("folded", !on);
     s.querySelector(".cloudfold-chev").setAttribute("aria-expanded", String(on));
-    if (!remember) return;
-    on ? folded.delete(s.dataset.sub) : folded.add(s.dataset.sub);
-    try { localStorage.setItem(FOLD_KEY, JSON.stringify([...folded])); } catch { /* per-viewer convenience only */ }
   }
-  for (const s of root.querySelectorAll(".cloudfold")) setSub(s, !folded.has(s.dataset.sub), false);
+  for (const s of root.querySelectorAll(".cloudfold")) setSub(s, false);
   root.addEventListener("click", (e) => {
     const sc = e.target.closest(".cloudfold-chev");
     if (sc) { const s = sc.closest(".cloudfold"); setSub(s, s.classList.contains("folded")); return; }
@@ -137,7 +132,8 @@
       b.querySelectorAll(".nav-child").forEach((a, i) => {
         if (i === hit) a.setAttribute("aria-current", atTop() ? "page" : "true"); else a.removeAttribute("aria-current");
         // The current service is never hidden inside a folded cloud.
-        if (i === hit && a.matches(".nav-grand")) { const s = a.closest(".cloudfold.folded"); if (s) setSub(s, true, false); }
+        if (i === hit && a.matches(".nav-grand")) { const s = a.closest(".cloudfold.folded"); if (s) setSub(s, true); }
+        if (i === hit && a.matches(".nav-cloud-row")) { const s = a.closest(".cloudfold.folded"); if (s) setSub(s, true); }
       });
       // Entering a section unfolds it once; a fold the user makes then stays, even as filters change the address.
       if (kids.length && !(here && unfolded === key)) setOpen(b, here || opened.has(key), false);
