@@ -43,18 +43,34 @@ function field(tool, key, label, { type = "text", value = "", placeholder = "", 
     ? h("select", { id }, h("option", { value: "" }, list.length ? "Choose…" : "None found"),
       ...list.map(([v, t]) => h("option", { value: v, selected: v === cur || null }, t)))
     : h("input", { id, type, value: type === "password" ? "" : cur, placeholder, autocomplete: "off", spellcheck: "false" });
-  if (type !== "password") for (const ev of ["input", "change"]) input.addEventListener(ev, () => { drafts[id] = input.value; });
+  for (const ev of ["input", "change"]) input.addEventListener(ev, () => { if (type !== "password") drafts[id] = input.value; gate(); });
   return h("label", { class: "field", for: id }, h("span", { class: "field-label" }, label, tip ? help(tip) : null), input);
 }
 
-function button(text, fn, cls = "secondary") {
+// when(): the action can run now (inputs filled and changed, nothing in progress); otherwise greyed out,
+// with the reason as its tooltip. Every input re-checks (gate); a running action stays greyed until done.
+let busy = false;
+function button(text, fn, cls = "secondary", when = null) {
   const b = h("button", { type: "button", class: cls }, text);
+  b._when = when;
   b.addEventListener("click", async () => {
-    b.disabled = true; showError("");
-    try { await fn(); } catch (e) { showError(e.message); } finally { b.disabled = false; }
+    if (b.disabled) return;
+    busy = true; gate(); showError("");
+    try { await fn(); } catch (e) { showError(e.message); } finally { busy = false; gate(); }
   });
   return b;
 }
+function gate() {
+  for (const b of document.querySelectorAll("#flyout-body button")) {
+    const why = busy ? "Working…" : b._when ? b._when() : "";
+    b.disabled = !!why;
+    if (why) b.title = why; else b.removeAttribute("title");
+  }
+}
+const need = (...checks) => () => checks.map((c) => c()).find(Boolean) || "";
+const signingIn = (s) => () => (s.pending?.state === "waiting" ? "A sign-in is in progress" : "");
+const changed = (pairs) => () => (pairs.every(([id, cur]) => (val(...id) || "") === (cur || "")) ? "Nothing changed" : "");
+const filled = (...ids) => () => (ids.some((id) => !val(...id)) ? "Fill in every field" : "");
 const section = (title, ...kids) => h("section", { class: "conn-sec" }, h("h3", {}, title), ...kids.filter(Boolean));
 const actions = (...b) => h("div", { class: "conn-actions" }, ...b.filter(Boolean));
 const missing = (s, cli) => (s.cli === false ? h("p", { class: "conn-msg bad" }, `${cli} is not installed on this machine.`) : null);
@@ -72,13 +88,15 @@ function pending(tool, p) {
   if (p.needs_code && p.url) {
     box.append(h("div", { class: "conn-step conn-inline" }, h("b", {}, "2"),
       field(tool, "code", "Code from the sign-in page", { type: "password", placeholder: "Paste the code" }),
-      button("Send", async () => { await post(tool, "code", { code: val(tool, "code") }); await load(); }, "primary")));
+      button("Send", async () => { await post(tool, "code", { code: val(tool, "code") }); await load(); }, "primary",
+        () => (val(tool, "code") ? "" : "Paste the code first"))));
   }
   box.append(actions(button("Cancel sign-in", async () => { await post(tool, "cancel"); await load(); })));
   return box;
 }
 const signInLabel = (s) => (s.source === "console" ? "Sign in again" : "Sign in");
-const signOut = (tool, s) => (s.source === "console" ? button("Sign out", async () => { await post(tool, "signout"); await load(); }) : null);
+const signOut = (tool, s) => (s.source === "console"
+  ? button("Sign out", async () => { await post(tool, "signout"); await load(); }, "secondary", signingIn(s)) : null);
 
 async function choices(tool) {
   const r = await api(`/api/settings/${tool}/choices`, { abs: true });
@@ -101,9 +119,11 @@ const CONNECTORS = [
         s.signed_in ? section("Project", pick
           ? h("div", { class: "conn-inline" },
             field("gcp", "project", "Project", { list: pick.map((p) => [p.id, p.name === p.id ? p.id : `${p.name} (${p.id})`]), value: s.project }),
-            button("Use", async () => { await put("gcp", { project: val("gcp", "project") }); await load(); }, "primary"))
-          : actions(button("Change project", () => choices("gcp")))) : null,
-        actions(button(signInLabel(s), async () => { await post("gcp", "signin"); await load(); }, "primary"), signOut("gcp", s)),
+            button("Use", async () => { await put("gcp", { project: val("gcp", "project") }); await load(); }, "primary",
+              need(signingIn(s), filled(["gcp", "project"]), changed([[["gcp", "project"], s.project]]))))
+          : actions(button("Change project", () => choices("gcp"), "secondary", signingIn(s)))) : null,
+        actions(button(signInLabel(s), async () => { await post("gcp", "signin"); await load(); }, "primary",
+          need(signingIn(s), () => (s.cli === false ? "gcloud is not installed" : ""))), signOut("gcp", s)),
       ];
     } },
   { id: "azure", name: "Azure", category: "cloud",
@@ -118,12 +138,14 @@ const CONNECTORS = [
         s.signed_in ? section("Subscription", pick
           ? h("div", { class: "conn-inline" },
             field("azure", "subscription", "Subscription", { list: pick.map((a) => [a.id, a.name]), value: s.subscription_id }),
-            button("Use", async () => { await put("azure", { subscription: val("azure", "subscription") }); await load(); }, "primary"))
-          : actions(button("Change subscription", () => choices("azure")))) : null,
+            button("Use", async () => { await put("azure", { subscription: val("azure", "subscription") }); await load(); }, "primary",
+              need(signingIn(s), filled(["azure", "subscription"]), changed([[["azure", "subscription"], s.subscription_id]]))))
+          : actions(button("Change subscription", () => choices("azure"), "secondary", signingIn(s)))) : null,
         section("Sign in",
           field("azure", "tenant", "Tenant", { value: s.tenant_wanted, placeholder: "Default tenant",
             tip: "Optional. A tenant ID or domain (contoso.onmicrosoft.com) when the account belongs to more than one." }),
-          actions(button(signInLabel(s), async () => { await post("azure", "signin", { tenant: val("azure", "tenant") }); await load(); }, "primary"),
+          actions(button(signInLabel(s), async () => { await post("azure", "signin", { tenant: val("azure", "tenant") }); await load(); }, "primary",
+            need(signingIn(s), () => (s.cli === false ? "Azure CLI is not installed" : ""))),
             signOut("azure", s))),
       ];
     } },
@@ -137,8 +159,11 @@ const CONNECTORS = [
         h("div", { class: "conn-fields" },
           field("aws", "profile", "Profile", { list: (s.profiles || []).map((p) => [p, p]), value: s.profile }),
           field("aws", "region", "Region", { value: s.region, placeholder: "us-east-1" })),
-        actions(button("Save", async () => { await put("aws", { profile: val("aws", "profile"), region: val("aws", "region") }); await load(); }, "primary"),
-          button("SSO sign-in", async () => { await post("aws", "signin", { profile: val("aws", "profile") }); await load(); }))),
+        actions(button("Save", async () => { await put("aws", { profile: val("aws", "profile"), region: val("aws", "region") }); await load(); }, "primary",
+          need(signingIn(s), filled(["aws", "profile"]), changed([[["aws", "profile"], s.profile], [["aws", "region"], s.region]]),
+            () => (/^[a-z]{2}(-[a-z]+)+-\d$/.test(val("aws", "region")) || !val("aws", "region") ? "" : "Region looks like us-east-1"))),
+          button("SSO sign-in", async () => { await post("aws", "signin", { profile: val("aws", "profile") }); await load(); }, "secondary",
+            need(signingIn(s), () => (s.cli === false ? "AWS CLI is not installed" : ""), () => (val("aws", "profile") ? "" : "Choose a profile first"))))),
     ] },
   { id: "ado", name: "Azure DevOps", category: "cicd",
     about: "Pipelines, pull requests and approvals. Signs in through Azure: the Azure account must be a member of the organization.",
@@ -159,7 +184,8 @@ const CONNECTORS = [
               repository: val("ado", "repository"), target_branch: val("ado", "target_branch") });
             for (const k of Object.keys(drafts)) if (k.startsWith("f-ado-")) delete drafts[k];
             await load();
-          }, "primary"))),
+          }, "primary", need(filled(["ado", "organization"], ["ado", "project"], ["ado", "repository"]),
+            changed(["organization", "project", "repository", "target_branch"].map((k) => [["ado", k], k === "target_branch" ? v[k] || "" : v[k]])))))),
       ];
     } },
   { id: "jfrog", name: "JFrog", category: "artifacts",
@@ -178,7 +204,8 @@ const CONNECTORS = [
           await post("jfrog", "signin", { url: val("jfrog", "url"), token: $("f-jfrog-token")?.value || "" });
           delete drafts["f-jfrog-url"];
           await load();
-        }, "primary"), signOut("jfrog", s))),
+        }, "primary", need(() => (/^https:\/\/[A-Za-z0-9.-]+(:\d+)?\/?$/.test(val("jfrog", "url")) ? "" : "Enter the platform URL (https://…)"),
+          () => ($("f-jfrog-token")?.value ? "" : "Paste an admin token"))), signOut("jfrog", s))),
     ] },
 ];
 
@@ -268,6 +295,7 @@ function panel() {
   $("flyout-title").replaceChildren(logo(c.id), h("span", {}, c.name));
   $("flyout-status").replaceChildren(h("span", { class: `blade-state ${dot}` }, text));
   $("flyout-body").replaceChildren(h("p", { class: "conn-about" }, c.about), ...c.panel(s).filter(Boolean));
+  gate();
 }
 
 function openPanel(id) {
