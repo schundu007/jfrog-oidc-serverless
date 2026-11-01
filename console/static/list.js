@@ -48,9 +48,8 @@ function row(w) {
     h("td", {}, h("span", { class: `blade-state ${w.cfg ? "ok" : ""}`, text: w.cfg ? "Onboarded" : "Not onboarded" })),
     h("td", {}, h("a", { href: `${BASE}/${w.cloud}?type=${encodeURIComponent(w.kind)}`, text: kindLabel(w.kind) })),
     h("td", { text: w.region || "—" }),
-    h("td", {}, out(w.links?.resource_group, w.resource_group || "—")),
-    h("td", {}, out(w.links?.scope, w.project || w.subscription_name || w.subscription || "—")),
-    h("td", {}, h("a", { class: "blade-cloud", href: `${BASE}/${w.cloud}` }, iconEl(w.cloud, ""), NAMES[w.cloud])));
+    w.cloud === "azure" ? h("td", {}, out(w.links?.resource_group, w.resource_group || "—")) : null,
+    h("td", {}, out(w.links?.scope, w.project || w.subscription_name || w.subscription || "—")));
   tr.addEventListener("click", (e) => { if (!e.target.closest("a")) location.assign(open); });
   return tr;
 }
@@ -70,7 +69,15 @@ function render() {
 
 function rows() {
   const shown = ls.rows.filter(matches);
-  fill($("wl-rows"), shown.map(row));
+  // One table per cloud, each with its own columns; a cloud filtered out has no table.
+  const HEADS = { azure: ["Name", "Status", "Type", "Location", "Resource group", "Subscription"],
+                  gcp: ["Name", "Status", "Type", "Location", "Project"] };
+  fill($("wl-tables"), LIVE.filter((c) => (!F.cloud || c === F.cloud) && shown.some((w) => w.cloud === c)).map((c) =>
+    h("section", { class: "ov-group wl-cloud" },
+      h("h2", { class: "ov-group-title" }, iconEl(c, "blade-ico"), h("a", { href: `${BASE}/${c}`, text: NAMES[c] })),
+      h("div", { class: "table-scroll" }, h("table", { class: "blade-table wl-table" },
+        h("thead", {}, h("tr", {}, HEADS[c].map((t) => h("th", { scope: "col", text: t })))),
+        h("tbody", {}, shown.filter((w) => w.cloud === c).map(row)))))));
   const busy = ls.loading > 0;
   $("wl-count").textContent = busy && !ls.rows.length ? "" : `Showing ${shown.length} of ${ls.rows.length} records.`;
   $("wl-empty").hidden = busy || shown.length > 0;

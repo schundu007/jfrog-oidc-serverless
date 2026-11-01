@@ -1102,3 +1102,5 @@ html body .home-table tr.cloud-cols th:not(#_) { text-align: left; font-weight: 
 html body .home-table tr.cloud-cols th.sel:not(#_) { width: 1%; }
 html body .home-table tr.home-group:has(+ tr.cloud-cols) th:not(#_) { border-bottom: 0; padding-bottom: 2px; }
 html body .home-table tr.cloud-cols:hover { background: none; box-shadow: none; }
+.wl-cloud + .wl-cloud { margin-top: 28px; }
+.wl-cloud .ov-group-title a { color: inherit; text-decoration: none; } .wl-cloud .ov-group-title a:hover { text-decoration: underline; }
