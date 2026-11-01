@@ -65,7 +65,7 @@ function viewProvenance(p) {
   const out = [h("h3", {}, "Image source", help("The build-deploy pipeline pulls from JFrog with its OIDC token and pushes to this stack's registry; the image tag is the commit, which ties it to the run."))];
   out.push(kv(cols));
   const rec = p.jfrog_record || {};
-  const row = [["Built by", b.by], ["Finished", b.finished ? stamp(b.finished) : null], ["Same commit as image", b.commit ? (b.matches_image ? "yes" : "no") : null],
+  const row = [["Built by", b.by], ["Finished", b.finished ? stamp(b.finished) : null], ["Same commit as image", p.commit ? (b.matches_image ? "yes" : "no") : null],
     ["JFrog last download", rec.last_downloaded_by]];
   out.push(run ? kv(row, ["Build run", run]) : kv(row));
   return out;
