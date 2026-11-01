@@ -149,11 +149,19 @@ def select(cloud=None, only=None) -> list:
 
 
 def run_all(runner: Runner, action: str, picked: list, parallel: int = 1) -> dict:
-    # A workload keeps its state in its foundation's store: read the foundations first.
+    # A workload keeps its state in its foundation's store: read the foundations first. One that is
+    # gone (deleted outside the console) comes back first on up, with its cloud's JFrog trust, which
+    # names the foundation's service connections; on down its workloads went with its store.
     for f in sorted({stacks.depends_on(s, runner.root) for s in picked} - {None}):
-        res = runner.read(f)
-        if not res.get("deployed"):
-            raise CostError(f"{f} is not deployed: nothing of {', '.join(picked)} can be read or changed")
+        if runner.read(f).get("deployed"):
+            continue
+        if action != "up":
+            runner.say(f, "not deployed: its workloads' state store is gone with it")
+            continue
+        runner.say(f, runner.deploy(f))
+        for trust in (s["id"] for s in stacks.CATALOGUE if s.get("after") == f):
+            runner.say(trust, runner.deploy(trust))
+        runner.read(f)
 
     def one(sid):
         try:
@@ -190,7 +198,8 @@ def main(argv=None) -> int:
     a = delivery["ado"]
     ado = Ado(Shell(mode="live", log=lambda line: None), a["organization"], a["project"],
               branch=a.get("target_branch") or "main", repo=a.get("repository") or "")
-    runner = Runner(Jobs(env_name=env, ado=ado), ado, env)
+    from kcp_console.jfrog import OperatorToken   # the JFrog trust stacks' token, as the portal gets it
+    runner = Runner(Jobs(env_name=env, ado=ado, token_source=OperatorToken().get), ado, env)
     picked = select(args.cloud, args.only)
     try:
         results = run_all(runner, args.action, picked, args.parallel)

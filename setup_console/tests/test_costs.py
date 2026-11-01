@@ -8,15 +8,19 @@ from setup_console import costs, stacks
 
 class FakeJobs:
     """Plans return a sha; applies and reads succeed. Records every call with the inputs seen then."""
-    def __init__(self, state_root, env="test", gone=()):
+    def __init__(self, state_root, env="test", gone=(), down=()):
         self.calls, self.state_root, self.env, self.gone, self.n = [], state_root, env, set(gone), 0
+        self.down = set(down)
 
     def start(self, sid, action, approval=None):
         self.n += 1
         inputs = stacks.read_inputs(sid, self.env, self.state_root)
         self.calls.append((sid, action, approval, inputs))
         if action == "status":
-            res = {"deployed": True}
+            res = {"deployed": sid not in self.down}
+        elif action == "apply":
+            self.down.discard(sid)
+            res = {"applied": True}
         elif action == "plan-destroy" and sid in self.gone:
             res = {"already_deleted": True}
         elif action.startswith("plan-"):
@@ -77,6 +81,19 @@ class CostsTest(unittest.TestCase):
         self.assertEqual(apply[2], {"plan_sha256": f"{jobs.calls.index(plan) + 1:064x}", "typed_confirmation": "aks-cluster"})
         self.assertFalse(any(c[:2] == ("gke-cluster", "apply") for c in jobs.calls))
         self.assertEqual([c[0] for c in jobs.calls if c[1] == "status"], ["azure-foundation", "gcp-foundation"])
+
+    def test_up_brings_back_a_foundation_deleted_outside_with_its_jfrog_trust_first(self):
+        self.save("gke-cluster", {"node_count": 1})
+        jobs = FakeJobs(self.tmp, down={"gcp-foundation"})
+        costs.run_all(self.runner(jobs, FakeAdo([])), "up", ["gke-cluster"])
+        order = [c[0] for c in jobs.calls if c[1] == "apply"]
+        self.assertEqual(order, ["gcp-foundation", "gcp-jfrog-trust", "gke-cluster"])
+
+    def test_down_goes_on_when_a_foundation_is_gone(self):
+        jobs = FakeJobs(self.tmp, down={"azure-foundation"}, gone={"aks-cluster"})
+        res = costs.run_all(self.runner(jobs, FakeAdo([])), "down", ["aks-cluster"])
+        self.assertEqual(res, {"aks-cluster": "already deleted"})
+        self.assertFalse(any(c[1] == "plan-apply" for c in jobs.calls))
 
     def test_up_bootstraps_a_workload_whose_registry_is_new(self):
         sid = "azure-container-app"
