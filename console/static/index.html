@@ -83,16 +83,24 @@
 
   <!-- Workload (/<cloud>/w/<name>): Runs · Configuration · Simulator -->
   <template id="tpl-workload">
-    <header class="page-header">
-      <div class="title-row"><h1 id="wl-title"></h1><span id="wl-pill"></span></div>
-      <p id="wl-facts" class="facts"></p>
-      <div class="actions" id="wl-actions">
-        <button type="button" id="wl-run" class="cmd primary-cmd" data-lock><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4l10 6-10 6z"/></svg>Run pipeline</button>
-        <button type="button" id="cfg-preflight" class="cmd secondary" data-lock><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5l4 4 8-9"/></svg>Preflight</button>
-        <span id="wl-menu"></span>
-        <span id="cfg-status" class="page-status small" role="status" aria-live="polite"></span>
-      </div>
+    <header class="home-title wl-title">
+      <span class="home-logo wl-logo" id="wl-logo" aria-hidden="true"></span>
+      <span><h1 id="wl-title"></h1><span class="blade-sub" id="wl-sub"></span></span>
     </header>
+    <div class="blade-cmds" id="wl-actions" role="toolbar" aria-label="Workload">
+      <button type="button" id="wl-run" class="blade-cmd" data-lock><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4l10 6-10 6z"/></svg>Run pipeline</button>
+      <button type="button" id="cfg-preflight" class="blade-cmd" data-lock><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5l4 4 8-9"/></svg>Preflight</button>
+      <button type="button" id="wl-refresh" class="blade-cmd"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 4v3.5h-3.5"/></svg>Refresh</button>
+      <span id="wl-menu"></span>
+      <span id="cfg-status" class="page-status small" role="status" aria-live="polite"></span>
+    </div>
+    <section class="ess" aria-labelledby="wl-ess-h">
+      <button type="button" class="ess-fold" id="wl-ess-h" aria-expanded="true" aria-controls="wl-ess-body">Essentials</button>
+      <div class="ess-body" id="wl-ess-body">
+        <dl class="ess-col" id="wl-ess-left"></dl>
+        <dl class="ess-col" id="wl-ess-right"></dl>
+      </div>
+    </section>
     <div id="approval-banner" class="approval" role="status" hidden></div>
     <nav class="tabs" role="tablist" aria-label="Workload">
       <a role="tab" id="tab-runs" data-tab="runs" aria-controls="panel-runs">Runs <span id="runs-count" class="count-badge"></span></a>

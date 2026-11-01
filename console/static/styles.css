@@ -1043,3 +1043,26 @@ tbody tr, .ov-tile, .tile, .nav-item, a, button, .blade-opt, .chip, .kind-folder
 .sidenav .nav-block > .nav-item[aria-current="page"] > svg:not(.mark) { stroke: currentColor; }
 .sidenav .nav-block > .nav-item[aria-current="page"] svg.mark { filter: none; }
 .page-top[hidden] { display: none; }
+
+/* Workload page (workload.js) as an Azure resource page: flat property sections, thin rules, no boxes. */
+.wl-logo svg { width: 32px; height: 32px; }
+#panel-config > .toolbar { padding: 0; margin: 0 0 var(--s-3); }
+#cfg-mount .rail { gap: 28px; }
+#cfg-mount .rail-step { background: none; border: 0; border-radius: 0; box-shadow: none; }
+#cfg-mount .rail-step > h2 { padding: 0 0 8px; background: none; border-radius: 0; border-bottom: 1px solid var(--border);
+  font-size: 16px; font-weight: 600; gap: 10px; }
+#cfg-mount .step-n { width: 20px; height: 20px; font-size: 11px; }
+#cfg-mount .step-body { padding: 16px 0 0; }
+#cfg-mount .field > span { font-size: 13px; font-weight: 600; color: var(--fg-2, var(--fg)); }
+#cfg-mount input, #cfg-mount select { font-size: 14px; }
+.home-logo.wl-logo svg { fill: currentColor; stroke: none; color: var(--fg-2); }
+#wl-menu .menu-btn, #wl-menu > * > button, #wl-menu > button { border: 1px solid transparent; background: none; box-shadow: none; }
+#wl-menu button:hover { background: var(--surface-2); }
+#panel-config > .toolbar, #panel-runs > .toolbar { margin-bottom: 18px; }
+#panel-config > .toolbar .cmd, #panel-runs > .toolbar .cmd { border: 1px solid transparent; background: none; box-shadow: none;
+  font-weight: 400; font-size: 14px; padding: 6px 10px; color: var(--fg); }
+#panel-config > .toolbar .cmd:hover:not(:disabled), #panel-runs > .toolbar .cmd:hover:not(:disabled) { background: var(--surface-2); }
+#panel-config > .toolbar .cmd svg, #panel-runs > .toolbar .cmd svg { stroke: var(--accent); }
+#runs-refresh { display: none; }
+#runs-empty { border: 0; background: none; padding: 8px 0; }
+#runs-empty h2 { font-size: 14px; font-weight: 400; color: var(--fg-3); }

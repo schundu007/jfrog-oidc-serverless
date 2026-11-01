@@ -1,33 +1,54 @@
-// Workload (/<cloud>/w/<name>): header with the last run's status, Run pipeline / Preflight / "⋯",
-// an approval banner, and the tabs Runs · Configuration · Simulator (?tab=runs|config|sim).
+// Workload (/<cloud>/w/<name>), an Azure resource page: title, command bar (Run pipeline, Preflight,
+// Refresh, "⋯"), Essentials, an approval banner, and the tabs Runs · Configuration · Simulator (?tab=runs|config|sim).
 
-import { $, api, h, fill, CLOUD, ofCloud, href, statusIcon, statusPill, statusText, template, menu, armed, ago, dur, stamp,
+import { $, api, h, fill, CLOUD, ofCloud, href, statusIcon, statusText, template, menu, armed, ago, dur, stamp,
   runDuration, LIVE, closeFlyout, sectionOf, status as setStatus } from "./core.js";
 import { mountConfig, validateNow, runPreflight, currentConfig, isDirty, isBusy, identityOf, kindLabel, SCOPE_FIELDS,
   status as cfgStatus } from "./configure.js";
 import { mountSim, redrawSim } from "./sim.js";
 
 const TABS = ["runs", "config", "sim"];
-const ws = { name: null, schema: null, kind: null, runs: [], snaps: new Map(), poll: null, simMounted: false, tab: null };
+const ws = { cfg: null, name: null, schema: null, kind: null, runs: [], snaps: new Map(), poll: null, simMounted: false, tab: null };
 
 const runsNote = (text, kind) => setStatus($("runs-status"), text, kind);
 
 // ----------------------------------------------------------------- header
 
-// type · scope · identity
+// Essentials, as on an Azure resource page: where it lives on the left, how it reaches JFrog on the right.
+const CLOUD_NAME = { azure: "Azure", gcp: "Google Cloud", aws: "AWS", openshift: "Knative" };
+const pair = (label, value, extra) => [h("dt", { text: label }), h("dd", { title: typeof value === "string" ? value : null }, value || "—", extra || null)];
 function renderFacts(cfg) {
+  if (cfg) ws.cfg = cfg;
+  cfg = ws.cfg;
+  if (!cfg) return;
   const t = cfg.target?.[CLOUD] || {};
-  const scope = SCOPE_FIELDS[CLOUD].filter((k) => k !== "profile" && k !== "context" && k !== "subscription").map((k) => t[k]).filter(Boolean).join(" / ");
+  const d = cfg.target?.discovered && (!cfg.target.discovered.kind || cfg.target.discovered.kind === cfg.target.kind) ? cfg.target.discovered : {};
   const idn = identityOf(cfg);
-  fill($("wl-facts"),
-    h("span", { text: kindLabel(ws.schema, cfg.target.kind) }),
-    scope ? h("span", { class: "mono", text: scope }) : null,
-    idn.text ? h("span", { class: "mono", text: idn.text }) : h("span", { text: "identity not discovered" }));
+  const last = ws.runs[0];
+  const tone = !last ? "" : last.status === "succeeded" ? "ok" : LIVE.has(last.status) || last.status === "waiting_approval" ? "warn" : "fail";
+  const where = {
+    azure: [["Resource group", t.resource_group], ["Subscription", t.subscription], ["Location", d.location], ["Plan", [d.plan_tier, d.plan_sku].filter(Boolean).join(" · ")]],
+    gcp: [["Project", t.project], ["Region", t.region || d.region]],
+    aws: [["Account", t.account], ["Region", t.region]],
+    openshift: [["Context", t.context], ["Namespace", t.namespace]],
+  }[CLOUD] || [];
+  const url = cfg.jfrog?.url || "";
+  fill($("wl-ess-left"),
+    ...pair("Status", h("span", { class: `blade-state ${tone}`, text: last ? `Last run ${statusText(last.status)}` : "No runs yet" })),
+    ...where.flatMap(([k, v]) => pair(k, v)),
+    ...pair("Workload type", kindLabel(ws.schema, cfg.target.kind)));
+  fill($("wl-ess-right"),
+    ...pair("Identity", idn.text || "Not discovered"),
+    ...(d.client_id && d.client_id !== idn.text ? pair("Client ID", d.client_id) : []),
+    ...pair("JFrog platform", /^https:\/\//.test(url) ? h("a", { href: url, target: "_blank", rel: "noopener", text: url.replace(/^https:\/\//, "") }) : url),
+    ...pair("Reader group", cfg.jfrog?.reader_group),
+    ...pair("Runs", last ? h("a", { href: "?tab=runs", text: `${ws.runs.length} · last ${ago(last.created)}` }) : "0"));
+  $("wl-sub").textContent = `${CLOUD_NAME[CLOUD] || CLOUD} · ${kindLabel(ws.schema, cfg.target.kind)}`;
+  $("wl-logo").innerHTML = window.consoleNav?.icon(window.consoleNav?.section(cfg.target.kind)?.icon || CLOUD) || "";  // constant SVG only
 }
 
 function renderHead() {
-  const last = ws.runs[0];
-  fill($("wl-pill"), last ? statusPill(last.status, `Last run ${statusText(last.status)}`) : null);
+  renderFacts();
   const waiting = ws.runs.filter((r) => r.status === "waiting_approval");
   const banner = $("approval-banner");
   banner.hidden = !waiting.length;
@@ -204,6 +225,7 @@ export async function mountWorkload(page, { name, schema }) {
     return;
   }
   ws.kind = config.target.kind;
+  ws.cfg = config;
   document.dispatchEvent(new CustomEvent("console:section", { detail: sectionOf(ws.kind) }));
   // Onboarded but not saved here: the form holds the config its git workspace applied; Save keeps a copy.
   if (source === "git") {
@@ -216,6 +238,12 @@ export async function mountWorkload(page, { name, schema }) {
   $("wl-run").addEventListener("click", runPipeline);
   $("runs-refresh").addEventListener("click", () => loadRuns().then(() => runsNote("", "")).catch((e) => runsNote(e.message, "error")));
   $("runs-clear").addEventListener("click", clearFinished);
+  $("wl-refresh").addEventListener("click", () => loadRuns().catch((e) => runsNote(e.message, "error")));
+  $("wl-ess-h").addEventListener("click", () => {
+    const open = $("wl-ess-h").getAttribute("aria-expanded") !== "true";
+    $("wl-ess-h").setAttribute("aria-expanded", String(open));
+    $("wl-ess-body").hidden = !open;
+  });
   await mountConfig($("cfg-mount"), { schema, mode: "edit", name, config, onChange: renderFacts });
   if (source === "git") cfgStatus("Read from git (onboarded). Save keeps a copy here.", "");
   setupTabs();
