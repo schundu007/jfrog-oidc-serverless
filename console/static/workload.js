@@ -16,7 +16,7 @@ const runsNote = (text, kind) => setStatus($("runs-status"), text, kind);
 
 // Essentials, as on an Azure resource page: where it lives on the left, how it reaches JFrog on the right.
 const CLOUD_NAME = { azure: "Azure", gcp: "Google Cloud", aws: "AWS", openshift: "Knative" };
-const pair = (label, value, extra) => [h("dt", { text: label }), h("dd", { title: typeof value === "string" ? value : null }, value || "—", extra || null)];
+const pair = (label, value, extra) => [h("div", { class: "ess-pair" }, h("dt", { text: label }), h("dd", { title: typeof value === "string" ? value : null }, value || "—", extra || null))];
 function renderFacts(cfg) {
   if (cfg) ws.cfg = cfg;
   cfg = ws.cfg;
