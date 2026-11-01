@@ -1,0 +1,122 @@
+{
+  "import": [
+    {
+      "for_each": "${var.adopt_jfrog_integration ? toset([var.jfrog_provider_name]) : toset([])}",
+      "id": "${each.value}",
+      "to": "module.jfrog_oidc.platform_oidc_configuration.gcp[0]"
+    }
+  ],
+  "locals": {
+    "dedicated_role_grants": "${merge({}, [for n, roles in var.dedicated_service_account_roles : { for r in roles : \"${n} ${r}\" => { config = n, role = r } } if contains(keys(var.dedicated_service_accounts), n)]...)}",
+    "dedicated_subjects": "${{ for n, sa in google_service_account.dedicated : n => sa.unique_id }}",
+    "runtime_workloads": "${{ for k, w in var.workloads : k => merge(w, { subject = lookup(local.dedicated_subjects, trimsuffix(k, \"-runtime\"), w.subject) }) }}"
+  },
+  "module": {
+    "jfrog_oidc": {
+      "gcp": {
+        "audience": "${var.jfrog_audience}",
+        "provider_name": "${var.jfrog_provider_name}"
+      },
+      "project_key": "${var.jfrog_project_key}",
+      "source": "../../modules/jfrog-oidc",
+      "workloads": "${local.runtime_workloads}"
+    }
+  },
+  "output": {
+    "dedicated_service_accounts": {
+      "value": "${{ for n, sa in google_service_account.dedicated : n => sa.email }}"
+    },
+    "jfrog_audience": {
+      "value": "${module.jfrog_oidc.gcp_audience}"
+    },
+    "jfrog_provider_name": {
+      "value": "${module.jfrog_oidc.gcp_provider_name}"
+    },
+    "mapping_names": {
+      "value": "${keys(local.runtime_workloads)}"
+    }
+  },
+  "provider": {
+    "google": {
+      "project": "${var.gcp_project_id}",
+      "region": "${var.gcp_region}"
+    },
+    "platform": {
+      "url": "${var.jfrog_url}"
+    }
+  },
+  "resource": {
+    "google_project_iam_member": {
+      "dedicated": {
+        "for_each": "${local.dedicated_role_grants}",
+        "member": "serviceAccount:${google_service_account.dedicated[each.value.config].email}",
+        "project": "${var.gcp_project_id}",
+        "role": "${each.value.role}"
+      }
+    },
+    "google_service_account": {
+      "dedicated": {
+        "account_id": "${each.value}",
+        "description": "Dedicated runtime identity for ${each.key}, created by the JFrog OIDC console",
+        "display_name": "JFrog OIDC: ${each.key}",
+        "for_each": "${var.dedicated_service_accounts}",
+        "project": "${var.gcp_project_id}"
+      }
+    }
+  },
+  "terraform": {
+    "required_providers": {
+      "google": {
+        "source": "hashicorp/google",
+        "version": ">= 6.13"
+      },
+      "platform": {
+        "source": "jfrog/platform",
+        "version": ">= 2.2.1"
+      }
+    },
+    "required_version": ">= 1.7"
+  },
+  "variable": {
+    "adopt_jfrog_integration": {
+      "default": false,
+      "type": "bool"
+    },
+    "dedicated_service_account_roles": {
+      "default": {},
+      "description": "<config> => project roles the new SA takes over from the default one",
+      "type": "map(list(string))"
+    },
+    "dedicated_service_accounts": {
+      "default": {},
+      "description": "Existing apps on a default account: <config> => new SA ID",
+      "type": "map(string)"
+    },
+    "gcp_project_id": {
+      "type": "string"
+    },
+    "gcp_region": {
+      "type": "string"
+    },
+    "jfrog_audience": {
+      "type": "string"
+    },
+    "jfrog_project_key": {
+      "default": null,
+      "type": "string"
+    },
+    "jfrog_provider_name": {
+      "type": "string"
+    },
+    "jfrog_url": {
+      "type": "string"
+    },
+    "name_prefix": {
+      "type": "string"
+    },
+    "workloads": {
+      "description": "Runtime mappings, one per target: <config>-runtime",
+      "type": "map(object({cloud = string, subject = string, username = optional(string), groups = list(string), expires_in = number, description = string}))"
+    }
+  }
+}
