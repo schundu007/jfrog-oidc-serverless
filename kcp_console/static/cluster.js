@@ -320,7 +320,8 @@ function proofTab(c) {
   return h("div", { class: "stack" },
     h("div", { class: "tab-bar" },
       h("button", { class: "primary", disabled: busy || !live[name]?.facts?.release, onclick: () => start("prove") }, "Run proof"),
-      run ? h("button", { class: "secondary", onclick: () => download(c, run) }, "Download evidence") : null),
+      run ? h("button", { class: "secondary", onclick: () => download(c, run) }, "Download evidence") : null,
+      proofSwitch(name)),
     a?.which === "prove" && (busy || !a.real || a.real.status === "refused") ? actionCard(name) : null,
     run ? [
       card("Prove", [h("span", { class: `badge ${proven(run) ? "ok" : "fail"}` }, proven(run) ? "OIDC proven" : "Not proven"),
@@ -335,6 +336,16 @@ function proofTab(c) {
       jfrogCard(run),
       EVENT_PULLS.map(([title, id]) => eventsCard(run, title, id)),
     ] : (a?.which === "prove" ? null : !runsOf[name] ? muted("Loading…") : h("div", { class: "empty slim" }, h("p", {}, "No proof yet"))));
+}
+
+// Every cluster's proof one click away: the same tab on each cluster, this one selected.
+function proofSwitch(name) {
+  const all = state.configs || [];
+  if (all.length < 2) return null;
+  return h("nav", { class: "proof-switch", "aria-label": "Proof on cluster" }, all.map((x) =>
+    link(go, url, clusterPath(x.name, "proof"),
+      h("span", { class: `seg${x.name === name ? " on" : ""}`, "aria-current": x.name === name ? "page" : null },
+        markOf(x.platform || "aks"), x.name))));
 }
 
 // The evidence as a Markdown file for the people who were not in the room.
