@@ -34,21 +34,20 @@ function logBox(job, open = true) {
 const RUNNING = { status: "Reading the stack's Terraform state…", "plan-apply": "Planning the deploy…",
   "plan-destroy": "Planning the destroy…", apply: "Applying the approved plan…" };
 
+// Status as on Home: a coloured dot and plain words (green deployed, amber needs you or running, grey idle).
+const dot = (tone, text) => h("span", { class: `blade-state ${tone}`, text });
 function stackStatus(s) {
-  if (s.missing?.length) return statusPill("notrun", "Inputs needed");
-  if (s.busy) return statusPill("running", "Running");
-  if (s.plan) return statusPill("waiting_approval", s.plan.action === "destroy" ? "Destroy planned" : "Deploy planned");
-  // Its state lives in the foundation: with the foundation missing, it cannot be deployed.
+  if (s.missing?.length) return dot("warn", "Inputs needed");
+  if (s.busy) return dot("warn", "Running");
+  if (s.plan) return dot("warn", s.plan.action === "destroy" ? "Destroy planned" : "Deploy planned");
   // Waiting on another stack (its foundation): say which.
-  if (s.needs?.length && !s.status?.deployed) return statusPill("waiting_approval", `Needs ${titleOf(s.needs[0])}`);
-  if (!s.status) return statusPill("notrun", "Checking…");
-  if (s.status.deployed) return statusPill("succeeded", "Deployed");
+  if (s.needs?.length && !s.status?.deployed) return dot("", `Needs ${titleOf(s.needs[0])}`);
+  if (!s.status) return dot("", "Checking…");
+  if (s.status.deployed) return dot("ok", "Deployed");
   // Deleted outside the console, validated with the cloud: the evidence is behind the row's "?".
-  if (s.status.deleted) {
-    return partlyDeleted(s) ? statusPill("waiting_approval", "Partly deleted") : statusPill("notrun", "Deleted");
-  }
+  if (s.status.deleted) return partlyDeleted(s) ? dot("warn", "Partly deleted") : dot("", "Deleted");
   // A status read that failed (e.g. no state bucket yet) also means nothing is deployed; the reason is behind the "?".
-  return statusPill("notrun", "Not deployed");
+  return lastFailure(s) ? dot("fail", "Not deployed") : dot("", "Not deployed");
 }
 
 // Readable names for the stacks' outputs; the Terraform name stays as the row's tooltip.
@@ -275,7 +274,7 @@ function warnings(s) {
 }
 const lastFailure = (s) => (s.failed && !s.busy && !(s.failed.action === "status" && s.needs?.length) ? s.failed : null);
 
-function row(s) {
+function row(s, section) {
   const blockedDestroy = s.dependents?.length ? `Destroy ${s.dependents.map(titleOf).join(", ")} first` : "";
   const plan = s.plan ? h("button", { type: "button", class: "primary", text: "Review plan" }) : null;
   if (plan) plan.onclick = () => { const p = flyout(`${s.group} · ${s.title}`); fill(p.body, planView(s, s.plan, p)); };
@@ -297,6 +296,10 @@ function row(s) {
     h("td", { title: s.dir }, h("div", { class: "stack-name" }, iconEl(STACK_ICON[s.id], "stack-icon"),
       h("b", { text: s.title }), s.about ? help(s.about) : null)),
     h("td", {}, h("div", { class: "stack-status" }, stackStatus(s), notes.length ? help(notes.join(" ")) : null)),
+    h("td", { text: section || s.kind }),
+    h("td", { class: "stack-id", text: s.id }),
+    h("td", { text: runsIn(s) }),
+    h("td", { text: shortWhen(checkedAt(s)) }),
     h("td", {}, h("div", { class: "setup-row-actions" },
       progress,
       plan,
@@ -365,7 +368,6 @@ function draw(withFilters = true) {
   byId = Object.fromEntries(data.stacks.map((s) => [s.id, s]));
   // The environment every stack here deploys to: it picks the saved inputs, the ADO environments
   // <stack>-<env> and the variable groups jfrog-oidc-<cloud>-<env>.
-  fill($("env"), `Environment: ${data.env}`, help(`Stacks deploy to the ${data.env} environment: saved inputs, ADO environments <stack>-${data.env} and variable groups jfrog-oidc-<cloud>-${data.env}.`));
   // Infrastructure (/setup): the cloud is the root, and under it Common (the CI/CD bootstrap, used by
   // both kinds), Serverless and Kubernetes, each its own table. JFrog OIDC is not infrastructure: it
   // has its own page per cloud (/setup/oidc-<cloud>), made only once that cloud's infrastructure exists.
@@ -380,31 +382,66 @@ function draw(withFilters = true) {
     && (!F.state || stateOf(s) === F.state)
     && (!q || [s.title, s.id, s.group, sectionOf(s), s.about].some((v) => String(v || "").toLowerCase().includes(q))));
   $("none").hidden = shown.length > 0;
-  const clouds = {};
-  for (const s of shown) ((clouds[s.group] ||= {})[sectionOf(s)] ||= []).push(s);
-  const done = (list) => list.filter((x) => x.status?.deployed).length;
-  // A thin meter of deployed / total: the count at a glance, no extra words.
-  const meter = (n, of) => {
-    const fillEl = h("span", { class: "meter-fill" });
-    fillEl.style.width = `${of ? Math.round((100 * n) / of) : 0}%`;   // CSSOM, allowed by the CSP
-    return h("span", { class: "meter", role: "img", "aria-label": `${n} of ${of} deployed`, title: `${n} of ${of} deployed` }, fillEl);
-  };
-  // Clouds stacked top to bottom: Azure first, then Google Cloud.
+  essentials(data, all);
+  $("count").textContent = `Showing ${shown.length} of ${all.length} records.`;
+  // One table, Azure portal style, one block per cloud (never mixed): Azure, then Google Cloud.
   const CLOUD_ORDER = ["Azure", "Google Cloud"];
   const rank = (g) => (CLOUD_ORDER.includes(g) ? CLOUD_ORDER.indexOf(g) : CLOUD_ORDER.length);
-  fill($("groups"), Object.entries(clouds).sort(([a], [b]) => rank(a) - rank(b)).map(([g, kinds]) => {
-    const all = Object.values(kinds).flat();
-    return h("section", { class: "cloud-root", "data-cloud": CLOUD_ID[g] || "" },
-      h("div", { class: "cloud-head" }, iconEl(CLOUD_ID[g], "cloud-badge"),
-        h("div", { class: "cloud-title" }, h("h3", { text: g }), h("span", { class: "cloud-sub", text: `${done(all)} of ${all.length} deployed` })),
-        meter(done(all), all.length)),
-      ...ORDER.filter((k) => kinds[k]).map((k) => h("div", { class: "kind-folder", "data-kind": k },
-        h("h4", { class: "kind-folder-title" }, h("span", { text: k }), h("span", { class: "kind-count", text: `${done(kinds[k])}/${kinds[k].length}` })),
-        h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, kinds[k].map(row)))))));
-  }));
+  const groups = [...new Set(shown.map((s) => s.group))].sort((x, y) => rank(x) - rank(y));
+  const cols = ["Name", "Status", "Type", "Stack", "Runs in", "Last checked", ""];
+  const head = (g, list) => h("tr", { class: "home-group" }, h("th", { scope: "colgroup", colspan: String(cols.length) },
+    h("span", { class: "home-group-name" }, iconEl(CLOUD_ID[g], "home-group-logo"), g,
+      h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }))));
+  fill($("groups"), shown.length ? h("div", { class: "table-wrap" }, h("table", { class: "blade-table home-table stack-table" },
+    h("thead", {}, h("tr", {}, cols.map((c) => h("th", { scope: "col", text: c })))),
+    groups.map((g) => {
+      const list = shown.filter((s) => s.group === g).sort((x, y) => ORDER.indexOf(sectionOf(x)) - ORDER.indexOf(sectionOf(y)));
+      return h("tbody", {}, head(g, list), list.map((s) => row(s, sectionOf(s))));
+    }))) : null);
+}
+
+// Where a stack runs: foundations and JFrog trust from this page; workload and cluster stacks as
+// their own stack-setup pipeline in ADO.
+const runsIn = (s) => (s.id.endsWith("-foundation") || s.kind === "JFrog OIDC" ? "This console" : "ADO pipeline");
+const checkedAt = (s) => (s.status?.checked ? new Date(s.status.checked * 1000) : null);
+const shortWhen = (d) => d ? d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+
+// Essentials: label : value in two columns, for the cloud on screen (or both).
+function essentials(data, all) {
+  const mine = all.filter((s) => !F.cloud || CLOUD_ID[s.group] === F.cloud);
+  const clouds = [...new Set(mine.map((s) => s.group))];
+  const one = clouds.length === 1 ? clouds[0] : null;
+  const deployed = mine.filter((s) => s.status?.deployed).length;
+  const attention = mine.filter((s) => stateOf(s) === "attention").length;
+  const busy = mine.filter((s) => s.busy || s.plan).length;
+  const last = mine.map(checkedAt).filter(Boolean).sort((x, y) => y - x)[0];
+  const found = mine.find((s) => s.id.endsWith("-foundation"));
+  const store = (() => {
+    const t = found?.status?.outputs?.azure_tfstate;
+    if (t && typeof t === "object") return `${t.storage_account} / ${t.container}`;
+    return found?.status?.deployed ? "Foundation state store" : "—";
+  })();
+  fill($("page-logo"), one ? iconEl(CLOUD_ID[one], "") : null);
+  if (!one) $("page-logo").innerHTML = OIDC ? (window.consoleNav?.icon("boot") || "") : '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>';
+  $("page-sub").textContent = `${one || "Azure and Google Cloud"} · ${OIDC ? "JFrog trust stacks" : "Test infrastructure"}`;
+  const pair = (label, value, helpText) => [h("dt", { text: label }), h("dd", {}, value, helpText ? help(helpText) : null)];
+  fill($("ess-left"),
+    pair("Cloud", one || clouds.join(", ") || "—"),
+    pair("Environment", data.env, `Stacks deploy to the ${data.env} environment: saved inputs, ADO environments <stack>-${data.env} and variable groups jfrog-oidc-<cloud>-${data.env}.`),
+    pair("Deployed", `${deployed} of ${mine.length}`));
+  fill($("ess-right"),
+    pair("Needs attention", String(attention)),
+    pair("In progress", String(busy)),
+    OIDC ? pair("Last checked", shortWhen(last)) : pair("State store", store),
+    OIDC ? null : pair("Last checked", shortWhen(last)));
 }
 
 $("refresh").onclick = () => load().catch(() => {});
+$("ess-h").onclick = () => {
+  const open = $("ess-h").getAttribute("aria-expanded") !== "true";
+  $("ess-h").setAttribute("aria-expanded", String(open));
+  $("ess-body").hidden = !open;
+};
 
 $("flyout-close").onclick = closeFlyout;
 $("auth-form").onsubmit = (e) => {

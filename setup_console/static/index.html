@@ -24,11 +24,20 @@
     </form>
   </div>
   <main>
-    <header class="page-header"><div class="title-row"><h1 id="page-title">Infrastructure</h1><span class="count-badge" id="env"></span></div></header>
+    <header class="home-title">
+      <span class="home-logo" id="page-logo" aria-hidden="true"></span>
+      <span><h1 id="page-title">Infrastructure</h1><span class="blade-sub" id="page-sub"></span></span>
+    </header>
     <div class="blade-cmds" role="toolbar" aria-label="Stacks">
       <button id="refresh" type="button" class="blade-cmd"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 4v3.5h-3.5"/></svg>Refresh</button>
+      <a class="blade-cmd" href="/runs?area=infrastructure"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h12M4 10h12M4 14h7"/></svg>Runs</a>
     </div>
+    <section class="ess" aria-labelledby="ess-h">
+      <button type="button" class="ess-fold" id="ess-h" aria-expanded="true" aria-controls="ess-body">Essentials</button>
+      <div class="ess-body" id="ess-body"><dl class="ess-col" id="ess-left"></dl><dl class="ess-col" id="ess-right"></dl></div>
+    </section>
     <div id="filters"></div>
+    <p id="count" class="blade-count"></p>
     <div id="groups"></div>
     <p id="none" class="blade-empty" hidden>No stacks match the filters</p>
   </main>

@@ -992,3 +992,53 @@ tbody tr, .ov-tile, .tile, .nav-item, a, button, .blade-opt, .chip, .kind-folder
 .sidenav .nav-item.nav-child.nav-grand { padding-left: 64px; padding-right: 10px; min-height: 32px; font-size: 13.5px; white-space: nowrap; }
 .sidenav .nav-item.nav-child.nav-grand > span { overflow: hidden; text-overflow: ellipsis; }
 .sidenav .nav-item.nav-child.nav-grand > svg { width: 16px; height: 16px; }
+
+
+/* Azure portal resource style, shared by Home and Infrastructure: title, Essentials, grouped table. */
+.home-title { display: flex; align-items: center; gap: 12px; margin-bottom: var(--s-2); }
+.home-title h1 { margin: 0; font-size: 24px; font-weight: 600; line-height: 1.2; }
+.home-title .blade-sub { color: var(--fg-3); font-size: 13px; }
+.home-logo svg { width: 30px; height: 30px; fill: none; stroke: var(--brand, #5ba908); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; display: block; }
+.ess { margin: var(--s-2) 0 var(--s-5); padding-bottom: var(--s-3); border-bottom: 1px solid var(--border); }
+.ess-fold { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 4px 0; font: inherit; font-size: 14px; color: var(--fg); cursor: pointer; }
+.ess-fold::before { content: ""; width: 7px; height: 7px; border-left: 1.5px solid currentColor; border-top: 1.5px solid currentColor; transform: translateY(2px) rotate(45deg); transition: transform 180ms ease; }
+.ess-fold[aria-expanded="false"]::before { transform: translateY(-2px) rotate(225deg); }
+.ess-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ess-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--s-6); margin-top: var(--s-2); }
+.ess-body[hidden] { display: none; }
+.ess-col { display: grid; grid-template-columns: 150px minmax(0, 1fr); margin: 0; font-size: 14px; }
+.ess-col dt, .ess-col dd { margin: 0; padding: 5px 0; }
+.ess-col dt { color: var(--fg-2, var(--fg)); }
+.ess-col dd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ess-col dd::before { content: ":"; margin-right: 10px; color: var(--fg-3); }
+.ess-col dd a { color: var(--accent); }
+.home-table td, .home-table th { white-space: nowrap; }
+.home-table .home-detail { max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
+.home-table .blade-name .dash-mark svg, .home-table .blade-cloud svg { width: 18px; height: 18px; display: block; }
+.home-table .blade-cloud { display: inline-flex; align-items: center; gap: 6px; }
+.home-table tbody tr.row-link { transition: background-color 160ms ease, box-shadow 160ms ease; }
+.home-table tbody tr.row-link:hover { background: #f3f8ec; box-shadow: inset 3px 0 0 var(--brand, #5ba908); }
+@media (max-width: 860px) { .ess-body { grid-template-columns: minmax(0, 1fr); } .ess-col { grid-template-columns: 120px minmax(0, 1fr); } }
+.home-table tr.home-group th { padding: 14px 10px 6px; text-align: left; border-bottom: 1px solid var(--border-strong); background: none; }
+.home-table tbody + tbody tr.home-group th { padding-top: 22px; }
+.home-group-name { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+.home-group-name small { color: var(--fg-3); font-weight: 400; font-size: 13px; }
+.home-group-logo svg { width: 18px; height: 18px; display: block; }
+.home-table tbody tr.home-group:hover { background: none; box-shadow: none; }
+.blade-cmds a.blade-cmd { text-decoration: none; font-size: 14px; padding: 6px 10px; }
+.home-table tbody tr.row-link { cursor: pointer; }
+.ess-col dt, .ess-col dd { line-height: 20px; }
+.ess-col dd .help { width: 14px; height: 14px; font-size: 9px; vertical-align: -1px; }
+.ess-col { align-content: start; }
+
+/* Serverless list: + Create opens the type tiles above the list; the table keeps one line per cell and
+   scrolls sideways on a narrow window instead of wrapping. */
+.ov-create.wl-create-panel { margin: var(--s-2) 0 var(--s-5); padding: var(--s-4) 0 var(--s-5); border-top: 0; border-bottom: 1px solid var(--border); }
+.ov-group-title { display: flex; align-items: center; gap: 8px; }
+.ov-group-title .blade-ico svg { width: 20px; height: 20px; display: block; }
+.table-scroll { overflow-x: auto; }
+.wl-table td, .wl-table th { white-space: nowrap; }
+/* Sidebar: a section's own page and a page inside it look the same, tinted with the green edge. */
+.sidenav .nav-block > .nav-item[aria-current="page"] { background: var(--side-on); color: var(--fg); font-weight: 700; }
+.sidenav .nav-block > .nav-item[aria-current="page"] > svg:not(.mark) { stroke: currentColor; }
+.sidenav .nav-block > .nav-item[aria-current="page"] svg.mark { filter: none; }

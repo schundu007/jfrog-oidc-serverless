@@ -111,7 +111,30 @@
 #groups .kind-folder td:last-child { padding-right: 0; }
 #env { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
 /* Stacked clouds: a readable width, and fair column shares (name, status, actions), not a page-wide gap. */
-#groups { max-width: 1040px; }
+#groups { max-width: none; }
 #groups td:first-child { width: 52%; }
 #groups td:nth-child(2) { width: 34%; }
 #groups td:last-child { width: 14%; }
+/* Infrastructure as one Azure-portal table (app.js). */
+#groups .stack-table td, #groups .stack-table thead th { white-space: nowrap; vertical-align: middle; }
+#groups .stack-table .stack-name { gap: 10px; }
+#groups .stack-table .stack-icon svg { width: 18px; height: 18px; display: block; }
+#groups .stack-table tbody tr:not(.home-group):hover { background: #f3f8ec; box-shadow: inset 3px 0 0 var(--brand, #5ba908); }
+#groups .stack-table td:last-child { text-align: right; }
+#groups .table-wrap { border: 0; background: none; border-radius: 0; overflow: visible; }
+#groups table.stack-table { table-layout: auto; }
+#groups .stack-table td:nth-child(2) { width: auto; }
+#groups .stack-table .stack-name { display: inline-flex; align-items: center; }
+/* Infrastructure table, Azure portal list: one font, even rows, aligned columns. */
+#groups table.stack-table { width: 100%; font-size: 14px; }
+#groups .stack-table td { padding: 0 12px; height: 44px; line-height: 20px; }
+#groups .stack-table thead th { padding: 10px 12px; font-size: 13px; font-weight: 600; }
+#groups .stack-table .home-group th { padding: 14px 12px 8px; }
+#groups .stack-table .stack-name { display: inline-flex; align-items: center; gap: 10px; }
+#groups .stack-table .stack-name b { font-weight: 600; }
+#groups .stack-table .stack-icon { width: 20px; height: 20px; }
+#groups .stack-table .stack-icon svg.ico { stroke: var(--cloud, var(--brand)); }
+#groups .stack-table .stack-status { gap: 0; font-size: 14px; }
+#groups .stack-table .blade-state { color: var(--fg); font-weight: 400; }
+#groups .stack-table .stack-id { color: var(--fg-2); font-size: 13px; }
+#groups .stack-table .help { width: 14px; height: 14px; font-size: 9px; vertical-align: 0; }
