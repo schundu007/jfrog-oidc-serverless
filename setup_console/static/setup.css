@@ -83,7 +83,7 @@
 /* Rows: even height, quiet hairlines. */
 #groups tbody td { padding-top: 11px; padding-bottom: 11px; border-bottom: 1px solid var(--border); }
 #groups tbody tr:last-child td { border-bottom: 0; }
-#groups .stack-name b { font-weight: 600; }
+#groups .stack-name b { font-weight: 400; }
 /* The "?" and "⋯" stay faint until the row is hovered or focused. */
 /* Status tone by the row's state. */
 #groups tr[data-state="ok"] .pill { color: var(--ok-fg); font-weight: 700; }
@@ -131,7 +131,7 @@
 #groups .stack-table thead th { padding: 10px 12px; font-size: 13px; font-weight: 600; }
 #groups .stack-table .home-group th { padding: 14px 12px 8px; }
 #groups .stack-table .stack-name { display: inline-flex; align-items: center; gap: 10px; }
-#groups .stack-table .stack-name b { font-weight: 600; }
+#groups .stack-table .stack-name b { font-weight: 400; color: var(--accent); }
 #groups .stack-table .stack-icon { width: 20px; height: 20px; }
 #groups .stack-table .stack-icon svg.ico { stroke: var(--cloud, var(--brand)); }
 #groups .stack-table .stack-status { gap: 0; font-size: 14px; }
