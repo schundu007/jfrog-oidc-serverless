@@ -583,3 +583,9 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
     - Both jobs ran to completion from build-deploy (runs 174, 175).
   - Not yet proven at runtime: Functions on Container Apps. Its key API (`az containerapp function keys list`, preview) fails on the platform with "Failed to get or create ephemeral container", so the function-key endpoint can't be called.
   - KCP: direct setup (DryRun, then the approved run) on `gke-jfrog-test` and `aks-jfrog-test`. Verify passed every link: service-account annotation, the provider trusts the cluster's issuer, the mapping to `kcp-pull-user`, the DaemonSet ready, 401 anonymously, a pull with no pull secret, and JFrog logged the download as `kcp-pull-user`.
+
+## Verify step (2026-11-01)
+
+- `console/steps/verify.py`: a read-only live check per workload kind. Health endpoint for the Cloud Run service and function, the Container App and all three Functions kinds; latest `jfrog_check` log for the worker pool; logs of the last execution for both jobs. Functions on Container Apps that have scaled to zero are woken with a plain GET before the key call. Tokens and keys stay in memory and are never logged, stored or returned.
+- Runner: `steps=["verify"]` runs it alone; a run summary carries `verify_only` and `verify`. UI: a Verify button on the workload page, a Verified row in its essentials, a Verify view on the run page, and a Verified column on the portal dashboard (Status still comes from the last onboarding run).
+- Live 2026-11-01: all 9 workloads verified (5 Azure, 4 GCP).

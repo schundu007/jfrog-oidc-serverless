@@ -96,7 +96,8 @@ class RunsApiTests(unittest.TestCase):
         self.assertEqual(snap["status"], "succeeded", json.dumps(snap["steps"], indent=1)[:3000])
         self.assertTrue(self.step(snap, "wire")["evidence"]["result"]["verified"])
         # Steps that aren't built yet are flagged so the UI can leave them out.
-        self.assertTrue(self.step(snap, "verify")["planned"])
+        self.assertTrue(self.step(snap, "report")["planned"])
+        self.assertEqual(self.step(snap, "verify")["status"], "skipped")
         self.assertFalse(self.step(snap, "wire")["planned"])
 
         st, body = self.req("GET", "/api/runs")

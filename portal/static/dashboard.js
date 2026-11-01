@@ -32,8 +32,10 @@ function rowOf(href, cells) {
 const VIEW = {
   serverless: {
     rows: () => data.items.filter((it) => it.kind === "workload"), empty: "No workloads onboarded yet",
-    cols: ["Name", "Status", "Type", "Last run"],
+    cols: ["Name", "Status", "Type", "Verified", "Last run"],
     row: (it) => rowOf(it.href, [nameCell(it.mark, it.name, it.href), stateCell(it.state), linkCell(it.type, it.typeHref),
+      it.verified ? h("td", {}, h("a", { href: it.verified.href }, h("span", { class: `blade-state ${DOT[it.verified.state[0]] || ""}`,
+        text: `${it.verified.state[1]} · ${it.verified.when}` }))) : h("td", { class: "muted", text: "Not verified" }),
       linkCell((it.detail || "").replace(/^last run /, "") || "—", it.detail ? `/runs?area=serverless&q=${encodeURIComponent(it.name)}` : null)]),
     status: (it) => (it.ok ? "ok" : "attention"), statuses: [["ok", "Working"], ["attention", "Needs attention"]],
   },
@@ -105,7 +107,7 @@ function essentials() {
   const pair = (label, value, href) => [h("div", { class: "ess-pair" }, h("dt", { text: label }), h("dd", {}, href ? h("a", { href, text: value }) : value))];
   const tab = (t) => `/?tab=${t}`;
   $("ess-left").replaceChildren(
-    ...pair("Workloads", `${wl.length} onboarded, ${wl.filter((it) => it.ok).length} working`, tab("serverless")),
+    ...pair("Workloads", `${wl.length} onboarded, ${wl.filter((it) => it.verified?.ok).length} verified working`, tab("serverless")),
     ...pair("Clusters", `${cl.length} set up, ${cl.filter((it) => it.ok).length} working`, tab("kubernetes")));
   $("ess-right").replaceChildren(
     ...pair("Runs", `${data.runs.length} kept, ${failed} failed`, "/runs"),

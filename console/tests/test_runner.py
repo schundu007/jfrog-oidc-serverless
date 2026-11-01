@@ -276,3 +276,36 @@ class MissingWorkloadTests(Base):
         self.assertIn("Infrastructure page", err)
         self.assertEqual(len(self.calls), 1)
         self.assertFalse(hasattr(self.mgr, "provisioner"))
+
+
+class VerifyRunTests(Base):
+    """A verify-only run proves the live workload (read-only) and is marked as such in the run list."""
+    from console.steps import verify as _v
+    IDT = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln"
+    cloud_fixtures = [
+        {"argv": _v.gcp_url_argv(cfg()), "stdout": "https://orders-abc.a.run.app\n"},
+        {"argv": _v.GCP_ID_TOKEN, "stdout": IDT},
+        {"http": "GET https://orders-abc.a.run.app/healthz/jfrog", "status": 200,
+         "body": json.dumps({"ok": True, "claims": {"email": "orders@x.iam.gserviceaccount.com"},
+                             "check": {"username": "gcp-cloudrun/orders", "expires_in": 3599}})},
+    ]
+
+    def test_verify_only_run(self):
+        run = self.mgr.start(cfg(), ["verify"])
+        snap = self.wait(run, "succeeded", "failed")
+        self.assertEqual(snap["status"], "succeeded", json.dumps(snap["steps"])[:2000])
+        ev = self.step(snap, "verify")["evidence"]["result"]
+        self.assertEqual(ev["jfrog_user"], "gcp-cloudrun/orders")
+        self.assertEqual(self.step(snap, "preflight")["status"], "skipped")
+        s = run.summary()
+        self.assertTrue(s["verify_only"])
+        self.assertEqual(s["verify"]["status"], "succeeded")
+        self.assertNotIn(self.IDT, json.dumps(snap) + "".join(json.dumps(e) for e in run.events))
+
+    def test_verify_fails_the_run_with_reason(self):
+        self.mgr.cloud_shell = lambda log: Shell(mode="replay", fixtures=[
+            {"argv": self._v.gcp_url_argv(cfg()), "rc": 1, "stderr": "Cannot find service [orders]"}], log=log)
+        run = self.mgr.start(cfg(), ["verify"])
+        snap = self.wait(run, "succeeded", "failed")
+        self.assertEqual(snap["status"], "failed")
+        self.assertIn("not verified", self.step(snap, "verify")["error"])

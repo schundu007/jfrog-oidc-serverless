@@ -85,21 +85,29 @@ export const when = (t) => { const d = new Date(t || ""); return Number.isNaN(d.
   { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" }); };
 const words = (s) => String(s || "").toLowerCase().replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
 
+const VERIFY = { succeeded: ["ok", "Working"], failed: ["bad", "Failed"], cancelled: ["bad", "Cancelled"] };
+
 // Serverless: workloads and their runs.
 async function serverless() {
   const [{ configs }, { runs }, schema] = await Promise.all([get("/serverless/api/configs"), get("/serverless/api/runs"),
     get("/serverless/api/schema")]);
   const label = (k) => schema.kinds?.[k]?.label || k;
   const cloudOf = (k) => String(k).split("_")[0];
-  const latest = new Map();
-  for (const r of runs) if (!latest.has(r.name)) latest.set(r.name, r);
+  // Status comes from the last onboarding run; Verified from the last Verify (runs come newest first).
+  const latest = new Map(), verified = new Map();
+  for (const r of runs) {
+    if (!r.verify_only && !latest.has(r.name)) latest.set(r.name, r);
+    if (r.verify && !verified.has(r.name)) verified.set(r.name, r);
+  }
   const items = configs.map((c) => {
-    const last = latest.get(c.name);
+    const last = latest.get(c.name), ver = verified.get(c.name);
     return { kind: "workload", cloud: cloudOf(c.kind), section: sectionOfKind(c.kind), name: c.name, type: label(c.kind),
       mark: markOfKind(c.kind), href: `/serverless/${cloudOf(c.kind)}/w/${encodeURIComponent(c.name)}`,
       typeHref: `/serverless/${cloudOf(c.kind)}?type=${encodeURIComponent(c.kind)}`,
       ok: last?.status === "succeeded", state: last ? runPill(last.status) : ["", "No runs"],
-      detail: last ? `last run ${when(last.created)}` : null };
+      detail: last ? `last run ${when(last.created)}` : null,
+      verified: ver ? { ok: ver.verify.status === "succeeded", state: VERIFY[ver.verify.status] || ["warn", "Checking"],
+        when: when(ver.verify.finished || ver.created), href: `/serverless/${cloudOf(c.kind)}/w/${encodeURIComponent(c.name)}/runs/${encodeURIComponent(ver.id)}` } : null };
   });
   // A run cut off before its workload was recorded has no name or kind, so no page to open.
   const runRows = runs.map((r) => {

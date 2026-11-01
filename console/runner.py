@@ -12,7 +12,8 @@ Gates:
 Nothing is applied without its approval, and a cancelled run applies nothing.
 
 Every event is redacted and appended to <root>/runs/<id>/events.jsonl. Verify
-and Report arrive in M5 and are skipped for now.
+is read-only (steps/verify.py) and runs on its own (steps=["verify"]) once the
+workload is onboarded; Report arrives later and is skipped for now.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ import uuid
 from pathlib import Path
 
 from . import deliver, model, redact
-from .steps import discover, preflight, tfgen
+from .steps import discover, preflight, tfgen, verify
 from .steps import terraform as tf
 from .steps import wire as wiremod
 
@@ -35,7 +36,7 @@ STEPS = ["preflight", "discover", "simulate", "publish", "plan", "apply", "wire"
 DEFAULT_STEPS = ["preflight", "discover", "simulate", "plan", "apply", "wire"]
 DELIVERY_STEPS = ["preflight", "discover", "simulate", "publish"]
 LOCAL_ONLY = {"plan", "apply", "wire"}
-LATER = {"verify", "report"}
+LATER = {"report"}
 TITLES = {"preflight": "Preflight", "discover": "Discover", "simulate": "Simulate", "publish": "Deliver", "plan": "Plan", "apply": "Apply",
           "wire": "Wire target", "verify": "Verify", "report": "Report"}
 MAX_RUNS_KEPT = 50
@@ -80,7 +81,7 @@ class Run:
                       for s in STEPS}
         for s in LATER:
             self.steps[s].update(status="skipped", planned=True,
-                                 note="arrives in M5 (live probes, ready report)")
+                                 note="arrives later (ready report)")
         for s, note in (hidden or {}).items():
             self.steps[s].update(status="skipped", planned=True, note=note)
         self.dir = root / "runs" / self.id
@@ -157,8 +158,14 @@ class Run:
 
     def summary(self) -> dict:
         with self.cond:
+            v = self.steps["verify"]
+            ran = [s for s in STEPS if self.steps[s]["status"] != "skipped"]
             return {"id": self.id, "name": self.name, "kind": model.get_path(self.cfg, "target.kind"),
-                    "status": self.status, "created": self.created, "current": self.current}
+                    "status": self.status, "created": self.created, "current": self.current,
+                    # A verify-only run proves the live workload; any other run onboards it.
+                    "verify_only": ran == ["verify"],
+                    "verify": None if v["status"] == "skipped" else
+                    {"status": v["status"], "finished": v["finished"], "error": v["error"]}}
 
 
 class RunManager:
@@ -430,6 +437,14 @@ class RunManager:
         res = deliver.publish(run.cfg, self._shell(run, ctx), self.repo_root, self.delivery, run.id, log=run.log)
         self._evidence(run, "publish", result=res)
 
+
+    def _step_verify(self, run, ctx):
+        res = verify.run(run.cfg, self._shell(run, ctx))
+        self._evidence(run, "verify", result=res)
+        if res["status"] == "skipped":
+            run.set_step("verify", status="skipped", note=res.get("reason"))
+        elif res["status"] != "pass":
+            raise RuntimeError(f"not verified: {res.get('reason')}")
 
     def _step_plan(self, run, ctx):
         rendered = tfgen.render(run.cfg, self.root, on_wait=run.log)

@@ -17,6 +17,9 @@ const runsNote = (text, kind) => setStatus($("runs-status"), text, kind);
 // Essentials, as on an Azure resource page: where it lives on the left, how it reaches JFrog on the right.
 const CLOUD_NAME = { azure: "Azure", gcp: "Google Cloud", aws: "AWS", openshift: "Knative" };
 const pair = (label, value, extra) => [h("div", { class: "ess-pair" }, h("dt", { text: label }), h("dd", { title: typeof value === "string" ? value : null }, value || "—", extra || null))];
+// Verify proves the live workload: its own identity exchanged for a JFrog token, read-only.
+const verifyTone = (s) => (s === "succeeded" ? "ok" : s === "failed" || s === "cancelled" ? "fail" : "warn");
+const verifyText = (s) => ({ succeeded: "Working", failed: "Failed", cancelled: "Cancelled" }[s] || "Checking");
 function renderFacts(cfg) {
   if (cfg) ws.cfg = cfg;
   cfg = ws.cfg;
@@ -24,7 +27,8 @@ function renderFacts(cfg) {
   const t = cfg.target?.[CLOUD] || {};
   const d = cfg.target?.discovered && (!cfg.target.discovered.kind || cfg.target.discovered.kind === cfg.target.kind) ? cfg.target.discovered : {};
   const idn = identityOf(cfg);
-  const last = ws.runs[0];
+  const last = ws.runs.find((r) => !r.verify_only) || null;
+  const ver = ws.runs.find((r) => r.verify);
   const tone = !last ? "" : last.status === "succeeded" ? "ok" : LIVE.has(last.status) || last.status === "waiting_approval" ? "warn" : "fail";
   const where = {
     azure: [["Resource group", t.resource_group], ["Subscription", t.subscription], ["Location", d.location], ["Plan", [d.plan_tier, d.plan_sku].filter(Boolean).join(" · ")]],
@@ -37,6 +41,8 @@ function renderFacts(cfg) {
     ...pair("Status", h("span", { class: `blade-state ${tone}`, text: last ? `Last run ${statusText(last.status)}` : "No runs yet" })),
     ...where.flatMap(([k, v]) => pair(k, v)));
   fill($("wl-ess-right"),
+    ...pair("Verified", ver ? h("a", { class: `blade-state ${verifyTone(ver.verify.status)}`, href: href.run(ws.name, ver.id),
+      text: `${verifyText(ver.verify.status)} · ${ago(ver.verify.finished || ver.created)}` }) : "Not verified yet"),
     ...pair("Identity", idn.text || "Not discovered"),
     ...(d.client_id && d.client_id !== idn.text ? pair("Client ID", d.client_id) : []),
     ...pair("JFrog platform", /^https:\/\//.test(url) ? h("a", { href: url, target: "_blank", rel: "noopener", text: url.replace(/^https:\/\//, "") }) : url),
@@ -195,6 +201,18 @@ async function runPipeline() {
   }
 }
 
+// Verify: one read-only step against the live workload; the run page shows what it proved.
+async function verifyNow() {
+  if (isBusy()) return;
+  cfgStatus("Verifying…", "busy");
+  try {
+    const res = await api("/api/runs", { method: "POST", body: { config: currentConfig(), steps: ["verify"] } });
+    location.assign(href.run(ws.name, res.run_id));
+  } catch (e) {
+    cfgStatus(e.message, "error");
+  }
+}
+
 async function removeWorkload() {
   try {
     await api(`/api/configs/${encodeURIComponent(ws.name)}`, { method: "DELETE" });
@@ -235,6 +253,7 @@ export async function mountWorkload(page, { name, schema }) {
     ]));
   }
   $("wl-run").addEventListener("click", runPipeline);
+  $("wl-verify").addEventListener("click", verifyNow);
   $("runs-refresh").addEventListener("click", () => loadRuns().then(() => runsNote("", "")).catch((e) => runsNote(e.message, "error")));
   $("runs-clear").addEventListener("click", clearFinished);
   $("wl-refresh").addEventListener("click", () => loadRuns().catch((e) => runsNote(e.message, "error")));

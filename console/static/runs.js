@@ -39,6 +39,20 @@ function viewPublish(step, ev) {
   ];
 }
 
+// Verify: who JFrog saw, from which identity, and how it was proved. Never a token or key (the server holds none).
+const VIA = { "health endpoint": "Health endpoint", "workload logs": "Workload logs", "last job run": "Last job run" };
+function viewVerify(step, ev) {
+  const r = ev.result;
+  if (!r) return [];
+  if (r.status === "skipped") return [h("p", { class: "muted", text: r.reason || "No live check for this kind." })];
+  return [
+    outcome(r.status === "pass" ? "JFrog token exchanged by the workload's own identity" : "Not verified", r.status === "pass"),
+    kv([["JFrog user", r.jfrog_user], ["Identity", r.identity], ["Token lifetime", r.token_lifetime], ["Artifact read", r.read]]),
+    kv([["Checked by", VIA[r.method] || r.method], ["Where", r.where], ["When", r.when ? stamp(r.when) : null],
+      ["Checked at", r.checked_at ? stamp(r.checked_at) : null]]),
+  ];
+}
+
 function viewPreflight(step, ev) {
   const r = ev.result;
   if (!r) return [];
@@ -317,8 +331,8 @@ function pickStep(snap) {
   return done.length ? done[done.length - 1].name : shownSteps(snap)[0]?.name;
 }
 
-// Steps that aren't built yet (planned) are left out rather than shown as skipped.
-const shownSteps = (snap) => snap.steps.filter((s) => !s.planned);
+// Steps that aren't built yet (planned) or that this run didn't ask for are left out rather than shown as skipped.
+const shownSteps = (snap) => snap.steps.filter((s) => !s.planned && !(s.status === "skipped" && s.note === "not requested in this run"));
 
 function renderHead() {
   const snap = rs.snap;
@@ -381,7 +395,7 @@ function renderDetail(step) {
   if (step.error) parts.push(h("p", { class: "error-box", text: step.error }));
   if (step.note) parts.push(h("p", { class: "muted small", text: step.note }));
   const view = { preflight: viewPreflight, discover: viewDiscover, simulate: viewSimulate, publish: viewPublish,
-    plan: viewPlan, apply: viewApply, wire: viewWire }[step.name];
+    plan: viewPlan, apply: viewApply, wire: viewWire, verify: viewVerify }[step.name];
   if (view) parts.push(...view(step, ev));
   if (parts.length === 1) parts.push(h("p", { class: "muted", text: step.status === "pending" ? "Not started yet." : "No evidence." }));
   fill($("run-detail"), parts);
