@@ -93,7 +93,7 @@ Destroy is the same, and also asks you to type the stack name.
 
 ## 2. Google Cloud foundation
 
-Row: Serverless → Google Cloud → **CI/CD bootstrap (Workload Identity Federation, GCS state backend)**. Deploy it first: every
+Row: Serverless → Google Cloud → **DevOps integrations (Workload Identity Federation, GCS state backend)**. Deploy it first: every
 Google Cloud workload stack keeps its Terraform state in the bucket it creates, and the
 pipelines sign in with the identities it creates.
 
@@ -128,7 +128,7 @@ Nothing in JFrog: the foundations are infrastructure only (§3.1 adds the JFrog 
 
 ## 3. Azure foundation
 
-Row: Serverless → Azure → **CI/CD bootstrap (Entra federated credentials, Blob state backend)**. Same role as the Google Cloud one,
+Row: Serverless → Azure → **DevOps integrations (Entra federated credentials, Blob state backend)**. Same role as the Google Cloud one,
 for Azure. It shares nothing with Google Cloud.
 
 Inputs used in the run:

@@ -42,7 +42,7 @@ STATE_ROOT = REPO_ROOT / ".console" / "setup"
 # Order is the order to deploy in; destroy in reverse.
 # about: what the stack creates, in plain words. next: what to do once it is deployed.
 CATALOGUE = (
-    {"id": "gcp-foundation", "kind": "Serverless", "group": "Google Cloud", "title": "CI/CD bootstrap",
+    {"id": "gcp-foundation", "kind": "Serverless", "group": "Google Cloud", "title": "DevOps integrations",
      "about": "Lets the Google Cloud pipelines sign in to Google Cloud with their OIDC token, with no "
               "stored keys: the workload identity provider, the pipeline service accounts, their ADO "
               "service connections and variable group, the image repository, and the bucket that holds "
@@ -66,7 +66,7 @@ CATALOGUE = (
               "HTTP endpoint) once deploy_worker_pool is on.",
      "next": "Run this stack's build-deploy pipeline to push the first image, then set worker_pool_image, "
              "turn on deploy_worker_pool (Inputs) and deploy again."},
-    {"id": "azure-foundation", "kind": "Serverless", "group": "Azure", "title": "CI/CD bootstrap",
+    {"id": "azure-foundation", "kind": "Serverless", "group": "Azure", "title": "DevOps integrations",
      "about": "Lets the Azure pipelines sign in to Azure with their OIDC token, with no stored "
               "secrets: the setup identity and its federated credentials, its ADO service connections "
               "and variable group, and the storage account that holds each Azure workload stack's "
