@@ -90,6 +90,27 @@ class AdoTests(unittest.TestCase):
         self.assertEqual(st["destructive"], ["google_cloud_run_v2_job.workload[0]", "google_storage_bucket.old"])
         self.assertEqual(len(st["sha256"]), 64)
 
+    def test_stream_shows_each_steps_new_output_once_without_commands(self):
+        recs = [{"type": "Task", "name": "terraform apply plan (OIDC)", "state": "inProgress", "log": {"id": 9},
+                 "startTime": "2026-10-31T21:00:00Z"},
+                {"type": "Task", "name": "skipped", "state": "completed", "result": "skipped", "log": {"id": 3}}]
+        first = ["2026-10-31T21:00:00.0Z ##[section]Starting: terraform apply plan (OIDC)",
+                 "2026-10-31T21:00:00.1Z [command]/usr/bin/bash pipelines/scripts/terraform-stack.sh",
+                 "2026-10-31T21:00:01.0Z Initializing the backend...",
+                 f"2026-10-31T21:00:01.1Z token={TOKEN}"]
+        routes = {("GET", "/builds/7/timeline"): (200, {"records": recs}),
+                  ("GET", "/builds/7/logs/9?startLine=5"): (200, {"value": ["2026-10-31T21:00:02.0Z Plan: 1 to add."]}),
+                  ("GET", "/builds/7/logs/9"): (200, {"value": first})}
+        c, _ = self.client(routes)
+        seen = {}
+        out = c.stream(7, seen)
+        self.assertEqual(out[:2], ["── terraform apply plan (OIDC)", "Initializing the backend..."])
+        self.assertFalse(any("[command]" in l or "bash" in l for l in out))
+        self.assertFalse(any(TOKEN in l for l in out))
+        recs[0]["state"] = "completed"
+        self.assertEqual(c.stream(7, seen), ["Plan: 1 to add."])
+        self.assertEqual(c.stream(7, seen), [])   # read to its end
+
     def test_an_unpermitted_environment_is_named(self):
         recs = json.loads(timeline(apply=("pending", None)))["records"] + [{"type": "Checkpoint.Authorization", "state": "inProgress"}]
         c, _ = self.client({("GET", "/builds/5/timeline"): (200, {"records": recs}),

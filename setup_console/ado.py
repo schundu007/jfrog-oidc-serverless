@@ -26,6 +26,15 @@ _CHANGE = re.compile(r"^\s*# (\S+) (will be created|will be destroyed|must be re
 _ACTION = {"will be created": "create", "will be destroyed": "delete", "must be replaced": "replace",
            "will be updated in-place": "update", "will be imported": "import"}
 _OUTPUT = re.compile(r"^([A-Za-z0-9_]+) = (.*)$")
+# Agent chatter around a script step: the command it ran and the script it generated (never shown).
+_NOISE = re.compile(r"^(\[command\]|=+ ?(Starting|Finishing)?:? ?Command Output|Generating script\.|"
+                    r"Script contents:|Formatted command:|========|"
+                    r"(Task|Description|Version|Author|Help) +: |\[Host\] |Setting AZURE_CONFIG_DIR|Setting active cloud)")
+# Agent housekeeping steps: nothing of the stack in them.
+_CHORES = re.compile(r"^(Initialize job|Checkout |Post-job: |Finalize Job|PublishPipelineArtifact|Download$|"
+                     r"DownloadPipelineArtifact|Publish|Report build status)")
+# Where Terraform's own output starts in a terraform step (the sign-in before it is not shown).
+_TF_START = re.compile(r"^(Initializing |Terraform |Error|╷|No changes|Plan:|Apply complete)")
 
 
 class AdoError(RuntimeError):
@@ -137,17 +146,61 @@ class Ado:
     def _timeline(self, run_id: int) -> list:
         return self._call("GET", f"/build/builds/{run_id}/timeline").get("records") or []
 
+    def _raw(self, run_id: int, log_id, start: int = 1) -> list:
+        """A step log's raw lines from line `start` (1-based) on."""
+        q = f"?startLine={start}" if start > 1 else ""
+        text = self._call("GET", f"/build/builds/{run_id}/logs/{log_id}{q}", text=True)
+        try:   # asked for JSON, ADO sends the lines as {"count": n, "value": [...]}
+            data = json.loads(text)
+            if isinstance(data, dict) and isinstance(data.get("value"), list):
+                return [str(l) for l in data["value"]]
+        except ValueError:
+            pass
+        return text.splitlines()
+
     def _log(self, run_id: int, rec) -> list:
         log_id = ((rec or {}).get("log") or {}).get("id")
         if not log_id:
             return []
-        text = self._call("GET", f"/build/builds/{run_id}/logs/{log_id}", text=True)
-        try:   # asked for JSON, ADO sends the lines as {"count": n, "value": [...]}
-            data = json.loads(text)
-            text = "\n".join(data["value"]) if isinstance(data, dict) and isinstance(data.get("value"), list) else text
-        except ValueError:
-            pass
-        return clean(text)
+        return clean("\n".join(self._raw(run_id, log_id)))
+
+    def stream(self, run_id: int, seen: dict) -> list:
+        """The run's step output written since the last call, each step under its name once.
+        `seen` (kept by the caller across calls: log id -> lines read, -1 once a step is read to its end)
+        makes every call return only what is new. Lines are redacted; commands and scripts are left out."""
+        steps = [r for r in self._timeline(run_id) if r.get("type") == "Task" and (r.get("log") or {}).get("id")
+                 and r.get("state") in ("inProgress", "completed") and r.get("result") != "skipped"
+                 and not _CHORES.match(r.get("name") or "")]
+        steps.sort(key=lambda r: (r.get("startTime") or "9", r.get("order") or 0))
+        out = []
+        for r in steps:
+            lid = str(r["log"]["id"])
+            n = seen.get(lid, 0)
+            if n < 0:
+                continue
+            try:
+                raw = self._raw(run_id, r["log"]["id"], n + 1)
+            except AdoError:
+                continue   # not uploaded yet: next time
+            shown = []
+            for l in clean("\n".join(raw)):   # a script step prints its script first: never shown
+                if l.startswith(("Script contents:", "Generating script.")):
+                    seen["sc:" + lid] = True
+                elif "Starting Command Output" in l:
+                    seen["sc:" + lid] = False
+                elif not seen.get("sc:" + lid) and not _NOISE.match(l):
+                    shown.append(l)
+            if (r.get("name") or "").startswith("terraform") and not seen.get("tf:" + lid):
+                at = next((i for i, l in enumerate(shown) if _TF_START.match(l)), None)
+                shown = [] if at is None else shown[at:]
+                seen["tf:" + lid] = at is not None
+            if n == 0 and any(l.strip() for l in shown):
+                out.append(f"── {r.get('name') or 'step'}")
+            for l in shown:   # blank lines: at most one in a row, none right under a step name
+                if l.strip() or (out and out[-1].strip() and not out[-1].startswith("── ")):
+                    out.append(redact.text(l))
+            seen[lid] = -1 if r.get("state") == "completed" else n + len(raw)
+        return out
 
     def warnings(self, run_id: int) -> list:
         return [i["message"] for r in self._timeline(run_id) for i in (r.get("issues") or []) if i.get("type") == "warning"]

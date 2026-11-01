@@ -151,9 +151,14 @@ class Provisioner:
         except AdoError as exc:
             raise ProvisionError(str(exc)) from None
         log(f"Building and rolling out {workload}: {name}, run {run} ({self.ado.run_url(run)}).")
-        started = time.monotonic()
+        started, seen = time.monotonic(), {}
         while True:
             b = self.ado.build(run)
+            try:
+                for line in self.ado.stream(run, seen):   # the build's own output, as it arrives
+                    log(line)
+            except AdoError:
+                pass
             if b["state"] == "completed":
                 break
             if time.monotonic() - started > BUILD_TIMEOUT:

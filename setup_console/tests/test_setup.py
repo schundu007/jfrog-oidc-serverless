@@ -320,6 +320,12 @@ class FakeAdo:
 
     def __init__(self, phases):
         self.phases, self.queued, self.answers = list(phases), [], []
+        self.output = []   # step output the run has written so far (stream returns what is new)
+
+    def stream(self, run, seen):
+        new = self.output[seen.get("n", 0):]
+        seen["n"] = len(self.output)
+        return new
 
     def pipeline(self, path):
         return 27, "Cloud Run job - Infrastructure"
@@ -383,6 +389,17 @@ class AdoJobTests(unittest.TestCase):
         self.assertEqual(self.ado.answers, [("ap-1", True)])
         row = [s for s in jobs.stacks() if s["id"] == "gcp-cloud-run"][0]
         self.assertEqual(row["status"]["outputs"], {"job_name": "artifact-reader"})
+
+    def test_the_runs_own_output_streams_into_the_log_once(self):
+        jobs = self.jobs([{"phase": "planning"}, PLANNED])
+        self.ado.output = ["── terraform apply plan (OIDC)", "Plan: 2 to add, 0 to change, 0 to destroy."]
+        j = wait(jobs, jobs.start("gcp-cloud-run", "plan-apply"))
+        self.assertEqual(j["log"].count("Plan: 2 to add, 0 to change, 0 to destroy."), 1, j["log"])
+        self.ado.output += ["── terraform apply (OIDC)", "Apply complete! Resources: 2 added, 0 changed, 0 destroyed."]
+        self.ado.phases = [{"phase": "applying"}, dict(PLANNED, phase="done", outputs={})]
+        done = wait(jobs, jobs.start("gcp-cloud-run", "apply", {"plan_sha256": "a" * 64}))
+        self.assertIn("Apply complete! Resources: 2 added, 0 changed, 0 destroyed.", done["log"])
+        self.assertNotIn("Plan: 2 to add, 0 to change, 0 to destroy.", done["log"])   # the plan's lines are not repeated
 
     def test_destroy_needs_the_typed_name_and_discard_rejects_the_run(self):
         jobs = self.jobs([dict(PLANNED, destructive=["google_service_account.workload"], summary={"delete": 1})])

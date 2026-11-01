@@ -306,15 +306,24 @@ class Jobs:
             job["next"] = next_step(action, msg, local_state=self._local_state(sid))
             self._finish(job, "failed", error=msg)
 
-    def _follow(self, job, run_id, until) -> dict:
-        """Poll the run until its phase is in `until`; say each new phase once."""
+    def _follow(self, job, run_id, until, seen=None) -> dict:
+        """Poll the run until its phase is in `until`; say each new phase once and stream the
+        pipeline steps' own output as it arrives (`seen` carries what was already shown)."""
         said, started = None, time.monotonic()
+        seen = {} if seen is None else seen
         words = {"planning": "Azure DevOps is planning…", "applying": "Azure DevOps is applying the approved plan…"}
         while True:
             st = self.ado.stack_run(run_id)
             if st["phase"] != said and st["phase"] in words:
                 self._say(job, words[st["phase"]])
             said = st["phase"]
+            try:
+                lines = self.ado.stream(run_id, seen)
+            except AdoError:
+                lines = []   # the log is a view: a failed read never stops the run
+            if lines:
+                with self._lock:
+                    _append(job, [redact.text(l) for l in lines])
             if st["phase"] in until or st["phase"] in ("failed", "declined", "authorizing"):
                 return st
             if time.monotonic() - started > RUN_TIMEOUT:
@@ -330,7 +339,7 @@ class Jobs:
             verb = "destroy" if plan["action"] == "destroy" else "deploy"
             self._say(job, f"Approving the {verb} plan of {name} in Azure DevOps (run {run}, plan {plan['sha256'][:12]}).")
             self.ado.answer(ap, True, f"Approved in the console: plan {plan['sha256'][:12]}")
-            st = self._follow(job, run, ("done",))
+            st = self._follow(job, run, ("done",), plan["_ado"].get("seen"))
             if st["phase"] != "done":
                 raise AdoError(st.get("error") or f"run {run} was {st['phase']}: {st['url']}")
             destroyed = plan["action"] == "destroy"
@@ -347,7 +356,8 @@ class Jobs:
         run = self.ado.queue(pid, params)
         self._say(job, f"Planning a {'destroy' if destroy else 'deploy'} of {name} in Azure DevOps: "
                        f"{pname}, run {run} ({self.ado.run_url(run)}).")
-        st = self._follow(job, run, ("waiting_approval", "done"))
+        seen = {}
+        st = self._follow(job, run, ("waiting_approval", "done"), seen)
         if st["phase"] == "done":
             self._say(job, "No changes: the stack already matches its inputs.")
             return {"action": "destroy" if destroy else "apply", "summary": {}, "changes": [], "run": st["url"]}
@@ -355,7 +365,7 @@ class Jobs:
             raise AdoError(st.get("error") or f"run {run} was {st['phase']}: {st['url']}")
         p = {"action": "destroy" if destroy else "apply", "sha256": st["sha256"], "summary": st["summary"],
              "changes": st["changes"], "destructive": st["destructive"], "confirmation_phrase": sid,
-             "job": job["id"], "_ado": {"run": run, "approval": st["approval"]}}
+             "job": job["id"], "_ado": {"run": run, "approval": st["approval"], "seen": seen}}
         with self._lock:
             self._plans[sid] = p
         self._say(job, f"Plan ready: {_summary_text(p['summary'])}. Nothing changes until you approve it.")

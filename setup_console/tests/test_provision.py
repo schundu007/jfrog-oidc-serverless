@@ -38,6 +38,9 @@ class FakeAdo:
         self.answers.append((approval, ok))
         self.runs[int(approval[3:])] = "approved" if ok else "rejected"
 
+    def stream(self, run, seen):
+        return []
+
     def build(self, run):
         return {"state": "completed", "result": "succeeded", "errors": [],
                 "warnings": [f"Cloud Run job artifact-reader does not exist yet: pushed {IMAGE}. In Setup, set job_image to it"]}
