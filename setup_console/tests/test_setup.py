@@ -463,6 +463,17 @@ class JobTests(unittest.TestCase):
         self.assertTrue([s for s in self.jobs.stacks() if s["id"] == "gcp-cloud-run"][0]["status"]["deployed"])
         self.assertEqual(self.minted, [])   # infrastructure: no JFrog token, even with a jfrog_url input
 
+    def test_a_plan_with_no_changes_leaves_nothing_to_approve(self):
+        first = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        self.assertTrue([s for s in self.jobs.stacks() if s["id"] == "gcp-cloud-run"][0]["plan"])
+        j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["no-op"]}}])
+        self.assertEqual(j["state"], "done", j)
+        self.assertTrue(j["result"]["no_changes"])
+        self.assertIn("▶ No changes: the stack already matches its inputs.", j["log"])
+        self.assertIsNone([s for s in self.jobs.stacks() if s["id"] == "gcp-cloud-run"][0]["plan"])
+        with self.assertRaises(JobError):
+            self.jobs.start("gcp-cloud-run", "apply", {"plan_sha256": first["result"]["sha256"]})
+
     def test_apply_logs_to_its_own_job(self):
         j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
         planned = len(j["log"])

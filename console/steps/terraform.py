@@ -122,6 +122,9 @@ class Terraform:
             if not isinstance(data, dict):
                 raise TerraformError("terraform show -json did not return JSON")
             out = summarise(data.get("resource_changes"))
+            # Outputs alone can change (a new output, a renamed one): that still needs an apply.
+            out["outputs_change"] = any(((oc or {}).get("actions") or ["no-op"]) != ["no-op"]
+                                        for oc in (data.get("output_changes") or {}).values())
             out["sha256"] = _sha256(self.ws / PLAN_FILE)
             out["workspace"] = self.ws.name
             out["confirmation_phrase"] = self.ws.name if out["destructive"] else None
