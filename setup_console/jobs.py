@@ -119,7 +119,53 @@ class Jobs:
         kept = self._read_kept(job_id)
         if not kept:
             raise JobError(404, "no such job")
-        return kept
+        return self._settle(kept)
+
+    def _settle(self, rec: dict) -> dict:
+        """A record kept as running that no live job owns: the console restarted while it ran.
+        A run in Azure DevOps went on without the console: its outcome is read there. A local one stopped."""
+        if rec.get("state") != "running":
+            return rec
+        with self._lock:
+            if rec.get("id") in self._jobs:
+                return rec
+        run = rec.get("ado_run")
+        if run and self.ado:
+            try:
+                st = self.ado.stack_run(int(run))
+            except (AdoError, ValueError, TypeError):
+                return rec
+            if st["phase"] == "waiting_approval" and rec.get("action") in ("plan-apply", "plan-destroy"):
+                # The plan waits on its approval in ADO: take it back, so Approve still works.
+                sid = rec["stack"]
+                p = {"action": "destroy" if rec["action"] == "plan-destroy" else "apply", "sha256": st["sha256"],
+                     "summary": st["summary"], "changes": st["changes"], "destructive": st["destructive"],
+                     "confirmation_phrase": sid, "job": rec["id"],
+                     "_ado": {"run": int(run), "approval": st["approval"], "seen": {}}}
+                with self._lock:
+                    self._plans.setdefault(sid, p)
+                rec.update(state="done", finished=time.time(), result=self._public_plan(p))
+                rec["log"] = list(rec.get("log") or []) + [f"▶ Plan ready: {_summary_text(p['summary'])}. Nothing changes until you approve it."]
+                rec["log_times"] = list(rec.get("log_times") or []) + [time.time()]
+                self._keep(rec)
+                return rec
+            if st["phase"] not in ("done", "declined", "failed"):
+                return rec   # still going in Azure DevOps: read again later
+            ok = st["phase"] == "done"
+            line = ("▶ " + ("Finished in Azure DevOps while the console was restarting: " if ok else "Azure DevOps: ")
+                    + (f"run {run} succeeded." if ok else (st.get("error") or f"run {run} was {st['phase']}.")))
+            rec.update(state="done" if ok else "failed", finished=time.time(),
+                       error=None if ok else redact.text(st.get("error") or f"run {run} was {st['phase']}"))
+            if ok and rec.get("action") == "apply":
+                rec["result"] = {"applied": True, "run": st.get("url")}
+                self._set_status(rec["stack"], {"deployed": True, "outputs": st.get("outputs") or {}})
+        else:
+            line = "▶ Stopped: the console restarted while this ran. Plan again."
+            rec.update(state="failed", finished=time.time(), error="the console restarted while this ran")
+        rec["log"] = list(rec.get("log") or []) + [line]
+        rec["log_times"] = list(rec.get("log_times") or []) + [time.time()]
+        self._keep(rec)
+        return rec
 
     # -- history: every deploy, destroy and apply, kept after it finishes -----------------------------
 
@@ -135,11 +181,12 @@ class Jobs:
             return None
 
     def _keep(self, job) -> None:
-        """A finished change (not an automatic state read) on disk, outside git, so Runs lists it after a
-        restart. The log is redacted again; Terraform outputs are not kept."""
+        """A change (not an automatic state read) on disk, outside git, so Runs lists it after a restart:
+        written when it starts, when its ADO run is known and when it finishes. The log is redacted again;
+        Terraform outputs are not kept."""
         if job["action"] == "status":
             return
-        rec = {k: job.get(k) for k in ("id", "stack", "action", "state", "started", "finished", "error", "next")}
+        rec = {k: job.get(k) for k in ("id", "stack", "action", "state", "started", "finished", "error", "next", "ado_run")}
         rec["error"] = redact.text(rec["error"]) if rec["error"] else None
         rec["log"] = [redact.text(x) for x in job.get("log", [])]
         rec["log_times"] = list(job.get("log_times", []))
@@ -168,6 +215,7 @@ class Jobs:
             except (OSError, ValueError):
                 continue
             if isinstance(rec, dict) and JOB_ID.fullmatch(str(rec.get("id", ""))):
+                rec = self._settle(rec)
                 out[rec["id"]] = {k: rec.get(k) for k in fields}
         with self._lock:
             for j in self._jobs.values():
@@ -256,6 +304,7 @@ class Jobs:
             job = {"id": secrets.token_hex(6), "stack": stack_id, "action": action, "state": "running",
                    "started": time.time(), "log": [], "log_times": [], "result": None, "error": None}
             self._jobs[job["id"]] = job
+        self._keep(job)
         threading.Thread(target=self._work, args=(job, approval), name=f"setup-{stack_id}", daemon=True).start()
         return self.get(job["id"])
 
@@ -438,6 +487,8 @@ class Jobs:
             with self._lock:
                 plan = self._plans.pop(sid)
             run, ap = plan["_ado"]["run"], plan["_ado"]["approval"]
+            job["ado_run"] = run
+            self._keep(job)
             verb = "destroy" if plan["action"] == "destroy" else "deploy"
             self._say(job, f"Approving the {verb} plan of {name} in Azure DevOps (run {run}, plan {plan['sha256'][:12]}).")
             self.ado.answer(ap, True, f"Approved in the console: plan {plan['sha256'][:12]}")
@@ -456,6 +507,8 @@ class Jobs:
                   "inputs": stacks.read_inputs(sid, self.env_name, self.state_root),
                   "state": stacks.foundation(stacks.backend_kind(sid, self.root), self.env_name, self.state_root)}
         run = self.ado.queue(pid, params)
+        job["ado_run"] = run
+        self._keep(job)
         self._say(job, f"Planning a {'destroy' if destroy else 'deploy'} of {name} in Azure DevOps: "
                        f"{pname}, run {run} ({self.ado.run_url(run)}).")
         seen = {}

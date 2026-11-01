@@ -424,6 +424,62 @@ class AdoJobTests(unittest.TestCase):
         self.assertIsNone(j["result"]["plan"] if "plan" in j["result"] else None)
         self.assertEqual([s["plan"] for s in jobs.stacks() if s["id"] == "gcp-cloud-run"], [None])
 
+    def _restarted(self, phases):
+        """A console that died mid-run (its poll never returns) and a fresh one on the same state."""
+        gate = threading.Event()
+        self.addCleanup(gate.set)
+        self.ado = FakeAdo(phases)
+        old = Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state,
+                   ado=self.ado, repo_root=self.repo, sleep=lambda s: gate.wait())
+        for f in ("gcp-foundation", "azure-foundation"):
+            old._set_status(f, {"deployed": True, "outputs": {}})
+        return old, Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state,
+                         ado=self.ado, repo_root=self.repo, sleep=lambda s: None)
+
+    def test_an_apply_survives_a_restart_and_is_read_from_ado(self):
+        old, _ = self._restarted([PLANNED])
+        wait(old, old.start("gcp-cloud-run", "plan-apply"))
+        self.ado.phases = [{"phase": "applying"}]
+        jid = old.start("gcp-cloud-run", "apply", {"plan_sha256": "a" * 64})["id"]
+        for _ in range(200):   # the apply has its ADO run on disk before the poll blocks
+            if (old.get(jid).get("log") or []) and self.ado.answers:
+                break
+            time.sleep(0.01)
+        new = Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state,
+                   ado=self.ado, repo_root=self.repo, sleep=lambda s: None)
+        self.assertEqual(new.get(jid)["state"], "running")            # still applying in ADO
+        self.ado.phases = [dict(PLANNED, phase="done", outputs={"job_name": "artifact-reader"})]
+        j = new.get(jid)
+        self.assertEqual(j["state"], "done", j)
+        self.assertIn(jid, [r["id"] for r in new.history() if r["state"] == "done"])
+        row = [s for s in new.stacks() if s["id"] == "gcp-cloud-run"][0]
+        self.assertTrue(row["status"]["deployed"])
+
+    def test_a_plan_waiting_on_approval_survives_a_restart(self):
+        old, new = self._restarted([{"phase": "planning"}])
+        jid = old.start("gcp-cloud-run", "plan-apply")["id"]
+        for _ in range(200):
+            if self.ado.queued and "ado_run" in json.loads((Path(self.root.state) / "test" / "jobs" / f"{jid}.json").read_text()):
+                break
+            time.sleep(0.01)
+        self.ado.phases = [PLANNED]
+        j = new.get(jid)
+        self.assertEqual((j["state"], j["result"]["sha256"]), ("done", "a" * 64), j)
+        self.ado.phases = [dict(PLANNED, phase="done", outputs={})]
+        done = wait(new, new.start("gcp-cloud-run", "apply", {"plan_sha256": "a" * 64}))
+        self.assertEqual(done["state"], "done", done)
+        self.assertEqual(self.ado.answers, [("ap-1", True)])
+
+    def test_a_local_run_cut_by_a_restart_reads_as_stopped(self):
+        jobs = self.jobs([PLANNED])
+        d = Path(self.root.state) / "test" / "jobs"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "0123456789ab.json").write_text(json.dumps({"id": "0123456789ab", "stack": "gcp-foundation", "action": "plan-apply",
+                                                         "state": "running", "started": 1, "log": [], "log_times": []}))
+        j = jobs.get("0123456789ab")
+        self.assertEqual(j["state"], "failed")
+        self.assertIn("restarted", j["error"])
+
     def test_stacks_without_a_pipeline_still_run_here(self):
         jobs = self.jobs([PLANNED])
         (stacks.stack_dir("azure-container-apps", self.root.dir) / ".fake_plan.json").write_text("[]")
