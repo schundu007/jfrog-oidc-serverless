@@ -17,7 +17,7 @@ FX = Path(__file__).parent / "fixtures"
 P, R = "demo-nonprod-1234", "us-central1"
 TOKEN = "test-admin-token-value-123"
 ENV = {"JFROG_URL": "https://acme.jfrog.io", "JFROG_OIDC_PROVIDER": "gcp-cloudrun", "JFROG_OIDC_AUDIENCE": "jfrog-gcp",
-       "JFROG_OIDC_SOURCE": "gcp"}
+       "JFROG_OIDC_SOURCE": "gcp", "JFROG_HEALTHCHECK_PATH": "generic-local/healthcheck/ping.txt"}
 
 
 def cfg():

@@ -117,10 +117,13 @@ class Wire(AwsWire, OpenShiftWire):
         return dict(sorted(env.items()))
 
     def _job_artifact(self) -> dict:
-        """A job (artifact-reader) reads one JFrog artifact. Its path is OIDC configuration, set here,
-        never by the infrastructure stack that created the job."""
+        """The JFrog artifact the workload reads: a job (artifact-reader) on every run, anything else in its
+        /healthz/jfrog self-test, so Verify proves a download and not only the exchange. The path is OIDC
+        configuration, set here, never by the infrastructure stack that created the workload."""
         path = model.get_path(self.cfg, "verify.artifact_path")
-        return {"JFROG_ARTIFACT_PATH": path} if self.kind in JOB_KINDS and path else {}
+        if not path:
+            return {}
+        return {"JFROG_ARTIFACT_PATH": path} if self.kind in JOB_KINDS else {"JFROG_HEALTHCHECK_PATH": path}
 
     # -- plan --------------------------------------------------------------------------
 

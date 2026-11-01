@@ -14,7 +14,7 @@ UAMI = f"{RG_ID}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-o
 
 GCP_OUT = {"jfrog_provider_name": "gcp-cloudrun", "jfrog_audience": "jfrog-gcp"}
 AZ_OUT = {"jfrog_provider_name": "azure-entra", "audience_uri": "api://dddddddd-0000-0000-0000-000000000001"}
-GCP_ENV = {"JFROG_OIDC_AUDIENCE": "jfrog-gcp", "JFROG_OIDC_PROVIDER": "gcp-cloudrun", "JFROG_OIDC_SOURCE": "gcp",
+GCP_ENV = {"JFROG_HEALTHCHECK_PATH": "generic-local/healthcheck/ping.txt", "JFROG_OIDC_AUDIENCE": "jfrog-gcp", "JFROG_OIDC_PROVIDER": "gcp-cloudrun", "JFROG_OIDC_SOURCE": "gcp",
            "JFROG_URL": "https://acme.jfrog.io"}
 
 
@@ -117,6 +117,13 @@ class GcpTests(unittest.TestCase):
         self.assertNotIn("JFROG_ARTIFACT_PATH", wire.Wire(gcp_cfg(), Shell(mode="replay"), GCP_OUT).desired_env())
         aca = wire.Wire(azure_cfg("azure_container_app_job", "nightly"), Shell(mode="replay"), AZ_OUT).desired_env()
         self.assertEqual(aca["JFROG_ARTIFACT_PATH"], "generic-local/healthcheck/ping.txt")
+
+    def test_long_running_workloads_get_the_healthcheck_path(self):
+        # Services, functions and worker pools read the same artifact in their self-test (Verify shows it).
+        env = wire.Wire(gcp_cfg(), Shell(mode="replay"), GCP_OUT).desired_env()
+        self.assertEqual(env["JFROG_HEALTHCHECK_PATH"], "generic-local/healthcheck/ping.txt")
+        job = wire.Wire(gcp_cfg("gcp_run_job", "nightly"), Shell(mode="replay"), GCP_OUT).desired_env()
+        self.assertNotIn("JFROG_HEALTHCHECK_PATH", job)
 
     def test_worker_pool_v2_shape_through_the_beta_group(self):
         # Worker pools: gcloud beta only; described in the v2 shape (template.containers, template.serviceAccount).

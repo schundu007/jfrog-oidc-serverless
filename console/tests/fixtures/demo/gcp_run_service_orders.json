@@ -178,7 +178,7 @@
       "us-central1",
       "--project",
       "demo-nonprod-1234",
-      "--update-env-vars=^@^JFROG_OIDC_AUDIENCE=jfrog-gcp@JFROG_OIDC_PROVIDER=gcp-cloudrun@JFROG_OIDC_SOURCE=gcp@JFROG_URL=https://acme.jfrog.io",
+      "--update-env-vars=^@^JFROG_HEALTHCHECK_PATH=generic-local/healthcheck/ping.txt@JFROG_OIDC_AUDIENCE=jfrog-gcp@JFROG_OIDC_PROVIDER=gcp-cloudrun@JFROG_OIDC_SOURCE=gcp@JFROG_URL=https://acme.jfrog.io",
       "--quiet"
     ],
     "rc": 0,
@@ -199,7 +199,7 @@
       "--format=json"
     ],
     "rc": 0,
-    "stdout": "{\"apiVersion\": \"serving.knative.dev/v1\", \"kind\": \"Service\", \"metadata\": {\"name\": \"orders\", \"labels\": {\"cloud.googleapis.com/location\": \"us-central1\"}}, \"spec\": {\"template\": {\"spec\": {\"containers\": [{\"image\": \"us-central1-docker.pkg.dev/demo-nonprod-1234/apps/orders:1.0\", \"env\": [{\"name\": \"JFROG_OIDC_AUDIENCE\", \"value\": \"jfrog-gcp\"}, {\"name\": \"JFROG_OIDC_PROVIDER\", \"value\": \"gcp-cloudrun\"}, {\"name\": \"JFROG_OIDC_SOURCE\", \"value\": \"gcp\"}, {\"name\": \"JFROG_URL\", \"value\": \"https://acme.jfrog.io\"}]}], \"serviceAccountName\": \"orders-runtime@demo-nonprod-1234.iam.gserviceaccount.com\"}}}, \"status\": {\"url\": \"https://orders-abc123-uc.a.run.app\"}}",
+    "stdout": "{\"apiVersion\": \"serving.knative.dev/v1\", \"kind\": \"Service\", \"metadata\": {\"name\": \"orders\", \"labels\": {\"cloud.googleapis.com/location\": \"us-central1\"}}, \"spec\": {\"template\": {\"spec\": {\"containers\": [{\"image\": \"us-central1-docker.pkg.dev/demo-nonprod-1234/apps/orders:1.0\", \"env\": [{\"name\": \"JFROG_OIDC_AUDIENCE\", \"value\": \"jfrog-gcp\"}, {\"name\": \"JFROG_OIDC_PROVIDER\", \"value\": \"gcp-cloudrun\"}, {\"name\": \"JFROG_OIDC_SOURCE\", \"value\": \"gcp\"}, {\"name\": \"JFROG_URL\", \"value\": \"https://acme.jfrog.io\"}, {\"name\": \"JFROG_HEALTHCHECK_PATH\", \"value\": \"generic-local/healthcheck/ping.txt\"}]}], \"serviceAccountName\": \"orders-runtime@demo-nonprod-1234.iam.gserviceaccount.com\"}}}, \"status\": {\"url\": \"https://orders-abc123-uc.a.run.app\"}}",
     "stderr": ""
   }
 ]

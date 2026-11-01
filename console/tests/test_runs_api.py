@@ -89,7 +89,7 @@ class RunsApiTests(unittest.TestCase):
         wire = self.step(snap, "wire")
         self.assertEqual(wire["status"], "needs_approval", json.dumps(snap["steps"], indent=1)[:3000])
         keys = {d["setting"] for d in wire["evidence"]["diff"]["diff"]}
-        self.assertEqual(keys, {"JFROG_URL", "JFROG_OIDC_PROVIDER", "JFROG_OIDC_AUDIENCE", "JFROG_OIDC_SOURCE"})
+        self.assertEqual(keys, {"JFROG_URL", "JFROG_OIDC_PROVIDER", "JFROG_OIDC_AUDIENCE", "JFROG_OIDC_SOURCE", "JFROG_HEALTHCHECK_PATH"})
         st, body = self.req("POST", f"/api/runs/{rid}/approve", {"step": "wire", "diff_sha256": wire["approval"]["diff_sha256"]})
         self.assertEqual(st, 200, body)
         snap = self.wait(rid, "succeeded", "failed")
