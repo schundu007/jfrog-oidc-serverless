@@ -615,3 +615,4 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
 
 - `python -m portal --demo`: both sections on recorded fixtures, Setup writes refused, no cloud logins; `--public-host` adds a TLS proxy's hostname to every console's Host/Origin checks.
 - Fly.io app `jfrog-oidc-portal` (`Dockerfile`, `fly.toml`) at app.oidc.sudhakarchundu.org; Vercel project `jfrog-oidc` (`deploy/vercel/`) landing at oidc.sudhakarchundu.org.
+- DNS: `oidc.sudhakarchundu.org` and `app.oidc` records live in Vercel DNS; Cloudflare (which keeps the rest of the zone) delegates `oidc` with NS records to `ns1/ns2.vercel-dns.com`.
