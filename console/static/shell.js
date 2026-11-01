@@ -16,6 +16,8 @@
   ICON.serverless = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2.5 5 13.5h6l-1 8 8-11h-6z"/></svg>';
   ICON.k8s = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8 20 6.6l2 8.6-5.5 6.9h-9L2 15.2l2-8.6z"/><circle cx="12" cy="12.5" r="2.4"/><path d="M12 6.5v3.6M12 14.9v3.6M6.6 9.9l3.2 1.5M14.2 13.6l3.2 1.5M17.4 9.9l-3.2 1.5M9.8 13.6l-3.2 1.5"/></svg>';
   const BOOT = ICON.boot;
+  // The sidebar's top items in their original colours (Azure portal style), not line drawings.
+  const NAV_ICON = {"home": "<svg class=\"mark nav-ico\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"#0078D4\" d=\"M12 2.2 1.6 11.1h3V21h5.6v-5.6h3.6V21h5.6v-9.9h3z\"/><path fill=\"#50E6FF\" d=\"M12 2.2 1.6 11.1h3L12 4.8l7.4 6.3h3z\"/></svg>", "infra": "<svg class=\"mark nav-ico\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"2.5\" y=\"3.5\" width=\"19\" height=\"7.5\" rx=\"1.6\" fill=\"#0078D4\"/><rect x=\"2.5\" y=\"13\" width=\"19\" height=\"7.5\" rx=\"1.6\" fill=\"#50A0E4\"/><circle cx=\"6.5\" cy=\"7.25\" r=\"1.2\" fill=\"#fff\"/><circle cx=\"6.5\" cy=\"16.75\" r=\"1.2\" fill=\"#fff\"/><path d=\"M10 7.25h8M10 16.75h8\" stroke=\"#fff\" stroke-width=\"1.4\" stroke-linecap=\"round\"/></svg>", "serverless": "<svg class=\"mark nav-ico\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"#FFB900\" d=\"M13.6 1.8 4.4 13.6h6.2l-1.4 8.6 9.6-12.4h-6.4z\"/><path fill=\"#F7D046\" d=\"M13.6 1.8 4.4 13.6h3.4L13.6 5z\"/></svg>", "k8s": "<svg class=\"mark nav-ico\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><polygon fill=\"#326CE5\" points=\"12.00,1.40 20.60,5.54 22.72,14.85 16.77,22.31 7.23,22.31 1.28,14.85 3.40,5.54\" stroke=\"#326CE5\" stroke-width=\"1.2\" stroke-linejoin=\"round\"/><g fill=\"none\" stroke=\"#fff\" stroke-width=\"1.5\" stroke-linecap=\"round\"><circle cx=\"12\" cy=\"12.4\" r=\"5\"/><path d=\"M12.00 10.20L12.00 5.40M13.72 11.03L17.47 8.04M14.14 12.89L18.82 13.96M12.95 14.38L15.04 18.71M11.05 14.38L8.96 18.71M9.86 12.89L5.18 13.96M10.28 11.03L6.53 8.04\"/></g><circle cx=\"12\" cy=\"12.4\" r=\"1.6\" fill=\"#fff\"/></svg>", "oidc": "<svg class=\"mark nav-ico\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"#40BE46\" d=\"M12 1.5 21.1 6.75v10.5L12 22.5l-9.1-5.25V6.75z\"/><path fill=\"#fff\" d=\"M12 7.2l4.2 2.4v4.8L12 16.8l-4.2-2.4V9.6z\"/></svg>", "runs": "<svg class=\"mark nav-ico\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"#0078D7\" d=\"M0 8.877 2.247 5.91l8.405-3.416V.022l7.37 5.393L2.966 8.338v8.225L0 15.707zm24-4.45v14.651l-5.753 4.9-9.303-3.057v3.056l-5.978-7.416 15.057 1.798V5.415z\"/></svg>"};
 
   // Every service the lists show: key → {key, label, cloud, cloudId, group, icon}. Azure first, then Google Cloud.
   const KINDS = [
@@ -57,13 +59,13 @@
       ["Infrastructure", "/runs?area=infrastructure", "infra", q("area", "infrastructure")]]]];
 
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const glyph = (k) => (k === "boot" ? BOOT : CLOUD_LOGO[k] || ICON[k] || "");
+  const glyph = (k) => (k === "boot" ? BOOT : CLOUD_LOGO[k] || NAV_ICON[k] || ICON[k] || "");
   const CHEV = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
   const OPEN_KEY = "console.nav.open";
   const opened = (() => { try { return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || "[]")); } catch { return new Set(); } })();
   const keep = () => { try { localStorage.setItem(OPEN_KEY, JSON.stringify([...opened])); } catch { /* per-viewer convenience only */ } };
   const block = ([key, label, href, icon, kids]) => {
-    const top = `<a class="nav-item" href="${esc(href)}" data-section data-nav="${key}">${glyph(icon)}<span>${esc(label)}</span></a>`;
+    const top = `<a class="nav-item" href="${esc(href)}" data-section data-nav="${key}">${NAV_ICON[key] || glyph(icon)}<span>${esc(label)}</span></a>`;
     if (!kids.length) return `<div class="nav-block" data-block="${key}">${top}</div>`;
     const item = ([l, h, ic, , lvl], i) =>
       `<a class="nav-item nav-child${lvl === 1 ? " nav-cloud-row" : lvl === 2 ? " nav-grand" : ""}" href="${esc(h)}" data-child="${key}:${i}">${glyph(ic)}<span>${esc(l)}</span></a>`;

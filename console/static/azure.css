@@ -43,3 +43,13 @@ html body .home-logo svg.mark { width: auto; height: 26px; margin-left: -8px; st
 html body .home-logo svg:not(.mark) { margin-left: -12px; }
 html body .blade-cmds > .blade-cmd:first-child { padding-left: 0; }
 html body :is(.blade-table, .table, .dash-table) :is(th, td):first-child:not(#_) { padding-left: 0; }
+
+/* Sidebar as a tree, Azure portal style: the expand arrow on the left, before the icon; rows without
+   children keep the same indent so every icon lines up. Level 0 icon at 30px, level 1 at 52px, level 2 at 74px. */
+html body .sidenav .nav-block > .nav-item:not(#_) { padding-left: 30px; padding-right: 12px; }
+html body .sidenav .nav-chev:not(#_) { left: 6px; right: auto; top: 5px; width: 22px; height: 32px; }
+html body .sidenav .cloudfold > .nav-cloud-row:not(#_) { padding-left: 52px; padding-right: 12px; }
+html body .sidenav .cloudfold-chev:not(#_) { left: 28px; right: auto; top: 4px; width: 22px; height: 28px; }
+html body .sidenav .nav-item.nav-child.nav-grand:not(#_) { padding-left: 74px; }
+html body .sidenav .nav-item > svg.nav-ico { width: 20px; height: 20px; flex: none; }
+html body .sidenav .nav-item[aria-current="page"] svg.nav-ico { filter: none; }
