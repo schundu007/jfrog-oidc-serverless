@@ -40,8 +40,10 @@
     azure_functions_aca: "Functions on ACA", azure_functions_premium: "Functions Premium", azure_functions_flex: "Functions Flex",
     gcp_run_job: "Cloud Run jobs", gcp_run_service: "Cloud Run services", gcp_run_function: "Cloud Run functions",
     gcp_run_worker_pool: "Worker pools" };
-  const SERVERLESS = KINDS.filter(([, , g]) => g === "Serverless").flatMap(([c, , , items]) =>
-    items.map(([k, , ic]) => [SHORT[k], `/serverless/${c}?type=${k}`, ic, (p, u) => u.get("type") === k || sel.kind === k]));
+  // Serverless opens by cloud, never mixed: Azure and its services, then Google Cloud and its services.
+  const SERVERLESS = KINDS.filter(([, , g]) => g === "Serverless").flatMap(([c, cloud, , items]) => [
+    [cloud, `/serverless/${c}`, c, (p, u) => !u.get("type") && (p.startsWith(`/serverless/${c}`) || u.get("cloud") === c), 1],
+    ...items.map(([k, , ic]) => [SHORT[k], `/serverless/${c}?type=${k}`, ic, (p, u) => u.get("type") === k || sel.kind === k, 2])]);
   const BY_CLOUD = (base, path) => [["Azure", `${base}${path("azure")}`, "azure", (p, u) => u.get("cloud") === "azure" || p.endsWith("-azure")],
     ["Google Cloud", `${base}${path("gcp")}`, "gcp", (p, u) => u.get("cloud") === "gcp" || p.endsWith("-gcp")]];
   const NAV = [["home", "Home", "/", "home", []],
@@ -63,8 +65,8 @@
   const block = ([key, label, href, icon, kids]) => {
     const top = `<a class="nav-item" href="${esc(href)}" data-section data-nav="${key}">${glyph(icon)}<span>${esc(label)}</span></a>`;
     if (!kids.length) return `<div class="nav-block" data-block="${key}">${top}</div>`;
-    const sub = kids.map(([l, h, ic], i) =>
-      `<a class="nav-item nav-child" href="${esc(h)}" data-child="${key}:${i}">${glyph(ic)}<span>${esc(l)}</span></a>`).join("");
+    const sub = kids.map(([l, h, ic, , lvl], i) =>
+      `<a class="nav-item nav-child${lvl === 1 ? " nav-cloud-row" : lvl === 2 ? " nav-grand" : ""}" href="${esc(h)}" data-child="${key}:${i}">${glyph(ic)}<span>${esc(l)}</span></a>`).join("");
     return `<div class="nav-block" data-block="${key}">${top}<button type="button" class="nav-chev" aria-label="Show ${esc(label)} items" aria-expanded="false" aria-controls="nav-kids-${key}">${CHEV}</button>` +
       `<div class="nav-kids" id="nav-kids-${key}"><div class="nav-kids-in">${sub}</div></div></div>`;
   };

@@ -1,120 +1,151 @@
-// Home: every cloud at a glance, read-only. One board per cloud; inside it Serverless and Kubernetes
-// are separate sections, each with its own tiles and table (never mixed). Then the newest runs. Data: data.js.
-import { MARK, CLOUD_NAMES, SECTIONS, FAMILY, LIVE_STATES, h, markEl, when, runPill, loadAll } from "./data.js";
+// Home, in the Azure portal's resource style: title and command bar, Essentials (label : value, two
+// columns), then tabs: Serverless workloads, Kubernetes clusters, Recent runs. Each tab is one filter
+// bar ("Filter for any field…" and pills) over one table. Read-only. Data: data.js.
+import { CLOUD_NAMES, LIVE_STATES, h, markEl, when, runPill, loadAll } from "./data.js";
 
 const $ = (id) => document.getElementById(id);
-const empty = (t) => h("p", { class: "muted dash-empty", text: t });
-const CLOUDS = ["azure", "gcp"];   // Azure first, then Google Cloud
+const TABS = ["serverless", "kubernetes", "runs"];
+const u0 = new URLSearchParams(location.search);
+const S = { tab: TABS.includes(u0.get("tab")) ? u0.get("tab") : "serverless", q: u0.get("q") || "", cloud: u0.get("cloud") || "",
+  type: u0.get("type") || "", status: u0.get("status") || "" };
+let data = { items: [], runs: [] };
 
-const ring = (id, ok, total) => {
-  $(id).style.setProperty("--p", total ? String(Math.round((100 * ok) / total)) : "0");
-  $(id).title = `${ok} of ${total} working`;
-};
-const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
-
-// Tables: one header row, one row per item; a row opens its page.
-function table(cols, rows, emptyText) {
-  if (!rows.length) return empty(emptyText);
-  return h("div", { class: "table-wrap" }, h("table", { class: "list-table dash-table" },
-    h("thead", {}, h("tr", {}, ...cols.map((c, i) => h("th", { scope: "col", class: i === 0 ? "col-icon" : "", text: c })))),
-    h("tbody", {}, ...rows)));
+function saveQuery() {
+  const u = new URLSearchParams();
+  for (const k of ["tab", "q", "cloud", "type", "status"]) if (S[k] && !(k === "tab" && S.tab === "serverless")) u.set(k, S[k]);
+  history.replaceState(null, "", `/${u.toString() ? `?${u}` : ""}`);
 }
-function linkRow(href, cells) {
-  const tr = h("tr", { class: href ? "row-link" : "" }, ...cells);
-  if (href) tr.addEventListener("click", () => { location.href = href; });
+
+// Status as the portal shows it: a coloured dot and words.
+const DOT = { ok: "ok", warn: "warn", bad: "fail", info: "warn" };
+const stateCell = ([cls, text]) => h("td", {}, h("span", { class: `blade-state ${DOT[cls] || ""}`, text }));
+const nameCell = (mark, text, href) => h("td", {}, h("span", { class: "blade-name" }, mark ? markEl(mark) : null,
+  href ? h("a", { href, text }) : h("span", { text })));
+function rowOf(href, cells) {
+  const tr = h("tr", { class: href ? "row-link" : null }, ...cells);
+  if (href) tr.addEventListener("click", (e) => { if (!e.target.closest("a")) location.assign(href); });
   return tr;
 }
-const nameCell = (text, href) => h("th", { scope: "row" }, href ? h("a", { href, text }) : text);
 
-function itemRow(it) {
-  const [cls, text] = it.state;
-  return linkRow(it.href, [h("td", { class: "col-icon" }, markEl(it.mark)), nameCell(it.name, it.href),
-    h("td", { text: it.type || "" }), h("td", { class: "muted", text: it.detail || "" }), h("td", {}, h("span", { class: `pill ${cls}`, text }))]);
-}
+// Each tab: its rows, its columns, how a row reads, and what its Status pill offers.
+const VIEW = {
+  serverless: {
+    rows: () => data.items.filter((it) => it.kind === "workload"), empty: "No workloads onboarded yet",
+    cols: ["Name", "Status", "Type", "Last run"],
+    row: (it) => rowOf(it.href, [nameCell(it.mark, it.name, it.href), stateCell(it.state), h("td", { text: it.type }),
+      h("td", { text: (it.detail || "").replace(/^last run /, "") || "—" })]),
+    status: (it) => (it.ok ? "ok" : "attention"), statuses: [["ok", "Working"], ["attention", "Needs attention"]],
+  },
+  kubernetes: {
+    rows: () => data.items.filter((it) => it.kind === "cluster"), empty: "No clusters set up yet",
+    cols: ["Name", "Status", "Type", "Detail"],
+    row: (it) => rowOf(it.href, [nameCell(it.mark, it.name, it.href), stateCell(it.state), h("td", { text: it.type }),
+      h("td", { class: "home-detail", text: it.detail || "—", title: it.detail || null })]),
+    status: (it) => (it.ok ? "ok" : "attention"), statuses: [["ok", "Working"], ["attention", "Needs attention"]],
+  },
+  runs: {
+    rows: () => data.runs.slice(0, 50), empty: "No runs yet",
+    cols: ["Name", "Status", "Type", "Started"],
+    row: (r) => rowOf(r.href, [nameCell(r.mark, r.name, r.href), stateCell(runPill(r.status)), h("td", { text: r.type }),
+      h("td", { text: when(r.created) })]),
+    status: (r) => (LIVE_STATES.has(r.status) ? "active" : r.status === "succeeded" ? "ok" : "attention"),
+    statuses: [["active", "In progress"], ["ok", "Succeeded"], ["attention", "Failed"]],
+  },
+};
 
-function runRow(r) {
-  const [cls, text] = runPill(r.status);
-  return linkRow(r.href, [h("td", { class: "col-icon" }, r.mark ? markEl(r.mark) : null), nameCell(r.name, r.href),
-    h("td", { text: r.type || "" }), h("td", { class: "muted", text: when(r.created) }), h("td", {}, h("span", { class: `pill ${cls}`, text }))]);
-}
-
-// One section of a cloud: Serverless (workloads) or Kubernetes (clusters). First its services as a table,
-// grouped by family (Container Apps, Functions, Cloud Run), then its workloads or clusters as a table.
-function serviceRow(key, label, page, markKey, n, noun, dot) {
-  const [cls, text] = dot === "ok" ? ["ok", "Working"] : dot === "warn" ? ["warn", "Needs attention"]
-    : dot === "bad" ? ["bad", "Last run failed"] : dot === "info" ? ["info", "Running"] : ["", n ? "Not verified" : "None yet"];
-  return linkRow(page, [h("td", { class: "col-icon" }, markEl(markKey)), nameCell(label, page),
-    h("td", { text: plural(n, noun) }), h("td", {}, h("span", { class: `pill ${cls}`, text }))]);
-}
-function groupSection(cloud, group, mine, runs) {
-  const noun = group === "Kubernetes" ? "cluster" : "workload";
-  const here = mine.filter((it) => (it.kind === "cluster") === (group === "Kubernetes"));
-  const secs = Object.entries(SECTIONS).filter(([, s]) => s[0] === cloud && s[4] === group);
-  if (!secs.length) return null;
-  const bodies = [];
-  let fam = null, rows = [];
-  const flush = () => {
-    if (!rows.length) return;
-    const head = fam ? [h("tr", { class: "fam-row" }, h("th", { scope: "colgroup", colspan: "4", text: fam }))] : [];
-    bodies.push(h("tbody", {}, ...head, ...rows));
-    rows = [];
-  };
-  for (const [key, [, label, page, mark]] of secs) {
-    const [f, short] = FAMILY[key] || [null, label];
-    if (f !== fam) { flush(); fam = f; }
-    const inSec = here.filter((it) => it.section === key);
-    const last = runs.find((r) => r.section === key);
-    const dot = inSec.length ? (inSec.every((it) => it.ok) ? "ok" : "warn") : last ? runPill(last.status)[0] : "";
-    rows.push(serviceRow(key, short, page, mark, inSec.length, noun, dot));
+function draw() {
+  const v = VIEW[S.tab];
+  for (const t of TABS) {
+    const b = $(`tab-${t}`);
+    b.setAttribute("aria-selected", String(t === S.tab));
+    b.tabIndex = t === S.tab ? 0 : -1;
   }
-  flush();
-  const services = h("div", { class: "table-wrap" }, h("table", { class: "list-table dash-table svc-table" },
-    h("thead", {}, h("tr", {}, ...["", "Service", noun === "cluster" ? "Clusters" : "Workloads", "Status"]
-      .map((c, i) => h("th", { scope: "col", class: i === 0 ? "col-icon" : "", text: c })))),
-    ...bodies));
-  return h("div", { class: "board-group" },
-    h("h3", { class: "board-sub" }, h("span", { text: group }), h("span", { class: "board-count", text: plural(here.length, noun) })),
-    services,
-    table(["", "Name", "Type", "Detail", "Status"], here.map(itemRow), `No ${noun}s on ${CLOUD_NAMES[cloud]} yet`));
+  $("home-panel").setAttribute("aria-labelledby", `tab-${S.tab}`);
+  const all = v.rows();
+  const typeOf = (x) => String(x.type || "").split(" · ")[0];
+  const clouds = [...new Set(all.map((x) => x.cloud).filter(Boolean))];
+  const types = [...new Set(all.map(typeOf).filter(Boolean))].sort();
+  const set = (k) => (val) => { S[k] = val; saveQuery(); draw(); };
+  $("home-filters").replaceChildren(window.consoleBlade.bar({ q: S.q, onQuery: (val) => { S.q = val; saveQuery(); rows(); }, pills: [
+    { label: "Cloud", value: S.cloud, options: clouds.map((c) => [c, CLOUD_NAMES[c] || c]), onChange: set("cloud") },
+    { label: "Type", value: S.type, options: types.map((t) => [t, t]), onChange: set("type") },
+    { label: "Status", value: S.status, options: v.statuses, onChange: set("status") },
+  ] }));
+  $("home-head").replaceChildren(h("tr", {}, ...v.cols.map((c) => h("th", { scope: "col", text: c }))));
+  rows();
+
+  function rows() {
+    for (const t of document.querySelectorAll(".home-rows-more")) t.remove();
+    const q = S.q.trim().toLowerCase();
+    const shown = all.filter((x) => (!S.cloud || x.cloud === S.cloud) && (!S.type || typeOf(x) === S.type)
+      && (!S.status || v.status(x) === S.status)
+      && (!q || [x.name, x.type, x.detail, CLOUD_NAMES[x.cloud], x.state?.[1], x.status].some((f) => String(f || "").toLowerCase().includes(q))));
+    // One block per cloud, never mixed: Azure, then Google Cloud, each under its own logo and name.
+    const order = ["azure", "gcp", ...new Set(shown.map((x) => x.cloud).filter((c) => !["azure", "gcp"].includes(c)))];
+    const groups = order.map((c) => [c, shown.filter((x) => (x.cloud || null) === (c || null))]).filter(([, xs]) => xs.length);
+    const head = (c, n) => {
+      const logo = h("span", { class: "home-group-logo" });
+      logo.innerHTML = window.consoleNav?.icon(c) || "";   // constant SVG only
+      return h("tr", { class: "home-group" }, h("th", { scope: "colgroup", colspan: String(v.cols.length) },
+        h("span", { class: "home-group-name" }, logo, CLOUD_NAMES[c] || "No cloud recorded", h("small", { text: String(n) }))));
+    };
+    $("home-rows").replaceWith(...[h("tbody", { id: "home-rows" }, ...(groups[0] ? [head(...[groups[0][0], groups[0][1].length]), ...groups[0][1].map(v.row)] : [])),
+      ...groups.slice(1).map(([c, xs]) => h("tbody", { class: "home-rows-more" }, head(c, xs.length), ...xs.map(v.row)))]);
+    $("home-count").textContent = `Showing ${shown.length} of ${all.length} records.`;
+    $("home-empty").hidden = shown.length > 0;
+    $("home-empty").textContent = all.length ? "Nothing matches the filters" : v.empty;
+  }
 }
 
-// The cloud's real logo, from the sidebar (constant SVG only).
-function cloudLogo(cloud) {
-  const el = h("span", { class: "board-logo" });
-  el.insertAdjacentHTML("afterbegin", window.consoleNav?.icon(cloud) || "");
-  return el;
-}
-
-function board(cloud, items, runs) {
-  const mine = items.filter((it) => it.cloud === cloud);
-  const id = `h-${cloud}`;
-  return h("section", { class: "board", "aria-labelledby": id },
-    h("header", { class: "board-head" }, cloudLogo(cloud), h("h2", { id, text: CLOUD_NAMES[cloud] })),
-    groupSection(cloud, "Serverless", mine, runs),
-    groupSection(cloud, "Kubernetes", mine, runs));
+// Essentials: label : value, two columns; a value that has a page links to it.
+function essentials() {
+  const wl = data.items.filter((it) => it.kind === "workload"), cl = data.items.filter((it) => it.kind === "cluster");
+  const live = data.runs.filter((r) => LIVE_STATES.has(r.status)).length;
+  const failed = data.runs.filter((r) => ["failed", "cancelled", "refused", "interrupted"].includes(r.status)).length;
+  const last = data.runs[0];
+  const clouds = [...new Set(data.items.map((it) => it.cloud).filter(Boolean))].map((c) => CLOUD_NAMES[c] || c).join(", ") || "—";
+  const pair = (label, value, href) => [h("dt", { text: label }), h("dd", {}, href ? h("a", { href, text: value }) : value)];
+  const tab = (t) => `/?tab=${t}`;
+  $("ess-left").replaceChildren(
+    ...pair("Workloads", `${wl.length} onboarded, ${wl.filter((it) => it.ok).length} working`, tab("serverless")),
+    ...pair("Clusters", `${cl.length} set up, ${cl.filter((it) => it.ok).length} working`, tab("kubernetes")),
+    ...pair("Clouds", clouds));
+  $("ess-right").replaceChildren(
+    ...pair("Runs", `${data.runs.length} kept, ${failed} failed`, "/runs"),
+    ...pair("In progress", String(live), live ? "/runs?status=active" : null),
+    ...pair("Last run", last ? `${last.name} · ${runPill(last.status)[1]} · ${when(last.created)}` : "—", last?.href || null));
 }
 
 async function load() {
+  $("home-count").textContent = "Loading…";
   const { items, runs, errors, signedOut } = await loadAll();
+  data = { items, runs };
   $("session-state").hidden = !signedOut;
   $("session-state").textContent = "Not signed in";
   const shown = errors.filter((e) => e.message !== "signed-out");
   $("dash-errors").hidden = !shown.length;
   $("dash-errors").textContent = shown.map((e) => `${e.source}: ${e.message}`).join(" · ");
-
-  const workloads = items.filter((it) => it.kind === "workload"), clusters = items.filter((it) => it.kind === "cluster");
-  $("hs-wl").textContent = String(workloads.length);
-  $("hs-wl-ok").textContent = `${workloads.filter((it) => it.ok).length}/${workloads.length}`;
-  ring("ring-wl", workloads.filter((it) => it.ok).length, workloads.length);
-  $("hs-cl").textContent = String(clusters.length);
-  $("hs-cl-ok").textContent = `${clusters.filter((it) => it.ok).length}/${clusters.length}`;
-  ring("ring-cl", clusters.filter((it) => it.ok).length, clusters.length);
-  $("hs-runs").textContent = String(runs.length);
-  $("hs-live").textContent = String(runs.filter((r) => LIVE_STATES.has(r.status)).length);
-
-  $("clouds").replaceChildren(...CLOUDS.map((c) => board(c, items, runs)));
-  $("recent-runs").replaceChildren(table(["", "Name", "Type", "Started", "Status"], runs.slice(0, 8).map(runRow), "No runs yet"));
+  essentials();
+  draw();
 }
 
-$("dash-refresh").addEventListener("click", load);
+for (const t of TABS) $(`tab-${t}`).addEventListener("click", () => {
+  Object.assign(S, { tab: t, cloud: "", type: "", status: "" });
+  saveQuery();
+  draw();
+});
+$("home-panel").previousElementSibling.addEventListener("keydown", (e) => {
+  const i = TABS.indexOf(S.tab), d = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+  if (!d) return;
+  $(`tab-${TABS[(i + d + TABS.length) % TABS.length]}`).click();
+  $(`tab-${S.tab}`).focus();
+});
+$("ess-h").addEventListener("click", () => {
+  const open = $("ess-h").getAttribute("aria-expanded") !== "true";
+  $("ess-h").setAttribute("aria-expanded", String(open));
+  $("ess-body").hidden = !open;
+});
+$("dash-refresh").addEventListener("click", () => load());
+saveQuery();
+draw();
 load();

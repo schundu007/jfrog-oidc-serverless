@@ -986,3 +986,9 @@ tbody tr, .ov-tile, .tile, .nav-item, a, button, .blade-opt, .chip, .kind-folder
   .sidenav .nav-chev, .sidenav .nav-kids { display: none; }
   .sidenav .nav-block { display: contents; }
 }
+/* Serverless by cloud: the cloud row, then its services one step further in. */
+.sidenav .nav-item.nav-child.nav-cloud-row { font-weight: 600; margin-top: 2px; }
+.sidenav .nav-item.nav-child.nav-cloud-row > svg { width: 16px; height: 16px; }
+.sidenav .nav-item.nav-child.nav-grand { padding-left: 64px; padding-right: 10px; min-height: 32px; font-size: 13.5px; white-space: nowrap; }
+.sidenav .nav-item.nav-child.nav-grand > span { overflow: hidden; text-overflow: ellipsis; }
+.sidenav .nav-item.nav-child.nav-grand > svg { width: 16px; height: 16px; }
