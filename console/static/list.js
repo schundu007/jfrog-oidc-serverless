@@ -38,16 +38,19 @@ function matches(w) {
     .some((v) => String(v || "").toLowerCase().includes(q));
 }
 
+// Cloud portal links come from the server (links.resource_group, links.scope); plain text without one. New tab.
+const out = (href, text) => (href ? h("a", { href, target: "_blank", rel: "noopener noreferrer", text }) : text);
+
 function row(w) {
   const open = w.cfg ? `${BASE}/${w.cloud}/w/${encodeURIComponent(w.cfg.name)}` : `${BASE}/${w.cloud}/new?kind=${encodeURIComponent(w.kind)}`;
   const tr = h("tr", { class: "row-link", "data-name": w.name },
     h("td", {}, h("span", { class: "blade-name" }, iconEl(iconOf(w.kind), "blade-ico"), h("a", { href: open, text: w.name }))),
     h("td", {}, h("span", { class: `blade-state ${w.cfg ? "ok" : ""}`, text: w.cfg ? "Onboarded" : "Not onboarded" })),
-    h("td", { text: kindLabel(w.kind) }),
+    h("td", {}, h("a", { href: `${BASE}/${w.cloud}?type=${encodeURIComponent(w.kind)}`, text: kindLabel(w.kind) })),
     h("td", { text: w.region || "—" }),
-    h("td", { text: w.resource_group || "—" }),
-    h("td", { text: w.project || w.subscription_name || w.subscription || "—" }),
-    h("td", {}, h("span", { class: "blade-cloud" }, iconEl(w.cloud, ""), NAMES[w.cloud])));
+    h("td", {}, out(w.links?.resource_group, w.resource_group || "—")),
+    h("td", {}, out(w.links?.scope, w.project || w.subscription_name || w.subscription || "—")),
+    h("td", {}, h("a", { class: "blade-cloud", href: `${BASE}/${w.cloud}` }, iconEl(w.cloud, ""), NAMES[w.cloud])));
   tr.addEventListener("click", (e) => { if (!e.target.closest("a")) location.assign(open); });
   return tr;
 }
@@ -117,7 +120,6 @@ export async function mountList(page, { schema }) {
   if (!F.type && schema.kinds?.[u.get("type")]) F.type = u.get("type");
   if (!F.cloud && LIVE.includes(u.get("cloud"))) F.cloud = u.get("cloud");
   page.replaceChildren(template("tpl-list"));
-  document.title = "Serverless · JFrog OIDC Console";
   $("wl-create").addEventListener("click", () => {
     const p = $("wl-create-panel");
     p.hidden = !p.hidden;

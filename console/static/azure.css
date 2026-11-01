@@ -53,3 +53,18 @@ html body .sidenav .cloudfold-chev:not(#_) { left: 28px; right: auto; top: 4px; 
 html body .sidenav .nav-item.nav-child.nav-grand:not(#_) { padding-left: 74px; }
 html body .sidenav .nav-item > svg.nav-ico { width: 20px; height: 20px; flex: none; }
 html body .sidenav .nav-item[aria-current="page"] svg.nav-ico { filter: none; }
+
+/* Links in group headings keep the heading colour; underline on hover. Table links in the link colour. */
+html body :is(.home-group-name, .cloud-title, .sub-head) a:not(#_) { color: inherit; text-decoration: none; }
+html body :is(.home-group-name, .cloud-title, .sub-head) a:not(#_):hover { text-decoration: underline; }
+html body :is(.blade-table, .table) td a:not(#_) { color: var(--accent); }
+html body :is(.blade-table, .table) td a:not(#_):hover { text-decoration: underline; }
+
+/* A list page's heading carries the sidebar item's icon, two spaces left of its name. */
+html body h1:has(> .h1-ico) { display: flex; align-items: center; gap: 10px; }
+html body h1 > .h1-ico { display: inline-flex; flex: none; }
+html body h1 > .h1-ico svg { width: 28px; height: 28px; display: block; }
+/* With the sidebar icon in the heading, the page's old line logo beside it goes. */
+html body :has(> h1 > .h1-ico) > .home-logo:not(#_) { display: none; }
+/* Headings sit at the far left, two spaces (8px) before the tables and row content under them. */
+html body h1:has(> .h1-ico):not(#_), html body :is(.cloud-title, .ov-group-title, .home-group-name):not(th *):not(#_) { margin-left: -8px; }

@@ -85,8 +85,20 @@ class Jobs:
                 out.append(dict(s, dir=f"terraform/stacks/{stacks.rel_dir(sid)}", status=self._status.get(sid), busy=sid in running, job=running.get(sid),
                                 plan=self._public_plan(self._plans.get(sid)), failed=failed.get(sid),
                                 depends_on=stacks.depends_on(sid, self.root), needs=needs, dependents=dependents,
-                                missing=stacks.missing(sid, self.env_name, self.root, self.state_root)))
+                                missing=stacks.missing(sid, self.env_name, self.root, self.state_root),
+                                links=self._links(sid)))
             return out
+
+    def _links(self, sid) -> dict:
+        """Web pages for a row's cells: the stack's source in the ADO repo and, when it runs in ADO,
+        its stack-setup pipeline. Built from known names only; no network call."""
+        if self.ado is None:
+            return {}
+        out = {"source": getattr(self.ado, "source_url", lambda r: None)(f"terraform/stacks/{stacks.rel_dir(sid)}")}
+        pipe = self.pipeline_path(sid)
+        if pipe and hasattr(self.ado, "pipeline_url"):
+            out["pipeline"] = self.ado.pipeline_url(pipe)
+        return {k: v for k, v in out.items() if v}
 
     # Callers hold self._lock.
     def _needs(self, sid) -> list:

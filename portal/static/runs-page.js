@@ -35,8 +35,8 @@ function row(r) {
     h("td", { class: "sel" }, box),
     h("td", {}, h("span", { class: "blade-name" }, r.mark ? markEl(r.mark) : null, r.href ? h("a", { href: r.href, text: r.name }) : h("span", { text: r.name }))),
     h("td", {}, h("span", { class: `blade-state ${DOT[cls] || ""}`, text })),
-    h("td", { text: r.type }),
-    h("td", { text: when(r.created) }));
+    h("td", {}, r.typeHref ? h("a", { href: r.typeHref, text: r.type }) : r.type),
+    h("td", {}, r.href ? h("a", { href: r.href, text: when(r.created) }) : when(r.created)));
   if (r.href) tr.addEventListener("click", (e) => { if (!e.target.closest("a, input, .sel")) location.assign(r.href); });
   return tr;
 }

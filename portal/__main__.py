@@ -74,7 +74,7 @@ def main(argv=None) -> int:
     ado_client = None
     if delivery and not args.fixtures:
         ado_client = Ado(Shell(mode="live", log=lambda line: None), delivery["ado"]["organization"], delivery["ado"]["project"],
-                         branch=delivery["ado"].get("target_branch") or "main")
+                         branch=delivery["ado"].get("target_branch") or "main", repo=delivery["ado"].get("repository") or "")
     setup = SetupServer(token=token, base=SETUP, env_name=env_name,
                         jobs=Jobs(env_name=env_name, token_source=operator.get, ado=ado_client))
     if ado_client:   # a Serverless run that finds no workload offers to deploy it through these pipelines

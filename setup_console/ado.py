@@ -9,6 +9,7 @@ fetched as a sensitive call and only ever sent as a header.
 
 from __future__ import annotations
 
+from urllib.parse import quote
 import hashlib
 import json
 import re
@@ -73,8 +74,8 @@ def outputs(lines: list) -> dict:
 
 
 class Ado:
-    def __init__(self, sh, organization: str, project: str, branch: str = "main"):
-        self.sh, self.branch = sh, branch
+    def __init__(self, sh, organization: str, project: str, branch: str = "main", repo: str = ""):
+        self.sh, self.branch, self.repo = sh, branch, repo
         self.org = organization
         self.base = f"https://dev.azure.com/{organization}/{project}/_apis"
         self.web = f"https://dev.azure.com/{organization}/{project}"
@@ -139,6 +140,21 @@ class Ado:
         tp = {k: v if isinstance(v, str) else json.dumps(v) for k, v in params.items()}
         body = {"resources": {"repositories": {"self": {"refName": f"refs/heads/{self.branch}"}}}, "templateParameters": tp}
         return int(self._call("POST", f"/pipelines/{pipeline_id}/runs", body)["id"])
+
+    def source_url(self, rel: str) -> str | None:
+        """The ADO web page of a repo path (a folder or file), for links; no network call."""
+        if not self.repo:
+            return None
+        return f"{self.web}/_git/{quote(self.repo)}?path=/{quote(rel.lstrip('/'))}&version=GB{quote(self.branch)}"
+
+    def pipeline_url(self, yaml_path: str) -> str:
+        """The ADO page of the pipeline that runs yaml_path; the pipelines list until its id is known.
+        Uses only the definitions already read: never a network call."""
+        want = yaml_path.lstrip("/")
+        for d in self._defs or []:
+            if str((d.get("process") or {}).get("yamlFilename", "")).lstrip("/") == want:
+                return f"{self.web}/_build?definitionId={int(d['id'])}"
+        return f"{self.web}/_build"
 
     def run_url(self, run_id: int) -> str:
         return f"{self.web}/_build/results?buildId={run_id}"

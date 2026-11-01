@@ -294,12 +294,12 @@ function row(s, section) {
   const state = s.busy || s.plan ? "busy" : s.status?.deployed ? "ok" : partlyDeleted(s) || lastFailure(s) || s.needs?.length || s.missing?.length ? "attention" : "idle";
   return h("tr", { id: `stack-${s.id}`, "data-state": state, class: s.needs?.length ? "blocked" : null },
     h("td", { title: s.dir }, h("div", { class: "stack-name" }, iconEl(STACK_ICON[s.id], "stack-icon"),
-      h("b", { text: s.title }), s.about ? help(s.about) : null)),
+      link(nameHref(s), h("b", { text: s.title })), s.about ? help(s.about) : null)),
     h("td", {}, h("div", { class: "stack-status" }, stackStatus(s), notes.length ? help(notes.join(" ")) : null)),
     // The section heading above the rows names the type, so no Type column.
-    h("td", { class: "stack-id", text: s.id }),
-    OIDC ? null : h("td", { text: runsIn(s) }),
-    h("td", { text: shortWhen(checkedAt(s)) }),
+    h("td", { class: "stack-id" }, link(s.links?.source, s.id, true)),
+    OIDC ? null : h("td", {}, link(runsIn(s) === "ADO pipeline" ? s.links?.pipeline : runsHref(s), runsIn(s), runsIn(s) === "ADO pipeline")),
+    h("td", {}, checkedAt(s) ? link(runsHref(s), shortWhen(checkedAt(s))) : "—"),
     h("td", {}, h("div", { class: "setup-row-actions" },
       progress,
       plan,
@@ -312,6 +312,21 @@ function row(s, section) {
           onSelect: () => run(s, "plan-destroy") },
       ]))));
 }
+
+// Links: a cell whose value has a page goes there; ADO pages open in a new tab.
+const link = (href, content, external = false) => (href
+  ? h("a", { href, ...(external ? { target: "_blank", rel: "noopener noreferrer" } : {}) }, content)
+  : content);
+// A stack's name opens what it provisions in the console: its workloads or clusters; a CI/CD bootstrap
+// or a JFrog trust stack opens its runs.
+const SERVES = { "gcp-cloud-run": "gcp?type=gcp_run_job", "gcp-cloud-run-service": "gcp?type=gcp_run_service",
+  "gcp-cloud-run-function": "gcp?type=gcp_run_function", "gcp-cloud-run-worker-pool": "gcp?type=gcp_run_worker_pool",
+  "azure-container-apps": "azure?type=azure_container_app_job", "azure-container-app": "azure?type=azure_container_app",
+  "azure-functions-aca": "azure?type=azure_functions_aca", "azure-functions-premium": "azure?type=azure_functions_premium",
+  "azure-functions-flex": "azure?type=azure_functions_flex" };
+const CLUSTERS = { "aks-cluster": "/k8s/clusters/aks", "gke-cluster": "/k8s/clusters/gke" };
+const runsHref = (s) => `/runs?area=infrastructure&cloud=${CLOUD_ID[s.group] || ""}&q=${encodeURIComponent(s.title)}`;
+const nameHref = (s) => (SERVES[s.id] ? `/serverless/${SERVES[s.id]}` : CLUSTERS[s.id] || runsHref(s));
 
 let byId = {};
 
@@ -374,7 +389,6 @@ function draw(withFilters = true) {
   const ORDER = ["Common", "Serverless", "Kubernetes", "JFrog OIDC"];
   const sectionOf = (s) => (s.id.endsWith("-foundation") ? "Common" : s.kind);
   $("page-title").textContent = OIDC ? "JFrog OIDC" : "Infrastructure";
-  document.title = `${OIDC ? "JFrog OIDC" : "Infrastructure"} · JFrog OIDC Console`;
   const all = data.stacks.filter((s) => (OIDC ? s.kind === "JFrog OIDC" : s.kind !== "JFrog OIDC"));
   if (withFilters) drawFilters(ORDER.filter((k) => all.some((s) => sectionOf(s) === k)));
   const q = F.q.trim().toLowerCase();
@@ -389,13 +403,14 @@ function draw(withFilters = true) {
   const rank = (g) => (CLOUD_ORDER.includes(g) ? CLOUD_ORDER.indexOf(g) : CLOUD_ORDER.length);
   const groups = [...new Set(shown.map((s) => s.group))].sort((x, y) => rank(x) - rank(y));
   const cols = OIDC ? ["Name", "Status", "Stack", "Last checked", ""] : ["Name", "Status", "Stack", "Runs in", "Last checked", ""];
-  const head = (g, list) => h("h2", { class: "cloud-title home-group-name" }, iconEl(CLOUD_ID[g], "home-group-logo"), g,
+  const head = (g, list) => h("h2", { class: "cloud-title home-group-name" }, iconEl(CLOUD_ID[g], "home-group-logo"),
+    OIDC ? h("a", { href: `/setup/oidc-${CLOUD_ID[g]}` }, g) : h("a", { href: `/setup?cloud=${CLOUD_ID[g]}` }, g),
     h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }));
   // Under each cloud, CI/CD, Serverless and Kubernetes never mix: each has its own heading and rows.
   const LABEL = { Common: "CI/CD" };
   const sections = ORDER.filter((k) => shown.some((s) => sectionOf(s) === k));
   const subHead = (k, list) => h("tr", { class: "home-group home-subgroup" }, h("th", { scope: "colgroup", colspan: String(cols.length) },
-    h("span", { class: "home-group-name" }, LABEL[k] || k, h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }))));
+    h("span", { class: "home-group-name" }, h("a", { href: `${OIDC ? "/setup/oidc" : "/setup"}?${new URLSearchParams({ ...(list[0] && !OIDC ? { cloud: CLOUD_ID[list[0].group] } : {}), kind: k })}` }, LABEL[k] || k), h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }))));
   // Each cloud is its own block: its heading (logo, name, count) above its own table with its own
   // column headers, so a cloud name never sits under another cloud's header row.
   const table = (rows) => h("div", { class: "table-wrap" }, h("table", { class: `blade-table home-table stack-table cloud-table cols-${cols.length}` },

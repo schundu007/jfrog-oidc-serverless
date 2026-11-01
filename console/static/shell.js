@@ -93,7 +93,7 @@
     return null;
   }
   // The list page itself is the current page; a page inside it (a workload, a cluster, a run) only opens it.
-  const atTop = () => !/\/(w|runs|new)\/|\/clusters\/[a-z]+\/[^/]+/.test(location.pathname + "/");
+  const atTop = () => /^\/runs\/?$/.test(location.pathname) || !/\/(w|runs|new)\/|\/clusters\/[a-z]+\/[^/]+/.test(location.pathname + "/");
 
   const me = document.currentScript;
   me.parentElement.id ||= "sidenav";
@@ -143,7 +143,28 @@
       if (kids.length && !(here && unfolded === key)) setOpen(b, here || opened.has(key), false);
     }
     unfolded = sel.nav;
+    heading();
   }
+  // A list page's heading is the current sidebar item, its name and icon (Functions Flex, GKE clusters,
+  // Azure); a page inside a list (a workload, a cluster, a run) keeps its own title.
+  function heading() {
+    if (!atTop() || !sel.nav) return;
+    const b = root.querySelector(`[data-block="${sel.nav}"]`);
+    const cur = b?.querySelector('.nav-child[aria-current="page"]') || b?.querySelector('[data-nav][aria-current="page"]');
+    const h1 = [...document.querySelectorAll("h1")].find((x) => !root.contains(x));
+    if (!cur || !h1) return;
+    const label = cur.querySelector("span").textContent;
+    if (h1.textContent === label && h1.querySelector(".h1-ico")) return;
+    const ico = document.createElement("span");
+    ico.className = "h1-ico";
+    ico.innerHTML = cur.querySelector("svg")?.outerHTML || "";   // constant sidebar SVG, no user data
+    h1.replaceChildren(ico, label);
+    document.title = `${label} · JFrog OIDC Console`;
+  }
+  // Pages draw their headings after load and on every filter change: put the sidebar name back each time.
+  let headQueued = false;
+  new MutationObserver(() => { if (!headQueued) { headQueued = true; queueMicrotask(() => { headQueued = false; heading(); }); } })
+    .observe(document.body, { childList: true, subtree: true, characterData: true });
   function select(key) {
     const s = SECTIONS[key];
     sel.nav = s ? (s.group === "Kubernetes" ? "k8s" : "serverless") : key;

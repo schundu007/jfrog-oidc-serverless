@@ -152,6 +152,11 @@ function lastRun(a) {
     h("div", { class: "sub" }, [RUN_TEXT[a.status] || a.status, ago(a.at), took].filter(Boolean).join(" · "))];
 }
 
+// Cloud portal links come from the server (links.resource_group, links.scope); plain text without one. New tab.
+const out = (href, text) => (href
+  ? h("a", { href, target: "_blank", rel: "noopener noreferrer", onclick: (e) => e.stopPropagation() }, text)
+  : text);
+
 function table(all) {
   const rows = all.filter(matches);
   if (!rows.length) return h("p", { class: "blade-empty" }, all.length ? "No clusters match the filters" : "No clusters yet");
@@ -174,10 +179,10 @@ function table(all) {
           h("td", {}, h("span", { class: "blade-name" }, h("span", { class: "blade-ico" }, markOf(r.cloud || "aks")), link(go, url, clusterPath(r.name), r.name)),
             r.cluster !== r.name ? h("div", { class: "sub" }, r.cluster) : null),
           h("td", {}, h("span", { class: `badge ${cls}` }, text), r.problem ? help(brief(r.problem)) : null),
-          h("td", {}, CLOUD[r.cloud || "aks"]),
+          h("td", {}, link(go, url, `/clusters/${r.cloud || "aks"}`, CLOUD[r.cloud || "aks"])),
           h("td", { class: "wrap" }, r.location || muted("—")),
-          h("td", { class: "wrap" }, r.resource_group || muted("—")),
-          h("td", { class: "wrap" }, r.subscription || muted("—")),
+          h("td", { class: "wrap" }, out(r.links?.resource_group, r.resource_group || muted("—"))),
+          h("td", { class: "wrap" }, out(r.links?.scope, r.subscription || muted("—"))),
           h("td", {}, r.chart ? h("div", {}, `v${r.chart}`) : muted("—"), r.ready ? h("div", { class: "sub" }, `${r.ready} nodes ready`) : null),
           h("td", {}, a?.id ? link(go, url, runPath(r.name, a.id), lastRun(a)) : lastRun(a)),
           h("td", { class: "c-more", onclick: (e) => e.stopPropagation() }, moreMenu([

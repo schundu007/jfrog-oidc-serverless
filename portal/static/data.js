@@ -97,6 +97,7 @@ async function serverless() {
     const last = latest.get(c.name);
     return { kind: "workload", cloud: cloudOf(c.kind), section: sectionOfKind(c.kind), name: c.name, type: label(c.kind),
       mark: markOfKind(c.kind), href: `/serverless/${cloudOf(c.kind)}/w/${encodeURIComponent(c.name)}`,
+      typeHref: `/serverless/${cloudOf(c.kind)}?type=${encodeURIComponent(c.kind)}`,
       ok: last?.status === "succeeded", state: last ? runPill(last.status) : ["", "No runs"],
       detail: last ? `last run ${when(last.created)}` : null };
   });
@@ -106,7 +107,9 @@ async function serverless() {
     return { cloud: known ? cloudOf(r.kind) : null, section: known ? sectionOfKind(r.kind) : null,
       name: known ? r.name : "Unknown workload", type: known ? label(r.kind) : "No workload recorded",
       mark: known ? markOfKind(r.kind) : null, status: r.status, created: r.created, id: r.id, area: "serverless", api: `/serverless/api/runs/${encodeURIComponent(r.id)}`,
-      href: known ? `/serverless/${cloudOf(r.kind)}/w/${encodeURIComponent(r.name)}/runs/${encodeURIComponent(r.id)}` : null };
+      href: known ? `/serverless/${cloudOf(r.kind)}/w/${encodeURIComponent(r.name)}/runs/${encodeURIComponent(r.id)}` : null,
+      nameHref: known ? `/serverless/${cloudOf(r.kind)}/w/${encodeURIComponent(r.name)}` : null,
+      typeHref: known ? `/serverless/${cloudOf(r.kind)}?type=${encodeURIComponent(r.kind)}` : null };
   });
   return { items, runs: runRows };
 }
@@ -119,6 +122,7 @@ async function kubernetes() {
     const p = c.cloud || platform.get(c.name) || "aks";
     return { kind: "cluster", cloud: SECTIONS[p]?.[0] || null, section: p, name: c.name,
       type: SECTIONS[p]?.[1].replace(/s$/, "") || "Cluster", mark: p, href: `/k8s/clusters/${p}/${encodeURIComponent(c.name)}`,
+      typeHref: `/k8s/clusters/${p}`,
       ok: c.state === "working", state: CLUSTER[c.state] || ["", words(c.state)],
       detail: c.problem || (c.verified_at ? `verified ${when(c.verified_at)}` : c.cluster || "") };
   });
@@ -130,7 +134,8 @@ async function kubernetes() {
     return { cloud: p ? SECTIONS[p]?.[0] || null : null, section: p, name: r.config || r.cluster || "Unknown cluster",
       type: `${(p && SECTIONS[p]?.[1].replace(/s$/, "")) || "Cluster (configuration deleted)"} · ${words(r.name || r.kind)}`, mark: p,
       status: r.status, created: r.created, id: r.id, area: "kubernetes", api: `/k8s/api/runs/${encodeURIComponent(r.id)}`,
-      href: known ? `/k8s/clusters/${p}/${encodeURIComponent(r.config)}/runs/${encodeURIComponent(r.id)}` : null };
+      href: known ? `/k8s/clusters/${p}/${encodeURIComponent(r.config)}/runs/${encodeURIComponent(r.id)}` : null,
+      nameHref: known ? `/k8s/clusters/${p}/${encodeURIComponent(r.config)}` : null, typeHref: known ? `/k8s/clusters/${p}` : null };
   });
   return { items, runs: runRows };
 }
@@ -147,7 +152,8 @@ async function infrastructure() {
     return { cloud: j.cloud, section: null, name: j.title, mark: j.cloud,
       type: `${j.kind === "JFrog OIDC" ? "JFrog OIDC" : `${j.kind} infrastructure`} · ${SETUP_ACTION[j.action] || words(j.action)}`,
       status: SETUP_STATE[j.state] || j.state, created: iso(j.started), id: j.id, area: "infrastructure",
-      api: `/setup/api/jobs/${encodeURIComponent(j.id)}`, href: `${page}?job=${encodeURIComponent(j.id)}` };
+      api: `/setup/api/jobs/${encodeURIComponent(j.id)}`, href: `${page}?job=${encodeURIComponent(j.id)}`,
+      typeHref: j.cloud ? (j.kind === "JFrog OIDC" ? `${page}-${j.cloud}` : `${page}?cloud=${j.cloud}`) : page };
   });
   return { items: [], runs: runRows };
 }

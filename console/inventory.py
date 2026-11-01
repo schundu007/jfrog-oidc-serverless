@@ -21,7 +21,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from . import gcprun
+from . import cloud_links, gcprun
 from .shell import Shell
 
 DEFAULT_REGION = "us-central1"
@@ -353,6 +353,7 @@ def annotate(cloud: str, raw: dict, repo_root=None, configs=()) -> dict:
     done = onboarded_keys(cloud, [*configs, *delivered_configs(repo_root)])
     for w in out["workloads"]:
         w["onboarded"] = _key(cloud, w) in done
+        w["links"] = cloud_links.links(w)
     out["workloads"].sort(key=lambda w: (not w["supported"], w["onboarded"], w["kind"], w["name"]))
     return out
 

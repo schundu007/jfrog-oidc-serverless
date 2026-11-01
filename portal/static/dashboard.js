@@ -19,6 +19,7 @@ function saveQuery() {
 // Status as the portal shows it: a coloured dot and words.
 const DOT = { ok: "ok", warn: "warn", bad: "fail", info: "warn" };
 const stateCell = ([cls, text]) => h("td", {}, h("span", { class: `blade-state ${DOT[cls] || ""}`, text }));
+const linkCell = (text, href, attrs = {}) => h("td", attrs, href ? h("a", { href, text }) : text);
 const nameCell = (mark, text, href) => h("td", {}, h("span", { class: "blade-name" }, mark ? markEl(mark) : null,
   href ? h("a", { href, text }) : h("span", { text })));
 function rowOf(href, cells) {
@@ -32,14 +33,14 @@ const VIEW = {
   serverless: {
     rows: () => data.items.filter((it) => it.kind === "workload"), empty: "No workloads onboarded yet",
     cols: ["Name", "Status", "Type", "Last run"],
-    row: (it) => rowOf(it.href, [nameCell(it.mark, it.name, it.href), stateCell(it.state), h("td", { text: it.type }),
-      h("td", { text: (it.detail || "").replace(/^last run /, "") || "—" })]),
+    row: (it) => rowOf(it.href, [nameCell(it.mark, it.name, it.href), stateCell(it.state), linkCell(it.type, it.typeHref),
+      linkCell((it.detail || "").replace(/^last run /, "") || "—", it.detail ? `/runs?area=serverless&q=${encodeURIComponent(it.name)}` : null)]),
     status: (it) => (it.ok ? "ok" : "attention"), statuses: [["ok", "Working"], ["attention", "Needs attention"]],
   },
   kubernetes: {
     rows: () => data.items.filter((it) => it.kind === "cluster"), empty: "No clusters set up yet",
     cols: ["Name", "Status", "Type", "Detail"],
-    row: (it) => rowOf(it.href, [nameCell(it.mark, it.name, it.href), stateCell(it.state), h("td", { text: it.type }),
+    row: (it) => rowOf(it.href, [nameCell(it.mark, it.name, it.href), stateCell(it.state), linkCell(it.type, it.typeHref),
       h("td", { class: "home-detail", text: it.detail || "—", title: it.detail || null })]),
     status: (it) => (it.ok ? "ok" : "attention"), statuses: [["ok", "Working"], ["attention", "Needs attention"]],
   },
