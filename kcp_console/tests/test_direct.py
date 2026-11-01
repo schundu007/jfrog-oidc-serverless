@@ -480,6 +480,9 @@ class PruneTest(unittest.TestCase):
         self.assertEqual(cm.exception.status, 404)
 
 
+SA_JWT, ISSUED = "eyJsa-jwt.payload.sig", "eyJissued-jfrog.payload.sig"
+
+
 class TrustShell(FakeShell):
     """A cluster where the pull works only while JFrog holds the mapping, as with a live exchange.
     cached=True: kubelet reused a credential, so the pull works without the trust (the proof must catch it)."""
@@ -497,16 +500,43 @@ class TrustShell(FakeShell):
             return Result(list(argv), 0, "kubernetes.io/service-account-token\n" + "kubernetes.io/dockerconfigjson\n" * self.pull_secrets, "", 0.0)
         if argv[:3] == ["kubectl", "delete", "serviceaccount"]:
             self.sa_deletes += 1
+        if argv[:3] == ["kubectl", "create", "token"]:
+            self.calls.append(list(argv))
+            return Result(list(argv), 0, SA_JWT + "\n", "", 0.0)
         return super().run(argv, timeout, sensitive, extra_env, stream)
 
     def http(self, method, url, headers=None, body=None, timeout=20.0, sensitive=False):
         if method == "GET" and url.endswith("/access/api/v1/tokens"):
             self.http_calls.append((method, url, (headers or {}).get("Authorization", "")))
             return HttpResult(method, url, 200, json.dumps({"tokens": self.tokens}))
+        if method == "POST" and url.endswith("/access/api/v1/oidc/token"):
+            assert (headers or {}).get("Content-Type") == "application/json" and "Authorization" not in (headers or {})
+            self.http_calls.append((method, url, json.loads(body)["subject_token"]))
+            if self.mappings:
+                return HttpResult(method, url, 200, json.dumps({"access_token": ISSUED, "username": "kcp-pull-user", "expires_in": 3600}))
+            return HttpResult(method, url, 401, json.dumps({"errors": [{"code": "UNAUTHORIZED", "message": "Failed to find identity mapping"}]}))
         if method == "DELETE" and "/identity_mappings/" in url:
             name = url.rsplit("/", 1)[-1]
             self.mappings = [m for m in self.mappings if m.get("name") != name]
         return super().http(method, url, headers, body, timeout, sensitive)
+
+
+class PluginRowsTest(unittest.TestCase):
+    LOG = "\n".join(json.dumps(x) for x in [
+        {"time": "2026-11-01T08:45:20.1Z", "level": "INFO", "msg": "Running JFrog Credentials provider..."},
+        {"time": "2026-11-01T08:46:16.590133517Z", "level": "INFO", "msg": "Running JFrog Credentials provider..."},
+        {"time": "2026-11-01T08:46:16.59Z", "level": "INFO", "msg": "Fetching environment variable:cloud_provider"},
+        {"time": "2026-11-01T08:46:16.6Z", "level": "INFO", "msg": "RT oidc token url :https://acme.jfrog.io/access/api/v1/oidc/token"},
+        {"time": "2026-11-01T08:46:26.7Z", "level": "ERROR", "msg": "token creation to https://acme.jfrog.io/access/api/v1/oidc/token?x=1 returned 403 eyJabc.def.ghi"},
+    ]) + "\nnot json"
+
+    def test_window_noise_urls_and_tokens(self):
+        rows = direct.plugin_rows(self.LOG, direct._epoch("2026-11-01T08:46:00Z"))
+        self.assertEqual([r["level"] for r in rows], ["INFO", "INFO", "ERROR"])
+        self.assertEqual(rows[0]["at"], "2026-11-01T08:46:16Z")
+        self.assertEqual(rows[1]["message"], "RT oidc token url :acme.jfrog.io/access/api/v1/oidc/token")
+        self.assertIn("acme.jfrog.io/access/api/v1/oidc/token returned 403", rows[2]["message"])
+        self.assertNotIn("eyJabc", json.dumps(rows))
 
 
 class ProveTest(unittest.TestCase):
@@ -530,9 +560,18 @@ class ProveTest(unittest.TestCase):
         self.assertTrue(by["repull"]["facts"]["pulled"])
         self.assertEqual([e["message"] for e in by["refused"]["facts"]["events"]], ["401 Unauthorized"])
         self.assertEqual([e["reason"] for e in by["repull"]["facts"]["events"]], ["Pulled"])
+        pod = by["refused"]["facts"]["pod"]
+        self.assertEqual({k: pod[k] for k in ("namespace", "pod")}, {"namespace": "jfrog", "pod": "secretless-pull-test"})
+        self.assertTrue(pod["cluster"] and pod["platform"] and pod["read_at"].endswith("Z"))
         self.assertEqual(len(sh.mappings), 1)            # the trust is back
         self.assertEqual(sh.sa_deletes, 3)
-        self.assertNotIn(TOKEN, "\n".join(self.lines) + json.dumps(by))
+        self.assertEqual(by["denied"]["facts"]["jfrog"]["status"], 401)
+        self.assertEqual(by["denied"]["facts"]["jfrog"]["answer"], "Failed to find identity mapping")
+        self.assertEqual(by["granted-2"]["facts"]["jfrog"]["answer"], "token issued for kcp-pull-user, expires in 60 min")
+        self.assertEqual(by["granted-1"]["facts"]["jfrog"]["subject"], "system:serviceaccount:jfrog:jfrog-provider-sa")
+        out = "\n".join(self.lines) + json.dumps(by)
+        for secret in (TOKEN, SA_JWT, ISSUED):
+            self.assertNotIn(secret, out)
 
     def test_a_cached_credential_fails_the_proof_and_still_restores(self):
         sh = TrustShell(cached=True, **set_up())
@@ -546,7 +585,7 @@ class ProveTest(unittest.TestCase):
     def test_a_stop_after_the_break_still_restores(self):
         sh = TrustShell(**set_up())
         seen = []
-        by = self.prove(sh, stop=lambda: seen.append(1) or len(seen) > 12)
+        by = self.prove(sh, stop=lambda: seen.append(1) or len(seen) > 14)
         self.assertIn("break", by)
         self.assertEqual(by["restore"]["status"], "done")
         self.assertEqual(len(sh.mappings), 1)

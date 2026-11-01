@@ -38,6 +38,7 @@ Prove (the stakeholder demo) adds, around the same proof:
 
 from __future__ import annotations
 
+import calendar
 import json
 import re
 import time
@@ -51,8 +52,8 @@ CHART = "jfrog-credential-provider"
 STEPS = ("cluster", "oidc", "kubeconfig", "sa", "provider", "mapping", "label", "helm", "daemonset", "anon", "pull", "who")
 VERIFY_STEPS = ("cluster", "kubeconfig", "sa-check", "trust", "map", "daemonset", "anon", "pull", "who")
 PROOF_STEPS = ("cluster", "sa-check", "trust", "map", "anon", "pull", "who")
-PROVE_STEPS = ("cluster", "kubeconfig", "no-secret", "no-keys", "sa-check", "trust", "map", "anon", "renew-1", "pull", "who",
-               "break", "renew-2", "refused", "restore", "renew-3", "repull")
+PROVE_STEPS = ("cluster", "kubeconfig", "no-secret", "no-keys", "sa-check", "trust", "map", "anon", "renew-1", "granted-1", "pull", "who",
+               "break", "renew-2", "denied", "refused", "restore", "renew-3", "granted-2", "repull")
 # Steps that run even after a failure or a stop: the trust is never left off.
 ALWAYS_STEPS = ("restore",)
 LONG_LIVED_SECONDS = 86400
@@ -100,6 +101,53 @@ def event_rows(items: list, uid: str = "") -> list:
                                                      src.get("host") or e.get("reportingInstance") or "") if x),
                     "count": e.get("count") or 1, "message": _URL.sub(r"\1", e.get("message", ""))[:600]})
     return sorted(out, key=lambda r: r["at"])
+
+
+PLUGIN_LOG = "/logs/jfrog-credentials-provider/jfrog-credentials-provider.log"
+# Setup chatter in every plugin run; the rest is what the plugin did and what JFrog said.
+_PLUGIN_NOISE = re.compile(r"Fetching environment variable|getting envs - artifactoryUrl|cloud_provider from env|azureAuthMethod not set|Auto-update|request\.Image")
+_JWT = re.compile(r"eyJ[\w-]+\.[\w-]+\.[\w-]*")
+
+
+def _epoch(iso: str) -> float:
+    m = re.match(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(\.\d+)?", iso or "")
+    if not m:
+        return 0.0
+    return calendar.timegm(time.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S")) + float((m.group(2) or ".0")[:7])
+
+
+def plugin_rows(text: str, since: float, until: float = 0.0, limit: int = 40) -> list:
+    """The credential plugin's own log lines (JSON per line, on the node) for one pull: time, level and
+    message, setup chatter dropped, URLs cut to host and path, never a token."""
+    rows = []
+    for line in (text or "").splitlines():
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        t = _epoch(e.get("time", ""))
+        if not isinstance(e, dict) or t < since or (until and t > until) or _PLUGIN_NOISE.search(e.get("msg", "")):
+            continue
+        msg = re.sub(r"https?://([^\s?\"]+)(\?\S*)?", r"\1", _JWT.sub("[token]", str(e.get("msg", ""))))
+        rows.append({"at": e["time"][:19] + "Z", "level": e.get("level", ""), "message": redact.text(msg)[:600]})
+    return rows[-limit:]
+
+
+def exchange_answer(res: dict) -> str:
+    """JFrog's words from a token exchange reply, never the token: on success who it is for and for how
+    long, else JFrog's error messages."""
+    js = res.get("json") if isinstance(res.get("json"), dict) else {}
+    if res.get("status") == 200:
+        who = js.get("username") or (js.get("scope") or "").replace("applied-permissions/user", "").strip() or "the mapped user"
+        return f"token issued for {who}" + (f", expires in {js['expires_in'] // 60} min" if isinstance(js.get("expires_in"), int) else "")
+    errs = [e.get("message", "") for e in js.get("errors") or [] if isinstance(e, dict)]
+    text = "; ".join(m for m in errs if m) or js.get("error_description") or js.get("message") or str(res.get("body") or res.get("error") or "")
+    return redact.text(re.sub(r"\s+", " ", str(text)))[:300]
+
+
+def _cluster_name(cfg: dict) -> str:
+    c = cfg.get("cluster")
+    return (c.get("name") if isinstance(c, dict) else c) or cfg.get("name", "")
 
 
 def _why(msgs: list) -> str:
@@ -184,6 +232,9 @@ def plan(cfg: dict, root: Path, which: str = "setup", dry_run: bool = True) -> l
         "break": (f"Remove identity mapping {j['mapping_name']}", "change",
                   f"DELETE https://{host}/access/api/v1/oidc/{v['provider_name']}/identity_mappings/{j['mapping_name']}"),
         "renew-2": ("Fresh service account without the trust", "change", RENEW(kc, k, p)),
+        "denied": ("JFrog refuses the exchange without the trust", "read", f"POST https://{host}/access/api/v1/oidc/token  (as {k['service_account']})"),
+        "granted-1": ("JFrog grants the exchange", "read", f"POST https://{host}/access/api/v1/oidc/token  (as {k['service_account']})"),
+        "granted-2": ("JFrog grants the exchange again", "read", f"POST https://{host}/access/api/v1/oidc/token  (as {k['service_account']})"),
         "refused": ("Pull refused without the trust", "change", ["kubectl", *kc, "apply", "-f", str(p["pod"]), *srv]),
         "restore": (f"Restore identity mapping {j['mapping_name']}", "change",
                     f"POST https://{host}/access/api/v1/oidc/{v['provider_name']}/identity_mappings  (the mapping as it was)"),
@@ -440,7 +491,7 @@ class Runner:
             return self._dry_pod()
         ok, reason, msgs, secs = self._pull()
         if ok:
-            return "done", "pulled with no pull secret", {"pulled": True, "seconds": secs, "events": self._events}
+            return "done", "pulled with no pull secret", {"pulled": True, "seconds": secs, "events": self._events, "pod": self._pod}
         raise StepError(f"pull failed ({reason}){': ' + _why(msgs) if msgs else ''}")
 
     def s_repull(self):
@@ -448,7 +499,7 @@ class Runner:
             return self._dry_pod()
         ok, reason, msgs, secs = self._pull()
         if ok:
-            return "done", f"pulled again in {secs} s", {"pulled": True, "seconds": secs, "events": self._events}
+            return "done", f"pulled again in {secs} s", {"pulled": True, "seconds": secs, "events": self._events, "pod": self._pod}
         raise StepError(f"pull failed after the trust came back ({reason}){': ' + _why(msgs) if msgs else ''}")
 
     def s_refused(self):
@@ -459,7 +510,7 @@ class Runner:
             raise StepError("pulled without the trust: the pull does not depend on OIDC")
         why = _why(msgs) if msgs else reason
         return "ok", f"refused ({reason}: {why})", {"pulled": False, "reason": reason, "cause": why,
-                                                     "events": self._events}
+                                                     "events": self._events, "pod": self._pod}
 
     def _dry_pod(self):
         self.p["pod"].write_text(json.dumps(pod_manifest(self.cfg), indent=2))
@@ -474,10 +525,11 @@ class Runner:
         self._run(["kubectl", "delete", "pod", k["test_pod"], "-n", k["namespace"], "--ignore-not-found", "--wait=true"], timeout=120)
         self.facts["pull_started"] = self.clock()
         self._run(["kubectl", "apply", "-f", str(self.p["pod"])])
-        waited, phase, reason, uid = 0, "", "", ""
+        waited, phase, reason, uid, node = 0, "", "", "", ""
         while waited < self.pull_timeout:
             d = self._run(["kubectl", "get", "pod", k["test_pod"], "-n", k["namespace"], "-o", "json"]).json({}) or {}
             uid = (d.get("metadata") or {}).get("uid", uid)
+            node = (d.get("spec") or {}).get("nodeName") or node
             phase = (d.get("status") or {}).get("phase", "")
             cs = ((d.get("status") or {}).get("containerStatuses") or [{}])[0]
             reason = ((cs.get("state") or {}).get("waiting") or {}).get("reason", "")
@@ -490,9 +542,25 @@ class Runner:
         msgs = [e.get("message", "") for e in ev.get("items", []) if e.get("reason") in ("Pulled", "Failed", "BackOff")
                 and (not uid or (e.get("involvedObject") or {}).get("uid") in (None, uid))]
         self._events = event_rows(ev.get("items", []), uid)
+        # Where the events were read from, so the evidence names its own source.
+        self._pod = {"platform": platforms.kind(self.cfg), "cluster": _cluster_name(self.cfg),
+                     "namespace": k["namespace"], "pod": k["test_pod"], "uid": uid,
+                     "node": node or next((e["from"].split(" on ", 1)[1] for e in self._events if " on " in e["from"]), ""),
+                     "read_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        self._pod["plugin_log"] = self._plugin_log(self._pod["node"])
         self._run(["kubectl", "delete", "pod", k["test_pod"], "-n", k["namespace"], "--ignore-not-found", "--wait=false"])
         secs = int(self.clock() - self.facts["pull_started"]) if isinstance(self.facts.get("pull_started"), (int, float)) else waited
         return phase in ("Running", "Succeeded"), reason or phase or "timeout", msgs, max(secs, 0)
+
+    def _plugin_log(self, node: str):
+        """The plugin's log on the node that pulled, read through the API server; None when unreadable."""
+        if not node:
+            return None
+        r = self.sh.run(["kubectl", "get", "--raw", f"/api/v1/nodes/{node}/proxy{PLUGIN_LOG}"], timeout=90, extra_env=self.kenv)
+        if r.rc != 0:
+            return None
+        start = self.facts.get("pull_started")
+        return plugin_rows(r.stdout, (start - 2) if isinstance(start, (int, float)) else 0.0)
 
     # -- the OIDC proof ------------------------------------------------------------
 
@@ -647,6 +715,36 @@ class Runner:
         self._run(["kubectl", "delete", "serviceaccount", k["service_account"], "-n", k["namespace"], "--ignore-not-found", "--wait=true"])
         self._run(["kubectl", "apply", "-f", str(self.p["sa"])])
         return "done", "recreated with a new UID: no cached credential"
+
+    def _ask_jfrog(self):
+        """Ask JFrog's token endpoint with the pod service account's own token, as the credential provider
+        does. Returns JFrog's answer without any token: HTTP status, its message or who the token is for."""
+        k, v = self.cfg["k8s"], self.cfg["values"]
+        aud = v["gcp_oidc_audience"] if platforms.kind(self.cfg) == "gke" else v["azure_app_audience"]
+        r = self.sh.run(["kubectl", "create", "token", k["service_account"], "-n", k["namespace"], "--audience", aud,
+                         "--duration", "10m"], timeout=60, extra_env=self.kenv)
+        if r.rc != 0:
+            raise StepError(f"no service account token for {k['service_account']}")
+        res = self.jf.exchange(v["provider_name"], r.stdout.strip())
+        return {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "endpoint": "/access/api/v1/oidc/token",
+                "provider": v["provider_name"], "subject": model.subject(self.cfg), "audience": aud,
+                "status": res["status"], "answer": exchange_answer(res)}
+
+    def s_granted(self):
+        if self.dry:
+            return "skipped", "dry run: JFrog was not asked"
+        a = self._ask_jfrog()
+        if a["status"] != 200:
+            raise StepError(f"JFrog refused the exchange: HTTP {a['status']}: {a['answer']}")
+        return "ok", f"HTTP 200: {a['answer']}", {"jfrog": a}
+
+    def s_denied(self):
+        if self.dry:
+            return "skipped", "dry run: JFrog was not asked"
+        a = self._ask_jfrog()
+        if a["status"] == 200:
+            raise StepError("JFrog granted the exchange without the mapping: the trust is not what decides")
+        return "ok", f"HTTP {a['status']}: {a['answer']}", {"jfrog": a}
 
     def _saved(self):
         return self.p["dir"] / f"{self.cfg['name']}-mapping-saved.json"

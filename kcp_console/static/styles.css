@@ -532,3 +532,11 @@ input.typed { width: 220px; }
 .card + .grid3 { margin-top: var(--card-gap); }
 .events-table .ev-msg { white-space: pre-wrap; word-break: break-word; font-size: 12px; }
 .events-table td:first-child, .events-table td:nth-child(2) { white-space: nowrap; }
+.source-table { margin-bottom: var(--s-3, 12px); }
+.source-table td { font-size: 12px; overflow-wrap: anywhere; }
+.events-table, .source-table { table-layout: auto; width: 100%; }
+.events-table td, .source-table td, .events-table th, .source-table th { padding: 10px 14px; vertical-align: top; }
+.sub-head { font-size: 14px; font-weight: 600; margin: 20px 0 8px; }
+.badge.ev-fail { color: #b42318; background: #fef3f2; border-color: #f04438; }
+.events-table tr.warn-row td { background: #fef3f2; }
+.events-table tr.warn-row .ev-msg { color: #b42318; }

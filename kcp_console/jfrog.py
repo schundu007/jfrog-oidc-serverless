@@ -132,7 +132,8 @@ class Jfrog:
     def _call(self, method, path, body=None, ctype="application/json", host=None, auth=True):
         url = f"https://{host or self.host}{path}"
         data = None if body is None else (body.encode() if isinstance(body, str) else json.dumps(body).encode())
-        headers = self._headers({"Content-Type": ctype} if data else {}) if auth else {}
+        extra = {"Content-Type": ctype} if data else {}
+        headers = self._headers(extra) if auth else extra
         res = self.sh.http(method, url, headers=headers, body=data)
         return {"status": res.status, "ok": res.ok, "error": res.error, "body": res.body,
                 "json": res.json(), "headers": res.headers, "url": url}
@@ -167,6 +168,14 @@ class Jfrog:
     def request_log(self):
         """The request log for audit attribution. UNVERIFIED API (spec §12)."""
         return self._call("GET", "/artifactory/api/system/logs/data?id=artifactory-request.log")
+
+    def exchange(self, provider, subject_token):
+        """JFrog's own answer to an OIDC token exchange, as the pod would ask it. The caller keeps only
+        the status and JFrog's words, never the token in either direction."""
+        return self._call("POST", "/access/api/v1/oidc/token", auth=False, body={
+            "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+            "subject_token_type": "urn:ietf:params:oauth:token-type:id_token",
+            "subject_token": subject_token, "provider_name": provider})
 
     # -- writes (called by the runner after an approval only)
     def create_provider(self, body):

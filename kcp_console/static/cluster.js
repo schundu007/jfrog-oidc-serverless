@@ -39,9 +39,10 @@ const CARD_HELP = {
   Essentials: "What the cluster and JFrog report right now, read live with read-only calls.",
   "Set up": "Dry run first, then your approval, then the real change: Helm install, JFrog OIDC provider and mapping.",
   Verify: "Read-only: re-reads the cluster and JFrog and pulls the test image again.",
-  "Pull with OIDC": "The kubelet's events for the test pod: no pull secret, the image pulled through the credential provider.",
-  "Pull without trust": "The kubelet's events with the identity mapping removed: JFrog answers 401 and the pull fails.",
-  "Pull with trust restored": "The kubelet's events once the mapping is back: the same pod pulls again.",
+  "JFrog token exchange": "JFrog's own replies, read live: the console asked JFrog's token endpoint with the pod service account's token, as the credential provider does, with the trust in place, removed and restored. No token is kept.",
+  "Pod events: Pull with OIDC": "Read live from the cluster: the kubelet's events for the test pod: no pull secret, the image pulled through the credential provider.",
+  "Pod events: Pull without trust": "Read live from the cluster: the kubelet's events with the identity mapping removed: JFrog answers 401 and the pull fails.",
+  "Pod events: Pull with trust restored": "Read live from the cluster: the kubelet's events once the mapping is back: the same pod pulls again.",
   Prove: "Proves the pull depends on OIDC: no stored secret, a live exchange, refused while the JFrog mapping is removed, working again once it is restored.",
   "No stored secret": "No pull secret on the service account or in its namespace, and no long-lived JFrog token for the mapped user.",
   "Live exchange": "A recreated service account (nothing cached) pulls through JFrog; JFrog records the mapped user.",
@@ -225,28 +226,72 @@ const runLink = (name, id) => h("span", { class: "card-link" }, link(go, url, ru
 
 const PROVE_GROUPS = [
   ["No stored secret", ["no-secret", "no-keys"]],
-  ["Live exchange", ["sa-check", "trust", "map", "anon", "renew-1", "pull", "who"]],
-  ["Trust removed", ["break", "renew-2", "refused", "restore", "renew-3", "repull"]],
+  ["Live exchange", ["sa-check", "trust", "map", "anon", "renew-1", "granted-1", "pull", "who"]],
+  ["Trust removed", ["break", "renew-2", "denied", "refused", "restore", "renew-3", "granted-2", "repull"]],
 ];
 
+// Steps newer proofs add: an older run without them still reads as it did.
+const ADDED_LATER = new Set(["granted-1", "denied", "granted-2"]);
 const EVENT_PULLS = [["Pull with OIDC", "pull"], ["Pull without trust", "refused"], ["Pull with trust restored", "repull"]];
 const clock = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }); };
 
+// A failed pull event: Warnings, and Normal ones that report a failure (GKE marks BackOff as Normal).
+const evBad = (e) => e.type === "Warning" || /fail|backoff|err/i.test(e.reason || "");
+
+// Where each event table was read from: the live cluster, its namespace, the test pod and the node that pulled.
+const SOURCE_COLS = [
+  ["Source", (p) => `Kubernetes events (live, ${CLOUD[p.platform] || p.platform})`],
+  ["Cluster", (p) => p.cluster], ["Namespace", (p) => p.namespace], ["Pod", (p) => p.pod],
+  ["Pod UID", (p) => p.uid], ["Node", (p) => p.node], ["Read at (UTC)", (p) => (p.read_at || "").replace("T", " ").replace("Z", "")],
+];
+
 // The kubelet's own events for each test pull, as the cluster recorded them.
+// JFrog's own answers to the token exchange, asked as the pod's service account at each stage.
+const JFROG_ASKS = [["Trust in place", "granted-1"], ["Trust removed", "denied"], ["Trust restored", "granted-2"]];
+const JFROG_COLS = ["Time", "Stage", "Endpoint", "Provider", "Subject", "HTTP", "JFrog's answer"];
+const jfrogRows = (run) => JFROG_ASKS.map(([stage, id]) => [stage, run.result.steps.find((x) => x.id === id)?.facts?.jfrog]).filter(([, a]) => a);
+
+function jfrogCard(run) {
+  const rows = jfrogRows(run);
+  if (!rows.length) return null;
+  const denied = rows.find(([s]) => s === "Trust removed")?.[1];
+  return card("JFrog token exchange", h("span", { class: `badge ${denied && denied.status !== 200 ? "ok" : "fail"}` }, denied && denied.status !== 200 ? `Refused: HTTP ${denied.status}` : "Not refused"),
+    h("table", { class: "table events-table" },
+      h("thead", {}, h("tr", {}, JFROG_COLS.map((t) => h("th", { scope: "col" }, t)))),
+      h("tbody", {}, rows.map(([stage, a]) => h("tr", { class: a.status !== 200 ? "warn-row" : null },
+        h("td", { class: "mono" }, clock(a.at)), h("td", {}, stage), h("td", { class: "mono" }, `POST ${a.endpoint}`),
+        h("td", { class: "mono" }, a.provider), h("td", { class: "mono" }, a.subject),
+        h("td", {}, h("span", { class: `badge ${a.status === 200 ? "ok" : "ev-fail"}` }, String(a.status))),
+        h("td", { class: "ev-msg" }, a.answer))))));
+}
+
 function eventsCard(run, title, id) {
   const s = (run.result.steps || []).find((x) => x.id === id);
   const ev = s?.facts?.events;
   if (!ev) return null;
   const bad = id === "refused" ? ev.every((e) => e.reason !== "Pulled") : ev.some((e) => e.reason === "Pulled");
-  return card(title, h("span", { class: `badge ${bad ? "ok" : "fail"}` }, id === "refused" ? (bad ? "Refused" : "Pulled") : (bad ? "Pulled" : "Not pulled")),
+  const pod = s.facts.pod;
+  return card(`Pod events: ${title}`, h("span", { class: `badge ${bad ? "ok" : "fail"}` }, id === "refused" ? (bad ? "Refused" : "Pulled") : (bad ? "Pulled" : "Not pulled")),
+    pod ? h("table", { class: "table source-table" },
+      h("thead", {}, h("tr", {}, SOURCE_COLS.map(([k]) => h("th", { scope: "col" }, k)))),
+      h("tbody", {}, h("tr", {}, SOURCE_COLS.map(([, f]) => h("td", { class: "mono" }, f(pod, run))))))
+      : null,
     ev.length ? h("table", { class: "table events-table" },
       h("thead", {}, h("tr", {}, ["Time", "Reason", "From", "Message"].map((t) => h("th", { scope: "col" }, t)))),
-      h("tbody", {}, ev.map((e) => h("tr", { class: e.type === "Warning" ? "warn-row" : null },
+      h("tbody", {}, ev.map((e) => h("tr", { class: evBad(e) ? "warn-row" : null },
         h("td", { class: "mono" }, clock(e.at)),
-        h("td", {}, h("span", { class: `badge ${e.type === "Warning" ? "fail" : "ok"}` }, e.count > 1 ? `${e.reason} ×${e.count}` : e.reason)),
-        h("td", {}, e.from),
+        h("td", {}, h("span", { class: `badge ${evBad(e) ? "ev-fail" : "ok"}` }, e.count > 1 ? `${e.reason} ×${e.count}` : e.reason)),
+        h("td", {}, String(e.from || "").replace(/ on .*/, "")),
         h("td", { class: "mono ev-msg" }, e.message)))))
-      : muted("No events"));
+      : muted("No events"),
+    pod?.plugin_log ? [h("h3", { class: "sub-head" }, `JFrog credential provider log on ${pod.node}`),
+      pod.plugin_log.length ? h("table", { class: "table events-table" },
+        h("thead", {}, h("tr", {}, ["Time", "Level", "Message"].map((t) => h("th", { scope: "col" }, t)))),
+        h("tbody", {}, pod.plugin_log.map((e) => h("tr", { class: e.level === "ERROR" ? "warn-row" : null },
+          h("td", { class: "mono" }, clock(e.at)),
+          h("td", {}, h("span", { class: `badge ${e.level === "ERROR" ? "ev-fail" : "ok"}` }, e.level)),
+          h("td", { class: "mono ev-msg" }, e.message)))))
+        : muted("The plugin was not called: kubelet used a cached credential")] : null);
 }
 
 const latestProve = (runs) => (runs || []).find((x) => x.kind === "direct" && x.name === "prove" && !isDry(x) && !ACTIVE.includes(x.status) && x.result);
@@ -282,11 +327,12 @@ function proofTab(c) {
         muted(when(run.created)), runLink(name, run.id)],
         h("div", { class: "stats" }, proveFacts(run).map(([k, cls, v]) =>
           h("div", { class: `stat s-${cls === "ok" ? "working" : cls}` }, h("b", {}, v), h("span", {}, k))))),
-      h("div", { class: "grid3" }, PROVE_GROUPS.map(([title, ids]) => {
+      h("div", { class: "stack" }, PROVE_GROUPS.map(([title, ids]) => {
         const steps = ids.map((id) => run.result.steps.find((s) => s.id === id)).filter(Boolean);
-        const bad = steps.some((s) => s.status === "failed" || s.status === "warn") || steps.length < ids.length;
+        const bad = steps.some((s) => s.status === "failed" || s.status === "warn") || steps.length < ids.filter((i) => !ADDED_LATER.has(i)).length;
         return card(title, h("span", { class: `badge ${bad ? "fail" : "ok"}` }, bad ? "Not proven" : "Proven"), checklist(steps));
       })),
+      jfrogCard(run),
       EVENT_PULLS.map(([title, id]) => eventsCard(run, title, id)),
     ] : (a?.which === "prove" ? null : !runsOf[name] ? muted("Loading…") : h("div", { class: "empty slim" }, h("p", {}, "No proof yet"))));
 }
@@ -304,12 +350,26 @@ function download(c, run) {
     for (const id of ids) { const s = run.result.steps.find((x) => x.id === id); if (s) L.push(row([s.title, s.status, s.detail])); }
     L.push("");
   }
+  const asks = jfrogRows(run);
+  if (asks.length) {
+    L.push("## JFrog token exchange (asked as the pod's service account)", "", row(["Time (UTC)", ...JFROG_COLS.slice(1)]), row(JFROG_COLS.map(() => "---")));
+    for (const [stage, a] of asks) L.push(row([a.at, stage, `POST ${a.endpoint}`, a.provider, a.subject, a.status, a.answer]));
+    L.push("");
+  }
   for (const [title, id] of EVENT_PULLS) {
     const ev = run.result.steps.find((x) => x.id === id)?.facts?.events;
     if (!ev) continue;
-    L.push(`## Cluster events: ${title}`, "", row(["Time (UTC)", "Type", "Reason", "From", "Count", "Message"]), row(Array(6).fill("---")));
+    const pod = run.result.steps.find((x) => x.id === id)?.facts?.pod;
+    L.push(`## Pod events: ${title}`, "");
+    if (pod) L.push(row(SOURCE_COLS.map(([k]) => k)), row(SOURCE_COLS.map(() => "---")), row(SOURCE_COLS.map(([, f]) => f(pod))), "");
+    L.push( row(["Time (UTC)", "Type", "Reason", "From", "Count", "Message"]), row(Array(6).fill("---")));
     for (const e of ev) L.push(row([e.at, e.type, e.reason, e.from, e.count, e.message]));
     L.push("");
+    if (pod?.plugin_log?.length) {
+      L.push(`### JFrog credential provider log on ${pod.node}`, "", row(["Time (UTC)", "Level", "Message"]), row(["---", "---", "---"]));
+      for (const e of pod.plugin_log) L.push(row([e.at, e.level, e.message]));
+      L.push("");
+    }
   }
   const blob = new Blob([L.join("\n")], { type: "text/markdown" });
   const el = h("a", { href: URL.createObjectURL(blob), download: `oidc-proof-${c.name}-${run.id}.md` });
