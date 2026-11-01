@@ -1,4 +1,4 @@
-# Public demo of the portal at https://app.oidc.sudhakarchundu.org (see Dockerfile).
+# Public demo of the portal at https://jfrog-oidc-portal.fly.dev (see Dockerfile).
 app = "jfrog-oidc-portal"
 primary_region = "iad"
 
