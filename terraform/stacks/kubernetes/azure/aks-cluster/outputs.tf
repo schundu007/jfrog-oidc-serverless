@@ -19,12 +19,8 @@ output "log_analytics_workspace_id" {
 }
 
 output "argocd_repo_server_client_id" {
-  description = "Argo CD repo-server's managed identity: give it Reader on the Azure DevOps project to read the GitOps repo."
-  value       = var.argocd_enabled ? azurerm_user_assigned_identity.argocd_repo_server[0].client_id : null
-}
-
-output "argocd_repo_server_principal_id" {
-  value = var.argocd_enabled ? azurerm_user_assigned_identity.argocd_repo_server[0].principal_id : null
+  description = "Argo CD's account (ADO Basic, project Readers) the repo-server signs in as."
+  value       = var.argocd_enabled ? data.azurerm_user_assigned_identity.argocd[0].client_id : null
 }
 
 output "argocd_ui_command" {

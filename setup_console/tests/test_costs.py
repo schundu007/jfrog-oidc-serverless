@@ -57,7 +57,11 @@ class CostsTest(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.lines = []
 
-    def save(self, sid, values):
+    def save(self, sid, values, complete=True):
+        blank = {"string": "x", "number": 1, "bool": False, "list": [], "map": {}}
+        for v in stacks.variables(sid) if complete else ():   # the stack's other required inputs, set
+            if v["required"] and v["name"] not in values:
+                values = {**values, v["name"]: {f: "x" for f in v.get("fields", ())} if v["kind"] == "object" else blank.get(v["kind"], "x")}
         p = stacks.inputs_file(sid, "test", self.tmp)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(values))
@@ -110,8 +114,8 @@ class CostsTest(unittest.TestCase):
 
     def test_up_restores_inputs_when_the_first_pass_fails(self):
         sid = "gcp-cloud-run-service"
-        saved = {"workload": "svc", "deploy_service": True, "service_image": "img:1"}
-        self.save(sid, saved)
+        self.save(sid, {"workload": "svc", "deploy_service": True, "service_image": "img:1"})
+        saved = stacks.read_inputs(sid, "test", self.tmp)
 
         class Failing(FakeAdo):
             def build(self, run):
@@ -126,6 +130,13 @@ class CostsTest(unittest.TestCase):
         self.runner(jobs, ado).up("azure-functions-premium")
         self.assertEqual([c[1] for c in jobs.calls], ["plan-apply", "apply"])
         self.assertEqual(len(ado.runs), 1)
+
+    def test_up_stops_before_any_run_when_an_input_is_missing(self):
+        self.save("aks-cluster", {"azure_subscription_id": "sub", "node_count": 1}, complete=False)
+        jobs = FakeJobs(self.tmp)
+        with self.assertRaisesRegex(costs.CostError, "argocd_identity"):
+            self.runner(jobs, FakeAdo([])).up("aks-cluster")
+        self.assertEqual(jobs.calls, [])
 
     def test_a_cluster_has_no_build_deploy(self):
         self.save("gke-cluster", {"node_count": 1})

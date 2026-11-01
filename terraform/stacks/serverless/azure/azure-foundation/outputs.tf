@@ -11,3 +11,12 @@ output "azure_setup_identity_principal_id" {
   description = "The setup pipelines' identity (object ID), for the console's Preflight checks."
   value       = azurerm_user_assigned_identity.setup.principal_id
 }
+
+output "argocd_identity" {
+  description = "Argo CD's account (ADO Basic, project Readers): set as aks-cluster's argocd_identity."
+  value       = { name = azurerm_user_assigned_identity.argocd.name, resource_group = azurerm_resource_group.ado.name }
+}
+
+output "argocd_identity_client_id" {
+  value = azurerm_user_assigned_identity.argocd.client_id
+}

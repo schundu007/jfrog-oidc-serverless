@@ -118,6 +118,9 @@ class Runner:
     # -- one stack ----------------------------------------------------------------------------
 
     def up(self, sid) -> str:
+        gaps = stacks.missing(sid, self.env, self.root, self.state_root)
+        if gaps:   # a stack that gained an input since it was saved: fill it in Setup first
+            raise CostError(f"inputs not set: {', '.join(gaps)} (fill them in Setup)")
         inputs = stacks.read_inputs(sid, self.env, self.state_root)
         switch = SWITCHES.get(sid)
         build = self.build_pipeline(sid) and inputs.get("workload")

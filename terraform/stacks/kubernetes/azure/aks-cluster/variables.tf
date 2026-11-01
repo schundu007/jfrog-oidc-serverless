@@ -40,6 +40,14 @@ variable "argocd_enabled" {
   default     = true
 }
 
+variable "argocd_identity" {
+  description = "Argo CD's account, from azure-foundation's argocd_identity output (its identity name and resource group)."
+  type = object({
+    name           = string
+    resource_group = string
+  })
+}
+
 variable "argocd_chart_version" {
   description = "argo/argo-cd chart version."
   type        = string
