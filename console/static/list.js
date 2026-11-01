@@ -126,10 +126,7 @@ export async function mountList(page, { schema }) {
     if (!p.hidden) p.scrollIntoView({ block: "nearest" });
   });
   $("wl-refresh").addEventListener("click", () => load(true).catch((e) => setStatus($("list-status"), e.message, "error")));
-  // The type tiles show from the start, as before; + Create folds them away and back.
-  fill($("wl-create-panel"), createPanel());
-  $("wl-create-panel").hidden = false;
-  $("wl-create").setAttribute("aria-expanded", "true");
+  // The type tiles stay folded until + Create opens them, above the list, as in the Azure portal.
   saveQuery();
   render();
   try {

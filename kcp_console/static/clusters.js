@@ -216,7 +216,7 @@ const found = {};           // cloud -> {clusters, loading, error}
 
 function addPanel(configs, k) {
   return h("section", { class: "card" },
-    h("div", { class: "card-head" }, h("h2", {}, `Add a ${SOURCES[k].short} cluster`)), foundTable(configs, k));
+    h("div", { class: "card-head" }, h("h2", {}, `Add ${/^[AEIOU]/.test(SOURCES[k].short) ? "an" : "a"} ${SOURCES[k].short} cluster`)), foundTable(configs, k));
 }
 
 function foundTable(configs, k) {

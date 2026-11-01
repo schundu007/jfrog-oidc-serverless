@@ -54,6 +54,8 @@ function renderTrail(r) {
       : h("span", { "aria-current": i === steps.length - 1 ? "page" : null, text: label }));
   });
   $("trail").replaceChildren(...parts);
+  // A section's own page needs no trail: the title already says where you are.
+  $("trail").closest(".page-top").hidden = steps.length < 2;
 }
 
 // Keep only this cloud's links; inside the portal, links to this console's pages carry the prefix.

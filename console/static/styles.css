@@ -1042,3 +1042,4 @@ tbody tr, .ov-tile, .tile, .nav-item, a, button, .blade-opt, .chip, .kind-folder
 .sidenav .nav-block > .nav-item[aria-current="page"] { background: var(--side-on); color: var(--fg); font-weight: 700; }
 .sidenav .nav-block > .nav-item[aria-current="page"] > svg:not(.mark) { stroke: currentColor; }
 .sidenav .nav-block > .nav-item[aria-current="page"] svg.mark { filter: none; }
+.page-top[hidden] { display: none; }

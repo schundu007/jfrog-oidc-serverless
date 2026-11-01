@@ -186,6 +186,8 @@ function renderTrail(r) {
     } }, label));
   });
   $("trail").replaceChildren(...parts);
+  // A section's own page needs no trail: the title already says where you are.
+  $("trail").closest(".page-top").hidden = steps.length < 2;
 }
 
 // Back walks up one level, as the breadcrumb does.
