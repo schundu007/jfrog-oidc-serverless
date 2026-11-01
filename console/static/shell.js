@@ -61,7 +61,7 @@
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const glyph = (k) => (k === "boot" ? BOOT : CLOUD_LOGO[k] || NAV_ICON[k] || ICON[k] || "");
   const CHEV = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
-  // Every load starts collapsed: only the current section, and the cloud holding the current item, open.
+  // Every load starts fully collapsed (the current section stays tinted); the chevrons open it.
   // Folds made on the page last until the next load.
   const opened = new Set();
   const block = ([key, label, href, icon, kids]) => {
@@ -105,7 +105,7 @@
     b.querySelector(".nav-chev")?.setAttribute("aria-expanded", String(on));
     if (remember) { if (on) opened.add(b.dataset.block); else opened.delete(b.dataset.block); }
   }
-  // Cloud groups inside a section start folded; mark() opens the one holding the current item.
+  // Cloud groups inside a section start folded.
   function setSub(s, on) {
     s.classList.toggle("folded", !on);
     s.querySelector(".cloudfold-chev").setAttribute("aria-expanded", String(on));
@@ -120,7 +120,6 @@
 
   // A service kind (Cloud Run job) or platform (aks) selects the list it belongs to.
   const sel = { nav: null, kind: null };
-  let unfolded = null;   // the section last opened for being current; after that the chevron decides
   function mark() {
     const p = location.pathname, u = new URLSearchParams(location.search);
     for (const [key, , , , kids] of NAV) {
@@ -131,14 +130,9 @@
       b.classList.toggle("here", here);
       b.querySelectorAll(".nav-child").forEach((a, i) => {
         if (i === hit) a.setAttribute("aria-current", atTop() ? "page" : "true"); else a.removeAttribute("aria-current");
-        // The current service is never hidden inside a folded cloud.
-        if (i === hit && a.matches(".nav-grand")) { const s = a.closest(".cloudfold.folded"); if (s) setSub(s, true); }
-        if (i === hit && a.matches(".nav-cloud-row")) { const s = a.closest(".cloudfold.folded"); if (s) setSub(s, true); }
       });
-      // Entering a section unfolds it once; a fold the user makes then stays, even as filters change the address.
-      if (kids.length && !(here && unfolded === key)) setOpen(b, here || opened.has(key), false);
+      if (kids.length) setOpen(b, opened.has(key), false);
     }
-    unfolded = sel.nav;
     heading();
   }
   // A list page's heading is the current sidebar item, its name and icon (Functions Flex, GKE clusters,
