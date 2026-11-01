@@ -47,7 +47,7 @@ def row(c: dict, st: dict, runs: list) -> dict:
     checks = (st.get("preflight") or {}).get("checks") or []
     bad = next((x for x in checks if x.get("status") == "fail"), None)
     oidc, verified_at = _proof(mine)
-    act = next((r for r in mine if r.get("kind") == "direct" and r.get("name") in ("setup", "verify", "teardown")), None)
+    act = next((r for r in mine if r.get("kind") == "direct" and r.get("name") in ("setup", "verify", "prove", "teardown")), None)
     if act and _real(act) and act.get("status") == "prepared":
         state = "approval"
     elif act and _real(act) and act.get("status") in ("queued", "running"):

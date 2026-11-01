@@ -100,7 +100,7 @@ export function duration(from, to) {
 
 // ----------------------------------------------------------------- run facts
 
-export const TITLES = { setup: "Set up", verify: "Verify", teardown: "Tear down" };
+export const TITLES = { setup: "Set up", verify: "Verify", prove: "Prove", teardown: "Tear down" };
 export const ACTIVE = ["queued", "running"];
 export const isDry = (r) => r.request?.parameters?.DryRun !== false;
 export const runTitle = (r) => `${TITLES[r.name] || r.name}${isDry(r) ? " · dry run" : ""}`;

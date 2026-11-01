@@ -22,7 +22,7 @@ from .jfrog import Jfrog, OperatorToken
 from .parse import events, summary
 
 PILOT_EXTRAS = {"TEST_POD_IMAGE", "TEST_POD_NAME", "TEST_POD_SA", "DiagnosticImage", "ChartRepo"}
-DIRECT_PLANS = ("setup", "verify", "teardown")
+DIRECT_PLANS = ("setup", "verify", "prove", "teardown")
 JFROG_ACTIONS = {"create-provider", "create-mapping", "promote", "delete-mapping", "delete-provider"}
 POLL_LIMIT_SECONDS = 3600
 
@@ -152,6 +152,9 @@ def build_request(cfg: dict, kind: str, name: str, params: dict, status: dict | 
         req = {"pipeline": "direct", "branch": "", "parameters": {"plan": name, "DryRun": dry, "steps": steps},
                "values_sha256": model.values_sha256(cfg) if name == "setup" else ""}
         mutates, destructive = True, name == "teardown"
+        if name == "prove":
+            warnings.append(f"Prove removes the identity mapping {cfg['jfrog']['mapping_name']} for about a minute, "
+                            "recreates the service account three times and restores the mapping, even when a step fails.")
         if name == "teardown":
             warnings.append("Teardown removes the release, the node label, the identity mapping and the OIDC provider. "
                             "Uninstall leaves the node's provider entry in place (untested cleanup).")

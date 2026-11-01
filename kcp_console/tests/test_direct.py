@@ -476,3 +476,97 @@ class PruneTest(unittest.TestCase):
         with self.assertRaises(RunError) as cm:
             m.delete("20261030-130000-bbbbb4")
         self.assertEqual(cm.exception.status, 404)
+
+
+class TrustShell(FakeShell):
+    """A cluster where the pull works only while JFrog holds the mapping, as with a live exchange.
+    cached=True: kubelet reused a credential, so the pull works without the trust (the proof must catch it)."""
+
+    def __init__(self, cached=False, tokens=None, pull_secrets=0, **kw):
+        super().__init__(**kw)
+        self.cached, self.tokens, self.pull_secrets = cached, tokens or [], pull_secrets
+        self.sa_deletes = 0
+
+    def run(self, argv, timeout=60.0, sensitive=False, extra_env=None, stream=False):
+        if argv[:3] == ["kubectl", "get", "pod"]:
+            self.pod_phase, self.pod_reason = ("Running", "") if (self.mappings or self.cached) else ("Pending", "ErrImagePull")
+        if argv[:3] == ["kubectl", "get", "secrets"]:
+            self.calls.append(list(argv))
+            return Result(list(argv), 0, "kubernetes.io/service-account-token\n" + "kubernetes.io/dockerconfigjson\n" * self.pull_secrets, "", 0.0)
+        if argv[:3] == ["kubectl", "delete", "serviceaccount"]:
+            self.sa_deletes += 1
+        return super().run(argv, timeout, sensitive, extra_env, stream)
+
+    def http(self, method, url, headers=None, body=None, timeout=20.0, sensitive=False):
+        if method == "GET" and url.endswith("/access/api/v1/tokens"):
+            self.http_calls.append((method, url, (headers or {}).get("Authorization", "")))
+            return HttpResult(method, url, 200, json.dumps({"tokens": self.tokens}))
+        if method == "DELETE" and "/identity_mappings/" in url:
+            name = url.rsplit("/", 1)[-1]
+            self.mappings = [m for m in self.mappings if m.get("name") != name]
+        return super().http(method, url, headers, body, timeout, sensitive)
+
+
+class ProveTest(unittest.TestCase):
+    """Prove: no stored secret, a live pull, refused without the trust, and the trust always restored."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.lines = []
+
+    def prove(self, sh, dry=False, stop=lambda: False):
+        rn = direct.Runner(cfg(), sh, self.root, {}, self.lines.append, dry_run=dry, sleep=lambda s: None, tokens=StaticToken(TOKEN))
+        return {r["id"]: r for r in rn.execute(direct.plan(cfg(), self.root, "prove", dry_run=dry), stop=stop)}
+
+    def test_every_claim_holds(self):
+        sh = TrustShell(tokens=[{"subject": "jfac@x/users/kcp-pull-user", "issued_at": 100, "expiry": 3700}], **set_up())
+        by = self.prove(sh)
+        self.assertEqual([i for i in direct.PROVE_STEPS if by[i]["status"] not in ("ok", "done")], [], by)
+        self.assertEqual(by["no-secret"]["facts"]["pull_secrets"], 0)
+        self.assertEqual(by["no-keys"]["facts"], {"long_lived": 0, "short_lived": 1})
+        self.assertFalse(by["refused"]["facts"]["pulled"])
+        self.assertTrue(by["repull"]["facts"]["pulled"])
+        self.assertEqual(len(sh.mappings), 1)            # the trust is back
+        self.assertEqual(sh.sa_deletes, 3)
+        self.assertNotIn(TOKEN, "\n".join(self.lines) + json.dumps(by))
+
+    def test_a_cached_credential_fails_the_proof_and_still_restores(self):
+        sh = TrustShell(cached=True, **set_up())
+        by = self.prove(sh)
+        self.assertEqual(by["refused"]["status"], "failed")
+        self.assertIn("does not depend on OIDC", by["refused"]["detail"])
+        self.assertEqual(by["restore"]["status"], "done")
+        self.assertNotIn("repull", by)
+        self.assertEqual(len(sh.mappings), 1)
+
+    def test_a_stop_after_the_break_still_restores(self):
+        sh = TrustShell(**set_up())
+        seen = []
+        by = self.prove(sh, stop=lambda: seen.append(1) or len(seen) > 12)
+        self.assertIn("break", by)
+        self.assertEqual(by["restore"]["status"], "done")
+        self.assertEqual(len(sh.mappings), 1)
+
+    def test_stored_secrets_fail_the_claim(self):
+        by = self.prove(TrustShell(pull_secrets=1, **set_up()))
+        self.assertEqual(by["no-secret"]["status"], "failed")
+        self.assertNotIn("pull", by)
+        self.assertEqual(by["restore"]["status"], "skipped")
+
+    def test_a_long_lived_token_fails_the_claim(self):
+        by = self.prove(TrustShell(tokens=[{"subject": "jfac@x/users/kcp-pull-user", "issued_at": 100}], **set_up()))
+        self.assertEqual(by["no-keys"]["status"], "failed")
+
+    def test_dry_run_changes_nothing(self):
+        sh = TrustShell(**set_up())
+        by = self.prove(sh, dry=True)
+        self.assertFalse([r for r in by.values() if r["status"] == "failed"], by)
+        self.assertEqual(sh.sa_deletes, 0)
+        self.assertFalse([m for m, _, _ in sh.http_calls if m != "GET"])
+        self.assertEqual(len(sh.mappings), 1)
+
+    def test_request_warns_and_is_not_destructive(self):
+        r = build_request(cfg(), "direct", "prove", {"DryRun": False}, root=str(self.root))
+        self.assertTrue(r["changes_state"])
+        self.assertFalse(r["needs_typed_cluster"])
+        self.assertTrue(any("restores the mapping" in w for w in r["warnings"]))

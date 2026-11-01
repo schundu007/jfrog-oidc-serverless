@@ -25,11 +25,21 @@ The OIDC proof (verify, and the end of setup), every link read from the cluster 
   anon        the test image without credentials: 401 (else a pull proves nothing)
   pull        the pull with no pull secret
   who         JFrog's download stats: the image was last downloaded by the mapped user
+
+Prove (the stakeholder demo) adds, around the same proof:
+  no-secret   no pull secret on the service account, none in its namespace (names and types only)
+  no-keys     the mapped user holds no long-lived JFrog token
+  renew-N     the service account is recreated: a new UID, so kubelet holds no cached JFrog token for it
+  break       the identity mapping is removed for a moment (kept to restore it)
+  refused     the same pull is refused while the trust is off
+  restore     the mapping is put back; it runs even when an earlier step failed
+  repull      the same pull works again
 """
 
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 
@@ -41,6 +51,11 @@ CHART = "jfrog-credential-provider"
 STEPS = ("cluster", "oidc", "kubeconfig", "sa", "provider", "mapping", "label", "helm", "daemonset", "anon", "pull", "who")
 VERIFY_STEPS = ("cluster", "kubeconfig", "sa-check", "trust", "map", "daemonset", "anon", "pull", "who")
 PROOF_STEPS = ("cluster", "sa-check", "trust", "map", "anon", "pull", "who")
+PROVE_STEPS = ("cluster", "kubeconfig", "no-secret", "no-keys", "sa-check", "trust", "map", "anon", "renew-1", "pull", "who",
+               "break", "renew-2", "refused", "restore", "renew-3", "repull")
+# Steps that run even after a failure or a stop: the trust is never left off.
+ALWAYS_STEPS = ("restore",)
+LONG_LIVED_SECONDS = 86400
 TEARDOWN_STEPS = ("kubeconfig", "uninstall", "unlabel", "delete-mapping", "delete-provider", "gone")
 # GKE adds the Google service account that the pod's service account acts as (GCP.md Step 2B).
 GKE_STEPS = STEPS[:3] + ("gsa",) + STEPS[3:]
@@ -49,7 +64,7 @@ GKE_STEPS = STEPS[:3] + ("gsa",) + STEPS[3:]
 def step_ids(cfg: dict, which: str) -> tuple:
     if which == "setup":
         return GKE_STEPS if platforms.kind(cfg) == "gke" else STEPS
-    return {"verify": VERIFY_STEPS, "teardown": TEARDOWN_STEPS}[which]
+    return {"verify": VERIFY_STEPS, "prove": PROVE_STEPS, "teardown": TEARDOWN_STEPS}[which]
 
 
 class StepError(RuntimeError):
@@ -135,6 +150,18 @@ def plan(cfg: dict, root: Path, which: str = "setup", dry_run: bool = True) -> l
         "map": (f"Service account mapped to {j['mapped_user']}", "read", f"GET https://{host}/access/api/v1/oidc/{v['provider_name']}/identity_mappings"),
         "anon": ("Image refused without credentials", "read", f"GET https://{host}/v2/... (no credentials)"),
         "who": (f"JFrog saw the pull as {j['mapped_user']}", "read", f"GET https://{host}/artifactory/api/storage/...?stats"),
+        "no-secret": ("No pull secret on the service account or in its namespace", "read",
+                      ["kubectl", *kc, "get", "serviceaccount", k["service_account"], "-n", k["namespace"], "-o", "json"]),
+        "no-keys": (f"{j['mapped_user']} holds no long-lived JFrog token", "read", f"GET https://{host}/access/api/v1/tokens"),
+        "renew-1": ("Fresh service account: no cached token", "change", RENEW(kc, k, p)),
+        "break": (f"Remove identity mapping {j['mapping_name']}", "change",
+                  f"DELETE https://{host}/access/api/v1/oidc/{v['provider_name']}/identity_mappings/{j['mapping_name']}"),
+        "renew-2": ("Fresh service account without the trust", "change", RENEW(kc, k, p)),
+        "refused": ("Pull refused without the trust", "change", ["kubectl", *kc, "apply", "-f", str(p["pod"]), *srv]),
+        "restore": (f"Restore identity mapping {j['mapping_name']}", "change",
+                    f"POST https://{host}/access/api/v1/oidc/{v['provider_name']}/identity_mappings  (the mapping as it was)"),
+        "renew-3": ("Fresh service account with the trust back", "change", RENEW(kc, k, p)),
+        "repull": ("Pull works again with the trust", "change", ["kubectl", *kc, "apply", "-f", str(p["pod"]), *srv]),
         "uninstall": ("Uninstall the credential provider", "change", ["helm", "uninstall", k["release"], "--namespace", k["namespace"],
                                                                   *(["--dry-run"] if dry_run else [])]),
         "unlabel": (f"Remove the label {v['node_affinity_label']}", "change", ["kubectl", *kc, "label", "nodes", "--all", f"{v['node_affinity_label']}-", *srv]),
@@ -147,10 +174,15 @@ def plan(cfg: dict, root: Path, which: str = "setup", dry_run: bool = True) -> l
     out = []
     for i in ids:
         title, kind, cmd = S[i]
-        skipped_in_dry = dry_run and i in ("oidc", "gsa", "provider", "mapping", "delete-mapping", "delete-provider")
+        skipped_in_dry = dry_run and i in ("oidc", "gsa", "provider", "mapping", "delete-mapping", "delete-provider", "break", "restore")
         out.append({"id": i, "title": title, "kind": kind, "command": cmd if isinstance(cmd, str) else " ".join(cmd),
                     "dry_run_note": "shown, not sent: this call has no dry run" if skipped_in_dry else ""})
     return out
+
+
+def RENEW(kc, k, p) -> list:
+    return ["kubectl", *kc, "delete", "serviceaccount", k["service_account"], "-n", k["namespace"], "&&",
+            "kubectl", *kc, "apply", "-f", str(p["sa"])]
 
 
 def problems(cfg: dict, which: str = "setup") -> list:
@@ -187,21 +219,27 @@ class Runner:
         return r
 
     def execute(self, steps: list, stop=lambda: False) -> list:
-        results = []
+        results, ended = [], False
         for st in steps:
-            if stop():
+            if not ended and stop():
                 self.log("■ stopped before " + st["title"])
-                break
-            fn = getattr(self, "s_" + st["id"].replace("-", "_"))
+                ended = True
+            if ended and st["id"] not in ALWAYS_STEPS:
+                continue
+            fn = getattr(self, "s_" + re.sub(r"-\d+$", "", st["id"]).replace("-", "_"))
             self.log(f"▶ {st['title']}")
             try:
                 res = fn()
-                status, detail = res if isinstance(res, tuple) else ("ok", res)
+                status, detail, *more = res if isinstance(res, tuple) else ("ok", res)
             except StepError as exc:
                 results.append({"id": st["id"], "title": st["title"], "status": "failed", "detail": str(exc)})
                 self.log(f"✗ {st['title']}: {exc}")
-                break
-            results.append({"id": st["id"], "title": st["title"], "status": status, "detail": detail})
+                ended = True
+                continue
+            row = {"id": st["id"], "title": st["title"], "status": status, "detail": detail}
+            if more:
+                row["facts"] = more[0]
+            results.append(row)
             self.log(f"{'✓' if status in ('ok', 'done') else '•'} {st['title']}: {detail}")
         return results
 
@@ -371,12 +409,40 @@ class Runner:
         raise StepError(f"DaemonSet not ready: {ready if ds else 0}/{want if ds else 0}")
 
     def s_pull(self):
+        if self.dry:
+            return self._dry_pod()
+        ok, reason, msgs, secs = self._pull()
+        if ok:
+            return "done", "pulled with no pull secret"
+        raise StepError(f"pull failed ({reason}){': ' + _cause(msgs[-1]) if msgs else ''}")
+
+    def s_repull(self):
+        if self.dry:
+            return self._dry_pod()
+        ok, reason, msgs, secs = self._pull()
+        if ok:
+            return "done", f"pulled again in {secs} s", {"pulled": True, "seconds": secs}
+        raise StepError(f"pull failed after the trust came back ({reason}){': ' + _cause(msgs[-1]) if msgs else ''}")
+
+    def s_refused(self):
+        if self.dry:
+            return self._dry_pod()
+        ok, reason, msgs, secs = self._pull()
+        if ok:
+            raise StepError("pulled without the trust: the pull does not depend on OIDC")
+        why = _cause(msgs[-1]) if msgs else reason
+        return "ok", f"refused ({reason}: {why})", {"pulled": False, "reason": reason, "cause": why}
+
+    def _dry_pod(self):
+        self.p["pod"].write_text(json.dumps(pod_manifest(self.cfg), indent=2))
+        flag = self._dry_flag()
+        self._run(["kubectl", "apply", "-f", str(self.p["pod"]), flag])
+        return "skipped", f"dry run: pod validated {'by the API server' if flag.endswith('server') else 'client-side'}"
+
+    def _pull(self):
+        """(pulled, reason, kubelet event messages, seconds) for one test pod with no pull secret."""
         k = self.cfg["k8s"]
         self.p["pod"].write_text(json.dumps(pod_manifest(self.cfg), indent=2))
-        if self.dry:
-            flag = self._dry_flag()
-            self._run(["kubectl", "apply", "-f", str(self.p["pod"]), flag])
-            return "skipped", f"dry run: pod validated {'by the API server' if flag.endswith('server') else 'client-side'}"
         self._run(["kubectl", "delete", "pod", k["test_pod"], "-n", k["namespace"], "--ignore-not-found", "--wait=true"], timeout=120)
         self.facts["pull_started"] = self.clock()
         self._run(["kubectl", "apply", "-f", str(self.p["pod"])])
@@ -396,9 +462,8 @@ class Runner:
         msgs = [e.get("message", "") for e in ev.get("items", []) if e.get("reason") in ("Pulled", "Failed", "BackOff")
                 and (not uid or (e.get("involvedObject") or {}).get("uid") in (None, uid))]
         self._run(["kubectl", "delete", "pod", k["test_pod"], "-n", k["namespace"], "--ignore-not-found", "--wait=false"])
-        if phase in ("Running", "Succeeded"):
-            return "done", "pulled with no pull secret"
-        raise StepError(f"pull failed ({reason or phase or 'timeout'}){': ' + _cause(msgs[-1]) if msgs else ''}")
+        secs = int(self.clock() - self.facts["pull_started"]) if isinstance(self.facts.get("pull_started"), (int, float)) else waited
+        return phase in ("Running", "Succeeded"), reason or phase or "timeout", msgs, max(secs, 0)
 
     # -- the OIDC proof ------------------------------------------------------------
 
@@ -510,6 +575,89 @@ class Runner:
         if started and at >= started - 120:
             return "ok", f"downloaded by {user} at {when}"
         return "ok", f"downloaded by {user} at {when} (image cached on the node)"
+
+    # -- Prove: no secret, and no pull without the trust ------------------------------
+
+    def s_no_secret(self):
+        k = self.cfg["k8s"]
+        r = self._run(["kubectl", "get", "serviceaccount", k["service_account"], "-n", k["namespace"], "-o", "json"])
+        on_sa = len((r.json({}) or {}).get("imagePullSecrets") or [])
+        # Names and types only: the secrets' data never leaves the cluster.
+        r = self._run(["kubectl", "get", "secrets", "-n", k["namespace"], "-o",
+                       "jsonpath={range .items[*]}{.type}{\"\\n\"}{end}"])
+        in_ns = sum(1 for t in r.stdout.splitlines() if t.strip() in ("kubernetes.io/dockerconfigjson", "kubernetes.io/dockercfg"))
+        facts = {"pull_secrets": on_sa + in_ns, "on_service_account": on_sa, "in_namespace": in_ns}
+        if on_sa or in_ns:
+            raise StepError(f"{on_sa} pull secret(s) on the service account, {in_ns} registry secret(s) in {k['namespace']}: "
+                            "a pull could use them, so it proves nothing")
+        return "ok", f"0 on the service account, 0 registry secrets in {k['namespace']}; the test pod sets imagePullSecrets: []", facts
+
+    def s_no_keys(self):
+        skip = self._need_token("the token list")
+        if skip:
+            return skip
+        user = self.cfg["jfrog"]["mapped_user"]
+        r = self.jf._call("GET", "/access/api/v1/tokens")
+        if not r["ok"]:
+            return "warn", f"JFrog's token list was not readable (HTTP {r['status'] or r['error']})"
+        toks = (r["json"] or {}).get("tokens") or [] if isinstance(r["json"], dict) else []
+        mine = [t for t in toks if str(t.get("subject", "")).rstrip("/").split("/")[-1] == user]
+        long_lived = [t for t in mine if not t.get("expiry") or t["expiry"] - t.get("issued_at", t["expiry"]) > LONG_LIVED_SECONDS]
+        facts = {"long_lived": len(long_lived), "short_lived": len(mine) - len(long_lived)}
+        if long_lived:
+            raise StepError(f"{user} holds {len(long_lived)} long-lived token(s): a stored token could pull instead")
+        return "ok", f"0 long-lived; {facts['short_lived']} short-lived from the exchange", facts
+
+    def s_renew(self):
+        """Recreate the service account: kubelet caches the plugin's result per service account and UID,
+        so a new UID makes the next pull exchange a fresh token."""
+        k = self.cfg["k8s"]
+        self.p["sa"].write_text(json.dumps(sa_manifest(self.cfg), indent=2))
+        if self.dry:
+            return "skipped", "dry run: would recreate the service account"
+        self._run(["kubectl", "delete", "serviceaccount", k["service_account"], "-n", k["namespace"], "--ignore-not-found", "--wait=true"])
+        self._run(["kubectl", "apply", "-f", str(self.p["sa"])])
+        return "done", "recreated with a new UID: no cached credential"
+
+    def _saved(self):
+        return self.p["dir"] / f"{self.cfg['name']}-mapping-saved.json"
+
+    def s_break(self):
+        skip = self._need_token("the mapping")
+        if skip:
+            return skip
+        prov, sub = self.cfg["values"]["provider_name"], model.subject(self.cfg)
+        r = self.jf.mappings(prov)
+        if not r["ok"]:
+            raise StepError(f"identity mappings of {prov}: HTTP {r['status']}")
+        m = next((m for m in r["json"] or [] if (m.get("claims") or {}).get("sub") == sub), None)
+        if not m:
+            raise StepError(f"no identity mapping for {self.cfg['k8s']['service_account']}: run Set up")
+        if self.dry:
+            return "skipped", f"dry run: would remove {m.get('name')} for a moment"
+        self._saved().write_text(json.dumps(m))  # survives a console restart; Set up recreates it too
+        self.facts["saved_mapping"] = m
+        d = self.jf.delete_mapping(prov, m["name"])
+        if not d["ok"]:
+            raise StepError(f"remove mapping: HTTP {d['status']}")
+        self.facts["broken_at"] = self.clock()
+        return "done", f"{m['name']} removed: JFrog no longer trusts {self.cfg['k8s']['service_account']}"
+
+    def s_restore(self):
+        m = self.facts.get("saved_mapping")
+        if not m and self._saved().exists():
+            m = json.loads(self._saved().read_text())
+        if not m:
+            return "skipped", "nothing was removed"
+        if self.dry:
+            return "skipped", "dry run"
+        body = {key: m[key] for key in ("name", "description", "claims", "token_spec", "priority") if key in m}
+        r = self.jf.create_mapping(self.cfg["values"]["provider_name"], body)
+        if not r["ok"] and r["status"] != 409:
+            raise StepError(f"restore mapping: HTTP {r['status']}: run Set up to recreate it")
+        self._saved().unlink(missing_ok=True)
+        off = int(self.clock() - self.facts["broken_at"]) if "broken_at" in self.facts else None
+        return "done", f"{body['name']} restored" + (f" after {off} s" if off is not None else ""), {"trust_off_seconds": off}
 
     def s_uninstall(self):
         k = self.cfg["k8s"]

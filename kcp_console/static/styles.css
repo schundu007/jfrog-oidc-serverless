@@ -291,6 +291,8 @@ input.typed { width: 220px; }
 .stat.on { border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--brand); }
 
 .stat.s-working b { color: var(--ok-fg); }
+.stat.s-fail b { color: var(--bad-fg, #b42318); }
+.card .stats .stat { cursor: default; }
 
 .filter-bar { display: flex; flex-wrap: wrap; gap: 10px; }
 
@@ -526,3 +528,5 @@ input.typed { width: 220px; }
 /* Humana model, as in the Serverless console: square corners, thin light lines, white. */
 .card, .stat, .pick-card, .table, .empty, .cfg-form > .tgrid, .cfg-form .block, .cfg-form .advanced, .essentials > div {
   border-radius: 0; box-shadow: none; background: #ffffff; }
+.grid3 > .card + .card, .grid2 > .card + .card { margin-top: 0; }
+.card + .grid3 { margin-top: var(--card-gap); }

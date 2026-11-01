@@ -39,6 +39,10 @@ const CARD_HELP = {
   Essentials: "What the cluster and JFrog report right now, read live with read-only calls.",
   "Set up": "Dry run first, then your approval, then the real change: Helm install, JFrog OIDC provider and mapping.",
   Verify: "Read-only: re-reads the cluster and JFrog and pulls the test image again.",
+  Prove: "Proves the pull depends on OIDC: no stored secret, a live exchange, refused while the JFrog mapping is removed, working again once it is restored.",
+  "No stored secret": "No pull secret on the service account or in its namespace, and no long-lived JFrog token for the mapped user.",
+  "Live exchange": "A recreated service account (nothing cached) pulls through JFrog; JFrog records the mapped user.",
+  "Trust removed": "The identity mapping is removed: the same pull is refused. Restored: it works again.",
   "Tear down": "Removes what Set up created on this cluster and in JFrog. Dry run and approval first.",
 };
 
@@ -92,7 +96,7 @@ function render() {
     return;
   }
   body.dataset.tab = r.tab;
-  fill(body, r.tab === "runs" ? runsTab(c.name) : summary(c));
+  fill(body, r.tab === "runs" ? runsTab(c.name) : r.tab === "proof" ? proofTab(c) : summary(c));
 }
 
 // One status for the header pill: [class, text].
@@ -213,6 +217,75 @@ function proofCard(name, p) {
 }
 
 const runLink = (name, id) => h("span", { class: "card-link" }, link(go, url, runPath(name, id), "View run"));
+
+// ----------------------------------------------------------------------- proof tab
+
+const PROVE_GROUPS = [
+  ["No stored secret", ["no-secret", "no-keys"]],
+  ["Live exchange", ["sa-check", "trust", "map", "anon", "renew-1", "pull", "who"]],
+  ["Trust removed", ["break", "renew-2", "refused", "restore", "renew-3", "repull"]],
+];
+
+const latestProve = (runs) => (runs || []).find((x) => x.kind === "direct" && x.name === "prove" && !isDry(x) && !ACTIVE.includes(x.status) && x.result);
+
+function proveFacts(run) {
+  const by = Object.fromEntries(((run.result || {}).steps || []).map((s) => [s.id, s]));
+  const ttl = /(\d+) min tokens/.exec(by.map?.detail || "");
+  const val = (id, ok, text) => (by[id] ? [by[id].status === "failed" ? "fail" : ok ? "ok" : "warn", text] : ["muted", "—"]);
+  return [
+    ["Pull secrets", ...val("no-secret", by["no-secret"]?.facts?.pull_secrets === 0, String(by["no-secret"]?.facts?.pull_secrets ?? "—"))],
+    ["Long-lived JFrog tokens", ...val("no-keys", by["no-keys"]?.facts?.long_lived === 0, String(by["no-keys"]?.facts?.long_lived ?? "—"))],
+    ["JFrog token life", ...val("map", !!ttl, ttl ? `${ttl[1]} min` : "—")],
+    ["Pull with OIDC", ...val("pull", by.pull?.status === "done", by.pull?.status === "done" ? "Pulled" : "Failed")],
+    ["Pull without trust", ...val("refused", by.refused?.facts?.pulled === false, by.refused?.facts?.pulled === false ? "Refused" : "Pulled")],
+    ["Trust restored", ...val("repull", by.repull?.status === "done", by.repull?.status === "done" ? "Pulled" : "Failed")],
+  ];
+}
+
+const proven = (run) => run.status === "succeeded" && !(run.result.steps || []).some((s) => s.status === "failed" || s.status === "warn");
+
+function proofTab(c) {
+  const name = c.name;
+  const busy = isBusy(name);
+  const run = latestProve(runsOf[name]);
+  const a = acts[name];
+  return h("div", { class: "stack" },
+    h("div", { class: "tab-bar" },
+      h("button", { class: "primary", disabled: busy || !live[name]?.facts?.release, onclick: () => start("prove") }, "Run proof"),
+      run ? h("button", { class: "secondary", onclick: () => download(c, run) }, "Download evidence") : null),
+    a?.which === "prove" && (busy || !a.real || a.real.status === "refused") ? actionCard(name) : null,
+    run ? [
+      card("Prove", [h("span", { class: `badge ${proven(run) ? "ok" : "fail"}` }, proven(run) ? "OIDC proven" : "Not proven"),
+        muted(when(run.created)), runLink(name, run.id)],
+        h("div", { class: "stats" }, proveFacts(run).map(([k, cls, v]) =>
+          h("div", { class: `stat s-${cls === "ok" ? "working" : cls}` }, h("b", {}, v), h("span", {}, k))))),
+      h("div", { class: "grid3" }, PROVE_GROUPS.map(([title, ids]) => {
+        const steps = ids.map((id) => run.result.steps.find((s) => s.id === id)).filter(Boolean);
+        const bad = steps.some((s) => s.status === "failed" || s.status === "warn") || steps.length < ids.length;
+        return card(title, h("span", { class: `badge ${bad ? "fail" : "ok"}` }, bad ? "Not proven" : "Proven"), checklist(steps));
+      })),
+    ] : (a?.which === "prove" ? null : h("div", { class: "empty slim" }, h("p", {}, "No proof yet"))));
+}
+
+// The evidence as a Markdown file for the people who were not in the room.
+function download(c, run) {
+  const row = (cells) => `| ${cells.map((x) => String(x ?? "").replace(/\|/g, "/")).join(" | ")} |`;
+  const L = [`# OIDC proof: ${c.cluster || c.name}`, "",
+    row(["Cluster", "Platform", "Location", "Run", "Started", "Finished", "Result"]), row(Array(7).fill("---")),
+    row([c.cluster || c.name, CLOUD[c.platform || "aks"], c.location || "", run.id, run.approved?.at || run.created, run.finished || "",
+      proven(run) ? "OIDC proven" : "Not proven"]), "",
+    row(proveFacts(run).map(([k]) => k)), row(Array(6).fill("---")), row(proveFacts(run).map(([, , v]) => v)), ""];
+  for (const [title, ids] of PROVE_GROUPS) {
+    L.push(`## ${title}`, "", row(["Check", "Status", "Evidence"]), row(["---", "---", "---"]));
+    for (const id of ids) { const s = run.result.steps.find((x) => x.id === id); if (s) L.push(row([s.title, s.status, s.detail])); }
+    L.push("");
+  }
+  const blob = new Blob([L.join("\n")], { type: "text/markdown" });
+  const el = h("a", { href: URL.createObjectURL(blob), download: `oidc-proof-${c.name}-${run.id}.md` });
+  document.body.append(el);
+  el.click();
+  setTimeout(() => { URL.revokeObjectURL(el.href); el.remove(); }, 0);
+}
 
 // ----------------------------------------------------------------------- runs tab
 
