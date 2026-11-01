@@ -206,7 +206,11 @@ export function ago(iso) {
   return `${Math.round(s / 86400)} d ago`;
 }
 
-export const stamp = (iso) => (iso || "").replace("T", " ").replace("Z", " UTC");
+// Times are stored in UTC and shown in the browser's own time zone.
+const asDate = (iso) => { const d = new Date(iso || ""); return Number.isNaN(d.getTime()) ? null : d; };
+export const stamp = (iso) => asDate(iso)?.toLocaleString([], { year: "numeric", month: "short", day: "numeric",
+  hour: "2-digit", minute: "2-digit", second: "2-digit", timeZoneName: "short" }) || "";
+export const clock = (iso) => asDate(iso)?.toLocaleTimeString([], { hour12: false }) || "";
 
 export function dur(ms) {
   if (!Number.isFinite(ms) || ms < 0) return "";

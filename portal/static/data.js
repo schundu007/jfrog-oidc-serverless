@@ -80,7 +80,9 @@ export function h(tag, attrs = {}, ...kids) {
   return n;
 }
 export const markEl = (k) => { const s = h("span", { class: "dash-mark" }); s.innerHTML = MARK[k] || ""; return s; };  // constant SVG only
-export const when = (t) => (t || "").replace("T", " ").replace(/:\d\dZ$/, " UTC").replace("Z", " UTC");
+// Stored in UTC, shown in the browser's own time zone.
+export const when = (t) => { const d = new Date(t || ""); return Number.isNaN(d.getTime()) ? "" : d.toLocaleString([],
+  { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" }); };
 const words = (s) => String(s || "").toLowerCase().replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
 
 // Serverless: workloads and their runs.

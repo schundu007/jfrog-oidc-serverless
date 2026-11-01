@@ -2,7 +2,7 @@
 // detail (approval gates, evidence) and its log. Rendered with DOM APIs only (no innerHTML).
 // Everything shown has been redacted by the server; approvals send back only the hashes it showed.
 
-import { $, api, h, fill, streamEvents, statusIcon, statusPill, template, armed, href, ago, stamp, dur,
+import { $, api, h, fill, streamEvents, statusIcon, statusPill, template, armed, href, ago, stamp, clock, dur,
   runDuration, stepDuration, LIVE, help, status as setStatus } from "./core.js";
 
 const rs = { id: null, name: null, snap: null, selected: null, abort: null, log: [], refetch: null, userPicked: false, tick: null };
@@ -239,7 +239,7 @@ function logRow(e, n) {
   const p = logParts(e);
   return h("tr", { class: [p.step ? "log-step-row" : "", p.tone === "bad" ? "log-row-bad" : ""].join(" ").trim() || null },
     h("td", { class: "log-n", text: String(n) }),
-    h("td", { class: "log-t", text: (e.t || "").slice(11, 19) }),
+    h("td", { class: "log-t", text: clock(e.t) }),
     h("td", { class: "log-msg" }, p.step ? h("b", { text: p.event }) : logEvent(p.event),
       p.error ? h("div", { class: "log-err", text: p.error }) : null, p.note ? h("div", { class: "log-note", text: p.note }) : null),
     h("td", { class: "log-res-cell" }, p.result ? h("span", { class: `log-res log-${p.tone || "info"}`, text: p.result }) : null),
@@ -275,7 +275,7 @@ function renderLog() {
 async function copyLog() {
   const text = stepLines().map((e, i) => {
     const p = logParts(e);
-    return [i + 1, (e.t || "").slice(11, 19), p.event, p.result, p.took, p.error || ""].filter((x) => x !== "").join("\t");
+    return [i + 1, clock(e.t), p.event, p.result, p.took, p.error || ""].filter((x) => x !== "").join("\t");
   }).join("\n");
   try {
     await navigator.clipboard.writeText(text);
