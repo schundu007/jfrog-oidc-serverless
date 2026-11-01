@@ -17,3 +17,16 @@ output "kubeconfig_command" {
 output "log_analytics_workspace_id" {
   value = azurerm_log_analytics_workspace.cluster.id
 }
+
+output "argocd_repo_server_client_id" {
+  description = "Argo CD repo-server's managed identity: give it Reader on the Azure DevOps project to read the GitOps repo."
+  value       = var.argocd_enabled ? azurerm_user_assigned_identity.argocd_repo_server[0].client_id : null
+}
+
+output "argocd_repo_server_principal_id" {
+  value = var.argocd_enabled ? azurerm_user_assigned_identity.argocd_repo_server[0].principal_id : null
+}
+
+output "argocd_ui_command" {
+  value = var.argocd_enabled ? "kubectl -n argocd port-forward svc/argocd-server 8080:80" : null
+}

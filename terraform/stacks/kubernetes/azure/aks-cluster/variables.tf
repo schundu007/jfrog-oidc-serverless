@@ -33,3 +33,15 @@ variable "log_retention_days" {
   type        = number
   default     = 30
 }
+
+variable "argocd_enabled" {
+  description = "Install the Argo CD hub (gitops/argocd/values.yaml) on the cluster."
+  type        = bool
+  default     = true
+}
+
+variable "argocd_chart_version" {
+  description = "argo/argo-cd chart version."
+  type        = string
+  default     = "10.11.6"
+}

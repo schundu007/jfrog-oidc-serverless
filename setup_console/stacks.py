@@ -113,7 +113,8 @@ CATALOGUE = (
      "about": "A test GKE cluster and node pool with its OIDC issuer on.",
      "next": "Run the credentials command, then use the cluster from the Kubernetes console."},
     {"id": "aks-cluster", "kind": "Kubernetes", "group": "Azure", "title": "AKS cluster",
-     "about": "A test AKS cluster, in its own resource group, with its OIDC issuer on.",
+     "about": "A test AKS cluster, in its own resource group, with its OIDC issuer on, and the Argo CD hub "
+              "(gitops/argocd/values.yaml) whose repo-server signs in with its own managed identity.",
      "next": "Run the credentials command, then use the cluster from the Kubernetes console."},
 )
 IDS = tuple(s["id"] for s in CATALOGUE)
