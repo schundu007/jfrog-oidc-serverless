@@ -26,7 +26,7 @@ class BuiltInScenarioTests(unittest.TestCase):
     def test_all_builtins_listed(self):
         names = set(sc.builtin_names())
         self.assertEqual(names, {
-            "happy-gcp-function", "happy-gcp-worker-pool", "happy-aca", "happy-functions-premium", "jfrog-outage-90m",
+            "happy-gcp-function", "happy-gcp-worker-pool", "happy-aca", "happy-functions-premium", "happy-functions-flex", "jfrog-outage-90m",
             "azure-v1-tokens", "wrong-audience", "sa-recreated",
             "happy-aws-lambda", "happy-aws-ecs", "happy-aws-app-runner", "aws-federation-disabled", "aws-role-recreated",
             "happy-openshift-knative", "openshift-wrong-audience",
