@@ -296,8 +296,7 @@ function row(s, section) {
     h("td", { title: s.dir }, h("div", { class: "stack-name" }, iconEl(STACK_ICON[s.id], "stack-icon"),
       h("b", { text: s.title }), s.about ? help(s.about) : null)),
     h("td", {}, h("div", { class: "stack-status" }, stackStatus(s), notes.length ? help(notes.join(" ")) : null)),
-    // On JFrog OIDC every row is the same type and runs here: those columns would only repeat.
-    OIDC ? null : h("td", { text: section || s.kind }),
+    // The section heading above the rows names the type, so no Type column.
     h("td", { class: "stack-id", text: s.id }),
     OIDC ? null : h("td", { text: runsIn(s) }),
     h("td", { text: shortWhen(checkedAt(s)) }),
@@ -389,16 +388,26 @@ function draw(withFilters = true) {
   const CLOUD_ORDER = ["Azure", "Google Cloud"];
   const rank = (g) => (CLOUD_ORDER.includes(g) ? CLOUD_ORDER.indexOf(g) : CLOUD_ORDER.length);
   const groups = [...new Set(shown.map((s) => s.group))].sort((x, y) => rank(x) - rank(y));
-  const cols = OIDC ? ["Name", "Status", "Stack", "Last checked", ""] : ["Name", "Status", "Type", "Stack", "Runs in", "Last checked", ""];
+  const cols = OIDC ? ["Name", "Status", "Stack", "Last checked", ""] : ["Name", "Status", "Stack", "Runs in", "Last checked", ""];
   const head = (g, list) => h("tr", { class: "home-group" }, h("th", { scope: "colgroup", colspan: String(cols.length) },
     h("span", { class: "home-group-name" }, iconEl(CLOUD_ID[g], "home-group-logo"), g,
       h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }))));
+  // Under each cloud, CI/CD, Serverless and Kubernetes never mix: each has its own heading and rows.
+  const LABEL = { Common: "CI/CD" };
+  const sections = ORDER.filter((k) => shown.some((s) => sectionOf(s) === k));
+  const subHead = (k, list) => h("tr", { class: "home-group home-subgroup" }, h("th", { scope: "colgroup", colspan: String(cols.length) },
+    h("span", { class: "home-group-name" }, LABEL[k] || k, h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }))));
   fill($("groups"), shown.length ? h("div", { class: "table-wrap" }, h("table", { class: "blade-table home-table stack-table" },
     h("thead", {}, h("tr", {}, cols.map((c) => h("th", { scope: "col", text: c })))),
-    groups.map((g) => {
-      const list = shown.filter((s) => s.group === g).sort((x, y) => ORDER.indexOf(sectionOf(x)) - ORDER.indexOf(sectionOf(y)));
+    groups.flatMap((g) => {
+      const inCloud = shown.filter((s) => s.group === g);
       // A cloud heading only when more than one cloud is listed: alone, it repeats the filter.
-      return h("tbody", {}, groups.length > 1 ? head(g, list) : null, list.map((s) => row(s, sectionOf(s))));
+      const cloudHead = groups.length > 1 ? h("tbody", { class: "cloud-head" }, head(g, inCloud)) : null;
+      return [cloudHead, ...sections.map((k) => {
+        const list = inCloud.filter((s) => sectionOf(s) === k);
+        // A section heading only when more than one section is listed (one alone repeats the Type filter).
+        return list.length ? h("tbody", {}, sections.length > 1 ? subHead(k, list) : null, list.map((s) => row(s, k))) : null;
+      })];
     }))) : null);
 }
 
