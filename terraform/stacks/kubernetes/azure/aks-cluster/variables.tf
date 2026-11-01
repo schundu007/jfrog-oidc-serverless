@@ -27,3 +27,9 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "log_retention_days" {
+  description = "Days Log Analytics keeps the cluster's logs."
+  type        = number
+  default     = 30
+}
