@@ -383,6 +383,14 @@ class Jobs:
                     self._set_status(sid, {"deployed": False, "outputs": {}, "deleted": note})
                     self._finish(job, "done", result={"deployed": False, "outputs": {}, "already_deleted": True, "message": note})
                     return
+                if not destroy and not p.get("changes") and not p.get("outputs_change"):
+                    # Nothing to approve: the stack already matches its inputs, so no plan waits on anyone.
+                    self._say(job, "No changes: the stack already matches its inputs.")
+                    self._finish(job, "done", result={"action": "apply", "summary": p.get("summary") or {}, "changes": [],
+                                                      "no_changes": True})
+                    with self._lock:
+                        self._plans.pop(sid, None)   # an older plan would now be stale
+                    return
                 p.update(action="destroy" if destroy else "apply", job=job["id"], _tf=tf)
                 with self._lock:
                     self._plans[sid] = p
