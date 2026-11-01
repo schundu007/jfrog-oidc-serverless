@@ -974,6 +974,19 @@ tbody tr, .ov-tile, .tile, .nav-item, a, button, .blade-opt, .chip, .kind-folder
 .sidenav .nav-block.open .nav-kids { grid-template-rows: 1fr; visibility: visible; }
 .sidenav.nav-ready .nav-kids { transition: grid-template-rows 220ms ease, visibility 220ms; }
 .sidenav .nav-kids-in { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+/* A cloud group inside a section (Serverless: Azure, Google Cloud) folds on its own chevron. */
+.sidenav .cloudfold { position: relative; display: flex; flex-direction: column; }
+.sidenav .cloudfold > .nav-cloud-row { padding-right: 44px; }
+.sidenav .cloudfold-chev {
+  position: absolute; top: 4px; right: 8px; width: 28px; height: 28px; display: grid; place-items: center;
+  padding: 0; border: 0; border-radius: 6px; background: none; color: var(--fg-3); cursor: pointer;
+}
+.sidenav .cloudfold-chev:hover { background: var(--side-hover); color: var(--fg); }
+.sidenav .cloudfold-chev:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sidenav .cloudfold-chev .ico { width: 14px; height: 14px; stroke-width: 2; transform: rotate(90deg); transition: transform 200ms ease; }
+.sidenav .cloudfold.folded .cloudfold-chev .ico { transform: none; }
+.sidenav .cloudfold-kids { display: flex; flex-direction: column; }
+.sidenav .cloudfold.folded .cloudfold-kids { display: none; }
 .sidenav .nav-item.nav-child { min-height: 36px; padding: 7px var(--s-5) 7px 52px; font-size: 14px; gap: 10px; }
 .sidenav .nav-item.nav-child > svg { width: 18px; height: 18px; }
 .sidenav .nav-block.here > [data-nav][aria-current="true"] { background: var(--side-on); color: var(--fg); font-weight: 700; }

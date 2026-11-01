@@ -65,8 +65,18 @@
   const block = ([key, label, href, icon, kids]) => {
     const top = `<a class="nav-item" href="${esc(href)}" data-section data-nav="${key}">${glyph(icon)}<span>${esc(label)}</span></a>`;
     if (!kids.length) return `<div class="nav-block" data-block="${key}">${top}</div>`;
-    const sub = kids.map(([l, h, ic, , lvl], i) =>
-      `<a class="nav-item nav-child${lvl === 1 ? " nav-cloud-row" : lvl === 2 ? " nav-grand" : ""}" href="${esc(h)}" data-child="${key}:${i}">${glyph(ic)}<span>${esc(l)}</span></a>`).join("");
+    const item = ([l, h, ic, , lvl], i) =>
+      `<a class="nav-item nav-child${lvl === 1 ? " nav-cloud-row" : lvl === 2 ? " nav-grand" : ""}" href="${esc(h)}" data-child="${key}:${i}">${glyph(ic)}<span>${esc(l)}</span></a>`;
+    // A cloud row with services under it folds on its own chevron, like the section above it.
+    let sub = "";
+    for (let i = 0; i < kids.length; i++) {
+      if (kids[i][4] !== 1 || kids[i + 1]?.[4] !== 2) { sub += item(kids[i], i); continue; }
+      const id = `${key}:${kids[i][2]}`, at = i;
+      let grand = "";
+      while (kids[i + 1]?.[4] === 2) { i++; grand += item(kids[i], i); }
+      sub += `<div class="cloudfold" data-sub="${esc(id)}">${item(kids[at], at)}<button type="button" class="cloudfold-chev" aria-label="Show ${esc(kids[at][0])} items" aria-expanded="true">${CHEV}</button>` +
+        `<div class="cloudfold-kids">${grand}</div></div>`;
+    }
     return `<div class="nav-block" data-block="${key}">${top}<button type="button" class="nav-chev" aria-label="Show ${esc(label)} items" aria-expanded="false" aria-controls="nav-kids-${key}">${CHEV}</button>` +
       `<div class="nav-kids" id="nav-kids-${key}"><div class="nav-kids-in">${sub}</div></div></div>`;
   };
@@ -93,7 +103,20 @@
     b.querySelector(".nav-chev")?.setAttribute("aria-expanded", String(on));
     if (remember) { on ? opened.add(b.dataset.block) : opened.delete(b.dataset.block); keep(); }
   }
+  // Cloud groups inside a section: open unless the user folded them (remembered per viewer).
+  const FOLD_KEY = "console.nav.folded";
+  const folded = (() => { try { return new Set(JSON.parse(localStorage.getItem(FOLD_KEY) || "[]")); } catch { return new Set(); } })();
+  function setSub(s, on, remember = true) {
+    s.classList.toggle("folded", !on);
+    s.querySelector(".cloudfold-chev").setAttribute("aria-expanded", String(on));
+    if (!remember) return;
+    on ? folded.delete(s.dataset.sub) : folded.add(s.dataset.sub);
+    try { localStorage.setItem(FOLD_KEY, JSON.stringify([...folded])); } catch { /* per-viewer convenience only */ }
+  }
+  for (const s of root.querySelectorAll(".cloudfold")) setSub(s, !folded.has(s.dataset.sub), false);
   root.addEventListener("click", (e) => {
+    const sc = e.target.closest(".cloudfold-chev");
+    if (sc) { const s = sc.closest(".cloudfold"); setSub(s, s.classList.contains("folded")); return; }
     const c = e.target.closest(".nav-chev");
     if (c) { const b = c.closest(".nav-block"); setOpen(b, !b.classList.contains("open")); }
   });
@@ -111,6 +134,8 @@
       b.classList.toggle("here", here);
       b.querySelectorAll(".nav-child").forEach((a, i) => {
         if (i === hit) a.setAttribute("aria-current", atTop() ? "page" : "true"); else a.removeAttribute("aria-current");
+        // The current service is never hidden inside a folded cloud.
+        if (i === hit && a.matches(".nav-grand")) { const s = a.closest(".cloudfold.folded"); if (s) setSub(s, true, false); }
       });
       // Entering a section unfolds it once; a fold the user makes then stays, even as filters change the address.
       if (kids.length && !(here && unfolded === key)) setOpen(b, here || opened.has(key), false);
