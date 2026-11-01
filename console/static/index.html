@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>JFrog OIDC Console</title>
   <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/azure.css">
   <!-- render-blocking: the first paint already has this page's sidebar and panel, no flash between pages -->
   <script type="module" src="/static/app.js" blocking="render"></script>
 </head>
@@ -49,7 +50,7 @@
   <template id="tpl-list">
     <header class="blade-head">
       <h1>Serverless</h1>
-      <span class="blade-sub">Azure and Google Cloud <span id="wl-help"></span></span>
+      <span class="blade-sub"><span id="wl-help"></span></span>
     </header>
     <div class="blade-cmds" role="toolbar" aria-label="Serverless">
       <button id="wl-create" type="button" class="blade-cmd" aria-expanded="false" aria-controls="wl-create-panel"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>Create</button>

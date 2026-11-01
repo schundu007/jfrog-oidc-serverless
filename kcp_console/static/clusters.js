@@ -125,7 +125,7 @@ function stats(mine) {
 }
 
 function head() {
-  return h("header", { class: "blade-head" }, h("h1", {}, "Kubernetes"), h("span", { class: "blade-sub" }, "AKS and GKE clusters"));
+  return h("header", { class: "blade-head" }, h("h1", {}, "Kubernetes"));
 }
 const svg = (d) => {
   const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");

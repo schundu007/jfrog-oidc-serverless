@@ -1,10 +1,10 @@
 // Home, in the Azure portal's resource style: title and command bar, Essentials (label : value, two
-// columns), then tabs: Serverless workloads, Kubernetes clusters, Recent runs. Each tab is one filter
+// columns), then tabs: Serverless workloads, Kubernetes clusters (runs have their own page). Each tab is one filter
 // bar ("Filter for any field…" and pills) over one table. Read-only. Data: data.js.
 import { CLOUD_NAMES, LIVE_STATES, h, markEl, when, runPill, loadAll } from "./data.js";
 
 const $ = (id) => document.getElementById(id);
-const TABS = ["serverless", "kubernetes", "runs"];
+const TABS = ["serverless", "kubernetes"];
 const u0 = new URLSearchParams(location.search);
 const S = { tab: TABS.includes(u0.get("tab")) ? u0.get("tab") : "serverless", q: u0.get("q") || "", cloud: u0.get("cloud") || "",
   type: u0.get("type") || "", status: u0.get("status") || "" };
@@ -42,14 +42,6 @@ const VIEW = {
     row: (it) => rowOf(it.href, [nameCell(it.mark, it.name, it.href), stateCell(it.state), h("td", { text: it.type }),
       h("td", { class: "home-detail", text: it.detail || "—", title: it.detail || null })]),
     status: (it) => (it.ok ? "ok" : "attention"), statuses: [["ok", "Working"], ["attention", "Needs attention"]],
-  },
-  runs: {
-    rows: () => data.runs.slice(0, 50), empty: "No runs yet",
-    cols: ["Name", "Status", "Type", "Started"],
-    row: (r) => rowOf(r.href, [nameCell(r.mark, r.name, r.href), stateCell(runPill(r.status)), h("td", { text: r.type }),
-      h("td", { text: when(r.created) })]),
-    status: (r) => (LIVE_STATES.has(r.status) ? "active" : r.status === "succeeded" ? "ok" : "attention"),
-    statuses: [["active", "In progress"], ["ok", "Succeeded"], ["attention", "Failed"]],
   },
 };
 
@@ -89,8 +81,10 @@ function draw() {
       return h("tr", { class: "home-group" }, h("th", { scope: "colgroup", colspan: String(v.cols.length) },
         h("span", { class: "home-group-name" }, logo, CLOUD_NAMES[c] || "No cloud recorded", h("small", { text: String(n) }))));
     };
-    $("home-rows").replaceWith(...[h("tbody", { id: "home-rows" }, ...(groups[0] ? [head(...[groups[0][0], groups[0][1].length]), ...groups[0][1].map(v.row)] : [])),
-      ...groups.slice(1).map(([c, xs]) => h("tbody", { class: "home-rows-more" }, head(c, xs.length), ...xs.map(v.row)))]);
+    // A cloud heading only when more than one cloud is listed: alone, it repeats the filter.
+    const top = (c, n) => (groups.length > 1 ? head(c, n) : null);
+    $("home-rows").replaceWith(...[h("tbody", { id: "home-rows" }, ...(groups[0] ? [top(groups[0][0], groups[0][1].length), ...groups[0][1].map(v.row)] : [])),
+      ...groups.slice(1).map(([c, xs]) => h("tbody", { class: "home-rows-more" }, top(c, xs.length), ...xs.map(v.row)))]);
     $("home-count").textContent = `Showing ${shown.length} of ${all.length} records.`;
     $("home-empty").hidden = shown.length > 0;
     $("home-empty").textContent = all.length ? "Nothing matches the filters" : v.empty;
@@ -103,13 +97,11 @@ function essentials() {
   const live = data.runs.filter((r) => LIVE_STATES.has(r.status)).length;
   const failed = data.runs.filter((r) => ["failed", "cancelled", "refused", "interrupted"].includes(r.status)).length;
   const last = data.runs[0];
-  const clouds = [...new Set(data.items.map((it) => it.cloud).filter(Boolean))].map((c) => CLOUD_NAMES[c] || c).join(", ") || "—";
   const pair = (label, value, href) => [h("dt", { text: label }), h("dd", {}, href ? h("a", { href, text: value }) : value)];
   const tab = (t) => `/?tab=${t}`;
   $("ess-left").replaceChildren(
     ...pair("Workloads", `${wl.length} onboarded, ${wl.filter((it) => it.ok).length} working`, tab("serverless")),
-    ...pair("Clusters", `${cl.length} set up, ${cl.filter((it) => it.ok).length} working`, tab("kubernetes")),
-    ...pair("Clouds", clouds));
+    ...pair("Clusters", `${cl.length} set up, ${cl.filter((it) => it.ok).length} working`, tab("kubernetes")));
   $("ess-right").replaceChildren(
     ...pair("Runs", `${data.runs.length} kept, ${failed} failed`, "/runs"),
     ...pair("In progress", String(live), live ? "/runs?status=active" : null),

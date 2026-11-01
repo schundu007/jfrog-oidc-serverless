@@ -296,9 +296,10 @@ function row(s, section) {
     h("td", { title: s.dir }, h("div", { class: "stack-name" }, iconEl(STACK_ICON[s.id], "stack-icon"),
       h("b", { text: s.title }), s.about ? help(s.about) : null)),
     h("td", {}, h("div", { class: "stack-status" }, stackStatus(s), notes.length ? help(notes.join(" ")) : null)),
-    h("td", { text: section || s.kind }),
+    // On JFrog OIDC every row is the same type and runs here: those columns would only repeat.
+    OIDC ? null : h("td", { text: section || s.kind }),
     h("td", { class: "stack-id", text: s.id }),
-    h("td", { text: runsIn(s) }),
+    OIDC ? null : h("td", { text: runsIn(s) }),
     h("td", { text: shortWhen(checkedAt(s)) }),
     h("td", {}, h("div", { class: "setup-row-actions" },
       progress,
@@ -388,7 +389,7 @@ function draw(withFilters = true) {
   const CLOUD_ORDER = ["Azure", "Google Cloud"];
   const rank = (g) => (CLOUD_ORDER.includes(g) ? CLOUD_ORDER.indexOf(g) : CLOUD_ORDER.length);
   const groups = [...new Set(shown.map((s) => s.group))].sort((x, y) => rank(x) - rank(y));
-  const cols = ["Name", "Status", "Type", "Stack", "Runs in", "Last checked", ""];
+  const cols = OIDC ? ["Name", "Status", "Stack", "Last checked", ""] : ["Name", "Status", "Type", "Stack", "Runs in", "Last checked", ""];
   const head = (g, list) => h("tr", { class: "home-group" }, h("th", { scope: "colgroup", colspan: String(cols.length) },
     h("span", { class: "home-group-name" }, iconEl(CLOUD_ID[g], "home-group-logo"), g,
       h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }))));
@@ -396,7 +397,8 @@ function draw(withFilters = true) {
     h("thead", {}, h("tr", {}, cols.map((c) => h("th", { scope: "col", text: c })))),
     groups.map((g) => {
       const list = shown.filter((s) => s.group === g).sort((x, y) => ORDER.indexOf(sectionOf(x)) - ORDER.indexOf(sectionOf(y)));
-      return h("tbody", {}, head(g, list), list.map((s) => row(s, sectionOf(s))));
+      // A cloud heading only when more than one cloud is listed: alone, it repeats the filter.
+      return h("tbody", {}, groups.length > 1 ? head(g, list) : null, list.map((s) => row(s, sectionOf(s))));
     }))) : null);
 }
 
@@ -423,10 +425,8 @@ function essentials(data, all) {
   })();
   fill($("page-logo"), one ? iconEl(CLOUD_ID[one], "") : null);
   if (!one) $("page-logo").innerHTML = OIDC ? (window.consoleNav?.icon("boot") || "") : '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>';
-  $("page-sub").textContent = `${one || "Azure and Google Cloud"} · ${OIDC ? "JFrog trust stacks" : "Test infrastructure"}`;
   const pair = (label, value, helpText) => [h("dt", { text: label }), h("dd", {}, value, helpText ? help(helpText) : null)];
   fill($("ess-left"),
-    pair("Cloud", one || clouds.join(", ") || "—"),
     pair("Environment", data.env, `Stacks deploy to the ${data.env} environment: saved inputs, ADO environments <stack>-${data.env} and variable groups jfrog-oidc-<cloud>-${data.env}.`),
     pair("Deployed", `${deployed} of ${mine.length}`));
   fill($("ess-right"),

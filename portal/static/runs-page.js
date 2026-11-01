@@ -81,8 +81,10 @@ function render() {
   };
   for (const t of document.querySelectorAll(".runs-rows-more")) t.remove();
   const [first, ...rest] = groups;
-  $("runs-rows").replaceChildren(...(first ? [head(first[0], first[1].length), ...first[1].map(row)] : []));
-  $("runs-rows").after(...rest.map(([c, xs]) => h("tbody", { class: "runs-rows-more" }, head(c, xs.length), ...xs.map(row))));
+  // A cloud heading only when more than one cloud is listed: alone, it repeats the filter.
+  const top = (c, n) => (groups.length > 1 ? head(c, n) : null);
+  $("runs-rows").replaceChildren(...(first ? [top(first[0], first[1].length), ...first[1].map(row)] : []).filter(Boolean));
+  $("runs-rows").after(...rest.map(([c, xs]) => h("tbody", { class: "runs-rows-more" }, top(c, xs.length), ...xs.map(row))));
   $("runs-count").textContent = `Showing ${shown.length} of ${rows.length} records.`;
   $("runs-none").hidden = shown.length > 0;
   $("runs-none").textContent = rows.length ? "No run matches the filters" : "No runs yet";
@@ -93,11 +95,9 @@ function render() {
 function essentials() {
   const n = (f) => all.filter((r) => f(r.status)).length;
   const last = all[0], oldest = all[all.length - 1];
-  const areas = { serverless: "Serverless", kubernetes: "Kubernetes", infrastructure: "Infrastructure" };
   const pair = (label, value, href) => [h("dt", { text: label }), h("dd", {}, href ? h("a", { href, text: value }) : value)];
   $("ess-left").replaceChildren(
     ...pair("Runs kept", String(all.length)),
-    ...pair("By area", Object.entries(areas).map(([k, v]) => `${v} ${all.filter((r) => r.area === k).length}`).join(", ")),
     ...pair("Oldest kept", oldest ? when(oldest.created) : "—"));
   $("ess-right").replaceChildren(
     ...pair("In progress", String(n(STATUS.active)), n(STATUS.active) ? "/runs?status=active" : null),

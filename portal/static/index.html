@@ -7,6 +7,7 @@
   <title>JFrog OIDC Console</title>
   <link rel="stylesheet" href="/serverless/static/styles.css">
   <link rel="stylesheet" href="/dashboard.css">
+  <link rel="stylesheet" href="/serverless/static/azure.css">
   <script type="module" src="/dashboard.js" blocking="render"></script>
 </head>
 <body>
@@ -20,7 +21,7 @@
   <main id="dash" class="home">
     <header class="home-title">
       <span class="home-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h5v-6h4v6h5V9.5"/></svg></span>
-      <span><h1>Home</h1><span class="blade-sub">JFrog OIDC for every cloud</span></span>
+      <h1>Home</h1>
     </header>
     <div class="blade-cmds" role="toolbar" aria-label="Home">
       <button id="dash-refresh" type="button" class="blade-cmd"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 4v3.5h-3.5"/></svg>Refresh</button>
@@ -40,7 +41,6 @@
     <div class="tabs" role="tablist" aria-label="Home">
       <button type="button" role="tab" id="tab-serverless" aria-controls="home-panel" data-tab="serverless">Serverless</button>
       <button type="button" role="tab" id="tab-kubernetes" aria-controls="home-panel" data-tab="kubernetes">Kubernetes</button>
-      <button type="button" role="tab" id="tab-runs" aria-controls="home-panel" data-tab="runs">Recent runs</button>
     </div>
     <div id="home-panel" role="tabpanel">
       <div id="home-filters"></div>
