@@ -1,9 +1,8 @@
 """Discrete-event simulation of one target's token lifecycle (spec §7.3).
 
-The engine runs the *real* jfrog_oidc client and rotator/rotate.py, unmodified
-apart from clock/sleep injection, against in-process emulators on a virtual
-clock. Event sources: rotator cron ticks, platform cold starts (Poisson),
-runtime requests, fault windows, and alert evaluation every 15 min.
+The engine runs the *real* jfrog_oidc client, unmodified apart from clock/sleep
+injection, against in-process emulators on a virtual clock. Event sources:
+platform cold starts (Poisson), runtime requests and fault windows.
 
 Modelling choices (read these before trusting a verdict):
 - Runtime requests are bucketed per minute: the newest warm instance makes one
@@ -12,15 +11,11 @@ Modelling choices (read these before trusting a verdict):
 - Requests are spread over the warm instances (seeded random choice). Each
   cold start adds an instance that lives load.instance_lifetime_minutes, so
   instances that started before an outage keep serving their cached token
-  while new ones cannot get one. A cold start whose pull fails adds no instance.
-- AR caching is modelled as a per-pull probability (load.uncached_pull_ratio)
-  that the artifact is not yet cached; cached pulls never contact JFrog.
-- Azure is runtime path only: images come from the app's own ACR (managed
-  identity), so no registry credential exists to rotate.
-- Before clock_start the rotator runs once at the previous cron tick and the
-  platforms load whatever that produced, so a day starts in steady state.
+  while new ones cannot get one.
+- Runtime path only on every cloud: images reach the platform's own registry
+  at build time (pipeline OIDC to JFrog), so no registry credential exists.
 
-The process environment, rotate's endpoint globals and stdout are shared, so
+The process environment is shared, so
 only one simulation runs at a time per process (SIM_LOCK).
 """
 
@@ -28,9 +23,7 @@ from __future__ import annotations
 
 import contextlib
 import heapq
-import io
 import itertools
-import json
 import logging
 import math
 import os
@@ -51,30 +44,25 @@ from .emulators.azure import AzureEmulator
 from .emulators.gcp import GOOGLE_ISSUER, GcpEmulator
 from .emulators.jfrog import SERVICES, JFrogEmulator
 from .emulators.k8s import K8sEmulator
-from .emulators.platforms import ArPlatform
 from .emulators.server import EmulatorServer
 
 SIM_LOCK = threading.Lock()
 ROOT = Path(__file__).resolve().parents[2]
 
-PLACEHOLDER = "bootstrap-placeholder"   # what Terraform writes as version 1
 GCP_AUDIENCE = "jfrog-gcp"
 AWS_AUDIENCE = "jfrog-aws"        # tfgen.AWS_AUDIENCE
 K8S_AUDIENCE = "jfrog-k8s"        # tfgen.K8S_AUDIENCE
 TENANT = "72f988bf-0000-4000-8000-000000000001"
 APP_ID = "5d1c2b3a-0000-4000-8000-00000000a0d1"
 RUNTIME_ID = {"client": "c0ffee00-0000-4000-8000-000000000011", "principal": "0b1d0000-0000-4000-8000-000000000011"}
-ALERT_EVERY = 900
 
-# Every variable the client or rotator reads. Cleared and restored around each
+# Every variable the client reads. Cleared and restored around each
 # call so the operator's own environment never leaks into a simulation.
 _ENV_KEYS = (
     "JFROG_URL", "JFROG_OIDC_PROVIDER", "JFROG_OIDC_AUDIENCE", "JFROG_OIDC_SOURCE", "JFROG_OIDC_TOKEN_FILE",
     "JFROG_OIDC_ALLOW_HTTP", "JFROG_PROJECT_KEY", "GCE_METADATA_HOST", "IDENTITY_ENDPOINT", "IDENTITY_HEADER",
     "MSI_ENDPOINT", "AZURE_CLIENT_ID", "AZURE_FEDERATED_TOKEN_FILE", "K_SERVICE", "CLOUD_RUN_JOB", "FUNCTION_TARGET",
-    "ROTATOR_TARGET", "GCP_SECRET", "AR_REPOSITORIES", "AR_UPDATE_MASK", "KEEP_VERSIONS", "MIN_TTL_SECONDS",
-    "DRY_RUN", "SECRET_MANAGER_API",
-    "ARTIFACT_REGISTRY_API", "JFROG_OIDC_AWS_REGION", "AWS_REGION", "AWS_DEFAULT_REGION",
+    "JFROG_OIDC_AWS_REGION", "AWS_REGION", "AWS_DEFAULT_REGION",
     "AWS_ENDPOINT_URL", "AWS_ENDPOINT_URL_STS", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
     "AWS_LAMBDA_FUNCTION_NAME", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "AWS_CONTAINER_CREDENTIALS_FULL_URI",
     "AWS_CONTAINER_AUTHORIZATION_TOKEN", "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE", "AWS_PROFILE",
@@ -84,13 +72,12 @@ _ENV_KEYS = (
 
 
 def _ensure_import_paths():
-    for p in (ROOT / "client" / "src", ROOT / "rotator"):
-        if str(p) not in sys.path:
-            sys.path.insert(0, str(p))
+    p = ROOT / "client" / "src"
+    if str(p) not in sys.path:
+        sys.path.insert(0, str(p))
 
 
 _ensure_import_paths()
-import rotate  # noqa: E402  (rotator/rotate.py, the real one)
 from jfrog_oidc import ExchangeError, IdentityError, JFrogOidcError, JFrogTokenProvider, get_json  # noqa: E402
 
 
@@ -149,24 +136,13 @@ class Simulation:
         self.end = self.start + scenario["duration_s"]
         self.rng = random.Random(scenario["seed"])
         self.on_event = on_event
-        self.pull_enabled = bool(self.cfg["pull_path"].get("enabled")) and self.cloud in model.PULL_CLOUDS
-        self.cron = model.Cron(self.cfg["pull_path"]["rotation_cron"]) if self.pull_enabled else None
 
         self.events: list = []
-        self.rotations: list = []
-        self.tokens: list = []      # pull credential versions: {version, start, end}
-        self.holds: list = []       # {t, version}: what the platform pulls with
-        self.pulls: list = []
         self.requests: list = []
-        self.alerts: list = []      # transitions {t, firing}
         self.fault_log: list = []   # {t, type, open}
-        self.cred_info: dict = {}   # version label -> {written, exp}
-        self.last_success = None
-        self.alert_firing = False
         self.instances: list = []
         self._queue: list = []
         self._seq = itertools.count()
-        self._last_hold = None
 
     # ------------------------------------------------------------- helpers
 
@@ -201,8 +177,7 @@ class Simulation:
         cfg, kind = self.cfg, self.kind
         sim = cfg.get("sim", {})
         g_key, a_key, w_key, k_key = (secrets.token_bytes(16) for _ in range(4))
-        first = self.cron.previous(self.start) if self.pull_enabled else self.start
-        self.clock = VirtualClock(min(first, self.start))
+        self.clock = VirtualClock(self.start)
         self.gcp = GcpEmulator(self.clock, g_key)
         self.azure = AzureEmulator(self.clock, a_key, TENANT)
         self.aws = AwsEmulator(self.clock, w_key, region=cfg["target"].get("aws", {}).get("region") or "us-east-1")
@@ -230,14 +205,13 @@ class Simulation:
         if self.cloud == "gcp":
             self.jfrog.add_integration(integ, GOOGLE_ISSUER, GCP_AUDIENCE)
             self.gcp.add_account("runtime", f"{name}@{self.gcp.project_id}.iam.gserviceaccount.com", "100000000000000000001")
-            self.gcp.add_account("rotator", f"jfrog-rotator@{self.gcp.project_id}.iam.gserviceaccount.com", "100000000000000000002")
-            runtime_claims, pull_claims = {"sub": "100000000000000000001"}, {"sub": "100000000000000000002"}
+            runtime_claims = {"sub": "100000000000000000001"}
             self.runtime_env = {**common, "JFROG_OIDC_AUDIENCE": sim.get("runtime_audience", GCP_AUDIENCE),
                                 "JFROG_OIDC_SOURCE": "gcp", "GCE_METADATA_HOST": f"{host}/gcp/md/runtime"}
         elif self.cloud == "aws":
-            runtime_claims, pull_claims = self._build_aws(cfg, common, sim, base), {}
+            runtime_claims = self._build_aws(cfg, common, sim, base)
         elif self.cloud == "openshift":
-            runtime_claims, pull_claims = self._build_openshift(cfg, common, sim), {}
+            runtime_claims = self._build_openshift(cfg, common, sim)
         else:
             version = int(sim.get("access_token_version", 2))
             self.azure.set_app(APP_ID, version=version, role_gate=bool(sim.get("app_role_gate", False)),
@@ -250,32 +224,9 @@ class Simulation:
                                 "JFROG_OIDC_SOURCE": "azure", "IDENTITY_ENDPOINT": f"{base}/azure/mi/runtime",
                                 "IDENTITY_HEADER": self.headers["runtime"], "AZURE_CLIENT_ID": RUNTIME_ID["client"]}
 
-        self.mapping_names = {"runtime": f"{name}-runtime", "pull": f"{name}-pull"}
+        self.mapping_names = {"runtime": f"{name}-runtime"}
         self.jfrog.add_mapping(self.mapping_names["runtime"], integ, runtime_claims, 10, cfg["runtime"]["username"],
                                cfg["runtime"]["ttl_seconds"], [group])
-        pp = cfg["pull_path"]
-        if self.pull_enabled:
-            self.jfrog.add_mapping(self.mapping_names["pull"], integ, pull_claims, 20, pp["registry_username"],
-                                   pp["ttl_seconds"], [group])
-        min_ttl = str(int(pp.get("min_ttl_seconds", 1800)))
-
-        if self.cloud not in model.PULL_CLOUDS:
-            self.platform = None    # runtime path only: images come from the cloud's own registry
-        elif self.cloud == "gcp":
-            self.secret = "jfrog-upstream"
-            self.gcp.add_secret(self.secret, PLACEHOLDER)
-            repo = next(iter(pp.get("gcp_repositories") or {"jfrog-docker": {}}))
-            region = cfg["target"]["gcp"].get("region") or "us-central1"
-            self.gcp.add_remote_repo(region, repo, pp["registry_username"], self.gcp.version_name(self.secret, 1))
-            self.platform = ArPlatform(self.gcp, self.jfrog_url, repo, self.sc["load"]["uncached_pull_ratio"])
-            self.rotator_env = {
-                **common, "ROTATOR_TARGET": "gcp", "JFROG_OIDC_AUDIENCE": GCP_AUDIENCE,
-                "GCE_METADATA_HOST": f"{host}/gcp/md/rotator",
-                "GCP_SECRET": f"projects/{self.gcp.project_id}/secrets/{self.secret}",
-                "AR_REPOSITORIES": f"projects/{self.gcp.project_id}/locations/{region}/repositories/{repo}",
-                "KEEP_VERSIONS": "2", "MIN_TTL_SECONDS": min_ttl,
-            }
-        self.base = base
 
         # Fault windows in absolute time; open-ended faults last to the end.
         self._windows = [{"type": f["type"], "params": f["params"], "start": self.start + f["start_s"],
@@ -314,59 +265,7 @@ class Simulation:
                             "JFROG_OIDC_TOKEN_FILE": self.k8s.path}
         return {"sub": f"system:serviceaccount:{ns}:{sa}"}
 
-    # ------------------------------------------------------------- secrets
-
-    def _latest_label(self):
-        return f"v{self.gcp.latest(self.secret)['n']}"
-
-    def _note_hold(self, t: float) -> None:
-        held = self.platform.holds() if self.pull_enabled else None
-        if held != self._last_hold:
-            self._last_hold = held
-            self.holds.append({"t": self._rel(t), "version": held})
-            if held:
-                self._emit(t, "hold", f"{self.platform.label} now pulls with {held}", version=held)
-
     # ------------------------------------------------------------- events
-
-    def _rotation(self, t: float, warmup: bool = False) -> None:
-        before = self._latest_label()
-        rotate.SM = f"{self.base}/gcp/sm/v1"
-        rotate.AR = f"{self.base}/gcp/ar/v1"
-        out = io.StringIO()
-        with _workload_env(self.rotator_env), contextlib.redirect_stdout(out):
-            try:
-                rc = rotate.main(clock=self.clock.now, sleep=self.clock.sleep)
-            except SystemExit as exc:  # require() exits before main's own handler
-                print(json.dumps({"event": "rotation_failed", "error": str(exc), "severity": "ERROR"}))
-                rc = 1
-        lines = []
-        for line in out.getvalue().splitlines():
-            try:
-                rec = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(rec, dict) and "event" in rec:
-                lines.append(rec)
-        for rec in lines:
-            fields = {k: v for k, v in rec.items() if k not in ("event", "severity")}
-            self._emit(self.clock.now(), "rotator", f"{rec['event']} {json.dumps(fields, sort_keys=True)}".strip())
-
-        after = self._latest_label()
-        wrote = after != before
-        exp = next((r.get("expires_at") for r in lines if r["event"] == "secret_version_added"), None)
-        # The summary error plus any per-step failure detail.
-        details = [r.get("error") for r in lines if r["event"].endswith("_failed") and r.get("error")]
-        error = "; ".join(dict.fromkeys(details)) or None
-        if wrote:
-            self.cred_info[after] = {"written": t, "exp": float(exp) if exp else None}
-            self.tokens.append({"version": after, "start": self._rel(t), "end": self._rel(float(exp)) if exp else None})
-        ok = rc == 0
-        rec = {"t": self._rel(t), "ok": ok, "version": after if wrote else None, "error": redact.text(error) if error else None,
-               "faults": self._faults_at(t), "warmup": warmup}
-        self.rotations.append(rec)
-        if ok:
-            self.last_success = t
 
     def _new_instance(self, t: float) -> None:
         with _workload_env(self.runtime_env):
@@ -376,19 +275,6 @@ class Simulation:
         self.instances = [i for i in self.instances[:-1] if t - i[0] < lifetime] + self.instances[-1:]
 
     def _cold_start(self, t: float) -> None:
-        if self.pull_enabled and self.platform.pulls:
-            res = self.platform.pull(self.rng)
-            outage = (not res["ok"]) and _transient(res["status"]) and self._in_outage(t)
-            info = self.cred_info.get(res["version"], {})
-            rec = {"t": self._rel(t), **res, "reason": redact.text(res["reason"]), "outage": outage,
-                   "cred_exp": self._rel(info["exp"]) if info.get("exp") else None}
-            self.pulls.append(rec)
-            if not res["ok"]:
-                self._emit(t, "pull", f"{self.platform.label} {self.platform.action} failed: {res['reason']}",
-                           version=res["version"], outage=outage)
-                return
-            if not res["cached"]:
-                self._emit(t, "pull", f"{self.platform.label} {self.platform.action}: uncached pull ok with {res['version']}")
         self._new_instance(t)
 
     def _requests(self, t: float, n: int) -> None:
@@ -438,8 +324,6 @@ class Simulation:
         self.fault_log.append({"t": self._rel(t), "type": ftype, "open": opening})
         if ftype == "jfrog_outage":
             self.jfrog.set_down((params.get("services") or SERVICES) if opening else ())
-        elif ftype == "rotator_down":
-            self.gcp.set_identity_down("rotator", opening)
         elif ftype == "federation_disabled":
             self.aws.federation_enabled = not opening
         elif ftype in ("sa_recreated", "identity_recreated") and opening:
@@ -462,20 +346,6 @@ class Simulation:
                 integ["issuer"] = f["_saved"]
         self._emit(t, "fault", f"fault {ftype} {'starts' if opening else 'ends'}", params=params)
 
-    def _alert_eval(self, t: float) -> None:
-        if not self.pull_enabled:
-            return
-        after = int(self.cfg["pull_path"].get("alert_after_seconds") or 0)
-        if not after:
-            return
-        since = self.last_success if self.last_success is not None else self.start
-        firing = (t - since) > after
-        if firing != self.alert_firing:
-            self.alert_firing = firing
-            self.alerts.append({"t": self._rel(t), "firing": firing})
-            self._emit(t, "alert", (f"alert FIRING: no successful rotation for {(t - since) / 3600:.1f} h"
-                                    if firing else "alert resolved"))
-
     # -------------------------------------------------------------- run
 
     def run(self) -> dict:
@@ -490,10 +360,6 @@ class Simulation:
             try:
                 self._build()
                 self._emit(self.clock.now(), "sim", f"simulation {self.sc['name']} starts: {model.KINDS[self.kind]['label']}")
-                if self.pull_enabled:
-                    self._rotation(self.clock.now(), warmup=True)
-                    self._note_hold(self.clock.now())
-                self.clock.advance_to(self.start)
                 self._new_instance(self.start)
                 self._schedule()
                 self._loop()
@@ -511,9 +377,6 @@ class Simulation:
 
     def _schedule(self) -> None:
         load = self.sc["load"]
-        if self.pull_enabled:
-            for t in self.cron.ticks(self.start, self.end):
-                self._push(t, "rotation")
         rate = load["cold_starts_per_hour"] / 3600.0
         t = self.start
         while rate > 0:
@@ -529,17 +392,13 @@ class Simulation:
             self._push(w["start"], "fault_open", w)
             if w["end"] <= self.end:
                 self._push(w["end"], "fault_close", w)
-        for t in range(int(self.start), int(self.end), ALERT_EVERY):
-            self._push(t, "alert_eval")
 
     def _loop(self) -> None:
         handlers = {
-            "rotation": lambda t, d: self._rotation(t),
             "cold_start": lambda t, d: self._cold_start(t),
             "requests": lambda t, d: self._requests(t, d),
             "fault_open": lambda t, d: self._fault(t, d, True),
             "fault_close": lambda t, d: self._fault(t, d, False),
-            "alert_eval": lambda t, d: self._alert_eval(t),
         }
         while self._queue:
             t, _, kind, data = heapq.heappop(self._queue)
@@ -548,59 +407,15 @@ class Simulation:
             self.clock.advance_to(t)
             # A retry sleep may have moved the clock past t: record when it really happened.
             handlers[kind](max(t, self.clock.now()), data)
-            if self.pull_enabled:
-                self._note_hold(self.clock.now())
 
     # ----------------------------------------------------------- verdict
 
     def _failures(self):
         fails = []
-        for p in self.pulls:
-            if not p["ok"]:
-                fails.append({"t": p["t"], "kind": "pull", "outage": p["outage"], "rec": p})
         for r in self.requests:
             if r["outcome"] in ("fail", "unavailable"):
                 fails.append({"t": r["t"], "kind": "request", "outage": r["outcome"] == "unavailable", "rec": r})
         return sorted(fails, key=lambda f: f["t"])
-
-    def _exposures(self) -> list:
-        """Intervals when the platform held an expired credential or the placeholder.
-
-        Any pull landing in one fails, whether or not this run's random cold
-        starts happened to hit it, so they count against the verdict.
-        """
-        if not (self.pull_enabled and self.platform.pulls):
-            return []
-        out = []
-        duration = self.sc["duration_s"]
-        for i, h in enumerate(self.holds):
-            s = max(h["t"], 0.0)
-            e = self.holds[i + 1]["t"] if i + 1 < len(self.holds) else duration
-            e = min(e, duration)
-            if e <= s or not h["version"]:
-                continue
-            info = self.cred_info.get(h["version"])
-            if info is None:
-                bad_from = s  # bootstrap placeholder
-            elif info["exp"] is None:
-                continue
-            else:
-                bad_from = max(s, self._rel(info["exp"]))
-            if bad_from < e:
-                out.append({"start": bad_from, "end": e, "version": h["version"], "placeholder": info is None})
-        return out
-
-    def _failed_runs_text(self, since_rel: float, until_rel: float) -> str:
-        runs = [r for r in self.rotations if not r["ok"] and since_rel <= r["t"] <= until_rel]
-        if not runs:
-            return ""
-        times = [self.hhmm(self.start + r["t"]) for r in runs]
-        if len(times) > 6:
-            times = times[:3] + ["…"] + times[-2:]
-        faults = sorted({f for r in runs for f in r["faults"]})
-        why = f"fault {', '.join(faults)}" if faults else (runs[0]["error"] or "error")
-        noun = "rotation" if len(runs) == 1 else "rotations"
-        return f"{noun} {', '.join(times)} failed ({why})"
 
     def _chain(self, first: dict) -> list:
         chain = []
@@ -614,50 +429,16 @@ class Simulation:
                         "integration_misconfigured": "JFrog integration issuer changed"}[f["type"]]
                 chain.append(f"{desc} at {self.hhmm(self.start + f['t'])}")
         rec = first["rec"]
-        if first["kind"] in ("pull", "exposure"):
-            label = rec["version"]
-            info = self.cred_info.get(label)
-            since = self._rel(info["written"]) if info else -86400.0
-            failed = self._failed_runs_text(since + 1, first["t"])
-            if failed:
-                chain.append(failed)
-            if info is None:
-                chain.append(f"{self.platform.label} still holds the bootstrap placeholder ({label}): no rotation has succeeded")
-            elif info["exp"] is not None and info["exp"] <= t_abs:
-                chain.append(f"token {label} expired {self.hhmm(info['exp'])}")
-            newer = [v for v, i in self.cred_info.items() if i["written"] <= t_abs and (info is None or i["written"] > info["written"])]
-            if newer:
-                n = newer[-1]
-                chain.append(f"{n} was written {self.hhmm(self.cred_info[n]['written'])} but {self.platform.label} "
-                             "had not picked it up")
-            if first["kind"] == "pull":
-                chain.append(f"{self.platform.label} {self.platform.action} {self.hhmm(t_abs)} failed: {rec['reason']}")
-            else:
-                chain.append(f"{self.platform.label} held an unusable credential {self.hhmm(t_abs)}–"
-                             f"{self.hhmm(self.start + rec['end'])}: any {self.platform.action} in that window fails "
-                             f"(none landed in it in this run)")
-        else:
-            failed = self._failed_runs_text(-86400, first["t"])
-            if failed and "MIN_TTL" in failed:
-                chain.append(failed)
-            chain.append(f"runtime request {self.hhmm(t_abs)} failed: {rec['reason']}")
+        chain.append(f"runtime request {self.hhmm(t_abs)} failed: {rec['reason']}")
         return chain
 
     def _root_cause(self, chain: list):
-        rot_errors = " ".join(r["error"] or "" for r in self.rotations)
-        text = " ".join(chain) + " " + rot_errors
-        pp = self.cfg["pull_path"]
-        math_ = model.ttl_math(self.cfg) if self.pull_enabled else {}
+        text = " ".join(chain)
         if "OutboundWebIdentityFederationDisabled" in text:
             region = self.cfg["target"].get("aws", {}).get("region") or "<region>"
             return ("Outbound identity federation is disabled for the AWS account, so STS GetWebIdentityToken refuses "
                     "every call and the runtime cannot get a JWT. Run once per account: "
                     f"aws iam enable-outbound-web-identity-federation --region {region}")
-        if "MIN_TTL_SECONDS" in text:
-            return (f"The pull mapping issues {pp['ttl_seconds']}s tokens but the rotator requires "
-                    f"MIN_TTL_SECONDS={pp.get('min_ttl_seconds', 1800)}: every rotation is refused, so the platform keeps "
-                    f"the bootstrap placeholder or an expiring token. Raise pull_path.ttl_seconds to at least "
-                    f"{max(int(pp.get('min_ttl_seconds', 1800)), math_.get('min_safe_ttl_seconds', 0))}s.")
         if "sts.windows.net" in text:
             return ("The audience app registration issues v1 tokens (iss https://sts.windows.net/<tenant>/, aud api://…), "
                     "but the JFrog integration expects the v2 issuer and the app ID as audience. Set "
@@ -671,16 +452,6 @@ class Simulation:
         if "no identity mapping matched" in text:
             return ("The identity's claims no longer match any JFrog identity mapping (for example the service account "
                     "was recreated and has a new uniqueId). Re-run Discover and re-apply so the mapping uses the current ID.")
-        if any("rotator_down" in r["faults"] for r in self.rotations) or "fault rotator_down" in text:
-            return (f"The rotator missed consecutive runs. This config survives {math_.get('survives_missed_rotations')} "
-                    f"missed rotation(s): TTL {math_.get('pull_ttl_seconds')}s, interval "
-                    f"{math_.get('rotation_interval_seconds')}s, pickup lag {math_.get('pickup_lag_seconds') or 0}s. "
-                    "Raise the pull TTL, and act on the stale-rotation alert.")
-        if "expired" in text and math_ and math_.get("survives_missed_rotations", 1) < 1:
-            return (f"The pull TTL ({math_['pull_ttl_seconds']}s) does not cover one rotation interval "
-                    f"({math_['rotation_interval_seconds']}s) plus the platform's pickup lag "
-                    f"({math_['pickup_lag_seconds'] or 0}s), so tokens expire before the platform uses the next one. "
-                    f"Use at least {math_['min_safe_ttl_seconds']}s or rotate more often.")
         if "unavailable" in text:
             return "JFrog was unavailable; failures are confined to the outage window."
         return None
@@ -688,13 +459,6 @@ class Simulation:
     def _result(self, elapsed: float) -> dict:
         fails = self._failures()
         hard = [f for f in fails if not f["outage"]]
-        exposures = self._exposures()
-        # An exposure with no observed failure in it still fails the verdict.
-        unobserved = [x for x in exposures
-                      if not any(f["kind"] == "pull" and x["start"] <= f["t"] < x["end"] for f in hard)]
-        if unobserved:
-            hard = sorted(hard + [{"t": x["start"], "kind": "exposure", "outage": False, "rec": x} for x in unobserved],
-                          key=lambda f: f["t"])
         if not fails and not hard:
             verdict, chain, root = "pass", [], None
         else:
@@ -703,20 +467,12 @@ class Simulation:
             chain = self._chain(first)
             root = self._root_cause(chain)
         weight = lambda outcome: sum(r["n"] for r in self.requests if r["outcome"] == outcome)  # noqa: E731
-        first_alert = next((a["t"] for a in self.alerts if a["firing"]), None)
         summary = {
-            "rotations_ok": sum(1 for r in self.rotations if r["ok"] and not r["warmup"]),
-            "rotations_failed": sum(1 for r in self.rotations if not r["ok"] and not r["warmup"]),
-            "pulls_ok": sum(1 for p in self.pulls if p["ok"]),
-            "pulls_cached": sum(1 for p in self.pulls if p["ok"] and p["cached"]),
-            "pulls_failed": sum(1 for p in self.pulls if not p["ok"]),
             "requests_ok": weight("ok"),
             "requests_ok_cached": weight("ok_cached"),
             "requests_failed": weight("fail"),
             "requests_unavailable": weight("unavailable"),
-            "alert_first_fired_s": first_alert,
             "first_failure_s": (hard[0]["t"] if hard else (fails[0]["t"] if fails else None)),
-            "exposure_s": round(sum(x["end"] - x["start"] for x in exposures), 1),
             "tokens_minted": len(self.jfrog.minted),
             "emulator_requests": self.server.stats.requests,
             "elapsed_s": round(elapsed, 3),
@@ -726,7 +482,6 @@ class Simulation:
             "description": self.sc.get("description", ""),
             "target_kind": self.kind,
             "target_label": model.KINDS[self.kind]["label"],
-            "platform_label": getattr(self.platform, "label", ""),
             "start": self.sc["clock_start"],
             "start_epoch": self.start,
             "duration_s": self.sc["duration_s"],
@@ -735,16 +490,9 @@ class Simulation:
             "verdict": verdict,
             "chain": chain,
             "root_cause": root,
-            "ttl_math": model.ttl_math(self.cfg) if self.pull_enabled else {},
             "summary": summary,
             "metrics": {
-                "rotations": self.rotations,
-                "tokens": self.tokens,
-                "holds": self.holds,
-                "pulls": self.pulls,
                 "requests": self.requests,
-                "alerts": self.alerts,
-                "exposures": exposures,
                 "faults": [{"type": w["type"], "start": self._rel(w["start"]), "end": self._rel(min(w["end"], self.end))}
                            for w in self._windows],
             },

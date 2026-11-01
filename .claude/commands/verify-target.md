@@ -13,5 +13,5 @@ the real environment: Preflight and Discover (spec §4.1–4.2).
 - Show what the mapping claims JSON and the wire diff *would* be, without
   applying anything.
 
-Do not run plan/apply, wire, rotation or probes. Those need my approval in the
+Do not run plan/apply, wire or probes. Those need my approval in the
 console UI.

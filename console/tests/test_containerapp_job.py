@@ -41,7 +41,6 @@ def cfg():
     c = model.default_config("azure_container_app_job", name=NAME)
     c["target"]["azure"].update(subscription=SUB, resource_group=RG, name=NAME)
     c["jfrog"]["url"] = "https://acme.jfrog.io"
-    c["pull_path"]["enabled"] = False
     return c
 
 

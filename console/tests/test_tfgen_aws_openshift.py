@@ -55,7 +55,7 @@ class AwsWorkspaceTests(Base):
         self.assertEqual(tv["workloads"]["orders-runtime"]["cloud"], "aws")
         self.assertEqual(tv["jfrog_issuer"], ISS)
         self.assertEqual(tv["existing_roles"], {"orders": "orders-role"})
-        self.assertEqual(tv["pull_path"]["enabled"], False)
+        self.assertNotIn("pull_path", tv)
         self.assertEqual(main["provider"]["aws"]["allowed_account_ids"], ["${var.aws_account_id}"])
         self.assertTrue(main["module"]["aws_identity"]["source"].endswith("terraform/modules/aws-identity"))
 
@@ -126,8 +126,6 @@ class ValidateAwsOpenShift(TerraformValidateTests):
                     openshift_cfg()):
             self.validate(cfg)
 
-    def test_pull_path_off(self):
-        pass
 
 
 if __name__ == "__main__":

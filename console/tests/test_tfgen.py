@@ -25,7 +25,6 @@ UAMI = f"{RG_ID}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-o
 def gcp_cfg(kind="gcp_run_service", name="orders", project="demo-nonprod-1234", region="us-central1", subject="104857600000000000001"):
     cfg = model.default_config(kind, name=name)
     cfg["target"]["gcp"].update(project=project, region=region, name=name)
-    cfg["pull_path"]["rotator_image"] = f"{region}-docker.pkg.dev/{project}/platform/jfrog-oidc-rotator:0.1.0"
     cfg["target"]["discovered"] = {"kind": kind, "mapping_subject": subject,
                                    "service_account": f"{name}@{project}.iam.gserviceaccount.com"}
     if kind == "gcp_run_function":
@@ -106,15 +105,14 @@ class GcpRenderTests(Base):
         main, tfvars = f["main.tf.json"], f["terraform.tfvars.json"]
         modules = Path(__file__).resolve().parents[2] / "terraform" / "modules"
         self.assertEqual(main["module"]["jfrog_oidc"]["source"], str(modules / "jfrog-oidc"))
-        self.assertEqual(main["module"]["gcp_pull_path"]["source"], str(modules / "gcp-pull-path"))
+        self.assertNotIn("gcp_pull_path", main["module"])
         self.assertEqual(tfvars["workloads"]["orders-runtime"],
                          {"cloud": "gcp", "subject": "104857600000000000001", "username": None,
                           "groups": ["serverless-readers"], "expires_in": 3600,
                           "description": "gcp_run_service orders (runtime exchange)"})
-        self.assertTrue(tfvars["pull_path"]["enabled"])
-        self.assertEqual(tfvars["pull_mapping_name"], "gcp-demo-nonprod-1234-us-central1-pull")
-        self.assertEqual(tfvars["remote_repositories"],
-                         {"jfrog-docker": {"format": "DOCKER", "upstream_uri": "https://acme-docker-virtual.jfrog.io"}})
+        for gone in ("pull_path", "pull_mapping_name", "remote_repositories", "reader_members"):
+            self.assertNotIn(gone, tfvars)
+        self.assertEqual(main["module"]["jfrog_oidc"]["workloads"], "${local.runtime_workloads}")
         self.assertEqual(res["targets"], ["orders"])
 
     def test_main_tf_json_holds_no_operator_values(self):
@@ -122,35 +120,23 @@ class GcpRenderTests(Base):
         # workspace, so no operator value can be spliced into an expression.
         a = (Path(self.render(gcp_cfg())["dir"]) / "main.tf.json").read_text()
         cfg = gcp_cfg(project="other-proj-9", region="europe-west1", name="x")
-        cfg["pull_path"]["name_prefix"] = "jfrog-eu"
+        cfg["name_prefix"] = "jfrog-eu"
         cfg["jfrog"]["integration_names"]["gcp"] = "gcp-cloudrun-eu"
         b = (Path(self.render(cfg)["dir"]) / "main.tf.json").read_text()
         self.assertEqual(a, b)
         for value in ("demo-nonprod-1234", "acme.jfrog.io", "104857600000000000001", "serverless-readers"):
             self.assertNotIn(value, a)
 
-    def test_function_adds_build_sa_reader(self):
-        f = self.files(self.render(gcp_cfg("gcp_run_function", name="webhook")))
-        self.assertEqual(f["terraform.tfvars.json"]["reader_members"],
-                         ["serviceAccount:builder@demo-nonprod-1234.iam.gserviceaccount.com"])
-
-    def test_pull_path_off_everywhere(self):
-        cfg = gcp_cfg()
-        cfg["pull_path"]["enabled"] = False
-        cfg["pull_path"]["rotator_image"] = ""
-        f = self.files(self.render(cfg))
-        self.assertFalse(f["terraform.tfvars.json"]["pull_path"]["enabled"])
+    def test_no_pull_path_anywhere(self):
+        for cfg in (gcp_cfg(), gcp_cfg("gcp_run_function", name="webhook", subject="104857600000000000003")):
+            text = json.dumps(self.files(self.render(cfg)))
+            for gone in ("pull_path", "gcp-pull-path", "rotator", "remote_repositories", "reader_members"):
+                self.assertNotIn(gone, text)
 
     def test_requires_discover(self):
         cfg = gcp_cfg()
         del cfg["target"]["discovered"]
         with self.assertRaisesRegex(tfgen.TfgenError, "Discover"):
-            self.render(cfg)
-
-    def test_requires_rotator_image_with_pull_path(self):
-        cfg = gcp_cfg()
-        cfg["pull_path"]["rotator_image"] = ""
-        with self.assertRaisesRegex(tfgen.TfgenError, "rotator_image"):
             self.render(cfg)
 
     def test_validation_errors_block(self):
@@ -171,18 +157,6 @@ class GcpRenderTests(Base):
 
 class AksPilotLessonTests(Base):
     """Rules carried over from the AKS sandbox pilot (docs/aks-pilot-lessons.md)."""
-
-    def test_docker_upstream_with_path_refused(self):
-        cfg = gcp_cfg()
-        cfg["pull_path"]["gcp_repositories"] = {"jfrog-docker": {"format": "DOCKER", "upstream_uri": "https://acme.jfrog.io/docker-virtual"}}
-        with self.assertRaisesRegex(tfgen.TfgenError, "repo's own host"):
-            self.render(cfg)
-
-    def test_docker_upstream_on_platform_host_warns(self):
-        cfg = gcp_cfg()
-        cfg["pull_path"]["gcp_repositories"] = {"jfrog-docker": {"format": "DOCKER", "upstream_uri": "https://acme.jfrog.io"}}
-        res = self.render(cfg)
-        self.assertTrue(any("repository-path" in w for w in res["warnings"]))
 
     def test_jfrog_url_with_path_refused(self):
         cfg = gcp_cfg()
@@ -213,25 +187,11 @@ class SharedWorkspaceTests(Base):
         self.assertEqual(f["terraform.tfvars.json"]["workloads"]["orders-runtime"]["expires_in"], 1800)
         self.assertEqual(len(f["terraform.tfvars.json"]["workloads"]), 1)
 
-    def test_repositories_merge(self):
-        self.render(gcp_cfg())
-        cfg = gcp_cfg(name="api", subject="104857600000000000009")
-        cfg["pull_path"]["gcp_repositories"] = {"jfrog-pypi": {"format": "PYTHON", "upstream_uri": "https://acme.jfrog.io/artifactory/api/pypi/pypi-virtual"}}
-        f = self.files(self.render(cfg))
-        self.assertEqual(set(f["terraform.tfvars.json"]["remote_repositories"]), {"jfrog-docker", "jfrog-pypi"})
-
     def test_conflicting_shared_setting_is_refused(self):
         self.render(gcp_cfg())
         cfg = gcp_cfg(name="api", subject="104857600000000000009")
-        cfg["pull_path"]["ttl_seconds"] = 7200
-        with self.assertRaisesRegex(tfgen.TfgenError, "pull_path.ttl_seconds"):
-            self.render(cfg)
-
-    def test_same_repo_id_different_upstream_is_refused(self):
-        self.render(gcp_cfg())
-        cfg = gcp_cfg(name="api", subject="104857600000000000009")
-        cfg["pull_path"]["gcp_repositories"] = {"jfrog-docker": {"format": "DOCKER", "upstream_uri": "https://other.jfrog.io"}}
-        with self.assertRaisesRegex(tfgen.TfgenError, "jfrog-docker"):
+        cfg["jfrog"]["reader_group"] = "other-readers"
+        with self.assertRaisesRegex(tfgen.TfgenError, "jfrog.reader_group"):
             self.render(cfg)
 
     def test_remove_target(self):
@@ -261,14 +221,11 @@ class SharedWorkspaceTests(Base):
 
 
 class GuardTests(Base):
-    def test_gcp_prefix_collision_across_regions(self):
+    def test_two_regions_of_one_project(self):
         self.render(gcp_cfg())
         cfg = gcp_cfg(name="eu", region="europe-west1", subject="104857600000000000005")
         cfg["jfrog"]["integration_names"]["gcp"] = "gcp-cloudrun-eu"
-        with self.assertRaisesRegex(tfgen.TfgenError, "name_prefix"):
-            self.render(cfg)
-        cfg["pull_path"]["name_prefix"] = "jfrog-eu"
-        self.render(cfg)
+        self.render(cfg)   # no project-wide pull-path resources, so the same prefix is fine
 
     def test_integration_name_collision_across_workspaces(self):
         self.render(gcp_cfg())
@@ -292,9 +249,8 @@ class AzureRenderTests(Base):
         self.assertEqual(t["audience_assignees"], {"orders": "aaaaaaaa-0000-0000-0000-000000000001"})
         self.assertEqual(t["workloads"]["orders-runtime"]["cloud"], "azure")
         for gone in ("key_vault_uri", "container_app_environment_id", "secret_readers", "function_app_ids",
-                     "rotator_registry"):
+                     "rotator_registry", "pull_path"):
             self.assertNotIn(gone, t)
-        self.assertFalse(t["pull_path"]["enabled"])
 
     def test_premium_is_runtime_only(self):
         f = self.files(self.render(azure_cfg("azure_functions_premium", name="fn-orders")))
@@ -304,11 +260,6 @@ class AzureRenderTests(Base):
         self.assertNotIn("registry_username", m["output"])
         self.assertNotIn("password", json.dumps(m).lower())
 
-    def test_pull_path_is_refused(self):
-        cfg = azure_cfg()
-        cfg["pull_path"]["enabled"] = True
-        with self.assertRaises(tfgen.TfgenError):
-            self.render(cfg)
 
 
 class DedicatedIdentityTests(Base):
@@ -416,10 +367,6 @@ class TerraformValidateTests(Base):
         for cfg in (g, a):
             self.validate(cfg)
 
-    def test_pull_path_off(self):
-        for cfg in (gcp_cfg(), azure_cfg("azure_functions_premium", name="fx")):
-            cfg["pull_path"]["enabled"] = False
-            self.validate(cfg)
 
 
 if __name__ == "__main__":

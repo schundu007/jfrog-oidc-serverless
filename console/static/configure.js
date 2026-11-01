@@ -55,9 +55,6 @@ function freshConfig(kind) {
   const d = inv && (!inv.errors?.length || inv.workloads?.length) ? inv.defaults || {} : {};
   for (const [k, v] of Object.entries(d)) if (v && k !== "name" && Object.hasOwn(cfg.target[cloud], k)) cfg.target[cloud][k] = v;
   if (inv?.defaults?.jfrog_url) cfg.jfrog.url = inv.defaults.jfrog_url;
-  // Images come from Artifact Registry / ACR with the platform's own identity; JFrog
-  // serves artifacts to the app's code. The JFrog image-pull path is opt-in.
-  cfg.pull_path.enabled = false;
   return cfg;
 }
 
@@ -100,7 +97,7 @@ function onFieldInput(ev) {
     st.cfg.name = nameEl.value = readField(el);
   }
   setPath(st.cfg, el.dataset.path, readField(el));
-  if (el.dataset.path === "target.kind" || el.dataset.path === "pull_path.enabled") applyKindVisibility();
+  if (el.dataset.path === "target.kind") applyKindVisibility();
   markDirty(true);
   scheduleValidate();
   renderSummary();
@@ -109,10 +106,6 @@ function onFieldInput(ev) {
 function applyKindVisibility() {
   const kind = st.cfg.target.kind;
   for (const el of $("cfg-form").querySelectorAll("[data-kinds]")) el.hidden = !el.dataset.kinds.split(" ").includes(kind);
-  const pullChoice = $("cfg-form").querySelector('[data-path="pull_path.enabled"]').closest("label");
-  // Only GCP has a pull path; Azure, AWS and Knative pull from their own registry (runtime path only).
-  pullChoice.hidden = !st.schema.pull_clouds.includes(cloud);
-  $("cfg-pull-fields").hidden = pullChoice.hidden || !st.cfg.pull_path?.enabled;
   renderSummary();
 }
 
@@ -152,7 +145,7 @@ function renderSummary() {
   const urlOk = /^https:\/\/[a-z0-9.-]+\/?$/i.test(c.jfrog?.url || "");
   $("step-app").classList.toggle("is-done", idn.found);
   $("step-jfrog").classList.toggle("is-done", urlOk && !!c.jfrog?.reader_group);
-  $("step-needs").classList.toggle("is-done", !!(c.runtime?.enabled || c.pull_path?.enabled));
+  $("step-needs").classList.toggle("is-done", !!c.runtime?.enabled);
   fill($("cfg-identity"), idn.text
     ? h("span", { class: "with-icon" }, statusIcon(idn.found ? "succeeded" : "warn", idn.found ? "discovered" : "stale"),
       h("span", { class: "mono", text: idn.text }), idn.stale ? h("span", { class: "muted", text: "· run Discover identity again" }) : null)
@@ -414,11 +407,8 @@ const HELP = {
   "#step-jfrog > h2": "The JFrog instance that trusts the workload's identity and issues its short-lived tokens.",
   '[data-path="jfrog.url"]': "Your JFrog Platform address, for example yourcompany.jfrog.io.",
   '[data-path="jfrog.reader_group"]': "The JFrog group the issued tokens belong to. It decides what the workload can read.",
-  "#step-needs > h2": "How the workload gets JFrog tokens. Turn on one or both.",
-  '[data-path="pull_path.enabled"]': "The platform pulls the container image from JFrog. A rotator keeps a short-lived pull token in Secret Manager and points Artifact Registry at it.",
+  "#step-needs > h2": "How the workload gets JFrog tokens: the running code exchanges its cloud identity. Images come in at build time.",
   '[data-path="runtime.enabled"]': "The running code swaps its cloud identity for a JFrog token whenever it needs one, for example to download packages. Nothing is stored.",
-  '[data-path="jfrog.docker_repo"]': "The JFrog Docker repository the images are pulled from.",
-  '[data-path="pull_path.rotator_image"]': "The rotator job's image in Artifact Registry, pinned by digest.",
 };
 
 // ----------------------------------------------------------------- mount

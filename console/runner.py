@@ -11,8 +11,8 @@ Gates:
   the commands ran, the new diff is shown and the run waits again.
 Nothing is applied without its approval, and a cancelled run applies nothing.
 
-Every event is redacted and appended to <root>/runs/<id>/events.jsonl. First
-rotation, Verify and Report arrive in M5 and are skipped for now.
+Every event is redacted and appended to <root>/runs/<id>/events.jsonl. Verify
+and Report arrive in M5 and are skipped for now.
 """
 
 from __future__ import annotations
@@ -31,13 +31,13 @@ from .steps import discover, preflight, tfgen
 from .steps import terraform as tf
 from .steps import wire as wiremod
 
-STEPS = ["preflight", "discover", "simulate", "publish", "plan", "apply", "wire", "first_rotation", "verify", "report"]
+STEPS = ["preflight", "discover", "simulate", "publish", "plan", "apply", "wire", "verify", "report"]
 DEFAULT_STEPS = ["preflight", "discover", "simulate", "plan", "apply", "wire"]
 DELIVERY_STEPS = ["preflight", "discover", "simulate", "publish"]
 LOCAL_ONLY = {"plan", "apply", "wire"}
-LATER = {"first_rotation", "verify", "report"}
+LATER = {"verify", "report"}
 TITLES = {"preflight": "Preflight", "discover": "Discover", "simulate": "Simulate", "publish": "Deliver", "plan": "Plan", "apply": "Apply",
-          "wire": "Wire target", "first_rotation": "First rotation", "verify": "Verify", "report": "Report"}
+          "wire": "Wire target", "verify": "Verify", "report": "Report"}
 MAX_RUNS_KEPT = 50
 EXPECTED_ERRORS = (ValueError, RuntimeError, TimeoutError, PermissionError, OSError)
 
@@ -80,7 +80,7 @@ class Run:
                       for s in STEPS}
         for s in LATER:
             self.steps[s].update(status="skipped", planned=True,
-                                 note="arrives in M5 (first rotation, live probes, ready report)")
+                                 note="arrives in M5 (live probes, ready report)")
         for s, note in (hidden or {}).items():
             self.steps[s].update(status="skipped", planned=True, note=note)
         self.dir = root / "runs" / self.id

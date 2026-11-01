@@ -1,11 +1,11 @@
 # JFrog OIDC Console — build spec
 
-A local web console. You enter a JFrog endpoint and a target (a Cloud Run service, job or function; a Container App; or an Azure Function on any hosting model). The console then sets up short-lived JFrog tokens for that target, tests them end to end, and reports when the target is ready. It also has a simulation mode that runs the real client and rotator code against emulated JFrog, GCP and Azure. The simulation uses a fast-forward clock and fault injection.
+A local web console. You enter a JFrog endpoint and a target (a Cloud Run service, job or function; a Container App; or an Azure Function on any hosting model). The console then sets up short-lived JFrog tokens for that target, tests them end to end, and reports when the target is ready. It also has a simulation mode that runs the real client code against emulated JFrog, GCP and Azure. The simulation uses a fast-forward clock and fault injection.
 
 Decisions already made:
 - **Terraform applies the changes.** The console generates a workspace from `terraform/modules`, shows the plan, and applies it only after approval.
 - **The console runs locally.** It uses the operator's `gcloud`/ADC and `az` logins and reads `JFROG_ACCESS_TOKEN` from the environment. It binds to 127.0.0.1 only.
-- **The simulation runs real code.** `client/jfrog_oidc` and `rotator/rotate.py` run unmodified, apart from clock injection, against in-process emulators.
+- **The simulation runs real code.** `client/jfrog_oidc` runs unmodified, apart from clock injection, against in-process emulators.
 
 ## 1. Scope
 
@@ -24,17 +24,15 @@ In scope:
 - For each target:
   1. Discover its identity.
   2. Create the JFrog integration and identity mapping.
-  3. Create or extend the pull path where the target pulls from JFrog.
-  4. Wire the runtime env and registry settings onto the target.
-  5. Run the first rotation.
-  6. Verify live.
-  7. Produce a "ready" report.
+  3. Wire the runtime env onto the target.
+  4. Verify live.
+  5. Produce a "ready" report.
 - Simulate any saved config, or one of the built-in scenarios.
 
 Out of scope for v1:
 - Multi-user hosting and RBAC.
-- A JFrog image-pull path on AWS and Knative (§11.5, §12.4).
-- Managing the target's own deployment (image builds, revisions). The console owns identity, the JFrog side and the pull path. It only *patches* env and registry settings on the target, and only after showing a diff.
+- A platform image-pull path to JFrog on any cloud. Images come in at build time: the build-deploy pipeline pulls from JFrog with its OIDC token and pushes to the stack's own registry (AR, ACR, ECR); the platform pulls with its own identity.
+- Managing the target's own deployment (image builds, revisions). The console owns identity and the JFrog side. It only *patches* env settings on the target, and only after showing a diff.
 
 ## 2. Repository layout to add
 
@@ -51,7 +49,6 @@ console/
     tfgen.py           workspace rendering (main.tf.json + terraform.tfvars.json)
     terraform.py       init/plan/show -json/apply, plan summary, guards
     wire.py            env/registry patch on the target (diff → approve → apply)
-    rotate_first.py    trigger + await first rotation
     verify.py          live probes, negative tests, evidence
     report.py          Markdown/JSON ready report
   shell.py             subprocess wrapper: argv only, timeouts, redaction, recorded-fixture mode
@@ -63,9 +60,8 @@ console/
     emulators/
       server.py        one in-process HTTP server, path-prefixed per emulator
       jfrog.py         OIDC integrations, mappings, token minting, Artifactory reads, registry auth
-      gcp.py           metadata identity/token, Secret Manager, Artifact Registry remote repos
+      gcp.py           metadata identity/token
       azure.py         managed identity endpoint, Entra token versions, app-role gate
-      platforms.py     pull behaviour: AR cache, ACA secret refresh lag, App Service KV-ref cache
     __main__.py        python -m console.sim run <scenario|config> [--json]
     scenarios/*.json   built-in scenarios (section 7.4)
   static/
@@ -98,23 +94,15 @@ Stack: Python 3.11+, standard library only (matching the client). The UI is vani
                "environment_id": "", "key_vault_id": "" }
   },
   "runtime": { "enabled": true, "ttl_seconds": 3600, "username": "svc-azure-aca-orders" },
-  "pull_path": {
-    "enabled": true,
-    "ttl_seconds": 14400, "rotation_cron": "23 * * * *",
-    "gcp_repositories": { "jfrog-docker": { "format": "DOCKER", "upstream_uri": "" } }, // "" = https://<jfrog.docker_host>
-    "registry_username": "svc-azure-registry-pull"
-  },
   "verify": {
     "artifact_path": "generic-local/healthcheck/ping.txt",   // runtime read test
-    "probe_image_runtime": "us-docker.pkg.dev/<p>/platform/jfrog-oidc-probe:0.1.0", // NOT via JFrog
-    "probe_image_pull":    "jfrog-oidc-probe:0.1.0"   // via JFrog, relative to the Docker repo host / AR remote
+    "probe_image_runtime": "us-docker.pkg.dev/<p>/platform/jfrog-oidc-probe:0.1.0"
   },
   "state_backend": { "type": "local" }       // or {"type":"gcs",...} / {"type":"azurerm",...}
 }
 ```
 
 Validation is shared between the UI (via `GET /api/schema`) and the server. These rules emit warnings, which the UI shows inline:
-- `pull_path.ttl_seconds < 2 * rotation_interval + platform_pickup_lag` gives a warning. Pickup lag is 0 for AR, 30 min for Container Apps, and 24 h for Premium Functions when ARM refresh is not permitted.
 - Runtime TTL under 15 min, or over 12 h.
 - An Azure target with only a system-assigned identity. Live probes cannot borrow it; offer the self-test endpoint (§6.3) instead.
 
@@ -130,9 +118,8 @@ Steps run in order. Each step is idempotent, records evidence, and can be re-run
 | 4 | Plan | `terraform plan` | — |
 | 5 | Apply | `terraform apply <planfile>` | **Explicit approval**. Typed confirmation if the plan has any delete or replace |
 | 6 | Wire target | gcloud/az update | **Approval of the shown diff** |
-| 7 | First rotation | job execute | — |
-| 8 | Verify | probes | — |
-| 9 | Report | file | — |
+| 7 | Verify | probes | — |
+| 8 | Report | file | — |
 
 State machine per step: `pending → running → (succeeded | failed | needs_approval | skipped)`. Events go to an in-memory bus and are persisted to `.console/runs/<run-id>/events.jsonl`. The UI subscribes over SSE.
 
@@ -166,10 +153,9 @@ GCP default compute service accounts make the mapping overly broad, because ever
 - Workspace: `.console/workspaces/<config-name>/` containing `main.tf.json`, `terraform.tfvars.json`, `backend.tf.json`, and `.terraform.lock.hcl` after init.
 - Write JSON syntax only, never string-templated HCL. Module `source` is the absolute path to `terraform/modules/<module>`.
 - Module instances per target:
-  - `jfrog-oidc`: integrations for the needed cloud(s); mappings `<target>-runtime` and, if the pull path is on, `<target>-pull`.
-  - `gcp-pull-path` (GCP with the pull path on, or any `gcp_run_function` using remote package repos). One instance per project+region is **shared** across targets; key it in the workspace by project/region and merge repositories.
-  - `azure-identity`: one instance per subscription and tenant, shared: the Entra audience app. Add the target's identity to `audience_assignees`. Azure has no pull path (§4.4).
-- Several configs that share a project or subscription must share one workspace. A per-config workspace would create duplicate audience apps and rotators. Rule: workspace key = `gcp:<project>:<region>` or `azure:<subscription>`. A config adds its own entries to the shared workspace's tfvars maps, under a file lock.
+  - `jfrog-oidc`: integrations for the needed cloud(s); mapping `<target>-runtime`.
+  - `azure-identity`: one instance per subscription and tenant, shared: the Entra audience app. Add the target's identity to `audience_assignees`.
+- Several configs that share a project or subscription must share one workspace. A per-config workspace would create duplicate audience apps. Rule: workspace key = `gcp:<project>:<region>` or `azure:<subscription>`. A config adds its own entries to the shared workspace's tfvars maps, under a file lock.
 - `terraform plan -out=plan.bin -input=false -lock-timeout=60s`, then `terraform show -json plan.bin`. Summarise the `resource_changes` actions per resource, and any `delete`/`replace`.
 - Apply only `plan.bin`, and only if the plan file's hash matches the plan the operator approved.
 - Never pass secrets as variables. Bootstrap values stay placeholders.
@@ -178,22 +164,17 @@ GCP default compute service accounts make the mapping overly broad, because ever
 
 Compute the desired settings, read the current ones, show a diff, and apply on approval. Use argv-only subprocess calls.
 
-| Kind | Runtime env | Pull path |
-|---|---|---|
-| gcp_run_service / job | `gcloud run services|jobs update --update-env-vars JFROG_URL=…,JFROG_OIDC_PROVIDER=…,JFROG_OIDC_AUDIENCE=…,JFROG_OIDC_SOURCE=gcp` | Show the recommended image path through AR (`<region>-docker.pkg.dev/<p>/jfrog-docker/<image>`). Don't redeploy the image automatically |
-| gcp_run_function | `gcloud functions deploy NAME --update-env-vars …` is a redeploy, so prefer `gcloud run services update` on the underlying service | Show the `--index-url` line for `requirements.txt` |
-| azure_container_app | `az containerapp update --set-env-vars …` (plus AZURE_CLIENT_ID) | none: the app pulls from its own ACR with its managed identity |
-| azure_functions_aca | as container app | none |
-| azure_functions_premium | `az functionapp config appsettings set` | none (code deploy) |
+| Kind | Runtime env |
+|---|---|
+| gcp_run_service / job | `gcloud run services|jobs update --update-env-vars JFROG_URL=…,JFROG_OIDC_PROVIDER=…,JFROG_OIDC_AUDIENCE=…,JFROG_OIDC_SOURCE=gcp` |
+| gcp_run_function | `gcloud functions deploy NAME --update-env-vars …` is a redeploy, so prefer `gcloud run services update` on the underlying service |
+| azure_container_app | `az containerapp update --set-env-vars …` (plus AZURE_CLIENT_ID) |
+| azure_functions_aca | as container app |
+| azure_functions_premium | `az functionapp config appsettings set` |
 
-Azure never gets a registry username or password. The build-deploy pipeline pulls from JFrog with its service connection's OIDC token and pushes to the app's own ACR.
+No target gets a registry username or password. The build-deploy pipeline pulls from JFrog with its service connection's OIDC token and pushes to the stack's own registry (AR or ACR).
 
 Also emit IaC snippets for the operator's own repo, Terraform/Bicep for the same settings, so GitOps-managed targets don't drift back.
-
-### 4.5 First rotation
-
-- GCP: `gcloud run jobs execute <rotator> --wait`, then read `rotation_succeeded` from logs (§6.4).
-- Azure: `az containerapp job start`, then poll `az containerapp job execution show` until it finishes.
 
 ## 5. Live verification (verify.py)
 
@@ -203,30 +184,19 @@ Every check records the command, the result and a redacted excerpt. The ready re
 
 Run a short-lived probe **as the target's identity**:
 - GCP: create or update the Cloud Run job `jfrog-oidc-probe-<target>` with `--service-account <target SA>`, image `verify.probe_image_runtime`, and the same env as the target. Its command is `python -m jfrog_oidc claims && python -m jfrog_oidc check && python -m jfrog_oidc.probe read <artifact_path>`. Execute it with `--wait` and parse its JSON log lines.
-- Azure (user-assigned MI): create or update the Container Apps job `jfrog-oidc-probe-<target>` (manual trigger) in the target's environment, or in the rotator's environment for Functions. Attach the same MI, start it, poll it, and read logs (§6.4).
+- Azure (user-assigned MI): create or update the Container Apps job `jfrog-oidc-probe-<target>` (manual trigger) in the target's environment, or in the stack's environment for Functions. Attach the same MI, start it, poll it, and read logs (§6.4).
 - Pass when: the claims match the mapping (`sub` or `oid`/`tid`/`aud`), the exchange succeeds, the token's scope matches the mapping's groups, the TTL is within ±60 s of the mapping's `expires_in`, and the artifact read returns 200.
 
 ### 5.2 Negative probes — "trust is pinned"
 
 Use the same probe with deliberately wrong inputs. Each must fail with 401/403:
 - A wrong audience (`JFROG_OIDC_AUDIENCE=jfrog-wrong`).
-- The correct audience but another identity, using the rotator identity against the runtime mapping. It must not receive the runtime mapping's group scope.
+- The correct audience but another identity, using another workload's identity against the runtime mapping. It must not receive the runtime mapping's group scope.
 - The artifact read must fail on a repo outside the reader group's permission (`verify.forbidden_path`, optional).
 
-### 5.3 Pull probe — "the platform can pull through the pull path"
-
-- GCP: a probe job whose image is `…-docker.pkg.dev/<p>/jfrog-docker/<verify.probe_image_pull>`. Starting it proves AR → JFrog with the rotated token. To prove an uncached pull, use a unique tag the operator publishes once (`probe-<run-id>`), or skip that and mark it "cached pull only".
-- Azure: not applicable (no pull path; images come from the app's ACR through its managed identity).
-
-### 5.4 Self-test endpoint (fallback for system-assigned identities)
+### 5.3 Self-test endpoint (fallback for system-assigned identities)
 
 `client/jfrog_oidc/probe.py` provides `selftest()`, which returns the `claims` and `check` results and an artifact read status. It never returns a token. The samples expose it at `GET /healthz/jfrog`, protected by a function key or by Cloud Run IAM. The console calls the endpoint with the operator's credentials: `gcloud auth print-identity-token` for Cloud Run, or a function key fetched through `az functionapp function keys list`.
-
-### 5.5 Pull-path health
-
-- Read the rotator's last success time from the logs.
-- Read the expiry of the current secret: the Secret Manager version create time plus TTL (GCP only).
-- Fail if remaining validity is less than 2 × the rotation interval.
 
 ## 6. Server (server.py)
 
@@ -271,18 +241,13 @@ GET  /api/sim/scenarios                   built-ins
 
 ### 7.1 Principle
 
-The simulator executes the **real** `jfrog_oidc` client and `rotator/rotate.py`. The emulators are HTTP endpoints, not mocks of the client. The client and rotator reach them through the environment overrides they already support:
+The simulator executes the **real** `jfrog_oidc` client. The emulators are HTTP endpoints, not mocks of the client. The client reaches them through the environment overrides they already support:
 - `GCE_METADATA_HOST`
 - `IDENTITY_ENDPOINT` / `IDENTITY_HEADER`
-- `SECRET_MANAGER_API`
-- `ARTIFACT_REGISTRY_API`
-- `ARM_API`
-- `KEY_VAULT_URI`
 - `JFROG_URL` with `JFROG_OIDC_ALLOW_HTTP`
 
 Time is virtual. Emulators and code share a `VirtualClock`:
-- The client already accepts `clock=` and `sleep=`.
-- **M0 refactor:** `rotate.py` must take `clock` and `sleep` too. Thread them through `main(clock=time.time, sleep=time.sleep)`, `check_ttl` and `http()` retries. The CLI behaviour stays unchanged.
+- The client accepts `clock=` and `sleep=`.
 
 ### 7.2 Emulator fidelity
 
@@ -293,44 +258,37 @@ These behaviours must match the real services, because they decide outcomes.
 - Mappings have `claims`, `priority` and `token_spec`. Matching works the way JFrog documents it: claims in the mapping must equal the token's claims; the lowest priority number among the matches wins; no match returns 401.
 - Subject tokens are JWTs signed with HS256 by the emulated issuer. Validate signature, `iss`, `exp` and `nbf`.
 - Issued access tokens are JWTs with `sub=jfac@sim/users/<username>` and `exp = now + expires_in`.
-- Expose `/artifactory/api/storage/...`, `/artifactory/<repo>/<path>`, and a registry auth check that accepts Basic `<username>:<token>` only while the token is unexpired and the username matches.
+- Expose `/artifactory/api/storage/...` and `/artifactory/<repo>/<path>`.
 - Faults: outage windows (connection refused or 503), per-integration misconfiguration, and revoked mappings.
 
 **GCP** (`gcp.py`):
 - The metadata `identity` endpoint returns a token for the configured SA. Include `email` only when `format=full`. Respect `audience`.
 - The metadata `token` endpoint returns an access token.
-- Secret Manager versions, with `enabled`/`disabled` state and `:addVersion`, `:disable` and list with filter.
-- Artifact Registry remote repos store a `usernamePasswordCredentials` pointer. PATCH honours `updateMask`. An uncached pull resolves the pointer's version; if that version is disabled or its token has expired, the pull fails. Cached artifacts are served without contacting JFrog.
 
 **Azure** (`azure.py`):
 - The MI endpoint requires `X-IDENTITY-HEADER` and honours `client_id`.
 - The token version follows the audience app's `requestedAccessTokenVersion`. v1 tokens use `iss=https://sts.windows.net/<tid>/` and `aud=api://<app>`; v2 tokens use the v2 issuer and `aud=<app-id>`.
 - If the app-role gate is on and the identity is unassigned, return `AADSTS501051`-style 400.
 
-**Platforms** (`platforms.py`):
-- Cloud Run cold start pulls through AR.
+**Platforms** (in the engine):
+- A cold start adds a warm instance with an empty token cache.
 - Runtime requests call the client's `token()`, then an artifact read.
 
 ### 7.3 Engine
 
 - A discrete-event loop with a priority queue of `(time, seq, event)`.
 - Event sources:
-  - Rotator cron ticks.
   - Platform cold starts and scale-outs: Poisson, with a configurable rate.
   - Runtime request bursts.
   - Fault windows opening and closing.
-  - Alert evaluation every 15 min, using the same rule as the modules: no success within `alert_after`.
 - The engine runs the real code synchronously at each event, against emulators on a background thread. A 24 h scenario should finish in under 10 s.
 - Metrics, as time series at 1 min resolution:
   - Each JFrog token's validity interval.
-  - The credential version each platform holds.
-  - Pull attempts, ok or fail with a reason.
   - Runtime requests, ok or fail with a reason, including "served cached token during outage".
-  - Alert state.
 - Verdict:
-  - `pass` when there are no failed pulls or requests.
-  - `degraded` when failures happened only inside injected outage windows, and only on uncached pulls.
-  - `fail` otherwise. A failure verdict includes the first failure's causal chain, built from events. For example: "rotations 03:23, 04:23, 05:23 failed (fault rotator_down) → token v7 expired 06:23 → ACA replica start 06:31 failed: registry 401".
+  - `pass` when there are no failed requests.
+  - `degraded` when failures happened only inside injected outage windows.
+  - `fail` otherwise. A failure verdict includes the first failure's causal chain, built from events. For example: "fault sa_recreated at 05:00 → runtime exchange 05:01 failed: no mapping matched sub".
 
 ### 7.4 Scenarios (scenarios/*.json)
 
@@ -341,20 +299,17 @@ Each built-in scenario has an asserted expected verdict, enforced in tests.
 | happy-gcp-function | none, 24 h | pass |
 | happy-aca | none, 24 h | pass |
 | happy-functions-premium | none, 24 h, runtime path only | pass |
-| jfrog-outage-90m | JFrog 503 02:00–03:30 | degraded: uncached pulls fail inside the window; runtime serves cached tokens until expiry |
-| rotator-misses-2-runs | rotator runs fail 03:00–05:00 (Cloud Run service) | pass: the 02:23 token is valid until 06:23, and the 05:23 run succeeds |
-| rotator-down-5h | rotator runs fail 03:00–08:00 | fail: pulls fail from 06:23; alert fired ≈05:23 |
-| min-ttl-refusal | pull mapping TTL 1200 (below `MIN_TTL_SECONDS` 1800), Cloud Run service | fail. Every rotation is refused by `MIN_TTL_SECONDS`, so the platform keeps the bootstrap placeholder |
+| jfrog-outage-90m | JFrog 503 02:00–03:30 | degraded: new instances fail inside the window; warm instances serve cached tokens until expiry |
 | azure-v1-tokens | audience app v1 | fail at the first exchange: issuer mismatch; root cause names `requestedAccessTokenVersion` |
-| wrong-audience | runtime env audience typo | fail: 401 on every runtime request; pull path unaffected |
+| wrong-audience | runtime env audience typo | fail: 401 on every runtime request |
 | sa-recreated | at 05:00 the SA is recreated (new `uniqueId`) | runtime fails from 05:00 with "no mapping matched sub" |
 
-Scenario schema: `{name, target_kind, duration, clock_start, config_overrides{}, load{cold_starts_per_hour, requests_per_minute}, faults:[{type, start, end, params}], expect:{verdict, max_failed_pulls?, alert_fired_before?}}`. Loading a saved console config as a scenario uses its real TTLs, cron and target kind, with no faults.
+Scenario schema: `{name, target_kind, duration, clock_start, config_overrides{}, load{cold_starts_per_hour, requests_per_minute}, faults:[{type, start, end, params}], expect:{verdict}}`. Loading a saved console config as a scenario uses its real TTL and target kind, with no faults.
 
 ### 7.5 Headless
 
 ```
-python -m console.sim run rotator-down-3h            # human summary
+python -m console.sim run sa-recreated               # human summary
 python -m console.sim run .console/configs/orders-prod.json --json
 python -m console.sim check-all                       # CI: all built-ins vs expectations
 ```
@@ -370,12 +325,11 @@ The layout has three tabs: **Configure**, **Simulate** and **Runs**.
   - Reader group, typeahead from `/access/api/v2/groups`.
   - Optional project key.
 - Target card: a kind selector with icons for the 7 kinds; fields per kind; a **Discover** button that fills identity facts and corrects the kind.
-- Pull path card: an on/off toggle; repo rows; GCP only (hidden for Azure).
-- TTL card: runtime TTL, pull TTL and rotation cron. Show a live "survives N missed rotations" figure and pickup-lag warnings from `/api/validate`.
+- TTL card: runtime TTL, with warnings from `/api/validate`.
 - Buttons: Save · Simulate this config · Run pipeline.
 
 **Run view**
-- A vertical stepper with the 9 steps.
+- A vertical stepper with the steps.
 - The selected step shows its evidence:
   - The plan summary table: creates, updates, and destroys in red.
   - The wire diff, side by side.
@@ -389,10 +343,9 @@ The layout has three tabs: **Configure**, **Simulate** and **Runs**.
 - A load slider.
 - Run.
 - Results:
-  - A swim-lane timeline (SVG) with lanes for rotator runs, token validity bars (labelled by version), the credential each platform holds, pull attempts as dots (green/red), runtime requests as a density strip, alert state and fault windows (hatched).
+  - A swim-lane timeline (SVG) with lanes for warm instances, runtime requests as a density strip, and fault windows (hatched).
   - A verdict panel with the causal chain.
   - An event table, filterable.
-- Use the same timeline component for live runs. It shows the real rotator history from logs.
 
 **Ready report**
 - A Markdown export covering:
@@ -416,10 +369,9 @@ Accessibility and quality:
 Build in order. Each milestone ends with its tests green and a short demo note in `docs/progress.md`.
 
 **M0 — Prep**
-- Thread clock and sleep through `rotate.py`.
 - Add `client/src/jfrog_oidc/probe.py` (`selftest()`, plus CLI `python -m jfrog_oidc.probe read <path>`).
 - Add `/healthz/jfrog` to both samples.
-- Acceptance: the existing client and rotator tests pass, with new tests for the probe and for clock injection.
+- Acceptance: the existing client tests pass, with new tests for the probe and for clock injection.
 
 **M1 — Simulation engine (headless)**
 - Emulators, engine, all scenarios in §7.4, `python -m console.sim check-all`.
@@ -446,7 +398,7 @@ Build in order. Each milestone ends with its tests green and a short demo note i
   - A fake `terraform` binary in tests covers the approval gates.
   - Apply is refused without approval, refused on a plan-hash mismatch, and refused on a delete without typed confirmation.
 
-**M5 — First rotation + Verify + Report**
+**M5 — Verify + Report**
 - Implement §5 in full.
 - Acceptance:
   - Against non-prod, one GCP function and one Container App reach "Ready" with all positive and negative probes green.
@@ -497,9 +449,9 @@ Reads the issuer first (fails with the enable command when off), then per kind: 
   - App Runner: `update-service --source-configuration … [--instance-configuration …]`.
 - These APIs replace the whole environment, so the plan carries `@resolve:<what>` placeholders and `apply()` fills them from a fresh read. The diff, the plan hash and the logs only ever see the placeholder form.
 
-### 11.5 Pull path (seam)
+### 11.5 Images
 
-ECR pull-through cache accepts only fixed upstreams (no custom registry), and Lambda cannot use pull-through at all, so JFrog cannot be an ECR upstream. `model.validate` refuses `pull_path.enabled` for AWS (`no_pull_path`). Images come in at build time: `aws-build-deploy` pulls the base through JFrog with the OIDC token and pushes to ECR. A future seam is ECS `repositoryCredentials` (Secrets Manager) refreshed by a rotator; not built.
+ECR pull-through cache accepts only fixed upstreams (no custom registry), and Lambda cannot use pull-through at all, so JFrog cannot be an ECR upstream. Images come in at build time: `aws-build-deploy` pulls the base through JFrog with the OIDC token and pushes to ECR.
 
 ### 11.6 Simulation
 
@@ -525,6 +477,6 @@ Preflight: `kubectl version --client`, the context exists, the Knative CRD `serv
 
 `openshift_<cluster>`: `kubernetes_service_account_v1` for dedicated SAs, `jfrog-oidc` with the `openshift` integration. State: Kubernetes Secret backend. Wire shows a diff (env, volume, mount, SA) and runs `kubectl patch ksvc … --type merge -p @resolve:ksvc-template`: the template's container list is kept, `metadata.name` dropped so Knative names the revision.
 
-### 12.4 Pull path, simulation, pipeline
+### 12.4 Images, simulation, pipeline
 
-No JFrog pull path (`no_pull_path`): the cluster pulls with its own pull secrets. Simulation: `console/sim/emulators/k8s.py` plays the kubelet (writes the token, refreshes at 80% of its lifetime); scenarios `happy-openshift-knative`, `openshift-wrong-audience`. Pipeline `openshift-workload-onboard` logs in with a Kubernetes service connection (`Kubernetes@1`, `KUBECONFIG`); `KUBE_CONTEXT` overrides the console's context name on the agent.
+No JFrog pull path: images come in at build time and the cluster pulls with its own pull secrets. Simulation: `console/sim/emulators/k8s.py` plays the kubelet (writes the token, refreshes at 80% of its lifetime); scenarios `happy-openshift-knative`, `openshift-wrong-audience`. Pipeline `openshift-workload-onboard` logs in with a Kubernetes service connection (`Kubernetes@1`, `KUBECONFIG`); `KUBE_CONTEXT` overrides the console's context name on the agent.

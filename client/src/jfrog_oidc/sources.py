@@ -70,7 +70,7 @@ class GcpMetadataSource:
         return token
 
     def get_access_token(self) -> str:
-        """OAuth access token for Google APIs (used by the rotator)."""
+        """OAuth access token for Google APIs."""
         raw = _get(f"{self._base}/token", {"Metadata-Flavor": "Google"}, self._timeout)
         try:
             return json.loads(raw)["access_token"]
@@ -126,7 +126,7 @@ class AzureManagedIdentitySource:
         return token
 
     def get_access_token(self, resource: str) -> str:
-        """Entra token for an Azure API (Key Vault, ARM) — used by the rotator."""
+        """Entra token for an Azure API (for example ARM)."""
         return self.get_token(resource)
 
 

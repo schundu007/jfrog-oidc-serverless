@@ -72,8 +72,7 @@ CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; c
 # Only these config paths can be changed from the Simulate tab: they are the
 # knobs that decide outcomes, and nothing else reaches the emulated world.
 SIM_OVERRIDES = {
-    "pull_path.enabled", "pull_path.ttl_seconds", "pull_path.rotation_cron", "pull_path.alert_after_seconds",
-    "pull_path.min_ttl_seconds", "runtime.ttl_seconds",
+    "runtime.ttl_seconds",
     "sim.runtime_audience", "sim.access_token_version", "sim.app_role_gate",
 }
 
@@ -166,10 +165,6 @@ def _scenario_catalogue() -> dict:
     for s in sc.builtin_summaries():
         cfg = sc.load(s["name"])["config"]
         s["settings"] = {
-            "pull_path.ttl_seconds": cfg["pull_path"]["ttl_seconds"],
-            "pull_path.rotation_cron": cfg["pull_path"]["rotation_cron"],
-            "pull_path.alert_after_seconds": cfg["pull_path"]["alert_after_seconds"],
-            "pull_path.min_ttl_seconds": cfg["pull_path"]["min_ttl_seconds"],
             "runtime.ttl_seconds": cfg["runtime"]["ttl_seconds"],
         }
         out.append(s)

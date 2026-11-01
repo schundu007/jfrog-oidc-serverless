@@ -92,42 +92,9 @@ class GcpTests(Base):
         self.assertEqual(st, 403)
 
     def test_identity_down(self):
-        self.gcp.add_account("rotator", "e", "222")
-        self.gcp.set_identity_down("rotator", True)
-        self.assertEqual(self.gcp_identity("rotator")[0], 503)
-
-    def test_secret_versions_and_ar_update_mask(self):
-        self.gcp.add_account("rotator", "e", "222")
-        self.gcp.add_secret("jfrog-upstream", "bootstrap-placeholder")
-        self.gcp.add_remote_repo("us-central1", "jfrog-docker", "svc", "projects/123456789012/secrets/jfrog-upstream/versions/1")
-        st, raw = call(f"{self.base}/gcp/md/rotator/computeMetadata/v1/instance/service-accounts/default/token",
-                       headers={"Metadata-Flavor": "Google"})
-        bearer = {"Authorization": f"Bearer {j(raw)['access_token']}"}
-        sm = f"{self.base}/gcp/sm/v1/projects/sim-project/secrets/jfrog-upstream"
-        self.assertEqual(call(f"{sm}:addVersion", "POST", body={"payload": {"data": "eA=="}})[0], 401)
-        st, raw = call(f"{sm}:addVersion", "POST", bearer, {"payload": {"data": base64.b64encode(b"tok").decode()}})
-        self.assertEqual(j(raw)["name"], "projects/123456789012/secrets/jfrog-upstream/versions/2")
-        st, raw = call(f"{self.base}/gcp/sm/v1/projects/123456789012/secrets/jfrog-upstream/versions/1:disable", "POST", bearer, {})
-        self.assertEqual(j(raw)["state"], "DISABLED")
-        st, raw = call(f"{sm}/versions?filter=state:ENABLED", headers=bearer)
-        self.assertEqual([v["name"].rsplit("/", 1)[1] for v in j(raw)["versions"]], ["2"])
-
-        repo = f"{self.base}/gcp/ar/v1/projects/sim-project/locations/us-central1/repositories/jfrog-docker"
-        mask = ("remoteRepositoryConfig.upstreamCredentials.usernamePasswordCredentials.username,"
-                "remoteRepositoryConfig.upstreamCredentials.usernamePasswordCredentials.passwordSecretVersion")
-        body = {"remoteRepositoryConfig": {"upstreamCredentials": {"usernamePasswordCredentials": {
-            "username": "new-user", "passwordSecretVersion": "projects/123456789012/secrets/jfrog-upstream/versions/2"}}}}
-        st, _ = call(f"{repo}?updateMask=remoteRepositoryConfig.bogus", "PATCH", bearer, body)
-        self.assertEqual(st, 400)
-        # Only fields in the mask change.
-        call(f"{repo}?updateMask=remoteRepositoryConfig.upstreamCredentials.usernamePasswordCredentials.passwordSecretVersion",
-             "PATCH", bearer, body)
-        creds = self.gcp.repo("jfrog-docker")
-        self.assertEqual(creds["username"], "svc")
-        self.assertTrue(creds["passwordSecretVersion"].endswith("/versions/2"))
-        call(f"{repo}?updateMask={mask}", "PATCH", bearer, body)
-        self.assertEqual(self.gcp.repo("jfrog-docker")["username"], "new-user")
-        self.assertEqual(self.gcp.version("projects/123456789012/secrets/jfrog-upstream/versions/2")["data"], b"tok")
+        self.gcp.add_account("builder", "e", "222")
+        self.gcp.set_identity_down("builder", True)
+        self.assertEqual(self.gcp_identity("builder")[0], 503)
 
 
 class AzureTests(Base):
@@ -165,7 +132,7 @@ class JFrogTests(Base):
     def setUp(self):
         super().setUp()
         self.gcp.add_account("runtime", "run@p", "111")
-        self.gcp.add_account("rotator", "rot@p", "222")
+        self.gcp.add_account("builder", "build@p", "222")
         self.jfrog.add_mapping("t-runtime", "gcp-cloudrun", {"sub": "111"}, priority=10, username="svc-run",
                                expires_in=3600, groups=["serverless-readers"])
         self.jfrog.add_mapping("t-pull", "gcp-cloudrun", {"sub": "222"}, priority=20, username="svc-pull",
@@ -225,8 +192,8 @@ class JFrogTests(Base):
         self.assertEqual(call(f"{self.base}/jfrog/artifactory/generic-local/x", headers=bearer)[0], 401)
 
     def test_registry_basic_auth(self):
-        self.gcp_identity("rotator")
-        access = self.exchange(self.gcp_identity("rotator")[1])[1]["access_token"]
+        self.gcp_identity("builder")
+        access = self.exchange(self.gcp_identity("builder")[1])[1]["access_token"]
         url = f"{self.base}/jfrog/v2/docker-virtual/app/manifests/1.0"
 
         def basic(u, p):

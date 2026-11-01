@@ -547,3 +547,9 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
 - Flex Consumption is removed everywhere: kind, stack, pipelines, Setup row, portal and sidebar. Discover refuses FC1 apps (`flex_unsupported`).
 - Simulator: KV/ARM emulation and the Azure rotator are removed. The scenarios premium-no-refresh-permission, rotator-misses-3-runs and ttl-too-short are deleted; min-ttl-refusal and rotator-misses-2-runs now run on a Cloud Run service.
 - In ADO: the Flex pipeline definitions may still be registered. The `azure-functions-flex-<env>` environment is removed at the next azure-foundation apply.
+
+## 2026-10-31: GCP is build-time too; rotator removed
+
+- No pull path and no rotator on any cloud. `rotator/` and `terraform/modules/gcp-pull-path` are deleted (AR remote repos, Secret Manager secret, rotator job, scheduler, alert). GCP images come in at build time: the build-deploy pipeline pulls from JFrog with its OIDC token and pushes to the stack's AR, and Cloud Run pulls with its own identity. This also retires the JFrog Cloud AR-remote 403 blocker.
+- Console: `pull_path` config, the first-rotation step, pull mappings and the pull-path outputs are gone; tfgen writes runtime mappings only. Simulator: Secret Manager/AR emulation, platform pull behaviour and the rotator are removed; scenarios min-ttl-refusal, rotator-down-5h and rotator-misses-2-runs deleted. 15 scenarios pass.
+- UI: no pull-path fields; the timeline shows instances, requests and faults.

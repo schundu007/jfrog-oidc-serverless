@@ -9,7 +9,7 @@ class VirtualClock:
     """A clock that only moves when told to.
 
     Pass ``clock.now`` as ``clock=`` and ``clock.sleep`` as ``sleep=`` to the
-    client and rotator: a retry backoff then advances virtual time instead of
+    client: a retry backoff then advances virtual time instead of
     blocking, so a simulated day runs in seconds.
     """
 

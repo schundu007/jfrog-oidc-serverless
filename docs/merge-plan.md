@@ -31,7 +31,7 @@ The Serverless console still runs on its own (`python -m console`, seam default 
 
 ## Design
 
-1. **New `portal/` package** (stdlib only), run with `PYTHONPATH=client/src:rotator:. python -m portal [--port 8760]`.
+1. **New `portal/` package** (stdlib only), run with `PYTHONPATH=client/src:. python -m portal [--port 8760]`.
    - It builds a `ConsoleServer(base="/serverless")` and a `KcpServer(base="/k8s")` with the **same token**, without starting their HTTP servers. It sets `port`, `host` and `static_files` on each so that `allowed_hosts()` matches the portal's port.
    - One `ThreadingHTTPServer` routes by prefix, removing it before handing the request on: `/serverless/*` goes to the serverless handler, `/k8s/*` to the KCP handler, `/` to the landing page, and the old paths get a 308 to the new ones.
    - Both handlers keep their own Host, Origin and token checks unchanged.

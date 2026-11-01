@@ -1,9 +1,9 @@
 """Headless simulation.
 
     python -m console.sim list
-    python -m console.sim run rotator-misses-3-runs           # human summary
+    python -m console.sim run jfrog-outage-90m                # human summary
     python -m console.sim run .console/configs/orders-prod.json --json
-    python -m console.sim run happy-aca --set pull_path.ttl_seconds=1800 --seed 7
+    python -m console.sim run happy-aca --set runtime.ttl_seconds=1800 --seed 7
     python -m console.sim check-all                           # CI: built-ins vs expectations
 
 Exit codes: run → 0 pass, 1 fail, 2 degraded; check-all → 0 when every
@@ -29,19 +29,13 @@ def _hhmm(seconds) -> str:
 
 
 def _summary(result: dict) -> str:
-    s, m = result["summary"], result.get("ttl_math") or {}
+    s = result["summary"]
     lines = [
         f"{result['scenario']}  [{result['target_label']}]  verdict: {result['verdict'].upper()}",
-        f"  rotations ok/failed  {s['rotations_ok']}/{s['rotations_failed']}",
-        f"  pulls ok/failed      {s['pulls_ok']}/{s['pulls_failed']}  (cached {s['pulls_cached']})",
         f"  requests ok/cached/unavailable/failed  {s['requests_ok']}/{s['requests_ok_cached']}/"
         f"{s['requests_unavailable']}/{s['requests_failed']}",
-        f"  unusable-credential exposure  {s['exposure_s'] / 60:.0f} min",
-        f"  alert first fired    {_hhmm(s['alert_first_fired_s'])}",
+        f"  first failure        {_hhmm(s['first_failure_s'])}",
     ]
-    if m:
-        lines.append(f"  TTL math             TTL {m['pull_ttl_seconds']}s, interval {m['rotation_interval_seconds']}s, "
-                     f"pickup lag {m['pickup_lag_seconds'] or 0}s → survives {m['survives_missed_rotations']} missed rotation(s)")
     if result["chain"]:
         lines.append("  causal chain:")
         lines += [f"    → {c}" for c in result["chain"]]
@@ -72,7 +66,7 @@ def main(argv=None) -> int:
     run.add_argument("ref", help="built-in name, scenario .json, or console config .json")
     run.add_argument("--json", action="store_true", help="print the full result as JSON")
     run.add_argument("--seed", type=int)
-    run.add_argument("--set", action="append", metavar="KEY=VALUE", help="config override, e.g. pull_path.ttl_seconds=1800")
+    run.add_argument("--set", action="append", metavar="KEY=VALUE", help="config override, e.g. runtime.ttl_seconds=1800")
     chk = sub.add_parser("check-all", help="run every built-in and compare with its expectation")
     chk.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)

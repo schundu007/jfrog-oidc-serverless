@@ -1,5 +1,5 @@
 // Simulator tab: rehearse a workload type's scenarios by hand (faults, load, overrides) against
-// emulated cloud and JFrog endpoints, with the real client and rotator. Nothing in the cloud changes.
+// emulated cloud and JFrog endpoints, with the real client. Nothing in the cloud changes.
 
 import { renderTimeline, hhmm, LEGEND } from "./timeline.js";
 import { $, api, h, fill, streamEvents, CLOUD, ofCloud, statusPill, template, attachHelp, mapEditor, help } from "./core.js";
@@ -7,27 +7,22 @@ import { $, api, h, fill, streamEvents, CLOUD, ofCloud, statusPill, template, at
 const LOAD_SPEC = {
   cold_starts_per_hour: { label: "Cold starts / hour", min: 0, max: 120, step: 1 },
   requests_per_minute: { label: "Requests / minute", min: 0, max: 120, step: 1 },
-  uncached_pull_ratio: { label: "Uncached pull ratio (GCP AR)", min: 0, max: 1, step: 0.05 },
   instance_lifetime_minutes: { label: "Instance lifetime (min)", min: 5, max: 240, step: 5 },
 };
 
 const SETTING_LABELS = {
-  "pull_path.ttl_seconds": "Pull TTL (s)",
-  "pull_path.rotation_cron": "Rotation cron",
-  "pull_path.alert_after_seconds": "Alert after (s)",
-  "pull_path.min_ttl_seconds": "MIN_TTL_SECONDS",
   "runtime.ttl_seconds": "Runtime TTL (s)",
 };
 
 // Plain names for the simulator's fault types; each page lists only its cloud's faults.
 const FAULT_LABELS = {
-  jfrog_outage: "JFrog outage", rotator_down: "Rotator can't get its identity",
+  jfrog_outage: "JFrog outage",
   identity_recreated: "App identity recreated", sa_recreated: "Service account recreated",
   mapping_revoked: "JFrog mapping removed",
   integration_misconfigured: "JFrog trust has the wrong issuer",
   federation_disabled: "AWS outbound federation off",
 };
-const CLOUD_ONLY_FAULTS = { sa_recreated: ["gcp"], rotator_down: ["gcp"],
+const CLOUD_ONLY_FAULTS = { sa_recreated: ["gcp"],
   federation_disabled: ["aws"] };
 const faultLabel = (t) => FAULT_LABELS[t] || t.replaceAll("_", " ");
 const ACRONYMS = { jfrog: "JFrog", gcp: "GCP", aws: "AWS", sa: "SA", aca: "ACA", ecs: "ECS", arm: "ARM" };
@@ -193,7 +188,6 @@ function stat(label, value, cls = "") {
 
 function renderVerdict(r) {
   const s = r.summary;
-  const m = r.ttl_math || {};
   const expected = state.scenario && state.scenario.name === r.scenario ? state.scenario.expect?.verdict : null;
   const box = $("verdict");
   box.className = `card verdict v-${r.verdict}`;
@@ -204,15 +198,9 @@ function renderVerdict(r) {
         expected ? h("span", { class: expected === r.verdict ? "match" : "mismatch",
           text: expected === r.verdict ? " · as expected" : ` · expected ${expected}` }) : null)),
     h("div", { class: "stats" },
-      stat("Rotations ok / failed", `${s.rotations_ok} / ${s.rotations_failed}`, failCls(s.rotations_failed)),
-      stat("Pulls ok / cached / failed", `${s.pulls_ok} / ${s.pulls_cached} / ${s.pulls_failed}`, failCls(s.pulls_failed)),
       stat("Requests ok / failed", `${s.requests_ok + s.requests_ok_cached} / ${s.requests_failed + s.requests_unavailable}`,
         failCls(s.requests_failed + s.requests_unavailable)),
-      stat("Exposure", `${Math.round(s.exposure_s / 60)} min`, failCls(s.exposure_s)),
-      stat("Alert", s.alert_first_fired_s == null ? "—" : hhmm(s.alert_first_fired_s)),
-      m.pull_ttl_seconds ? stat("Pull TTL / min safe", `${m.pull_ttl_seconds} / ${m.min_safe_ttl_seconds} s`,
-        m.pull_ttl_seconds < m.min_safe_ttl_seconds ? "bad" : "") : null,
-      m.pull_ttl_seconds ? stat("Missed rotations survived", String(m.survives_missed_rotations)) : null),
+      stat("First failure", s.first_failure_s == null ? "—" : hhmm(s.first_failure_s))),
     r.root_cause ? h("div", { class: "root-cause" }, h("h3", { text: "Root cause" }), h("p", { text: r.root_cause })) : null,
     r.chain && r.chain.length ? h("details", {}, h("summary", { text: "Causal chain" }),
       h("ol", { class: "chain" }, r.chain.map((c) => h("li", { text: c })))) : null);

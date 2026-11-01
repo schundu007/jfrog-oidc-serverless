@@ -47,10 +47,8 @@ SAMPLE_TARGET = {
     "aws": {"account": "123456789012", "region": "us-east-1"},
     "openshift": {"context": "default", "cluster": "my-cluster", "namespace": "default"},
 }
-# Clouds with a console-managed image pull path (rotator). Azure, AWS and OpenShift run the runtime
-# path only: Azure signs in to a non-ACR registry only with a username and password, so images reach
-# the app's own ACR through the build pipeline (OIDC to JFrog) and the app pulls with its identity.
-PULL_CLOUDS = ("gcp",)
+# Runtime path only on every cloud: images reach the platform's own registry at build time
+# (the ADO pipeline's OIDC token to JFrog), and the platform pulls with its identity.
 # Default integration names. Each AWS account and each cluster is its own issuer, so Discover
 # turns the defaults into aws-<account> / openshift-<cluster>.
 DEFAULT_INTEGRATIONS = {"gcp": "gcp-cloudrun", "azure": "azure-entra", "aws": "aws-sts", "openshift": "openshift-knative"}
@@ -157,27 +155,9 @@ def default_config(kind: str, name: str = "new-target") -> dict:
             cloud: {**EMPTY_TARGET[cloud], **SAMPLE_TARGET[cloud], "name": name},
         },
         "runtime": {"enabled": True, "ttl_seconds": 3600, "username": f"svc-{cloud}-{short}"},
-        "pull_path": {
-            "enabled": cloud in PULL_CLOUDS,
-            "ttl_seconds": 14400,
-            "rotation_cron": "23 * * * *",
-            "min_ttl_seconds": 1800,   # rotate.py and module default
-            "alert_after_seconds": 10800,
-            # An empty DOCKER upstream_uri means https://<docker_host(cfg)>.
-            "gcp_repositories": {"jfrog-docker": {"format": "DOCKER", "upstream_uri": ""}}
-            if cloud == "gcp" else {},
-            "registry_username": f"svc-{cloud}-registry-pull",
-            # Rotator image: host it in Artifact Registry, outside JFrog, so it still
-            # starts when the token it refreshes has lapsed.
-            "rotator_image": "",
-            "name_prefix": "jfrog",       # resource names; must differ per region in one GCP project
-        },
         "verify": {
             "artifact_path": "generic-local/healthcheck/ping.txt",
             "probe_image_runtime": "",
-            # Relative to the Docker host; on GCP to the AR remote repo. Use a tag no
-            # node or AR cache has pulled yet, or the pull proves nothing about auth.
-            "probe_image_pull": "jfrog-oidc-probe:0.1.0",
         },
         "state_backend": {"type": "local"},
     }
@@ -211,108 +191,7 @@ def merge(base: dict, over: dict) -> dict:
     return out
 
 
-# ----------------------------------------------------------------------- cron
-
-
-def _parse_field(field: str, lo: int, hi: int) -> list:
-    values = set()
-    for part in field.split(","):
-        step = 1
-        if "/" in part:
-            part, step_s = part.split("/", 1)
-            if not step_s.isdigit() or int(step_s) < 1:
-                raise ValueError(f"bad step in {field!r}")
-            step = int(step_s)
-        if part == "*":
-            start, end = lo, hi
-        elif "-" in part:
-            a, b = part.split("-", 1)
-            if not (a.isdigit() and b.isdigit()):
-                raise ValueError(f"bad range in {field!r}")
-            start, end = int(a), int(b)
-        elif part.isdigit():
-            start = end = int(part)
-            if step != 1:
-                end = hi
-        else:
-            raise ValueError(f"bad cron field {field!r}")
-        if start < lo or end > hi or start > end:
-            raise ValueError(f"{field!r} out of range {lo}-{hi}")
-        values.update(range(start, end + 1, step))
-    return sorted(values)
-
-
-class Cron:
-    """Minute and hour fields of a 5-field UTC cron; day fields must be '*'."""
-
-    def __init__(self, expr: str):
-        fields = (expr or "").split()
-        if len(fields) != 5:
-            raise ValueError("cron needs 5 fields: minute hour day-of-month month day-of-week")
-        if fields[2:] != ["*", "*", "*"]:
-            raise ValueError("only minute and hour fields are supported; day fields must be '*'")
-        self.expr = expr
-        self.minutes = _parse_field(fields[0], 0, 59)
-        self.hours = _parse_field(fields[1], 0, 23)
-        self._day = [h * 3600 + m * 60 for h in self.hours for m in self.minutes]
-
-    def ticks(self, start: float, end: float) -> list:
-        """Tick times t with start <= t < end (epoch seconds, UTC)."""
-        out = []
-        day = int(start // 86400) * 86400
-        while day < end:
-            for off in self._day:
-                t = day + off
-                if start <= t < end:
-                    out.append(t)
-            day += 86400
-        return out
-
-    def previous(self, t: float) -> float:
-        """Latest tick strictly before t."""
-        ticks = self.ticks(t - 2 * 86400, t)
-        return ticks[-1]
-
-    def interval_seconds(self) -> int:
-        """Longest gap between consecutive ticks (the interval that matters for TTL math)."""
-        day = self._day
-        gaps = [b - a for a, b in zip(day, day[1:])] + [day[0] + 86400 - day[-1]]
-        return max(gaps)
-
-
 # ----------------------------------------------------------------- validation
-
-
-def pickup_lag_seconds(cfg: dict):
-    """How long after a new credential version the platform starts using it (GCP: at once)."""
-    return 0
-
-
-def ttl_math(cfg: dict) -> dict:
-    try:
-        interval = Cron(get_path(cfg, "pull_path.rotation_cron", "")).interval_seconds()
-    except ValueError:
-        return {}
-    ttl = int(get_path(cfg, "pull_path.ttl_seconds", 0) or 0)
-    lag = pickup_lag_seconds(cfg)
-    lag_v = lag or 0
-    # A token minted at t0 is valid until t0+ttl. After k missed runs the next
-    # success is at t0+(k+1)*interval and the platform uses it lag later; that
-    # must land before t0+ttl. Largest such k:
-    survives = -(-(ttl - lag_v) // interval) - 2 if interval else 0
-    alert_after = int(get_path(cfg, "pull_path.alert_after_seconds", 0) or 0)
-    return {
-        "rotation_interval_seconds": interval,
-        "pickup_lag_seconds": lag,
-        "pull_ttl_seconds": ttl,
-        "min_ttl_seconds": int(get_path(cfg, "pull_path.min_ttl_seconds", 1800) or 0),
-        "min_safe_ttl_seconds": 2 * interval + lag_v,
-        "survives_missed_rotations": max(survives, 0),
-        "alert_after_seconds": alert_after,
-        # Time between the alert firing and the first possible pull failure,
-        # counted from the last successful rotation.
-        "alert_lead_seconds": ttl - lag_v - alert_after if alert_after else None,
-    }
 
 
 def validate(cfg: dict) -> dict:
@@ -341,7 +220,7 @@ def validate(cfg: dict) -> dict:
     kind = get_path(cfg, "target.kind")
     if kind not in KINDS:
         err("target.kind", "unknown_kind", f"unknown target kind {kind!r}")
-        return {"errors": errors, "warnings": warnings, "ttl_math": {}}
+        return {"errors": errors, "warnings": warnings}
     cloud = cloud_of(kind)
     for f in TARGET_FIELDS[cloud]:
         if not get_path(cfg, f"target.{cloud}.{f}"):
@@ -378,44 +257,7 @@ def validate(cfg: dict) -> dict:
         warn("target.azure.identity_type", "system_assigned_identity",
              "live probes cannot borrow a system-assigned identity; verification will use the /healthz/jfrog self-test endpoint")
 
-    pp = get_path(cfg, "pull_path", {}) or {}
-    math = {}
-    if pp.get("enabled") and cloud not in PULL_CLOUDS:
-        err("pull_path.enabled", "no_pull_path",
-            f"the image pull path is not available for {KINDS[kind]['label']}: "
-            + ({"aws": "ECR pull-through cache does not accept JFrog as an upstream, so mirror images into ECR at build time",
-                "azure": "Azure signs in to a non-ACR registry only with a username and password; the build pipeline "
-                         "brings images from JFrog into the app's ACR with OIDC and the app pulls with its identity"}
-               .get(cloud, "use the cluster's own image pull secret"))
-            + "; the runtime token exchange works without it")
-    elif pp.get("enabled"):
-        ttl = int(pp.get("ttl_seconds") or 0)
-        if not 300 <= ttl <= 86400:
-            err("pull_path.ttl_seconds", "pull_ttl_range", "pull TTL must be between 300 s and 24 h")
-        try:
-            Cron(pp.get("rotation_cron", ""))
-        except ValueError as exc:
-            err("pull_path.rotation_cron", "cron", str(exc))
-        if not pp.get("registry_username"):
-            err("pull_path.registry_username", "required", "registry username is required")
-        if not pp.get("rotator_image"):
-            warn("pull_path.rotator_image", "rotator_image_missing",
-                 "push the rotator image to Artifact Registry (not JFrog) and enter it here")
-        math = ttl_math(cfg)
-        if math:
-            if ttl < math["min_safe_ttl_seconds"]:
-                lag = math["pickup_lag_seconds"] or 0
-                warn("pull_path.ttl_seconds", "pull_ttl_vs_rotation",
-                     f"pull TTL {ttl}s is under 2 × rotation interval ({math['rotation_interval_seconds']}s) + pickup lag ({lag}s); "
-                     f"one missed rotation can break pulls. Use at least {math['min_safe_ttl_seconds']}s")
-            if ttl < math["min_ttl_seconds"]:
-                warn("pull_path.ttl_seconds", "pull_ttl_below_min_ttl",
-                     f"pull TTL {ttl}s is below the rotator's MIN_TTL_SECONDS ({math['min_ttl_seconds']}s): every rotation will be refused")
-            alert_after = math["alert_after_seconds"]
-            if alert_after and alert_after >= ttl - (math["pickup_lag_seconds"] or 0):
-                warn("pull_path.alert_after_seconds", "alert_after_vs_ttl",
-                     "the stale-rotation alert would fire after pulls already fail; lower alert_after_seconds below TTL − pickup lag")
-    return {"errors": errors, "warnings": warnings, "ttl_math": math}
+    return {"errors": errors, "warnings": warnings}
 
 
 def schema() -> dict:
@@ -423,7 +265,5 @@ def schema() -> dict:
     return {
         "kinds": {k: {"cloud": v["cloud"], "label": v["label"]} for k, v in KINDS.items()},
         "defaults": {k: default_config(k) for k in KINDS},
-        "pickup_lag_seconds": {"gcp": 0},
         "target_fields": {c: list(f) for c, f in TARGET_FIELDS.items()},
-        "pull_clouds": list(PULL_CLOUDS),
     }

@@ -7,8 +7,8 @@ We are now building **the console**: a local web UI that configures, simulates a
 ## Layout
 
 - `client/` — `jfrog_oidc`, a stdlib-only Python client: identity sources (GCP, Azure, AWS STS `GetWebIdentityToken` with its own SigV4 in `sigv4.py`, ADO, file), the exchange with caching, helpers and a CLI.
-- `rotator/` — the pull-path rotator, GCP only (Secret Manager + AR repoint). Azure has no pull path and no registry username/password: each Azure stack pulls from its own ACR with its managed identity, and the build-deploy pipeline fills that ACR from JFrog with its OIDC token.
-- `terraform/modules/` — `jfrog-oidc`, `gcp-pull-path`, `azure-identity` (Entra audience app only), `aws-identity` (dedicated roles and the `sts:GetWebIdentityToken` policy). `terraform/stacks/<serverless|kubernetes>/<gcp|azure>/<stack>` holds the deployable root configs, one folder per stack, Serverless and Kubernetes and each cloud in their own tree: `aks-cluster` and `gke-cluster` (test clusters, OIDC issuer on), `gcp-foundation` and `azure-foundation` (each cloud's own ADO trust: its own service connections `jfrog-oidc-<cloud>-build/-setup` (GCP's only issue the OIDC token; the GCP pipelines reference them from a skipped `AzureCLI@2` task and never sign in to Azure), WIF or federated credentials, its own JFrog integration `ado-<org>-<cloud>` and mappings, its pipeline variable group `jfrog-oidc-<cloud>-<env>`, its state store; clouds share nothing; no AWS), one stack per serverless workload type, each independent and standing only on its cloud's foundation: GCP `gcp-cloud-run` (job), `gcp-cloud-run-service`, `gcp-cloud-run-function`; Azure `azure-container-apps` (job), `azure-container-app`, `azure-functions-aca`, `azure-functions-premium` (the Azure ones on `terraform/modules/azure-workload`: own resource group, identity, registry/environment/storage as needed). Never deploy two workload types in one apply or one pipeline run. Stacks hold no target values: their inputs are filled in on the Infrastructure page.
+- No pull path and no rotator on any cloud: no registry username/password anywhere. Images come in at build time: each build-deploy pipeline pulls from JFrog with its OIDC token and pushes to that stack's own registry (AR on GCP, ACR on Azure), and the platform pulls with its own identity. At runtime the app exchanges its cloud identity for a JFrog token.
+- `terraform/modules/` — `jfrog-oidc`, `azure-identity` (Entra audience app only), `aws-identity` (dedicated roles and the `sts:GetWebIdentityToken` policy). `terraform/stacks/<serverless|kubernetes>/<gcp|azure>/<stack>` holds the deployable root configs, one folder per stack, Serverless and Kubernetes and each cloud in their own tree: `aks-cluster` and `gke-cluster` (test clusters, OIDC issuer on), `gcp-foundation` and `azure-foundation` (each cloud's own ADO trust: its own service connections `jfrog-oidc-<cloud>-build/-setup` (GCP's only issue the OIDC token; the GCP pipelines reference them from a skipped `AzureCLI@2` task and never sign in to Azure), WIF or federated credentials, its own JFrog integration `ado-<org>-<cloud>` and mappings, its pipeline variable group `jfrog-oidc-<cloud>-<env>`, its state store; clouds share nothing; no AWS), one stack per serverless workload type, each independent and standing only on its cloud's foundation: GCP `gcp-cloud-run` (job), `gcp-cloud-run-service`, `gcp-cloud-run-function`; Azure `azure-container-apps` (job), `azure-container-app`, `azure-functions-aca`, `azure-functions-premium` (the Azure ones on `terraform/modules/azure-workload`: own resource group, identity, registry/environment/storage as needed). Never deploy two workload types in one apply or one pipeline run. Stacks hold no target values: their inputs are filled in on the Infrastructure page.
 - `apps/` — workload images and functions that use the client: `artifact-reader` (job for Cloud Run, Container Apps and ECS tasks), `cloud-run-service` (also the App Runner / ECS service image), `cloud-run-function`, `cloud-run-worker-pool`, `azure-function`, `aws-lambda`.
 - `pipelines/` — Azure DevOps pipelines (the only CI/CD). One folder per serverless workload stack, `pipelines/serverless/<cloud>/<stack>/` with `stack-setup.yml` (plan → approval on the ADO environment `<stack>-<env>` → apply, or destroy) and `build-deploy.yml` (builds and rolls out that one workload). Each is a thin file over `pipelines/templates/<cloud>-stack-setup.yml` / `<cloud>-build-deploy.yml`; never add a pipeline that handles two stacks or two workload types. `<cloud>-workload-onboard.yml` applies and wires the workspaces the console proposes by pull request (`terraform/workspaces/<cloud>_*`). Every job authenticates with its service connection's OIDC token; ADO settings per cloud in `pipelines/vars/<cloud>-<env>.yml`; target values in the ADO variable group `jfrog-oidc-<cloud>-<env>`, written by that cloud's foundation stack. `pipelines/delivery.json` holds only the ADO repo; pipeline identities and state backends come from the foundation outputs.
 - `console/` — the Serverless console, per the spec. Clouds: GCP, Azure, AWS (`steps/aws.py`, spec §11) and Knative (`steps/openshift.py`, spec §12; works on any cluster through a kubectl context). AWS and Knative are runtime path only.
@@ -21,41 +21,39 @@ We are now building **the console**: a local web UI that configures, simulates a
 ```bash
 # client tests
 cd client && PYTHONPATH=src python -m unittest discover -s tests -v
-# rotator tests
-cd rotator && PYTHONPATH=../client/src:. python -m unittest test_rotate -v
 # console tests (once console/ exists)
 PYTHONPATH=client/src:. python -m unittest discover -s console/tests -v
 # simulation scenarios vs expectations (M1+), including AWS and Knative
-PYTHONPATH=client/src:rotator:. python -m console.sim check-all
-PYTHONPATH=client/src:rotator:. python -m console.sim run happy-aws-lambda
+PYTHONPATH=client/src:. python -m console.sim check-all
+PYTHONPATH=client/src:. python -m console.sim run happy-aws-lambda
 # terraform (needs network to the provider registry)
 for s in terraform/stacks/*/*/*/; do terraform -chdir=$s init -backend=false && terraform -chdir=$s validate; done
 terraform fmt -recursive -check terraform/
 # run the console (M2+)
-PYTHONPATH=client/src:rotator:. python -m console
+PYTHONPATH=client/src:. python -m console
 # KCP console: tests, simulator, run (replay fixtures)
 python3 -m unittest discover -s kcp_console/tests -t .
 python3 -m kcp_console.sim check-all
-PYTHONPATH=client/src:rotator:. python3 -m portal --kcp-fixtures kcp_console/tests/fixtures/sandbox
+PYTHONPATH=client/src:. python3 -m portal --kcp-fixtures kcp_console/tests/fixtures/sandbox
 # portal: both consoles on one port, Serverless at /serverless, Kubernetes at /k8s
-PYTHONPATH=client/src:rotator:. python3 -m unittest discover -s portal/tests -t .
-PYTHONPATH=client/src:rotator:. python -m portal
+PYTHONPATH=client/src:. python3 -m unittest discover -s portal/tests -t .
+PYTHONPATH=client/src:. python -m portal
 # Setup console (test infrastructure): tests
-PYTHONPATH=client/src:rotator:. python3 -m unittest discover -s setup_console/tests -t .
+PYTHONPATH=client/src:. python3 -m unittest discover -s setup_console/tests -t .
 # KCP JFrog access: no stored token and nothing to set; the console reads its operator identity from gcp-foundation's console_operator_env output
 ```
 
 ## Rules
 
-- **Stdlib only** in `client/`, `rotator/` and `console/`. No pip dependencies and no JS build step. The UI is vanilla ES modules with no CDN.
+- **Stdlib only** in `client/` and `console/`. No pip dependencies and no JS build step. The UI is vanilla ES modules with no CDN.
 - **Never print, log, store or return a token.** That covers JFrog access tokens, identity JWTs, `JFROG_ACCESS_TOKEN`, secret values and function keys. Route every log and SSE line through `console/redact.py`. If you add a log path, add it to the redaction test.
-- **Simulation runs the real code.** Do not mock `jfrog_oidc` or `rotate.py` inside the simulator; emulate the HTTP endpoints they call. If the simulator needs a hook, add a seam to the real code (as `clock=`/`sleep=` already are) and keep the default behaviour identical.
+- **Simulation runs the real code.** Do not mock `jfrog_oidc` inside the simulator; emulate the HTTP endpoints they call. If the simulator needs a hook, add a seam to the real code (as `clock=`/`sleep=` already are) and keep the default behaviour identical.
 - **No cloud or JFrog changes without approval.** `terraform apply`, `gcloud … update/deploy/execute`, `az … update/set/start` and JFrog writes happen only behind the console's approval gates. During development, do not run them yourself against real accounts unless I ask in the session.
-- **Terraform is the source of truth** for identity, the JFrog side and the pull path. The console generates JSON-syntax workspaces (`main.tf.json`) that call the modules. Never string-template HCL.
+- **Terraform is the source of truth** for identity and the JFrog side. The console generates JSON-syntax workspaces (`main.tf.json`) that call the modules. Never string-template HCL.
 - **Subprocesses:** argv lists only, never `shell=True`, always a timeout, and always through `console/shell.py`.
 - **Server:** bind to 127.0.0.1, require the session token, check Host/Origin, set a strict CSP.
 - **Tests first** for every step module. Use recorded fixtures for gcloud/az JSON and a fake `terraform` script in `console/tests/fixtures/`. Unit tests never need cloud access.
 
 ## Verification status
 
-Unverified items, what was verified live, and the JFrog Cloud AR blocker: `docs/verification-status.md`. Read it before touching az/aws wire flags, Knative, worker pools or the AR pull path; fix code there when real providers disagree.
+Unverified items and what was verified live: `docs/verification-status.md`. Read it before touching az/aws wire flags, Knative or worker pools; fix code there when real providers disagree.

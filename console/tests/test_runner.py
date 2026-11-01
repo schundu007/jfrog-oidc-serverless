@@ -23,7 +23,6 @@ ENV = {"JFROG_URL": "https://acme.jfrog.io", "JFROG_OIDC_PROVIDER": "gcp-cloudru
 def cfg():
     c = model.default_config("gcp_run_service", name="orders")
     c["target"]["gcp"].update(project=P, region=R, name="orders")
-    c["pull_path"]["rotator_image"] = f"{R}-docker.pkg.dev/{P}/platform/jfrog-oidc-rotator:0.1.0"
     c["target"]["discovered"] = {"kind": "gcp_run_service", "mapping_subject": "104857600000000000001"}
     return c
 
@@ -79,7 +78,7 @@ class FlowTests(Base):
         apply = self.step(snap, "apply")
         self.assertEqual(apply["status"], "needs_approval")
         plan = self.step(snap, "plan")["evidence"]["plan"]
-        self.assertEqual(plan["summary"]["create"], 2)          # runtime + pull mappings
+        self.assertEqual(plan["summary"]["create"], 1)          # the runtime mapping
         self.assertEqual(apply["approval"]["plan_sha256"], plan["sha256"])
 
         with self.assertRaises(RunError) as cm:
@@ -99,7 +98,7 @@ class FlowTests(Base):
         self.mgr.approve(run.id, "wire", {"diff_sha256": wire["approval"]["diff_sha256"]})
         snap = self.wait(run, "succeeded")
         self.assertTrue(self.step(snap, "wire")["evidence"]["result"]["verified"])
-        for name in ("first_rotation", "verify", "report"):
+        for name in ("verify", "report"):
             self.assertEqual(self.step(snap, name)["status"], "skipped")
         for name in ("preflight", "discover", "simulate"):
             self.assertEqual(self.step(snap, name)["status"], "skipped")

@@ -51,7 +51,7 @@ source pipelines/scripts/oidc-login.sh
 JFROG_ACCESS_TOKEN=$(python3 -m jfrog_oidc token)
 export JFROG_ACCESS_TOKEN
 printf 'Authorization: Bearer %s\n' "$JFROG_ACCESS_TOKEN" > "$OIDC_DIR/jfrog-auth"   # curl -H @file: not in argv
-export PYTHONPATH="$BUILD_SOURCESDIRECTORY/client/src:$BUILD_SOURCESDIRECTORY/rotator:$BUILD_SOURCESDIRECTORY"
+export PYTHONPATH="$BUILD_SOURCESDIRECTORY/client/src:$BUILD_SOURCESDIRECTORY"
 
 # adopt_mappings <ws> <jfrog-url> <adopt>: a mapping the plan creates that already
 # exists in JFrog (a run that failed after creating it, or one made by hand) is

@@ -7,26 +7,6 @@ def codes(items):
     return {i["code"] for i in items}
 
 
-class CronTests(unittest.TestCase):
-    def test_hourly_ticks(self):
-        c = model.Cron("23 * * * *")
-        ticks = c.ticks(0, 3 * 3600)
-        self.assertEqual(ticks, [23 * 60, 3600 + 23 * 60, 7200 + 23 * 60])
-
-    def test_steps_ranges_lists(self):
-        self.assertEqual(model.Cron("*/15 * * * *").interval_seconds(), 900)
-        self.assertEqual(model.Cron("0 */6 * * *").interval_seconds(), 6 * 3600)
-        self.assertEqual(model.Cron("0,30 9-17 * * *").interval_seconds(), 24 * 3600 - 17 * 3600 - 1800 + 9 * 3600)
-
-    def test_previous_tick(self):
-        self.assertEqual(model.Cron("23 * * * *").previous(0), -3600 + 23 * 60)
-
-    def test_rejects_day_fields_and_garbage(self):
-        for bad in ("23 * * * 1", "61 * * * *", "x * * * *", "* * *"):
-            with self.assertRaises(ValueError, msg=bad):
-                model.Cron(bad)
-
-
 class DefaultsTests(unittest.TestCase):
     def test_every_kind_has_valid_defaults(self):
         for kind in model.KINDS:
@@ -40,25 +20,17 @@ class DefaultsTests(unittest.TestCase):
     def test_azure_is_runtime_only(self):
         for kind in [k for k in model.KINDS if model.cloud_of(k) == "azure"]:
             cfg = model.default_config(kind, name="orders")
-            self.assertFalse(cfg["pull_path"]["enabled"], kind)
-            cfg["pull_path"]["enabled"] = True
-            self.assertIn("no_pull_path", codes(model.validate(cfg)["errors"]), kind)
+            self.assertNotIn("pull_path", cfg, kind)
+            self.assertEqual(model.validate(cfg)["errors"], [], kind)
 
 
 class AwsOpenShiftModelTests(unittest.TestCase):
     def test_defaults_are_runtime_only(self):
         for kind in ("aws_lambda", "aws_ecs_task", "aws_app_runner", "openshift_knative_service"):
             cfg = model.default_config(kind, name="orders")
-            self.assertFalse(cfg["pull_path"]["enabled"], kind)
+            self.assertNotIn("pull_path", cfg, kind)
             self.assertEqual(model.validate(cfg)["errors"], [], kind)
             self.assertEqual(model.dedicated_identity_name(cfg), "jfrog-orders")
-
-    def test_pull_path_refused(self):
-        cfg = model.default_config("aws_lambda", name="orders")
-        cfg["pull_path"]["enabled"] = True
-        errs = model.validate(cfg)["errors"]
-        self.assertIn("no_pull_path", codes(errs))
-        self.assertIn("ECR pull-through", next(e["message"] for e in errs if e["code"] == "no_pull_path"))
 
     def test_aws_fields(self):
         cfg = model.default_config("aws_ecs_task", name="orders")
@@ -90,27 +62,9 @@ class ValidateTests(unittest.TestCase):
         res = model.validate(self.cfg(**{"jfrog__url": "http://acme.jfrog.io", "target__kind": "oci_functions"}))
         self.assertIn("jfrog_url_https", codes(res["errors"]))
         self.assertIn("unknown_kind", codes(res["errors"]))
-        res = model.validate(self.cfg(**{"name": "Bad Name!", "pull_path__rotation_cron": "nope"}))
+        res = model.validate(self.cfg(**{"name": "Bad Name!"}))
         self.assertIn("name", codes(res["errors"]))
-        self.assertIn("cron", codes(res["errors"]))
-
-    def test_ttl_math_gcp_no_lag(self):
-        m = model.validate(self.cfg())["ttl_math"]
-        self.assertEqual(m["rotation_interval_seconds"], 3600)
-        self.assertEqual(m["pickup_lag_seconds"], 0)
-        self.assertEqual(m["survives_missed_rotations"], 2)
-
-    def test_pull_ttl_too_short_for_rotation(self):
-        res = model.validate(self.cfg(pull_path__ttl_seconds=3600))
-        self.assertIn("pull_ttl_vs_rotation", codes(res["warnings"]))
-
-    def test_pull_ttl_below_min_ttl(self):
-        res = model.validate(self.cfg(pull_path__ttl_seconds=1200))
-        self.assertIn("pull_ttl_below_min_ttl", codes(res["warnings"]))
-        self.assertNotIn("pull_ttl_below_min_ttl", codes(model.validate(self.cfg(pull_path__ttl_seconds=3600))["warnings"]))
-
-    def test_min_ttl_default_matches_rotator_and_modules(self):
-        self.assertEqual(model.default_config("azure_container_app")["pull_path"]["min_ttl_seconds"], 1800)
+        self.assertNotIn("ttl_math", res)
 
     def test_runtime_ttl_bounds(self):
         self.assertIn("runtime_ttl_short", codes(model.validate(self.cfg(runtime__ttl_seconds=600))["warnings"]))
@@ -143,10 +97,6 @@ class ValidateTests(unittest.TestCase):
         res = model.validate(self.cfg("azure_container_app", target__azure__identity_type="system_assigned"))
         self.assertIn("system_assigned_identity", codes(res["warnings"]))
 
-    def test_alert_after_must_beat_ttl(self):
-        res = model.validate(self.cfg(pull_path__alert_after_seconds=14400))
-        self.assertIn("alert_after_vs_ttl", codes(res["warnings"]))
-
     def test_schema_lists_kinds_and_defaults(self):
         s = model.schema()
         self.assertEqual(set(s["kinds"]), set(model.KINDS))
@@ -155,12 +105,3 @@ class ValidateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class RotatorImageTests(unittest.TestCase):
-    def test_missing_rotator_image_warns_only_with_pull_path(self):
-        cfg = model.default_config("gcp_run_service", name="t")
-        cfg["pull_path"]["rotator_image"] = ""
-        self.assertIn("rotator_image_missing", [w["code"] for w in model.validate(cfg)["warnings"]])
-        cfg["pull_path"]["enabled"] = False
-        self.assertNotIn("rotator_image_missing", [w["code"] for w in model.validate(cfg)["warnings"]])

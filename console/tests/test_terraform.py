@@ -19,10 +19,10 @@ def change(address, *actions, type_="platform_oidc_identity_mapping"):
 
 CREATE_ONLY = [change("module.jfrog_oidc.platform_oidc_identity_mapping.workload[\"orders-runtime\"]", "create"),
                change("module.jfrog_oidc.platform_oidc_configuration.gcp[0]", "create", type_="platform_oidc_configuration"),
-               change("module.gcp_pull_path[0].google_secret_manager_secret.upstream", "no-op",
-                      type_="google_secret_manager_secret")]
-WITH_REPLACE = CREATE_ONLY + [change("module.gcp_pull_path[0].google_cloud_run_v2_job.rotator", "delete", "create",
-                                     type_="google_cloud_run_v2_job")]
+               change("google_service_account.dedicated[\"orders\"]", "no-op",
+                      type_="google_service_account")]
+WITH_REPLACE = CREATE_ONLY + [change("google_project_iam_member.dedicated[\"orders roles/run.invoker\"]", "delete", "create",
+                                     type_="google_project_iam_member")]
 WITH_DELETE = CREATE_ONLY + [change("module.jfrog_oidc.platform_oidc_identity_mapping.workload[\"old-runtime\"]", "delete")]
 
 
@@ -63,7 +63,7 @@ class PlanTests(Base):
         self.set_plan(WITH_REPLACE)
         plan = self.tf.plan()
         self.assertEqual(plan["summary"]["replace"], 1)
-        self.assertEqual(plan["destructive"], ["module.gcp_pull_path[0].google_cloud_run_v2_job.rotator"])
+        self.assertEqual(plan["destructive"], ['google_project_iam_member.dedicated["orders roles/run.invoker"]'])
         self.assertEqual(plan["confirmation_phrase"], "gcp_demo-nonprod-1234_us-central1")
 
     def test_plan_failure_reported(self):

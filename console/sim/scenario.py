@@ -1,10 +1,9 @@
 """Scenario schema, loader, built-ins and expectation checks (spec §7.4).
 
     {name, target_kind, duration, clock_start, seed?, config?, config_overrides{},
-     load{cold_starts_per_hour, requests_per_minute, uncached_pull_ratio, instance_lifetime_minutes},
+     load{cold_starts_per_hour, requests_per_minute, instance_lifetime_minutes},
      faults:[{type, start, end?, params?}],
-     expect:{verdict, max_failed_pulls?, alert_fired_before?, first_failure_after?,
-             root_cause_contains?, min_failed_rotations?}}
+     expect:{verdict, first_failure_after?, root_cause_contains?}}
 
 Times inside a scenario ("03:00", "+90m") are offsets from clock_start.
 A saved console config loads as a scenario with its real TTLs, cron and kind
@@ -26,22 +25,19 @@ SCENARIO_DIR = Path(__file__).parent / "scenarios"
 
 FAULT_TYPES = {
     "jfrog_outage": "JFrog returns 503 (params.services: access, artifactory, registry; default all)",
-    "rotator_down": "the rotator's identity endpoint fails, so every run in the window fails",
     "identity_recreated": "the runtime identity is recreated with a new uniqueId / principal ID",
     "sa_recreated": "alias of identity_recreated for GCP service accounts",
-    "mapping_revoked": "an identity mapping is removed (params.mapping: runtime | pull)",
+    "mapping_revoked": "an identity mapping is removed (params.mapping: runtime)",
     "integration_misconfigured": "the JFrog integration's issuer is wrong (params.issuer)",
     "federation_disabled": "AWS outbound identity federation is off: STS GetWebIdentityToken returns 403",
 }
 # Faults that only exist on some clouds (the rest apply everywhere).
 FAULT_CLOUDS = {
-    "rotator_down": ("gcp",),
     "sa_recreated": ("gcp",),
     "federation_disabled": ("aws",),
 }
 
-DEFAULT_LOAD = {"cold_starts_per_hour": 6.0, "requests_per_minute": 2.0, "uncached_pull_ratio": 0.2,
-                "instance_lifetime_minutes": 60.0}
+DEFAULT_LOAD = {"cold_starts_per_hour": 6.0, "requests_per_minute": 2.0, "instance_lifetime_minutes": 60.0}
 DEFAULT_START = "2026-01-01T00:00:00Z"
 
 
@@ -191,13 +187,6 @@ def check(result: dict, expect: dict) -> list:
     s = result["summary"]
     if "verdict" in expect and result["verdict"] != expect["verdict"]:
         problems.append(f"verdict {result['verdict']} != expected {expect['verdict']}")
-    if "max_failed_pulls" in expect and s["pulls_failed"] > expect["max_failed_pulls"]:
-        problems.append(f"{s['pulls_failed']} failed pulls > max {expect['max_failed_pulls']}")
-    if "alert_fired_before" in expect:
-        limit = parse_offset(expect["alert_fired_before"])
-        fired = s.get("alert_first_fired_s")
-        if fired is None or fired >= limit:
-            problems.append(f"alert fired at {fired} s, expected before {expect['alert_fired_before']}")
     if "first_failure_after" in expect:
         limit = parse_offset(expect["first_failure_after"])
         first = s.get("first_failure_s")
@@ -205,6 +194,4 @@ def check(result: dict, expect: dict) -> list:
             problems.append(f"first failure at {first} s, expected at or after {expect['first_failure_after']}")
     if "root_cause_contains" in expect and expect["root_cause_contains"] not in (result.get("root_cause") or ""):
         problems.append(f"root cause does not mention {expect['root_cause_contains']!r}: {result.get('root_cause')}")
-    if "min_failed_rotations" in expect and s["rotations_failed"] < expect["min_failed_rotations"]:
-        problems.append(f"{s['rotations_failed']} failed rotations < {expect['min_failed_rotations']}")
     return problems

@@ -42,8 +42,7 @@ GCP_PERMISSIONS_BY_KIND = {
     "gcp_run_function": ["cloudfunctions.functions.get", "cloudfunctions.functions.update", "run.services.update"],
     "gcp_run_worker_pool": ["run.workerPools.get", "run.workerPools.update"],
 }
-# APIs the target itself needs (Discover and the wire step). The pull-path
-# module enables its own APIs (enable_apis = true), so those are not listed.
+# APIs the target itself needs (Discover and the wire step).
 GCP_APIS_BY_KIND = {
     "gcp_run_service": ["run.googleapis.com"],
     "gcp_run_job": ["run.googleapis.com"],

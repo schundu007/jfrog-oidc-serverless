@@ -18,7 +18,7 @@ Optional: review `docs/claude-settings.example.json` and, if it suits you, copy 
 
 Paste this into Claude Code:
 
-> Read CLAUDE.md and docs/console-spec.md. Then run the existing client and rotator
+> Read CLAUDE.md and docs/console-spec.md. Then run the existing client
 > tests to confirm a green baseline, run `terraform init -backend=false` and
 > `terraform validate` on each stack under terraform/stacks, and fix whatever the real
 > providers reject in the modules (keep behaviour the same; note each fix in
@@ -33,7 +33,7 @@ Paste this into Claude Code:
 /milestone M3     # preflight + discover; then:
 /verify-target orders-nonprod
 /milestone M4     # terraform plan/apply + wire, behind approval gates
-/milestone M5     # first rotation, live probes, ready report
+/milestone M5     # live probes, ready report
 /milestone M6     # hardening
 ```
 

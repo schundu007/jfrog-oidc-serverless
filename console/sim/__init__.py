@@ -1,1 +1,1 @@
-"""Simulation: the real client and rotator against in-process emulators on virtual time."""
+"""Simulation: the real client against in-process emulators on virtual time."""

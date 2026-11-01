@@ -1,10 +1,9 @@
 """Terraform workspace rendering (spec §4.3).
 
 One workspace per GCP project+region or per Azure subscription, shared by every
-config that targets it: the pull path (GCP only: rotator, AR remotes)
-and the Entra audience app exist once per scope, so per-config workspaces would
-create duplicates. Each config adds its own entries (runtime mapping, readers,
-assignees) to the shared workspace under a file lock.
+config that targets it: the JFrog integration and the Entra audience app exist
+once per scope, so per-config workspaces would create duplicates. Each config
+adds its own entries (runtime mapping, dedicated identity, assignees) to the shared workspace under a file lock.
 
 Files in .console/workspaces/<key>/:
   console.json            bookkeeping: shared settings + one entry per target (the source of truth)
@@ -38,9 +37,7 @@ UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 ARM_ID_RE = re.compile(r"^/subscriptions/[0-9a-f-]{36}/resourceGroups/[\w.()-]+/providers/[\w./()-]+$", re.I)
 PREFIX_RE = {"gcp": re.compile(r"^[a-z][a-z0-9-]{1,13}$"), "azure": re.compile(r"^[a-z][a-z0-9-]{1,17}$"),
              "aws": re.compile(r"^[a-z][a-z0-9-]{1,17}$"), "openshift": re.compile(r"^[a-z][a-z0-9-]{1,17}$")}
-REPO_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
 ROLE_RE = re.compile(r"^(projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/)?roles/[A-Za-z0-9_.]{3,64}$")
-REPO_FORMATS = {"DOCKER", "NPM", "PYTHON", "MAVEN"}
 
 PROVIDERS = {
     "platform": {"source": "jfrog/platform", "version": ">= 2.2.1"},
@@ -59,22 +56,12 @@ K8S_SUBJECT_RE = re.compile(r"^system:serviceaccount:[a-z0-9-]{1,63}:[a-z0-9.-]{
 
 WORKLOADS_TYPE = ("map(object({cloud = string, subject = string, username = optional(string), groups = list(string), "
                   "expires_in = number, description = string}))")
-PULL_TYPE = ("object({enabled = bool, ttl_seconds = number, rotation_cron = string, min_ttl_seconds = number, "
-             "alert_after_seconds = number, registry_username = string, rotator_image = string, groups = list(string)})")
-
 # Shared settings: the config path each one comes from, for conflict messages.
 SHARED_PATHS = {
     "jfrog_url": "jfrog.url", "reader_group": "jfrog.reader_group", "project_key": "jfrog.project_key",
-    "integration_name": "jfrog.integration_names", "name_prefix": "pull_path.name_prefix",
+    "integration_name": "jfrog.integration_names", "name_prefix": "name_prefix",
     "state_backend": "state_backend",
 }
-PULL_PATHS = {
-    "ttl_seconds": "pull_path.ttl_seconds", "rotation_cron": "pull_path.rotation_cron",
-    "min_ttl_seconds": "pull_path.min_ttl_seconds", "alert_after_seconds": "pull_path.alert_after_seconds",
-    "registry_username": "pull_path.registry_username", "rotator_image": "pull_path.rotator_image",
-}
-
-
 class TfgenError(ValueError):
     pass
 
@@ -223,7 +210,6 @@ def _update(cfg: dict, root: Path, on_wait, remove: bool, modules: str | None = 
             _merge_shared(state, shared, target)
             state["targets"][name] = target
             _guards(root, key, state)
-            _check_complete(state)
         _write_workspace(ws, state, modules)
     return {"key": key, "dir": str(ws), "targets": sorted(state["targets"]), "warnings": warnings}
 
@@ -236,7 +222,6 @@ def _read_state(ws: Path):
 def _merge_shared(state: dict, shared: dict, target: dict) -> None:
     cur = state["shared"]
     others = [t for n, t in state["targets"].items() if n != target["name"]]
-    pull_others = [t for t in others if t.get("pull_enabled")]
     if target.get("runtime_enabled") and target["subject"]:
         twin = [t["name"] for t in others if t.get("runtime_enabled") and t.get("subject") == target["subject"]]
         if twin:
@@ -245,8 +230,6 @@ def _merge_shared(state: dict, shared: dict, target: dict) -> None:
             raise TfgenError(f"{target['name']} and {', '.join(sorted(twin))} run as the same identity "
                              f"({target['subject']}); give each workload its own identity, or keep one config for it")
     for k, v in shared.items():
-        if k == "pull":
-            continue
         if k in ("resource_group_name", "location", "aws_region", "kube_context"):   # first target wins
             cur.setdefault(k, v)
             continue
@@ -254,35 +237,6 @@ def _merge_shared(state: dict, shared: dict, target: dict) -> None:
             raise TfgenError(f"{SHARED_PATHS.get(k, k)} is {v!r} here but {cur[k]!r} in the shared workspace "
                              f"{state['key']} (used by {', '.join(sorted(t['name'] for t in others))}); make the configs agree")
         cur[k] = v
-    if target.get("pull_enabled"):
-        pull = cur.setdefault("pull", {})
-        for k, v in shared["pull"].items():
-            if v in (None, ""):
-                continue
-            if pull_others and pull.get(k) not in (None, "") and pull[k] != v:
-                raise TfgenError(f"{PULL_PATHS.get(k, k)} is {v!r} here but {pull[k]!r} for "
-                                 f"{', '.join(sorted(t['name'] for t in pull_others))} in the shared workspace "
-                                 f"{state['key']}; the pull path is shared, so these must match")
-            pull[k] = v
-        repos = cur.setdefault("remote_repositories", {})
-        for rid, r in (target.get("repositories") or {}).items():
-            owner = [t["name"] for t in pull_others if rid in (t.get("repositories") or {})]
-            if owner and rid in repos and repos[rid] != r:
-                raise TfgenError(f"repository {rid} already proxies {repos[rid]['upstream_uri']} for {', '.join(owner)}; "
-                                 "use another repository ID")
-            repos[rid] = r
-
-
-def _check_complete(state: dict) -> None:
-    if not any(t.get("pull_enabled") for t in state["targets"].values()):
-        return
-    pull = state["shared"].get("pull") or {}
-    need = ["rotator_image", "registry_username"]
-    missing = [PULL_PATHS[k] for k in need if not pull.get(k)]
-    if missing:
-        raise TfgenError(f"the pull path needs {', '.join(missing)}")
-
-
 def _guards(root: Path, key: str, state: dict) -> None:
     """Collisions with other local workspaces that would only show up as apply errors."""
     me = state["shared"]
@@ -300,27 +254,9 @@ def _guards(root: Path, key: str, state: dict) -> None:
         if clash:
             raise TfgenError(f"identity mapping {', '.join(sorted(clash))} already exists in workspace {other['key']}; "
                              "rename this config")
-        if state["cloud"] == "gcp" and other.get("cloud") == "gcp" and key.split(":")[1] == other["key"].split(":")[1] \
-                and o.get("name_prefix") == me.get("name_prefix"):
-            raise TfgenError(f"pull_path.name_prefix '{me['name_prefix']}' is already used in project {key.split(':')[1]} "
-                             f"by workspace {other['key']}; GCP resource names are project-wide, so pick another prefix")
-
-
 def _mapping_names(state: dict) -> set:
     targets = state.get("targets", {})
-    names = {f"{n}-runtime" for n, t in targets.items() if t.get("runtime_enabled")}
-    if any(t.get("pull_enabled") for t in targets.values()):
-        names.add(_pull_mapping_name(state["key"]))
-    return names
-
-
-def _pull_mapping_name(key: str) -> str:
-    parts = key.split(":")
-    if parts[0] == "gcp":
-        return f"gcp-{parts[1]}-{parts[2]}-pull"
-    if parts[0] == "azure":
-        return f"azure-{parts[1][:8]}-pull"
-    return f"{parts[0]}-{parts[1]}-pull"      # never created: AWS and OpenShift have no pull path
+    return {f"{n}-runtime" for n, t in targets.items() if t.get("runtime_enabled")}
 
 
 # ------------------------------------------------------------ per-cloud entries
@@ -337,11 +273,10 @@ def _common(cfg: dict, cloud: str) -> tuple:
     if d.get("kind") and d["kind"] != model.get_path(cfg, "target.kind"):
         raise TfgenError(f"Discover found a {d['kind']} but the config says {model.get_path(cfg, 'target.kind')}; "
                          "run Discover again")
-    prefix = model.get_path(cfg, "pull_path.name_prefix") or "jfrog"
+    prefix = model.get_path(cfg, "name_prefix") or "jfrog"
     if not PREFIX_RE[cloud].match(prefix):
-        raise TfgenError(f"pull_path.name_prefix {prefix!r}: lowercase letters, digits and dashes, "
+        raise TfgenError(f"name_prefix {prefix!r}: lowercase letters, digits and dashes, "
                          f"{'2-14' if cloud == 'gcp' else '2-18'} characters")
-    pp = model.get_path(cfg, "pull_path") or {}
     shared = {
         "jfrog_url": model.get_path(cfg, "jfrog.url").rstrip("/"),
         "reader_group": model.get_path(cfg, "jfrog.reader_group"),
@@ -350,8 +285,6 @@ def _common(cfg: dict, cloud: str) -> tuple:
         "adopt_integration": bool(model.get_path(cfg, "jfrog.adopt_integration")),
         "name_prefix": prefix,
         "state_backend": _backend(cfg),
-        "pull": {k: pp.get(k) for k in ("ttl_seconds", "rotation_cron", "min_ttl_seconds", "alert_after_seconds",
-                                        "registry_username", "rotator_image")},
     }
     origin_problem = model.jfrog_origin_error(shared["jfrog_url"])
     if origin_problem:
@@ -364,58 +297,19 @@ def _common(cfg: dict, cloud: str) -> tuple:
         "name": cfg["name"], "kind": model.get_path(cfg, "target.kind"), "subject": str(subject or ""),
         "dedicated_identity": dedicated,
         "runtime_enabled": bool(rt.get("enabled", True)), "runtime_ttl": int(rt.get("ttl_seconds") or 3600),
-        "pull_enabled": bool(pp.get("enabled")),
     }
     return d, shared, target
 
 
-def _require_rotator_image(cfg: dict, target: dict) -> None:
-    if target["pull_enabled"] and not model.get_path(cfg, "pull_path.rotator_image"):
-        raise TfgenError("pull_path.rotator_image is required for the pull path (an AR/ACR image, not one behind JFrog)")
-
-
 def _gcp_entry(cfg: dict):
     d, shared, target = _common(cfg, "gcp")
-    _require_rotator_image(cfg, target)
-    warnings = []
-    repos = {}
-    for rid, r in (model.get_path(cfg, "pull_path.gcp_repositories") or {}).items():
-        fmt, uri = str(r.get("format", "")).upper(), str(r.get("upstream_uri", "") or "").rstrip("/")
-        if fmt == "DOCKER" and not uri and model.docker_host(cfg):
-            uri = f"https://{model.docker_host(cfg)}"
-        if not REPO_ID_RE.match(rid) or fmt not in REPO_FORMATS or not uri.startswith("https://"):
-            raise TfgenError(f"pull_path.gcp_repositories.{rid}: needs an ID like jfrog-docker, a format in "
-                             f"{sorted(REPO_FORMATS)} and an https upstream_uri")
-        if fmt == "DOCKER":
-            # A Docker upstream is the repo's dedicated host and nothing else; AR appends /v2/...
-            if model.jfrog_origin_error(uri):
-                raise TfgenError(f"pull_path.gcp_repositories.{rid}: a DOCKER upstream_uri is the repo's own host "
-                                 f"(https://<server>-<repo-key>.jfrog.io), not {uri}")
-            if uri == shared["jfrog_url"]:
-                warnings.append(f"repository {rid} proxies the platform host {uri}: Docker pulls then use the "
-                                "repository-path method, which failed for local repos on the AKS pilot. Point it at "
-                                "the repo's dedicated host instead")
-        repos[rid] = {"format": fmt, "upstream_uri": uri}
-    if target["pull_enabled"] and not repos:
-        raise TfgenError("pull_path.gcp_repositories: the pull path needs at least one remote repository")
-    readers = []
-    if target["kind"] == "gcp_run_function" and target["pull_enabled"]:
-        if d.get("build_service_account"):
-            readers.append(f"serviceAccount:{d['build_service_account']}")
-        else:
-            warnings.append("the function's build service account is unknown; grant it Artifact Registry Reader "
-                            "on the remote repositories yourself")
     roles = [r for r in (d.get("dedicated_service_account_roles") or []) if ROLE_RE.match(str(r))]
-    target.update(repositories=repos if target["pull_enabled"] else {}, reader_members=readers,
-                  dedicated_roles=sorted(roles) if target["dedicated_identity"] else [])
-    return shared, target, warnings
+    target.update(dedicated_roles=sorted(roles) if target["dedicated_identity"] else [])
+    return shared, target, []
 
 
 def _azure_entry(cfg: dict):
     d, shared, target = _common(cfg, "azure")
-    if target["pull_enabled"]:
-        raise TfgenError("pull_path.enabled: Azure has no console pull path (Azure signs in to a non-ACR registry "
-                         "only with a username and password); the build pipeline brings images into ACR with OIDC")
     a = model.get_path(cfg, "target.azure") or {}
     if not d.get("location"):
         raise TfgenError("the target's location is unknown: run Discover again")
@@ -437,8 +331,6 @@ def _issuer(d: dict, what: str) -> str:
 
 def _aws_entry(cfg: dict):
     d, shared, target = _common(cfg, "aws")
-    if target["pull_enabled"]:
-        raise TfgenError("pull_path.enabled: AWS targets have no console pull path (runtime exchange only)")
     if target["subject"] and not ROLE_ARN_RE.match(target["subject"]):
         raise TfgenError(f"mapping subject {target['subject']!r} is not an IAM role ARN: run Discover again")
     a = model.get_path(cfg, "target.aws") or {}
@@ -449,8 +341,6 @@ def _aws_entry(cfg: dict):
 
 def _openshift_entry(cfg: dict):
     d, shared, target = _common(cfg, "openshift")
-    if target["pull_enabled"]:
-        raise TfgenError("pull_path.enabled: Knative targets have no console pull path (runtime exchange only)")
     if target["subject"] and not K8S_SUBJECT_RE.match(target["subject"]):
         raise TfgenError(f"mapping subject {target['subject']!r} is not system:serviceaccount:<ns>:<name>")
     o = model.get_path(cfg, "target.openshift") or {}
@@ -526,21 +416,6 @@ def _workloads(state: dict, cloud: str) -> dict:
     }
 
 
-def _pull_vars(state: dict) -> dict:
-    s = state["shared"]
-    p = s.get("pull") or {}
-    return {
-        "enabled": any(t["pull_enabled"] for t in state["targets"].values()),
-        "ttl_seconds": int(p.get("ttl_seconds") or 14400),
-        "rotation_cron": p.get("rotation_cron") or "23 * * * *",
-        "min_ttl_seconds": int(p.get("min_ttl_seconds") or 1800),
-        "alert_after_seconds": int(p.get("alert_after_seconds") or 10800),
-        "registry_username": p.get("registry_username") or "",
-        "rotator_image": p.get("rotator_image") or "",
-        "groups": [s["reader_group"]],
-    }
-
-
 def _common_tfvars(state: dict, cloud: str) -> dict:
     s = state["shared"]
     return {
@@ -549,22 +424,17 @@ def _common_tfvars(state: dict, cloud: str) -> dict:
         "jfrog_provider_name": s["integration_name"],
         "name_prefix": s["name_prefix"],
         "workloads": _workloads(state, cloud),
-        "pull_path": _pull_vars(state),
-        "pull_mapping_name": _pull_mapping_name(state["key"]),
         "adopt_jfrog_integration": bool(s.get("adopt_integration")),
     }
 
 
 def _gcp_tfvars(state: dict) -> dict:
     _, project, region = state["key"].split(":")
-    readers = sorted({m for t in state["targets"].values() if t["pull_enabled"] for m in t.get("reader_members", [])})
     return {
         **_common_tfvars(state, "gcp"),
         "jfrog_audience": GCP_AUDIENCE,
         "gcp_project_id": project,
         "gcp_region": region,
-        "remote_repositories": dict(sorted((state["shared"].get("remote_repositories") or {}).items())),
-        "reader_members": readers,
         "dedicated_service_accounts": {n: t["dedicated_identity"] for n, t in sorted(state["targets"].items())
                                        if t.get("dedicated_identity")},
         "dedicated_service_account_roles": {n: t["dedicated_roles"] for n, t in sorted(state["targets"].items())
@@ -634,18 +504,8 @@ def _common_variables() -> dict:
         "jfrog_provider_name": _var("string"),
         "name_prefix": _var("string"),
         "workloads": _var(WORKLOADS_TYPE, description="Runtime mappings, one per target: <config>-runtime"),
-        "pull_path": _var(PULL_TYPE),
-        "pull_mapping_name": _var("string"),
         "adopt_jfrog_integration": _var("bool", False),
     }
-
-
-def _pull_workload_local(cloud: str, subject_expr: str, description: str) -> str:
-    # A constant of this module: the mapping name and values come from var.*.
-    return ("${{ for k in (var.pull_path.enabled ? [var.pull_mapping_name] : []) : k => { "
-            f'cloud = "{cloud}", subject = {subject_expr}, username = var.pull_path.registry_username, '
-            "groups = var.pull_path.groups, expires_in = var.pull_path.ttl_seconds, "
-            f'description = "{description}" }} }}}}')
 
 
 def _adopt_import(cloud: str) -> list:
@@ -674,8 +534,6 @@ def _gcp_main(modules: str | None = None) -> dict:
             "jfrog_audience": _var("string"),
             "gcp_project_id": _var("string"),
             "gcp_region": _var("string"),
-            "remote_repositories": _var("map(object({format = string, upstream_uri = string}))", {}),
-            "reader_members": _var("list(string)", []),
             "dedicated_service_accounts": _var("map(string)", {}, "Existing apps on a default account: <config> => new SA ID"),
             "dedicated_service_account_roles": _var("map(list(string))", {},
                                                     "<config> => project roles the new SA takes over from the default one"),
@@ -704,8 +562,6 @@ def _gcp_main(modules: str | None = None) -> dict:
             "google": {"project": "${var.gcp_project_id}", "region": "${var.gcp_region}"},
         },
         "locals": {
-            "pull_workloads": _pull_workload_local("gcp", "module.gcp_pull_path[0].rotator_unique_id",
-                                                   "Artifact Registry upstream credential (rotated)"),
             "dedicated_subjects": "${{ for n, sa in google_service_account.dedicated : n => sa.unique_id }}",
             "dedicated_role_grants": ("${merge({}, [for n, roles in var.dedicated_service_account_roles : "
                                       "{ for r in roles : \"${n} ${r}\" => { config = n, role = r } } "
@@ -717,33 +573,13 @@ def _gcp_main(modules: str | None = None) -> dict:
                 "source": f"{mod}/jfrog-oidc",
                 "gcp": {"provider_name": "${var.jfrog_provider_name}", "audience": "${var.jfrog_audience}"},
                 "project_key": "${var.jfrog_project_key}",
-                "workloads": "${merge(local.runtime_workloads, local.pull_workloads)}",
-            },
-            "gcp_pull_path": {
-                "source": f"{mod}/gcp-pull-path",
-                "count": "${var.pull_path.enabled ? 1 : 0}",
-                "project_id": "${var.gcp_project_id}",
-                "region": "${var.gcp_region}",
-                "name_prefix": "${var.name_prefix}",
-                "jfrog_url": "${var.jfrog_url}",
-                "jfrog_provider_name": "${var.jfrog_provider_name}",
-                "jfrog_audience": "${var.jfrog_audience}",
-                "registry_username": "${var.pull_path.registry_username}",
-                "remote_repositories": "${var.remote_repositories}",
-                "reader_members": "${var.reader_members}",
-                "rotator_image": "${var.pull_path.rotator_image}",
-                "rotation_schedule": "${var.pull_path.rotation_cron}",
-                "min_ttl_seconds": "${var.pull_path.min_ttl_seconds}",
-                "alert_after_seconds": "${var.pull_path.alert_after_seconds}",
+                "workloads": "${local.runtime_workloads}",
             },
         },
         "output": {
             "jfrog_provider_name": {"value": "${module.jfrog_oidc.gcp_provider_name}"},
             "jfrog_audience": {"value": "${module.jfrog_oidc.gcp_audience}"},
-            "mapping_names": {"value": "${keys(merge(local.runtime_workloads, local.pull_workloads))}"},
-            "repository_urls": {"value": "${one(module.gcp_pull_path[*].repository_urls)}"},
-            "rotator_job_name": {"value": "${one(module.gcp_pull_path[*].rotator_job_name)}"},
-            "first_run_command": {"value": "${one(module.gcp_pull_path[*].first_run_command)}"},
+            "mapping_names": {"value": "${keys(local.runtime_workloads)}"},
             "dedicated_service_accounts": {"value": "${{ for n, sa in google_service_account.dedicated : n => sa.email }}"},
         },
     }
@@ -831,7 +667,6 @@ def _aws_main(modules: str | None = None) -> dict:
             "aws": {"region": "${var.aws_region}", "allowed_account_ids": ["${var.aws_account_id}"]},
         },
         "locals": {
-            "pull_workloads": {},
             "dedicated_subjects": "${module.aws_identity.dedicated_role_arns}",
             "runtime_workloads": RUNTIME_WORKLOADS,
         },
@@ -890,7 +725,6 @@ def _openshift_main(modules: str | None = None) -> dict:
             },
         },
         "locals": {
-            "pull_workloads": {},
             "dedicated_subjects": ("${{ for n, sa in kubernetes_service_account_v1.dedicated : n => "
                                    "\"system:serviceaccount:${sa.metadata[0].namespace}:${sa.metadata[0].name}\" }}"),
             "runtime_workloads": RUNTIME_WORKLOADS,

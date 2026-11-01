@@ -12,9 +12,7 @@ SUB = "11111111-2222-3333-4444-555555555555"
 RG_ID = f"/subscriptions/{SUB}/resourceGroups/rg-apps"
 UAMI = f"{RG_ID}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-orders"
 
-GCP_OUT = {"jfrog_provider_name": "gcp-cloudrun", "jfrog_audience": "jfrog-gcp",
-           "repository_urls": {"jfrog-docker": f"{R}-docker.pkg.dev/{P}/jfrog-docker",
-                               "jfrog-pypi": f"https://{R}-python.pkg.dev/{P}/jfrog-pypi/simple/"}}
+GCP_OUT = {"jfrog_provider_name": "gcp-cloudrun", "jfrog_audience": "jfrog-gcp"}
 AZ_OUT = {"jfrog_provider_name": "azure-entra", "audience_uri": "api://dddddddd-0000-0000-0000-000000000001"}
 GCP_ENV = {"JFROG_OIDC_AUDIENCE": "jfrog-gcp", "JFROG_OIDC_PROVIDER": "gcp-cloudrun", "JFROG_OIDC_SOURCE": "gcp",
            "JFROG_URL": "https://acme.jfrog.io"}
@@ -67,7 +65,7 @@ class GcpTests(unittest.TestCase):
         self.assertEqual(plan["commands"], [update_svc()["argv"]])
         self.assertEqual(len(plan["sha256"]), 64)
         self.assertFalse(plan["noop"])
-        self.assertIn(f"{R}-docker.pkg.dev/{P}/jfrog-docker/<image>:<tag>", " ".join(plan["notes"]))
+        self.assertNotIn("pkg.dev", " ".join(plan["notes"]))
         self.assertNotIn("<jfrog-repo-key>", " ".join(plan["notes"]))
 
     def test_apply_needs_matching_approval(self):
@@ -112,6 +110,14 @@ class GcpTests(unittest.TestCase):
         plan = wire.Wire(gcp_cfg("gcp_run_job", "nightly"), sh, GCP_OUT).plan()
         self.assertEqual(plan["commands"][0][:4], ["gcloud", "run", "jobs", "update"])
 
+    def test_job_artifact_path_is_wired_not_provisioned(self):
+        # The job stack creates the job with no JFrog settings; the artifact it reads comes from here.
+        env = wire.Wire(gcp_cfg("gcp_run_job", "nightly"), Shell(mode="replay"), GCP_OUT).desired_env()
+        self.assertEqual(env["JFROG_ARTIFACT_PATH"], "generic-local/healthcheck/ping.txt")
+        self.assertNotIn("JFROG_ARTIFACT_PATH", wire.Wire(gcp_cfg(), Shell(mode="replay"), GCP_OUT).desired_env())
+        aca = wire.Wire(azure_cfg("azure_container_app_job", "nightly"), Shell(mode="replay"), AZ_OUT).desired_env()
+        self.assertEqual(aca["JFROG_ARTIFACT_PATH"], "generic-local/healthcheck/ping.txt")
+
     def test_worker_pool_v2_shape_through_the_beta_group(self):
         # Worker pools: gcloud beta only; described in the v2 shape (template.containers, template.serviceAccount).
         pool = json.dumps({"name": f"projects/{P}/locations/{R}/workerPools/consumer",
@@ -126,12 +132,12 @@ class GcpTests(unittest.TestCase):
                                              "--quiet"]])
         self.assertEqual({d["setting"] for d in plan["diff"]}, set(GCP_ENV))
 
-    def test_function_wires_underlying_service_and_notes_index_url(self):
+    def test_function_wires_underlying_service(self):
         sh = Shell(mode="replay", fixtures=[describe_svc([], name="webhook")])
         plan = wire.Wire(gcp_cfg("gcp_run_function", "webhook"), sh, GCP_OUT).plan()
         self.assertEqual(plan["commands"], [update_svc("webhook")["argv"]])
         notes = " ".join(plan["notes"])
-        self.assertIn(f"--index-url https://{R}-python.pkg.dev/{P}/jfrog-pypi/simple/", notes)
+        self.assertNotIn("--index-url", notes)
         self.assertIn("gcloud functions deploy", notes)
 
     def test_missing_outputs(self):

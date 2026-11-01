@@ -95,7 +95,7 @@ function viewSimulate(step, ev) {
   if (!v) return [];
   const sm = ev.summary || {};
   const verdict = ["Verdict", statusPill({ pass: "succeeded", degraded: "warn", fail: "failed" }[v.status] || "notrun", v.status)];
-  return [kv([["pulls failed", sm.pulls_failed], ["requests failed", sm.requests_failed],
+  return [kv([["requests failed", sm.requests_failed],
       ["tokens minted", sm.tokens_minted], ["first failure (s)", sm.first_failure_s]], verdict),
     v.root_cause ? h("p", { class: "small", text: typeof v.root_cause === "string" ? v.root_cause : JSON.stringify(v.root_cause) }) : null];
 }

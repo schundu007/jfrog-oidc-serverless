@@ -217,7 +217,7 @@ class WarningAndErrorTests(unittest.TestCase):
         for k, v in res["config_patch"].items():
             model.set_path(cfg, k, v)
         self.assertEqual(cfg["target"]["kind"], "azure_functions_aca")
-        self.assertFalse(cfg["pull_path"]["enabled"])
+        self.assertNotIn("pull_path", cfg)
         self.assertEqual(model.validate(cfg)["errors"], [])
 
 

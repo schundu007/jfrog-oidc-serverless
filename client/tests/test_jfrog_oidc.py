@@ -365,7 +365,7 @@ class DetectTests(unittest.TestCase):
             self.assertEqual(detect_source().name, "gcp")
 
     def test_detects_cloud_run_job(self):
-        with mock.patch.dict(os.environ, {"CLOUD_RUN_JOB": "rotator"}, clear=True):
+        with mock.patch.dict(os.environ, {"CLOUD_RUN_JOB": "artifact-reader"}, clear=True):
             self.assertEqual(detect_source().name, "gcp")
 
     def test_unknown_runtime_raises(self):

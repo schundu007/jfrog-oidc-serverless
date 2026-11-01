@@ -83,15 +83,15 @@ variable "workloads" {
                 Azure: the managed identity's principal (object) ID (matches oid).
                 AWS: the IAM role ARN (matches sub).
                 OpenShift/Knative: system:serviceaccount:<namespace>:<name> (matches sub).
-    username    Optional. Only set it on image-pull (rotator) mappings, where the
-                platform needs a fixed registry username. JFrog adds
+    username    Optional. Only set it where a fixed JFrog user is needed (the
+                foundations' setup and console-operator mappings). JFrog adds
                 applied-permissions/user and that user's Auto Join groups to the
                 token when a username is set, so the named user must have no
                 permissions beyond read. Runtime mappings leave it null and get a
                 purely group-scoped token.
     groups      JFrog groups whose permissions the token gets. Keep these read-only
-                for runtime and pull identities.
-    expires_in  Token lifetime in seconds. See README for TTL vs rotation math.
+                for runtime identities.
+    expires_in  Token lifetime in seconds.
     priority    Lower number wins when several mappings match.
   EOT
   type = map(object({
@@ -133,6 +133,6 @@ variable "workloads" {
 
   validation {
     condition     = alltrue([for w in values(var.workloads) : w.username != null || w.expires_in <= 3600])
-    error_message = "Runtime mappings (no username) are capped at 3600 seconds: the client refreshes before expiry, so longer only widens the leak window. Only pull (rotator) mappings may run longer."
+    error_message = "Runtime mappings (no username) are capped at 3600 seconds: the client refreshes before expiry, so longer only widens the leak window. Only mappings with a username may run longer."
   }
 }

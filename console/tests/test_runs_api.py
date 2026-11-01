@@ -18,7 +18,6 @@ FX = Path(__file__).parent / "fixtures" / "demo"
 def demo_cfg():
     cfg = model.default_config("gcp_run_service", name="orders")
     cfg["target"]["gcp"].update(project="demo-nonprod-1234", region="us-central1", name="orders")
-    cfg["pull_path"]["rotator_image"] = "us-central1-docker.pkg.dev/demo-nonprod-1234/platform/jfrog-oidc-rotator:0.1.0"
     return cfg
 
 

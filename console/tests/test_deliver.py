@@ -28,7 +28,6 @@ def gcp_cfg(name="orders"):
     c = model.default_config("gcp_run_service", name=name)
     c["target"]["gcp"].update(project=P, region=R, name=name)
     c["jfrog"]["url"] = "https://acme.jfrog.io"
-    c["pull_path"]["enabled"] = False
     c["target"]["discovered"] = {"kind": "gcp_run_service", "mapping_subject": "104857600000000000001"}
     return c
 

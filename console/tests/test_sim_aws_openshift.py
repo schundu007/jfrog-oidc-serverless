@@ -20,7 +20,6 @@ class AwsSimTests(unittest.TestCase):
         self.assertGreater(sim.aws.issued, 0)               # real SigV4 calls verified by the emulator
         self.assertGreater(res["summary"]["tokens_minted"], 0)
         self.assertEqual(res["summary"]["requests_failed"], 0)
-        self.assertIsNone(sim.platform)                      # runtime path only
 
     def test_container_credentials_path(self):
         sim, res = run("happy-aws-ecs")
@@ -55,7 +54,7 @@ class AwsSimTests(unittest.TestCase):
 
     def test_fault_cloud_check(self):
         with self.assertRaises(ValueError):
-            sc.load("happy-aws-lambda", faults=[{"type": "rotator_down", "start": "01:00"}])
+            sc.load("happy-aws-lambda", faults=[{"type": "sa_recreated", "start": "01:00"}])
         with self.assertRaises(ValueError):
             sc.load("happy-openshift-knative", faults=[{"type": "federation_disabled", "start": "01:00"}])
 

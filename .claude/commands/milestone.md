@@ -13,7 +13,7 @@ Implement milestone $ARGUMENTS of the console.
    implement until they pass. Keep to the Rules in `CLAUDE.md`: stdlib only, no
    token output, real code in simulation, argv-only subprocesses.
 4. Run the full test suite, not just the new tests:
-   client, rotator, console, and `python -m console.sim check-all` from M1 on.
+   client, console, and `python -m console.sim check-all` from M1 on.
 5. If the milestone touches Terraform, run `terraform fmt -recursive -check` and
    `terraform validate` on any workspace you generate.
 6. Append to `docs/progress.md`: the milestone, what was built, how to demo it,

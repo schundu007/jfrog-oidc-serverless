@@ -9,7 +9,6 @@
   "load": {},
   "faults": [],
   "expect": {
-    "verdict": "pass",
-    "max_failed_pulls": 0
+    "verdict": "pass"
   }
 }

@@ -56,6 +56,9 @@ def _entry(scope, key, current, desired):
     return {"scope": scope, "setting": key, "current": current, "desired": desired, "action": action}
 
 
+JOB_KINDS = ("gcp_run_job", "azure_container_app_job")
+
+
 class Wire(AwsWire, OpenShiftWire):
     def __init__(self, cfg: dict, sh: Shell, outputs: dict):
         self.cfg, self.sh, self.out = cfg, sh, outputs or {}
@@ -66,7 +69,6 @@ class Wire(AwsWire, OpenShiftWire):
         # Registry server for image pulls: the Docker repo's dedicated host, never the
         # platform host (repository-path pulls failed on the AKS pilot's instance).
         self.docker_host = model.docker_host(cfg)
-        self.pull = bool(model.get_path(cfg, "pull_path.enabled")) and self.cloud in model.PULL_CLOUDS
         self._aws_cache = {}
         self.runtime = bool(model.get_path(cfg, "runtime.enabled", True))
         self.dedicated = self._dedicated()
@@ -106,13 +108,19 @@ class Wire(AwsWire, OpenShiftWire):
         if self.cloud == "gcp":
             provider, audience = self._need("jfrog_provider_name", "jfrog_audience")
             return {"JFROG_OIDC_AUDIENCE": audience, "JFROG_OIDC_PROVIDER": provider, "JFROG_OIDC_SOURCE": "gcp",
-                    "JFROG_URL": self.jfrog_url}
+                    "JFROG_URL": self.jfrog_url, **self._job_artifact()}
         provider, audience = self._need("jfrog_provider_name", "audience_uri")
         env = {"JFROG_URL": self.jfrog_url, "JFROG_OIDC_PROVIDER": provider, "JFROG_OIDC_AUDIENCE": audience,
-               "JFROG_OIDC_SOURCE": "azure"}
+               "JFROG_OIDC_SOURCE": "azure", **self._job_artifact()}
         if self.d.get("identity_type") == "user_assigned" and self.d.get("client_id"):
             env["AZURE_CLIENT_ID"] = self.d["client_id"]
         return dict(sorted(env.items()))
+
+    def _job_artifact(self) -> dict:
+        """A job (artifact-reader) reads one JFrog artifact. Its path is OIDC configuration, set here,
+        never by the infrastructure stack that created the job."""
+        path = model.get_path(self.cfg, "verify.artifact_path")
+        return {"JFROG_ARTIFACT_PATH": path} if self.kind in JOB_KINDS and path else {}
 
     # -- plan --------------------------------------------------------------------------
 
@@ -195,14 +203,6 @@ class Wire(AwsWire, OpenShiftWire):
         if self.kind == "gcp_run_function":
             notes.append("The variables are set on the function's Cloud Run service. A later `gcloud functions deploy` "
                          "replaces them unless it passes the same --set-env-vars, so add them to your deploy or IaC.")
-        if self.pull:
-            for _, url in sorted((self.out.get("repository_urls") or {}).items()):
-                if url.startswith("https://") and "-python.pkg.dev" in url:
-                    notes.append(f"requirements.txt: start it with `--index-url {url}` to install through JFrog.")
-                elif not url.startswith("https://"):
-                    notes.append(f"Images through JFrog: {url}/<image>:<tag> (the remote proxies one JFrog Docker "
-                                 "repo through its own host, so no repo key in the path). The console does not change "
-                                 "the deployed image; switch it in your next deploy.")
         return notes
 
     # -- Azure Container Apps ------------------------------------------------------------------

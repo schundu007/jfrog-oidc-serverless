@@ -120,17 +120,15 @@ class ServerTests(unittest.TestCase):
     def test_validate(self):
         from console import model
         cfg = model.default_config("gcp_run_service", name="orders")
-        cfg["pull_path"]["ttl_seconds"] = 3600
         body = json.loads(self.req("POST", "/api/validate", {"config": cfg})[2])
         self.assertEqual(body["errors"], [])
-        self.assertIn("pull_ttl_vs_rotation", {w["code"] for w in body["warnings"]})
-        self.assertEqual(body["ttl_math"]["pickup_lag_seconds"], 0)
+        self.assertNotIn("ttl_math", body)
 
     def test_scenarios(self):
         body = json.loads(self.req("GET", "/api/sim/scenarios")[2])
         names = {s["name"] for s in body["scenarios"]}
-        self.assertIn("rotator-down-5h", names)
-        self.assertIn("rotator_down", body["fault_types"])
+        self.assertIn("jfrog-outage-90m", names)
+        self.assertNotIn("rotator_down", body["fault_types"])
 
     def test_sim_bad_request(self):
         self.assertEqual(self.req("POST", "/api/sim", {"scenario": "no-such"})[0], 400)
@@ -138,7 +136,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.req("GET", "/api/sim/doesnotexist")[0], 404)
 
     def test_sim_sse_stream_and_result(self):
-        st, _, raw = self.req("POST", "/api/sim", {"scenario": "rotator-down-5h"})
+        st, _, raw = self.req("POST", "/api/sim", {"scenario": "wrong-audience"})
         self.assertEqual(st, 202)
         sim_id = json.loads(raw)["sim_id"]
 
@@ -160,13 +158,13 @@ class ServerTests(unittest.TestCase):
 
     def test_sim_overrides_and_faults(self):
         st, _, raw = self.req("POST", "/api/sim", {
-            "scenario": "happy-gcp-function", "overrides": {"pull_path.ttl_seconds": 1800},
+            "scenario": "happy-gcp-function", "overrides": {"runtime.ttl_seconds": 1800},
             "faults": [], "load": {"cold_starts_per_hour": 3}, "duration": "6h"})
         self.assertEqual(st, 202)
         sim_id = json.loads(raw)["sim_id"]
         self.req("GET", f"/api/sim/{sim_id}/events")  # wait for completion
         result = json.loads(self.req("GET", f"/api/sim/{sim_id}")[2])["result"]
-        self.assertEqual(result["verdict"], "fail")
+        self.assertEqual(result["verdict"], "pass")
         self.assertEqual(result["duration_s"], 6 * 3600)
 
     def test_sim_rejects_unsafe_overrides(self):

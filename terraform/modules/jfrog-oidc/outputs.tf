@@ -34,6 +34,6 @@ output "openshift_audience" {
 }
 
 output "mapping_usernames" {
-  description = "Fixed username on each pull mapping's tokens (null for group-only runtime mappings)."
+  description = "Fixed username on each mapping's tokens (null for group-only runtime mappings)."
   value       = { for k, w in var.workloads : k => w.username }
 }

@@ -1,7 +1,7 @@
 """M1 acceptance: every built-in scenario meets its expectation, a 24 h scenario
-runs in under 10 s, and lowering a mapping TTL flips a happy scenario to fail.
+runs in under 10 s, and the faults that break the runtime exchange fail.
 
-These run the real jfrog_oidc client and rotator/rotate.py against the emulators.
+These run the real jfrog_oidc client against the emulators.
 """
 
 import json
@@ -27,7 +27,7 @@ class BuiltInScenarioTests(unittest.TestCase):
         names = set(sc.builtin_names())
         self.assertEqual(names, {
             "happy-gcp-function", "happy-gcp-worker-pool", "happy-aca", "happy-functions-premium", "jfrog-outage-90m",
-            "rotator-misses-2-runs", "rotator-down-5h", "azure-v1-tokens", "wrong-audience", "sa-recreated", "min-ttl-refusal",
+            "azure-v1-tokens", "wrong-audience", "sa-recreated",
             "happy-aws-lambda", "happy-aws-ecs", "happy-aws-app-runner", "aws-federation-disabled", "aws-role-recreated",
             "happy-openshift-knative", "openshift-wrong-audience",
         })
@@ -49,47 +49,26 @@ class FidelityTests(unittest.TestCase):
         self.assertEqual(result["duration_s"], 86400)
         self.assertLess(elapsed, 10.0)
 
-    def test_mutation_lower_pull_ttl_flips_happy_to_fail(self):
-        for name in ("happy-gcp-function",):
-            with self.subTest(scenario=name):
-                # 1800 s passes MIN_TTL_SECONDS (1800) but expires 30 min before the next hourly rotation.
-                result = run(name, overrides={"pull_path.ttl_seconds": 1800})
-                self.assertEqual(result["verdict"], "fail")
-                self.assertIn("pull TTL", result["root_cause"] or "")
-
-    def test_runs_the_real_rotator_and_client(self):
-        import rotate
+    def test_runs_the_real_client(self):
         import jfrog_oidc
 
         result = run("happy-gcp-function")
-        # Rotator JSON log lines (rotate.log) are what the engine records.
-        rotator_events = [e for e in result["events"] if e["type"] == "rotator"]
-        self.assertTrue(any("secret_version_added" in e["message"] for e in rotator_events))
-        self.assertIn("rotator/rotate.py", rotate.__file__.replace("\\", "/"))
         self.assertIn("client/src/jfrog_oidc", jfrog_oidc.__file__.replace("\\", "/"))
         self.assertGreater(result["summary"]["emulator_requests"], 1000)
 
     def test_deterministic_for_a_seed(self):
-        a = Simulation(sc.load("rotator-down-5h")).run()
-        b = Simulation(sc.load("rotator-down-5h")).run()
+        a = Simulation(sc.load("jfrog-outage-90m")).run()
+        b = Simulation(sc.load("jfrog-outage-90m")).run()
         self.assertEqual(a["verdict"], b["verdict"])
-        self.assertEqual(a["summary"]["pulls_failed"], b["summary"]["pulls_failed"])
+        self.assertEqual({k: v for k, v in a["summary"].items() if k != "elapsed_s"},
+                         {k: v for k, v in b["summary"].items() if k != "elapsed_s"})
         self.assertEqual(a["chain"], b["chain"])
-
-    def test_causal_chain_for_missed_rotations(self):
-        r = run("rotator-down-5h")
-        text = " → ".join(r["chain"])
-        self.assertIn("rotations 03:23, 04:23, 05:23, 06:23 failed (fault rotator_down)", text)
-        self.assertIn("expired 06:23", text)
-        self.assertIn("registry 401", text)
-        self.assertGreater(r["summary"]["exposure_s"], 300)
-        self.assertLess(r["summary"]["alert_first_fired_s"], 6 * 3600 + 23 * 60)
 
     def test_outage_serves_cached_runtime_tokens(self):
         r = run("jfrog-outage-90m")
         self.assertEqual(r["verdict"], "degraded")
         self.assertGreater(r["summary"]["requests_ok_cached"], 0)
-        self.assertGreater(r["summary"]["pulls_failed"], 0)
+        self.assertGreater(r["summary"]["requests_unavailable"] + r["summary"]["requests_failed"], 0)
 
     def test_output_has_no_tokens(self):
         for name in ("happy-aca", "happy-gcp-function", "azure-v1-tokens"):
