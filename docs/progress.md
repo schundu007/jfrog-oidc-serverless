@@ -589,3 +589,24 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
 - `console/steps/verify.py`: a read-only live check per workload kind. Health endpoint for the Cloud Run service and function, the Container App and all three Functions kinds; latest `jfrog_check` log for the worker pool; logs of the last execution for both jobs. Functions on Container Apps that have scaled to zero are woken with a plain GET before the key call. Tokens and keys stay in memory and are never logged, stored or returned.
 - Runner: `steps=["verify"]` runs it alone; a run summary carries `verify_only` and `verify`. UI: a Verify button on the workload page, a Verified row in its essentials, a Verify view on the run page, and a Verified column on the portal dashboard (Status still comes from the last onboarding run).
 - Live 2026-11-01: all 9 workloads verified (5 Azure, 4 GCP).
+
+## Prove and image source (2026-11-01)
+
+- Serverless Prove (`console/steps/prove.py`), like KCP Prove:
+  - It checks that no setting holds a JFrog token, password or key.
+  - It checks for an OIDC exchange plus a download, and for no long-lived JFrog tokens.
+  - It checks that JFrog's record names the runtime user.
+  - It then removes the identity mapping. This needs a sha256-bound approval.
+  - It shows the workload is refused while the mapping is gone.
+  - It always restores the mapping and pulls again.
+- Prove buttons sit on the workload page and the JFrog OIDC page. On Home, Proof is a column with a Prove button on every Serverless and Kubernetes row; the separate tab is gone.
+- Verify shows the image source (`console/steps/provenance.py`):
+  - the running image and its commit tag;
+  - the ADO build-deploy run built from that commit;
+  - the base image pulled through JFrog's `docker-remote`, and JFrog's last-download record.
+  - For source-deployed functions it shows the PyPI remote and the latest run.
+- Live:
+  - Build-deploy runs 177–183 succeeded.
+  - Onboard runs 184 and 185 wired `JFROG_HEALTHCHECK_PATH`.
+  - All 9 workloads verified. The 6 image workloads match their ADO run by commit.
+  - The Prove on `cr-svc-jfrog` passed every step before the approval (secret, granted, keys, who). It waits for the operator's approval.
