@@ -94,7 +94,19 @@ case "$KIND" in
     state=$(az containerapp show --name "$WORKLOAD" --resource-group "$rg" --query properties.runningStatus -o tsv --only-show-errors)
     echo "deployed ${image} (${state:-unknown})"
     ;;
-  functions-premium|functions-flex)
+  functions-premium)
+    zip_deploy
+    ;;
+  functions-flex)
+    # The provider writes an account-key AzureWebJobsStorage on Flex; shared keys are off, so the host
+    # would not start. Drop it: the host uses AzureWebJobsStorage__* with its managed identity.
+    app=$(az functionapp list --resource-group "$rg" --query "[0].name" -o tsv)
+    if az functionapp config appsettings list --name "$app" --resource-group "$rg" \
+         --query "[?name=='AzureWebJobsStorage'].name" -o tsv --only-show-errors | grep -q .; then
+      az functionapp config appsettings delete --name "$app" --resource-group "$rg" \
+        --setting-names AzureWebJobsStorage --only-show-errors >/dev/null
+      echo "host storage: managed identity only (removed the account-key setting)"
+    fi
     zip_deploy
     ;;
   *) echo "unknown KIND: $KIND (job, app, functions-aca, functions-premium or functions-flex)" >&2; exit 2 ;;
