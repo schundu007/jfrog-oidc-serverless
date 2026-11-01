@@ -100,6 +100,7 @@
 
   // A service kind (Cloud Run job) or platform (aks) selects the list it belongs to.
   const sel = { nav: null, kind: null };
+  let unfolded = null;   // the section last opened for being current; after that the chevron decides
   function mark() {
     const p = location.pathname, u = new URLSearchParams(location.search);
     for (const [key, , , , kids] of NAV) {
@@ -111,8 +112,10 @@
       b.querySelectorAll(".nav-child").forEach((a, i) => {
         if (i === hit) a.setAttribute("aria-current", atTop() ? "page" : "true"); else a.removeAttribute("aria-current");
       });
-      if (kids.length) setOpen(b, here || opened.has(key), false);
+      // Entering a section unfolds it once; a fold the user makes then stays, even as filters change the address.
+      if (kids.length && !(here && unfolded === key)) setOpen(b, here || opened.has(key), false);
     }
+    unfolded = sel.nav;
   }
   function select(key) {
     const s = SECTIONS[key];
