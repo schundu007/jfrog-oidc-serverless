@@ -21,6 +21,18 @@
     }
   },
   "targets": {
+    "aca-jfrog-demo": {
+      "dedicated_identity": null,
+      "identity_location": "West US 2",
+      "identity_resource_group": "rg-aca-jfrog-demo",
+      "identity_type": "user_assigned",
+      "kind": "azure_container_app",
+      "name": "aca-jfrog-demo",
+      "principal_id": "5b3dd242-91c6-4dec-b8d8-6123b7881ec9",
+      "runtime_enabled": true,
+      "runtime_ttl": 3600,
+      "subject": "5b3dd242-91c6-4dec-b8d8-6123b7881ec9"
+    },
     "func-flex-jfrog-demo-8c4538": {
       "dedicated_identity": null,
       "identity_location": "West US 2",

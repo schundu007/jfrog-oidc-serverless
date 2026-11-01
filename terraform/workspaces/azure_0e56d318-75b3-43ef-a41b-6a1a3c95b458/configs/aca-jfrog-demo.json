@@ -1,0 +1,89 @@
+{
+  "jfrog": {
+    "adopt_integration": false,
+    "docker_host": "",
+    "docker_repo": "docker-virtual",
+    "integration_names": {
+      "aws": "aws-sts",
+      "azure": "azure-entra",
+      "gcp": "gcp-cloudrun",
+      "openshift": "openshift-knative"
+    },
+    "project_key": null,
+    "reader_group": "serverless-readers",
+    "url": "https://trial9hnw59.jfrog.io"
+  },
+  "name": "aca-jfrog-demo",
+  "runtime": {
+    "enabled": true,
+    "ttl_seconds": 3600,
+    "username": "svc-azure-container-app"
+  },
+  "state_backend": {
+    "container_name": "tfstate",
+    "key": "workspaces/azure_0e56d318-75b3-43ef-a41b-6a1a3c95b458.tfstate",
+    "resource_group_name": "ado-cicd-rg",
+    "storage_account_name": "stcdoazuretfstate",
+    "type": "azurerm"
+  },
+  "target": {
+    "aws": {
+      "account": "",
+      "cluster": "",
+      "name": "",
+      "profile": "",
+      "region": ""
+    },
+    "azure": {
+      "identity_resource_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourcegroups/rg-aca-jfrog-demo/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-aca-jfrog-demo",
+      "identity_type": "user_assigned",
+      "name": "aca-jfrog-demo",
+      "resource_group": "rg-aca-jfrog-demo",
+      "subscription": "0e56d318-75b3-43ef-a41b-6a1a3c95b458"
+    },
+    "discovered": {
+      "at": "2026-11-01T08:00:44Z",
+      "client_id": "ffb4bbda-30cf-4015-a85b-6825096bfbf6",
+      "environment_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourceGroups/rg-aca-jfrog-demo/providers/Microsoft.App/managedEnvironments/cae-aca-jfrog-demo",
+      "identity_resource_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourcegroups/rg-aca-jfrog-demo/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-aca-jfrog-demo",
+      "identity_type": "user_assigned",
+      "identity_types": "UserAssigned",
+      "image": "cracajfrogdemo8d00f6.azurecr.io/aca-jfrog-demo:36a331394a47",
+      "kind": "azure_container_app",
+      "location": "West US 2",
+      "mapping_subject": "5b3dd242-91c6-4dec-b8d8-6123b7881ec9",
+      "name": "aca-jfrog-demo",
+      "principal_id": "5b3dd242-91c6-4dec-b8d8-6123b7881ec9",
+      "registries": [
+        {
+          "identity": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourceGroups/rg-aca-jfrog-demo/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-aca-jfrog-demo",
+          "server": "cracajfrogdemo8d00f6.azurecr.io",
+          "username": "",
+          "uses_secret": false
+        }
+      ],
+      "resource_group": "rg-aca-jfrog-demo",
+      "resource_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourceGroups/rg-aca-jfrog-demo/providers/Microsoft.App/containerapps/aca-jfrog-demo",
+      "subscription": "0e56d318-75b3-43ef-a41b-6a1a3c95b458",
+      "user_assigned_identities": [
+        "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourcegroups/rg-aca-jfrog-demo/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-aca-jfrog-demo"
+      ]
+    },
+    "gcp": {
+      "name": "",
+      "project": "",
+      "region": ""
+    },
+    "kind": "azure_container_app",
+    "openshift": {
+      "cluster": "",
+      "context": "",
+      "name": "",
+      "namespace": ""
+    }
+  },
+  "verify": {
+    "artifact_path": "demo-generic/hello.txt",
+    "probe_image_runtime": ""
+  }
+}
