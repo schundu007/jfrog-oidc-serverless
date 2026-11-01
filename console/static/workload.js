@@ -35,14 +35,13 @@ function renderFacts(cfg) {
   const url = cfg.jfrog?.url || "";
   fill($("wl-ess-left"),
     ...pair("Status", h("span", { class: `blade-state ${tone}`, text: last ? `Last run ${statusText(last.status)}` : "No runs yet" })),
-    ...where.flatMap(([k, v]) => pair(k, v)),
-    ...pair("Workload type", kindLabel(ws.schema, cfg.target.kind)));
+    ...where.flatMap(([k, v]) => pair(k, v)));
   fill($("wl-ess-right"),
     ...pair("Identity", idn.text || "Not discovered"),
     ...(d.client_id && d.client_id !== idn.text ? pair("Client ID", d.client_id) : []),
     ...pair("JFrog platform", /^https:\/\//.test(url) ? h("a", { href: url, target: "_blank", rel: "noopener", text: url.replace(/^https:\/\//, "") }) : url),
     ...pair("Reader group", cfg.jfrog?.reader_group),
-    ...pair("Runs", last ? h("a", { href: "?tab=runs", text: `${ws.runs.length} · last ${ago(last.created)}` }) : "0"));
+    ...(last ? pair("Runs", h("a", { href: "?tab=runs", text: `${ws.runs.length} · last ${ago(last.created)}` })) : []));
   $("wl-sub").textContent = `${CLOUD_NAME[CLOUD] || CLOUD} · ${kindLabel(ws.schema, cfg.target.kind)}`;
   $("wl-logo").innerHTML = window.consoleNav?.icon(window.consoleNav?.section(cfg.target.kind)?.icon || CLOUD) || "";  // constant SVG only
 }
