@@ -4,7 +4,7 @@
 import { CLOUD_NAMES, LIVE_STATES, h, markEl, when, runPill, loadAll } from "./data.js";
 
 const $ = (id) => document.getElementById(id);
-const TABS = ["serverless", "kubernetes"];
+const TABS = ["serverless", "kubernetes", "proof"];
 const u0 = new URLSearchParams(location.search);
 const S = { tab: TABS.includes(u0.get("tab")) ? u0.get("tab") : "serverless", q: u0.get("q") || "", cloud: u0.get("cloud") || "",
   type: u0.get("type") || "", status: u0.get("status") || "" };
@@ -45,6 +45,15 @@ const VIEW = {
     row: (it) => rowOf(it.href, [nameCell(it.mark, it.name, it.href), stateCell(it.state), linkCell(it.type, it.typeHref),
       h("td", { class: "home-detail", text: it.detail || "—", title: it.detail || null })]),
     status: (it) => (it.ok ? "ok" : "attention"), statuses: [["ok", "Working"], ["attention", "Needs attention"]],
+  },
+  proof: {
+    rows: () => data.items.filter((it) => it.kind === "proof"), empty: "No clusters set up yet",
+    cols: ["Name", "Result", "Stored secret", "JFrog exchange", "Pull with OIDC", "Pull without trust", "Trust restored", "Proved"],
+    row: (it) => rowOf(it.href, [nameCell(it.mark, it.name, it.href), stateCell(it.state),
+      ...(it.claims ? ["secret", "exchange", "pull", "refused", "restored"].map((k) => stateCell([it.claims[k].ok ? "ok" : "bad", it.claims[k].text]))
+        : [h("td", { class: "muted", colspan: "5", text: "Run proof on the cluster's Proof tab" })]),
+      it.proved ? linkCell(it.proved, it.runHref) : h("td", { class: "muted", text: "—" })]),
+    status: (it) => (it.ok ? "ok" : "attention"), statuses: [["ok", "OIDC proven"], ["attention", "Not proven"]],
   },
 };
 
@@ -108,7 +117,8 @@ function essentials() {
   const tab = (t) => `/?tab=${t}`;
   $("ess-left").replaceChildren(
     ...pair("Workloads", `${wl.length} onboarded, ${wl.filter((it) => it.verified?.ok).length} verified working`, tab("serverless")),
-    ...pair("Clusters", `${cl.length} set up, ${cl.filter((it) => it.ok).length} working`, tab("kubernetes")));
+    ...pair("Clusters", `${cl.length} set up, ${cl.filter((it) => it.ok).length} working`, tab("kubernetes")),
+    ...pair("OIDC proof", `${data.items.filter((it) => it.kind === "proof" && it.ok).length} of ${cl.length} clusters proven`, tab("proof")));
   $("ess-right").replaceChildren(
     ...pair("Runs", `${data.runs.length} kept, ${failed} failed`, "/runs"),
     ...pair("In progress", String(live), live ? "/runs?status=active" : null),
