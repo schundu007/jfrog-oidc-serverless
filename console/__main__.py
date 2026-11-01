@@ -72,7 +72,8 @@ def main(argv=None) -> int:
         # (live mode); fixtures/record and --local-apply keep the local plan/apply/wire.
         delivery = None
         if not (args.local_apply or args.fixtures or args.record):
-            delivery = deliver.load_settings(REPO_ROOT / "pipelines" / "delivery.json")
+            delivery = deliver.load_settings(REPO_ROOT / "pipelines" / "delivery.json",
+                                             overrides=store.root / "connections" / "settings.json")
         console = ConsoleServer(host=args.host, port=args.port, token=store.session_token(renew=args.new_token),
                                 store=store, fixtures=args.fixtures, record_dir=args.record,
                                 delivery=delivery, repo_root=REPO_ROOT)

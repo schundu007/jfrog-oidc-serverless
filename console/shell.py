@@ -229,6 +229,17 @@ class Shell:
         self.misses.append(" ".join(want))
         return Result(argv, 127, "", "no recorded fixture for this command", 0.0)
 
+    def start(self, argv: list, timeout: float = 900.0, extra_env: dict | None = None) -> "Session":
+        """A sign-in that talks back: `az login --use-device-code`, `gcloud auth login --no-launch-browser`,
+        `aws sso login`. It runs in the background with a pipe to stdin; its merged output is kept
+        (redacted) for the page to show the sign-in link and code. What is sent to it (an authorization
+        code) is never logged or kept. One log line when it ends; the timeout kills it."""
+        if not isinstance(argv, (list, tuple)) or not argv or not all(isinstance(a, str) for a in argv):
+            raise TypeError("argv must be a non-empty list of strings")
+        if self.mode == "replay":
+            raise ValueError("interactive sign-in is not available in replay mode")
+        return Session(self, list(argv), timeout, extra_env)
+
     # -- HTTP ----------------------------------------------------------------------
 
     def http(self, method: str, url: str, headers: dict | None = None, body: bytes | None = None,
@@ -282,6 +293,86 @@ class Shell:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(self.recorded, indent=2) + "\n")
+
+
+class Session:
+    """A running interactive command (see Shell.start). lines: its redacted output so far."""
+
+    def __init__(self, shell: "Shell", argv: list, timeout: float, extra_env: dict | None):
+        self.argv, self._lines, self._partial, self.rc = argv, [], "", None
+        self._shell, self._started = shell, time.monotonic()
+        self._done = threading.Event()
+        exe = shell.which(argv[0])
+        if not exe:
+            self._lines.append(f"{argv[0]}: command not found on PATH")
+            self._finish(127)
+            return
+        try:
+            self._proc = subprocess.Popen([exe, *argv[1:]], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                          stdin=subprocess.PIPE, text=True, env=child_env(extra_env),
+                                          start_new_session=True, bufsize=1)
+        except OSError as exc:
+            self._lines.append(f"{argv[0]}: {exc}")
+            self._finish(126)
+            return
+        self._timer = threading.Timer(timeout, self.cancel)
+        self._timer.daemon = True
+        self._timer.start()
+        threading.Thread(target=self._read, daemon=True, name=f"session-{Path(argv[0]).name}").start()
+
+    def _read(self):
+        # Char by char: a prompt ("Enter authorization code: ") ends without a newline and must show.
+        while True:
+            ch = self._proc.stdout.read(1)
+            if not ch:
+                break
+            if ch == "\n":
+                self._lines.append(redact.text(self._partial))
+                self._partial = ""
+            elif len(self._partial) < 8192:
+                self._partial += ch
+        if self._partial:
+            self._lines.append(redact.text(self._partial))
+            self._partial = ""
+        self._proc.wait()
+        self._timer.cancel()
+        for pipe in (self._proc.stdout, self._proc.stdin):
+            try:
+                pipe.close()
+            except OSError:
+                pass
+        self._finish(self._proc.returncode)
+
+    @property
+    def lines(self) -> list:
+        return self._lines + ([redact.text(self._partial)] if self._partial.strip() else [])
+
+    def _finish(self, rc: int) -> None:
+        self.rc = rc
+        self._shell._log(redact.text(words.command(redact.argv(self.argv), rc, time.monotonic() - self._started)))
+        self._done.set()
+
+    @property
+    def done(self) -> bool:
+        return self._done.is_set()
+
+    def send(self, text: str) -> None:
+        """Answer the command's prompt (an authorization code). Never logged."""
+        if self.done:
+            raise ValueError("the sign-in has already ended")
+        try:
+            self._proc.stdin.write(text.strip() + "\n")
+            self._proc.stdin.flush()
+        except (BrokenPipeError, OSError, ValueError):
+            pass
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        self._done.wait(timeout)
+        return self.rc
+
+    def cancel(self) -> None:
+        if not self.done and getattr(self, "_proc", None):
+            _kill_group(self._proc)
 
 
 def load_fixtures(path) -> list:

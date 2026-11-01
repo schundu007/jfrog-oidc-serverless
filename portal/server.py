@@ -11,6 +11,8 @@ Old standalone Serverless paths (/gcp, /azure) redirect into their section.
 
 from __future__ import annotations
 
+import hmac
+import json
 import sys
 import threading
 import time
@@ -28,7 +30,9 @@ STATIC_DIR = Path(__file__).parent / "static"
 # Home and Runs read both sections (every cloud's workloads, clusters and runs); every other page
 # belongs to one section.
 STATIC = {"/": "index.html", "/dashboard.js": "dashboard.js", "/dashboard.css": "dashboard.css", "/data.js": "data.js",
-          "/runs": "runs.html", "/runs-page.js": "runs-page.js"}
+          "/runs": "runs.html", "/runs-page.js": "runs-page.js",
+          "/settings": "settings.html", "/settings-page.js": "settings-page.js"}
+MAX_BODY = 64 * 1024
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
 
 
@@ -50,7 +54,7 @@ def legacy_target(path: str):
 
 class Portal:
     def __init__(self, oidc_console, kcp_console, host: str = "127.0.0.1", port: int = 8760, log=sys.stderr,
-                 setup_console=None, oidc_setup=None):
+                 setup_console=None, oidc_setup=None, connections=None):
         self.setup = setup_console or setup.SetupServer(token=oidc_console.token, base=SETUP)
         # JFrog OIDC: its own mount and scope; the same run engine, so one stack never runs twice at once.
         self.oidc_setup = oidc_setup or setup.SetupServer(token=self.setup.token, jobs=self.setup.jobs, base=OIDC,
@@ -59,6 +63,7 @@ class Portal:
         if not (oidc_console.token == kcp_console.token == self.setup.token == self.oidc_setup.token):
             raise ValueError("every console must share the portal's session token")
         self.oidc, self.kcp = oidc_console, kcp_console
+        self.connections = connections   # Settings (portal/connections.py); None: the page says so
         self.host, self.requested_port, self.log = host, port, log
         self.token = oidc_console.token
         self.port = None
@@ -131,6 +136,8 @@ def _make_handler(portal: Portal):
             try:
                 if self.headers.get("Host", "") not in portal.allowed_hosts():
                     return self._send(403, "text/plain; charset=utf-8", b"bad Host header")
+                if split.path.startswith("/api/"):
+                    return self._api(split.path)
                 if split.path == "/favicon.ico":
                     return self._send(204, "text/plain")
                 to = legacy_target(split.path)
@@ -149,6 +156,77 @@ def _make_handler(portal: Portal):
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
+        def _json(self, status: int, body) -> None:
+            self._send(status, "application/json", json.dumps(redact.obj(body)).encode())
+
+        def _body(self) -> dict:
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > MAX_BODY:
+                self.close_connection = True
+                raise _Refused(413, "request body too large")
+            raw = self.rfile.read(length) if length else b""
+            if self.headers.get("Content-Type", "").split(";")[0].strip().lower() != "application/json":
+                raise _Refused(415, "Content-Type must be application/json")
+            try:
+                body = json.loads(raw or b"{}")
+            except ValueError:
+                raise _Refused(400, "invalid JSON") from None
+            if not isinstance(body, dict):
+                raise _Refused(400, "JSON body must be an object")
+            return body
+
+        def _api(self, path: str):
+            """Settings: /api/settings[/<tool>[/signin|code|cancel|signout|choices]]. Same checks as the
+            consoles' APIs: same-origin only and the session token."""
+            from .connections import TOOLS, SettingsError
+            try:
+                origin = self.headers.get("Origin")
+                if origin is not None and origin not in {f"http://{h}" for h in portal.allowed_hosts()}:
+                    raise _Refused(403, "cross-origin request refused")
+                if origin is None and self.headers.get("Sec-Fetch-Site", "same-origin") not in ("same-origin", "none"):
+                    raise _Refused(403, "cross-origin request refused")
+                given = self.headers.get("X-Console-Token", "")
+                if not (given and hmac.compare_digest(given.encode(), portal.token.encode())):
+                    raise _Refused(401, "missing or invalid X-Console-Token")
+                parts = [p for p in path.split("/") if p][1:]   # after "api"
+                if not parts or parts[0] != "settings" or len(parts) > 3:
+                    raise _Refused(404, "not found")
+                c = portal.connections
+                if c is None:
+                    raise _Refused(503, "Settings are not available in this mode")
+                m = self.command
+                if len(parts) == 1 and m == "GET":
+                    return self._json(200, c.status())
+                tool = parts[1]
+                if tool not in TOOLS:
+                    raise _Refused(404, "unknown connection")
+                act = parts[2] if len(parts) == 3 else ""
+                if m == "GET" and act == "choices":
+                    return self._json(200, {"items": c.choices(tool)})
+                if m == "PUT" and not act:
+                    return self._json(200, c.set_values(tool, self._body()))
+                if m == "POST" and act in ("signin", "code", "cancel", "signout"):
+                    body = self._body()
+                    if act == "signin":
+                        return self._json(200, c.sign_in(tool, body))
+                    if act == "code":
+                        return self._json(200, c.send_code(tool, body.get("code")))
+                    if act == "cancel":
+                        return self._json(200, c.cancel(tool))
+                    return self._json(200, c.sign_out(tool))
+                raise _Refused(405 if act in ("", "choices", "signin", "code", "cancel", "signout") else 404,
+                               "method not allowed")
+            except _Refused as exc:
+                self._json(exc.status, {"error": str(exc)})
+            except SettingsError as exc:
+                self._json(exc.status, {"error": redact.text(str(exc))})
+
         do_GET = do_POST = do_PUT = do_DELETE = do_PATCH = _dispatch
 
     return Handler
+
+
+class _Refused(Exception):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status

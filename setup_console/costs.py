@@ -166,7 +166,11 @@ def main(argv=None) -> int:
     from console.shell import Shell
     from .ado import Ado
     from .jobs import Jobs
-    delivery = deliver.load_settings(stacks.REPO_ROOT / "pipelines" / "delivery.json")
+    from console.store import default_root
+    from portal.connections import Connections   # the sign-ins made on Settings, as the portal uses them
+    Connections(default_root()).apply()
+    delivery = deliver.load_settings(stacks.REPO_ROOT / "pipelines" / "delivery.json",
+                                     overrides=default_root() / "connections" / "settings.json")
     env = delivery.get("environment") or "test"
     a = delivery["ado"]
     ado = Ado(Shell(mode="live", log=lambda line: None), a["organization"], a["project"],

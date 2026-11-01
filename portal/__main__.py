@@ -25,6 +25,7 @@ from setup_console.ado import Ado
 from setup_console.jobs import Jobs
 from setup_console.server import SetupServer
 
+from .connections import Connections
 from .server import K8S, OIDC, SERVERLESS, SETUP, Portal
 
 
@@ -53,10 +54,16 @@ def main(argv=None) -> int:
 
     store = Store()
     token = store.session_token(renew=args.new_token)
+    # Settings: sign-ins made on the page (console-owned CLI config dirs, the in-memory JFrog token) win over
+    # this machine's own logins; applied before any console makes its first call.
+    connections = None if args.fixtures or args.kcp_fixtures else Connections(store.root)
+    if connections:
+        connections.apply()
     try:
         delivery = None
         if not (args.local_apply or args.fixtures):
-            delivery = deliver.load_settings(REPO_ROOT / "pipelines" / "delivery.json")
+            delivery = deliver.load_settings(REPO_ROOT / "pipelines" / "delivery.json",
+                                             overrides=connections.file if connections else None)
         serverless = ConsoleServer(host=args.host, port=args.port, token=token, store=store, fixtures=args.fixtures,
                                    delivery=delivery, repo_root=REPO_ROOT, base=SERVERLESS)
         k8s = KcpServer(token=token, fixtures=args.kcp_fixtures, base=K8S,
@@ -76,7 +83,16 @@ def main(argv=None) -> int:
                          branch=delivery["ado"].get("target_branch") or "main", repo=delivery["ado"].get("repository") or "")
     setup = SetupServer(token=token, base=SETUP, env_name=env_name,
                         jobs=Jobs(env_name=env_name, token_source=operator.get, ado=ado_client))
-    portal = Portal(serverless, k8s, host=args.host, port=args.port, setup_console=setup)
+    if connections:
+        def retarget(ado):
+            # Azure DevOps changed on Settings: the running consoles use it from the next call.
+            if delivery is not None:
+                delivery["ado"].update(ado)
+            if ado_client:
+                ado_client.retarget(ado["organization"], ado["project"], ado.get("target_branch") or "main",
+                                    ado.get("repository") or "")
+        connections.on_ado = retarget
+    portal = Portal(serverless, k8s, host=args.host, port=args.port, setup_console=setup, connections=connections)
     try:
         portal.start()
     except OSError as exc:

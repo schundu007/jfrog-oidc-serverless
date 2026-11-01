@@ -76,13 +76,30 @@ def foundation_settings(stacks_dir) -> dict:
     return found
 
 
-def load_settings(path, stacks_dir=None) -> dict | None:
+ADO_KEYS = ("organization", "project", "repository", "target_branch")
+
+
+def ado_overrides(path) -> dict:
+    """The Azure DevOps organization, project, repository and branch entered on Settings
+    (.console/connections/settings.json, "ado"), or {}. Non-secret values only."""
+    try:
+        ado = json.loads(Path(path).read_text()).get("ado") or {}
+    except (OSError, ValueError, AttributeError):
+        return {}
+    return {k: str(ado[k]).strip() for k in ADO_KEYS if isinstance(ado.get(k), str) and ado[k].strip()}
+
+
+def load_settings(path, stacks_dir=None, overrides=None) -> dict | None:
     """pipelines/delivery.json (the ADO repository and merge mode), or None when the console
-    applies locally. Pipeline identities and state backends come from the foundation stacks."""
+    applies locally. Pipeline identities and state backends come from the foundation stacks.
+    overrides: the Settings file; its Azure DevOps values win over delivery.json's, and alone
+    (no delivery.json) they are enough."""
     path = Path(path)
-    if not path.is_file():
+    over = ado_overrides(overrides) if overrides else {}
+    if not path.is_file() and not over:
         return None
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text()) if path.is_file() else {"merge": "direct", "environment": "test"}
+    data["ado"] = {**(data.get("ado") or {}), **over}
     for section, keys in REQUIRED.items():
         missing = [k for k in keys if not (data.get(section) or {}).get(k)]
         if missing:

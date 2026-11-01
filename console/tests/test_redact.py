@@ -207,5 +207,23 @@ class WorkloadLogPathTests(unittest.TestCase):
         self.assertNotIn(REF, json.dumps(got))
 
 
+    def test_interactive_session_lines_and_log(self):
+        # Settings sign-ins (Shell.start): the CLI's output shown on the page and the log line.
+        import sys
+        import tempfile
+        from pathlib import Path
+        from console.shell import Shell
+        with tempfile.TemporaryDirectory() as d:
+            exe = Path(d) / "fakecli"
+            exe.write_text(f"#!{sys.executable}\nimport sys\nprint('token {REF}')\nsys.stdout.write('Bearer {JWT}')\n")
+            exe.chmod(0o755)
+            log = []
+            sess = Shell(mode="live", log=log.append, which=lambda n: str(exe)).start(["fakecli", f"--token={JWT}"], timeout=10)
+            self.assertEqual(sess.wait(10), 0)
+            seen = json.dumps(sess.lines) + "\n".join(log)
+            self.assertNotIn(JWT, seen)
+            self.assertNotIn(REF, seen)
+            self.assertTrue(log)
+
 if __name__ == "__main__":
     unittest.main()

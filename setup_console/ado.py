@@ -75,8 +75,12 @@ def outputs(lines: list) -> dict:
 
 class Ado:
     def __init__(self, sh, organization: str, project: str, branch: str = "main", repo: str = ""):
-        self.sh, self.branch, self.repo = sh, branch, repo
-        self.org = organization
+        self.sh = sh
+        self.retarget(organization, project, branch, repo)
+
+    def retarget(self, organization: str, project: str, branch: str = "main", repo: str = "") -> None:
+        """Point at another organization or project (Settings): the sign-in and the pipeline list start over."""
+        self.branch, self.repo, self.org = branch or "main", repo, organization
         self.base = f"https://dev.azure.com/{organization}/{project}/_apis"
         self.web = f"https://dev.azure.com/{organization}/{project}"
         self._token, self._token_at = "", 0.0
@@ -89,7 +93,7 @@ class Ado:
             res = self.sh.run(["az", "account", "get-access-token", "--resource", ADO_RESOURCE,
                                "--query", "accessToken", "-o", "tsv"], sensitive=True)
             if not res.ok or not res.stdout.strip():
-                raise AdoError("no Azure DevOps sign-in: run `az login` with the ADO account")
+                raise AdoError("no Azure DevOps sign-in: sign in to Azure on Settings with the ADO account")
             self._token, self._token_at = res.stdout.strip(), time.monotonic()
         return {"Authorization": f"Bearer {self._token}"}
 

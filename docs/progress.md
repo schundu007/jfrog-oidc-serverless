@@ -633,3 +633,12 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
 - UI: `/setup` (scope infra) and `/oidc` (scope oidc) are separate mounts; each 404s the other's stacks and runs. Sidebar JFrog OIDC → `/oidc`, `/oidc?cloud=<cloud>`; Runs has a JFrog OIDC tab (`area=oidc`, from `/oidc/api/jobs`).
 - Commands: `setup_console.costs` is infra only (refuses `down` while a JFrog OIDC stack stands on the stack); `setup_console.oidc status|down|up` runs the JFrog OIDC stacks. Both use `setup_console/runner.py` for the gates.
 - KCP console: Set up and Tear down are refused on AKS (guard names the pipeline); Verify and Prove stay.
+
+## Settings: sign-ins from the UI (2026-11-01)
+
+- Portal page `/settings` (sidebar "Settings"): one card each for Google Cloud, Azure, Azure DevOps, JFrog and AWS, with status, account and where the login lives (this machine or this console).
+- Google Cloud (`gcloud auth login --no-launch-browser --update-adc`; the code is pasted back and sent to stdin, never logged), Azure (`az login --use-device-code`, optional tenant) and AWS SSO (`aws sso login --use-device-code`) sign in through `console/shell.py` `Shell.start` (interactive `Session`, redacted output).
+- Console logins live in `.console/connections/<tool>` (0700, outside git) via `CLOUDSDK_CONFIG`/`AZURE_CONFIG_DIR`; `portal/connections.py` `Connections.apply()` switches the environment for every console. Sign out goes back to the machine login.
+- Pickers: GCP project, Azure subscription, AWS profile and region. ADO organization/project/repository/branch are saved in `.console/connections/settings.json` and override `pipelines/delivery.json` (`deliver.load_settings(overrides=)`); the running ADO client is retargeted.
+- JFrog: URL plus an admin token checked against `/access/api/v1/oidc`. The token is held in memory only (never saved, logged or returned) and must be entered again after a restart. The console-operator path still works without it.
+- API `/api/settings…`: session token, same-origin and JSON only; answers go through `redact.obj`.

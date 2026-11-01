@@ -433,8 +433,8 @@ class Preflight(AwsPreflight, OpenShiftPreflight):
             return
         token = self.env.get("JFROG_ACCESS_TOKEN", "")
         if not token:
-            return self.add("jfrog_token", "JFROG_ACCESS_TOKEN", "fail", "not set in the console's environment",
-                            "Create an admin-scoped access token in JFrog, export JFROG_ACCESS_TOKEN, and restart the console.")
+            return self.add("jfrog_token", "JFROG_ACCESS_TOKEN", "fail", "not entered on Settings",
+                            "Create an admin-scoped access token in JFrog and enter it on Settings (JFrog).")
         auth = {"Authorization": f"Bearer {token}"}
         res = self.sh.http("GET", f"{url}/access/api/v1/oidc", headers=auth, timeout=20)
         if res.status == 401:

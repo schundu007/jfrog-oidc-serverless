@@ -4,6 +4,11 @@
 
 These come from the README's "Verify in your environment" section. Fix them in code when real providers or APIs disagree:
 
+- Settings sign-ins (`portal/connections.py`), parsed from CLI text and not yet run end to end against real accounts:
+  - the gcloud `auth login --no-launch-browser --update-adc` prompt wording
+  - the `az login --use-device-code` message format
+  - `aws sso login --use-device-code` (needs AWS CLI ≥ 2.22)
+  - whether Terraform's Google provider picks up `GOOGLE_APPLICATION_CREDENTIALS` from the console's gcloud dir
 - The dedicated-identity attach flag `az containerapp [job] identity assign --user-assigned <id>` (`az functionapp identity assign --identities <id>` worked live, 2026-10-30).
 - AWS (built from the AWS docs; account 365506438424 read-only so far: `get-outbound-web-identity-federation-info` returns `FeatureDisabled`, recorded as the Preflight fixture):
   - The JWT's `sub` for a workload's assumed-role session: the docs' example shows the role ARN; the mapping and the sim assume that. It may be the assumed-role ARN (`arn:aws:sts::<acct>:assumed-role/<role>/<session>`).

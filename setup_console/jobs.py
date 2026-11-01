@@ -342,7 +342,7 @@ class Jobs:
         elif not host:
             self._say(job, "JFrog: no jfrog_url in the inputs.")
         elif env.get("JFROG_ACCESS_TOKEN"):
-            self._say(job, f"JFrog {host}: using the admin token the portal was started with.")
+            self._say(job, f"JFrog {host}: using the admin token from Settings.")
         elif not stacks.needs_jfrog(job["stack"], job["action"], self.root):
             self._say(job, f"JFrog {host}: not needed, the state holds no JFrog resources.")
         elif self.token_source:
