@@ -198,7 +198,8 @@ class Prove:
         bad = [n for n in s["names"] if SECRET_NAME.search(n)]
         v = s["values"]
         self.facts.update(provider=v.get("JFROG_OIDC_PROVIDER") or "", jfrog_url=v.get("JFROG_URL") or "",
-                          artifact=v.get("JFROG_ARTIFACT_PATH") or v.get("JFROG_HEALTHCHECK_PATH") or "",
+                          artifact=v.get("JFROG_ARTIFACT_PATH") or v.get("JFROG_HEALTHCHECK_PATH")
+                          or model.get_path(self.cfg, "verify.artifact_path") or "",
                           settings=len(s["names"]))
         facts = {"settings_checked": len(s["names"]), "secret_settings": len(bad), "registry_passwords": s["registry_passwords"]}
         if bad or s["registry_passwords"]:

@@ -29,7 +29,7 @@ from pathlib import Path
 
 from . import deliver, model, redact
 from . import jfrog_operator
-from .steps import discover, preflight, prove, tfgen, verify
+from .steps import discover, preflight, provenance, prove, tfgen, verify
 from .steps import terraform as tf
 from .steps import wire as wiremod
 
@@ -449,8 +449,18 @@ class RunManager:
 
 
     def _step_verify(self, run, ctx):
-        res = verify.run(run.cfg, self._shell(run, ctx))
+        sh = self._shell(run, ctx)
+        res = verify.run(run.cfg, sh)
         self._evidence(run, "verify", result=res)
+        if res["status"] == "pass":
+            # Where the running code came from: best effort, never fails the check.
+            host = str((run.cfg.get("jfrog") or {}).get("url") or "").split("//", 1)[-1].strip("/")
+            try:
+                jf = self.jfrog_operator_for(sh, host) if host else None
+                self._evidence(run, "verify", provenance=provenance.run(run.cfg, sh, self.delivery, self.repo_root or ".",
+                                                                     jfrog=jf, env=(self.delivery or {}).get("environment") or "test"))
+            except Exception as exc:   # noqa: BLE001
+                run.log(f"image source not read: {exc}")
         if res["status"] == "skipped":
             run.set_step("verify", status="skipped", note=res.get("reason"))
         elif res["status"] != "pass":

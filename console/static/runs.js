@@ -50,7 +50,25 @@ function viewVerify(step, ev) {
     kv([["JFrog user", r.jfrog_user], ["Identity", r.identity], ["Token lifetime", r.token_lifetime], ["Artifact read", r.read]]),
     kv([["Checked by", VIA[r.method] || r.method], ["Where", r.where], ["When", r.when ? stamp(r.when) : null],
       ["Checked at", r.checked_at ? stamp(r.checked_at) : null]]),
+    ...viewProvenance(ev.provenance),
   ];
+}
+
+// Where the running code came from: the image, the build-deploy run that built it (OIDC to JFrog), JFrog's record.
+function viewProvenance(p) {
+  if (!p) return [];
+  const b = p.build || {};
+  const run = b.url ? h("a", { href: b.url, target: "_blank", rel: "noopener noreferrer", text: `${b.pipeline} #${b.run}` })
+    : b.pipeline || null;
+  const cols = [[p.kind === "image" ? "Image" : "Code", p.image || "source package"], ["Commit", p.commit || b.commit],
+    ["Built from JFrog", (p.from_jfrog || []).join(", ")]];
+  const out = [h("h3", {}, "Image source", help("The build-deploy pipeline pulls from JFrog with its OIDC token and pushes to this stack's registry; the image tag is the commit, which ties it to the run."))];
+  out.push(kv(cols));
+  const rec = p.jfrog_record || {};
+  const row = [["Built by", b.by], ["Finished", b.finished ? stamp(b.finished) : null], ["Same commit as image", b.commit ? (b.matches_image ? "yes" : "no") : null],
+    ["JFrog last download", rec.last_downloaded_by]];
+  out.push(run ? kv(row, ["Build run", run]) : kv(row));
+  return out;
 }
 
 function viewPreflight(step, ev) {
