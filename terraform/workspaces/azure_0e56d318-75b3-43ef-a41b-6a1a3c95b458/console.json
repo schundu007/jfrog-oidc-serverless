@@ -1,0 +1,37 @@
+{
+  "cloud": "azure",
+  "key": "azure:0e56d318-75b3-43ef-a41b-6a1a3c95b458",
+  "shared": {
+    "adopt_integration": false,
+    "integration_name": "azure-entra",
+    "jfrog_url": "https://trial9hnw59.jfrog.io",
+    "location": "West US 2",
+    "name_prefix": "jfrog",
+    "project_key": null,
+    "reader_group": "serverless-readers",
+    "resource_group_name": "rg-func-flex-jfrog-demo",
+    "state_backend": {
+      "azurerm": {
+        "container_name": "tfstate",
+        "key": "workspaces/azure_0e56d318-75b3-43ef-a41b-6a1a3c95b458.tfstate",
+        "resource_group_name": "ado-cicd-rg",
+        "storage_account_name": "stcdoazuretfstate",
+        "use_azuread_auth": true
+      }
+    }
+  },
+  "targets": {
+    "func-flex-jfrog-demo-8c4538": {
+      "dedicated_identity": null,
+      "identity_location": "West US 2",
+      "identity_resource_group": "rg-func-flex-jfrog-demo",
+      "identity_type": "user_assigned",
+      "kind": "azure_functions_flex",
+      "name": "func-flex-jfrog-demo-8c4538",
+      "principal_id": "a2e643d4-2f1f-4509-b4e8-b64263e0ab08",
+      "runtime_enabled": true,
+      "runtime_ttl": 3600,
+      "subject": "a2e643d4-2f1f-4509-b4e8-b64263e0ab08"
+    }
+  }
+}

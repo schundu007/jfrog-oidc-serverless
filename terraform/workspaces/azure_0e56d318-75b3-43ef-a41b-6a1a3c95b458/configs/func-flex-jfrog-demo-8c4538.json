@@ -1,0 +1,84 @@
+{
+  "jfrog": {
+    "adopt_integration": false,
+    "docker_host": "",
+    "docker_repo": "docker-virtual",
+    "integration_names": {
+      "aws": "aws-sts",
+      "azure": "azure-entra",
+      "gcp": "gcp-cloudrun",
+      "openshift": "openshift-knative"
+    },
+    "project_key": null,
+    "reader_group": "serverless-readers",
+    "url": "https://trial9hnw59.jfrog.io"
+  },
+  "name": "func-flex-jfrog-demo-8c4538",
+  "runtime": {
+    "enabled": true,
+    "ttl_seconds": 3600,
+    "username": "svc-azure-functions-flex"
+  },
+  "state_backend": {
+    "container_name": "tfstate",
+    "key": "workspaces/azure_0e56d318-75b3-43ef-a41b-6a1a3c95b458.tfstate",
+    "resource_group_name": "ado-cicd-rg",
+    "storage_account_name": "stcdoazuretfstate",
+    "type": "azurerm"
+  },
+  "target": {
+    "aws": {
+      "account": "",
+      "cluster": "",
+      "name": "",
+      "profile": "",
+      "region": ""
+    },
+    "azure": {
+      "identity_resource_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourcegroups/rg-func-flex-jfrog-demo/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-func-flex-jfrog-demo",
+      "identity_type": "user_assigned",
+      "name": "func-flex-jfrog-demo-8c4538",
+      "resource_group": "rg-func-flex-jfrog-demo",
+      "subscription": "0e56d318-75b3-43ef-a41b-6a1a3c95b458"
+    },
+    "discovered": {
+      "app_kind": "functionapp,linux",
+      "at": "2026-11-01T05:13:02Z",
+      "client_id": "3beb6777-14c8-474a-9dce-4866a09e088d",
+      "identity_resource_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourcegroups/rg-func-flex-jfrog-demo/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-func-flex-jfrog-demo",
+      "identity_type": "user_assigned",
+      "identity_types": "UserAssigned",
+      "key_vault_reference_identity": "SystemAssigned",
+      "kind": "azure_functions_flex",
+      "location": "West US 2",
+      "mapping_subject": "a2e643d4-2f1f-4509-b4e8-b64263e0ab08",
+      "name": "func-flex-jfrog-demo-8c4538",
+      "plan_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourceGroups/rg-func-flex-jfrog-demo/providers/Microsoft.Web/serverfarms/asp-func-flex-jfrog-demo",
+      "plan_sku": "FC1",
+      "plan_tier": "FlexConsumption",
+      "principal_id": "a2e643d4-2f1f-4509-b4e8-b64263e0ab08",
+      "resource_group": "rg-func-flex-jfrog-demo",
+      "resource_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourceGroups/rg-func-flex-jfrog-demo/providers/Microsoft.Web/sites/func-flex-jfrog-demo-8c4538",
+      "subscription": "0e56d318-75b3-43ef-a41b-6a1a3c95b458",
+      "user_assigned_identities": [
+        "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourcegroups/rg-func-flex-jfrog-demo/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-func-flex-jfrog-demo"
+      ]
+    },
+    "gcp": {
+      "name": "",
+      "project": "",
+      "region": ""
+    },
+    "kind": "azure_functions_flex",
+    "openshift": {
+      "cluster": "",
+      "context": "",
+      "name": "",
+      "namespace": ""
+    }
+  },
+  "verify": {
+    "artifact_path": "demo-generic/hello.txt",
+    "probe_image_runtime": ""
+  }
+}
