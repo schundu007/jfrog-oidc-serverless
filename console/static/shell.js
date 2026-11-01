@@ -217,6 +217,61 @@
   }
   window.consoleBlade = { bar, el };
 
+  // ------------------------------------------------------------------ sortable columns
+  // Every list table (.blade-table) sorts by a click on its column heading: first click ascending, the next
+  // descending. Rows sort within each tbody, so a table grouped by cloud
+  // stays grouped; group and heading rows inside a tbody stay on top. The choice outlives redraws and refresh.
+  const SORT_KEY = "console.sort";
+  const sorts = (() => { try { return JSON.parse(sessionStorage.getItem(SORT_KEY)) || {}; } catch { return {}; } })();
+  const sortable = (th) => th.scope === "col" && !th.classList.contains("sel") && !th.querySelector("input") && th.textContent.trim();
+  const tableKey = (t) => `${location.pathname}|${[...(t.tHead?.rows[0]?.cells || [])].map((c) => c.textContent.trim()).join(",")}`;
+  const cellValue = (td) => (td?.dataset.sort ?? td?.textContent ?? "").replace(/\s+/g, " ").trim();
+  const DATE = /\b\d{4}\b.*\d{1,2}:\d{2}|^\d{4}-\d{2}-\d{2}/;
+  function compare(a, b) {
+    const blank = (v) => !v || v === "—";
+    if (blank(a) || blank(b)) return blank(a) - blank(b);
+    if (DATE.test(a) && DATE.test(b)) {
+      const x = Date.parse(a.replace(/ ([A-Z]{3})$/, "")), y = Date.parse(b.replace(/ ([A-Z]{3})$/, ""));
+      if (!Number.isNaN(x) && !Number.isNaN(y)) return x - y;
+    }
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+  }
+  function applySort(t) {
+    const st = sorts[tableKey(t)];
+    const width = t.tHead?.rows[0]?.cells.length || 0;
+    for (const th of t.querySelectorAll("th")) {
+      if (!sortable(th)) continue;
+      if (!th.classList.contains("sortable")) { th.classList.add("sortable"); th.tabIndex = 0; }
+      const on = st && th.cellIndex === st.col;
+      const want = on ? (st.dir > 0 ? "ascending" : "descending") : null;
+      if (th.getAttribute("aria-sort") !== want) want ? th.setAttribute("aria-sort", want) : th.removeAttribute("aria-sort");
+    }
+    if (!st) return;
+    for (const body of t.tBodies) {
+      const data = [...body.rows].filter((r) => r.cells.length === width && ![...r.cells].some((c) => c.tagName === "TH" || c.colSpan > 1));
+      if (data.length < 2) continue;
+      const sorted = [...data].sort((x, y) => st.dir * compare(cellValue(x.cells[st.col]), cellValue(y.cells[st.col])));
+      if (sorted.every((r, i) => r === data[i])) continue;
+      body.append(...sorted);
+    }
+  }
+  const applyAll = () => document.querySelectorAll("table.blade-table").forEach(applySort);
+  function onSortClick(e) {
+    if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
+    const th = e.target.closest("table.blade-table th.sortable");
+    if (!th || e.target.closest("a, button, input")) return;
+    e.preventDefault();
+    const t = th.closest("table"), k = tableKey(t), cur = sorts[k];
+    sorts[k] = { col: th.cellIndex, dir: cur && cur.col === th.cellIndex ? -cur.dir : 1 };
+    try { sessionStorage.setItem(SORT_KEY, JSON.stringify(sorts)); } catch { /* memory only */ }
+    applySort(t);
+  }
+  document.addEventListener("click", onSortClick);
+  document.addEventListener("keydown", onSortClick);
+  let sortQueued = false;
+  new MutationObserver(() => { if (!sortQueued) { sortQueued = true; setTimeout(() => { sortQueued = false; applyAll(); }, 0); } })
+    .observe(document.body, { childList: true, subtree: true });
+
   // Essentials grid: at most 4 columns, rows as even as the item count allows (4 → 2x2, 6 → 3x2, 8 → 4x2,
   // 9 → 3x3; 1–3 in one row). Among 4, 3 and 2 columns, the fewest empty cells without more rows than
   // columns; on a tie, the squarer. Set as --ess-cols on every Essentials block whenever its items change.
