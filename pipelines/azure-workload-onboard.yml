@@ -18,6 +18,7 @@ parameters:
 
 variables:
   - template: vars/azure-test.yml
+  - template: vars/azure-test-jfrog.yml
   - group: jfrog-oidc-azure-test
   - group: jfrog-oidc-azure-test-jfrog   # JFrog OIDC (azure-jfrog-trust)
 

@@ -5,7 +5,7 @@
 import { CLOUD_NAMES, LIVE_STATES, h, markEl, when, runPill, loadAll, removeRun } from "./data.js";
 
 const $ = (id) => document.getElementById(id);
-const TABS = ["", "serverless", "kubernetes", "infrastructure"];
+const TABS = ["", "serverless", "kubernetes", "infrastructure", "oidc"];
 const TAB_ID = (t) => `tab-${t || "all"}`;
 const u0 = new URLSearchParams(location.search);
 const F = { area: TABS.includes(u0.get("area")) ? u0.get("area") : "", q: u0.get("q") || "", cloud: u0.get("cloud") || "",

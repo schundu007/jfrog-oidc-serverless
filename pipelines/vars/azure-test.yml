@@ -5,9 +5,9 @@
 # variable group jfrog-oidc-azure-<env>. Connection names are read at compile time, so they stay here.
 # JFrog values (JFROG_URL, JFROG_OIDC_PROVIDER) come only from jfrog-oidc-azure-<env>-jfrog, written by
 # terraform/stacks/oidc/azure/azure-jfrog-trust, and only build-deploy and onboarding runs read it.
+# JFrog repository names are in azure-<env>-jfrog.yml, read by the same runs only.
 variables:
   ENVIRONMENT: test
   BUILD_SERVICE_CONNECTION: jfrog-oidc-azure-build   # created by azure-foundation
   SETUP_SERVICE_CONNECTION: jfrog-oidc-azure-setup   # created by azure-foundation
   TERRAFORM_VERSION: 1.17.1
-  JFROG_DOCKER_REMOTE: docker-remote

@@ -53,10 +53,11 @@
     ["serverless", "Serverless", "/serverless/", "serverless", SERVERLESS],
     ["k8s", "Kubernetes", "/k8s/clusters", "k8s", [["AKS clusters", "/k8s/clusters/aks", "aks", (p) => /^\/k8s\/clusters\/aks(\/|$)/.test(p)],
       ["GKE clusters", "/k8s/clusters/gke", "gke", (p) => /^\/k8s\/clusters\/gke(\/|$)/.test(p)]]],
-    ["oidc", "JFrog OIDC", "/setup/oidc", "boot", BY_CLOUD("/setup/oidc", (c) => `-${c}`)],
+    ["oidc", "JFrog OIDC", "/oidc", "boot", BY_CLOUD("/oidc", (c) => `?cloud=${c}`)],
     ["runs", "Runs", "/runs", "runs", [["Serverless", "/runs?area=serverless", "serverless", q("area", "serverless")],
       ["Kubernetes", "/runs?area=kubernetes", "k8s", q("area", "kubernetes")],
-      ["Infrastructure", "/runs?area=infrastructure", "infra", q("area", "infrastructure")]]]];
+      ["Infrastructure", "/runs?area=infrastructure", "infra", q("area", "infrastructure")],
+      ["JFrog OIDC", "/runs?area=oidc", "boot", q("area", "oidc")]]]];
 
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const glyph = (k) => (k === "boot" ? BOOT : CLOUD_LOGO[k] || NAV_ICON[k] || ICON[k] || "");
@@ -85,7 +86,7 @@
   function fromPath() {
     const p = location.pathname;
     if (p === "/") return "home";
-    if (/^\/setup\/oidc(-[a-z]+)?\/?$/.test(p)) return "oidc";
+    if (/^\/oidc(\/|$)/.test(p)) return "oidc";
     if (/^\/setup(\/|$)/.test(p)) return "infra";
     if (/^\/runs(\/|$)/.test(p)) return "runs";
     if (/^\/serverless(\/|$)/.test(p)) return "serverless";

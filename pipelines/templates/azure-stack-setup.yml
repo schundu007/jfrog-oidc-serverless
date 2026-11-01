@@ -1,10 +1,10 @@
-# Template: plan -> apply (or destroy) for ONE Azure stack (a serverless workload, the test cluster, or
-# a JFrog OIDC stack that runs after one). Used only by pipelines/{serverless,kubernetes,oidc}/azure/<stack>/stack-setup.yml,
-# one pipeline per stack. Infrastructure runs (jfrog: false) get no JFrog token, provider or variable.
-# A JFrog OIDC stack (jfrog: true) also reads the JFrog variable group and gets its JFrog admin token
-# from the setup connection's OIDC token (the ado-setup mapping); never a stored token. The setup service connection's OIDC token gives the connection's Azure login. The apply stage targets the ADO
-# environment "<stack>-<environment>" (approval) and applies exactly the reviewed plan file;
-# action=destroy plans `terraform plan -destroy` and applies that the same way.
+# Template: plan -> apply (or destroy) for ONE Azure infrastructure stack (a serverless workload or the
+# test cluster). Used only by pipelines/{serverless,kubernetes}/azure/<stack>/stack-setup.yml, one pipeline
+# per stack. Infrastructure only: no JFrog token, provider, variable group or repository name (JFrog OIDC
+# stacks have their own template, azure-oidc-stack-setup.yml). The setup service connection's OIDC token
+# gives the connection's Azure login. The apply stage targets the ADO environment "<stack>-<environment>"
+# (approval) and applies exactly the reviewed plan file; action=destroy plans `terraform plan -destroy`
+# and applies that the same way.
 
 parameters:
   - name: stack
@@ -17,15 +17,10 @@ parameters:
     type: object
   - name: state
     type: object
-  - name: jfrog
-    type: boolean
-    default: false
 
 variables:
   - template: /pipelines/vars/azure-${{ parameters.environment }}.yml
   - group: jfrog-oidc-azure-${{ parameters.environment }}
-  - ${{ if parameters.jfrog }}:
-    - group: jfrog-oidc-azure-${{ parameters.environment }}-jfrog   # JFROG_URL, JFROG_OIDC_PROVIDER
   - name: PLAN_FILE
     value: $(Pipeline.Workspace)/plan/tfplan
   - name: PLAN_ACTION
@@ -60,7 +55,7 @@ stages:
               arguments: $(PLAN_ACTION) ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-              JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
+              ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
               STACK_INPUTS: ${{ convertToJson(parameters.inputs) }}
               STACK_STATE: ${{ convertToJson(parameters.state) }}
           - publish: $(Pipeline.Workspace)/plan
@@ -97,6 +92,6 @@ stages:
                     arguments: apply ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
                   env:
                     SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-                    JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
+                    ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
                     STACK_INPUTS: ${{ convertToJson(parameters.inputs) }}
                     STACK_STATE: ${{ convertToJson(parameters.state) }}

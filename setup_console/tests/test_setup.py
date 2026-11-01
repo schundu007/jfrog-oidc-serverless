@@ -281,8 +281,16 @@ class StackTests(unittest.TestCase):
             m = _re.search(r"pipeline_stacks = \[([^\]]*)\]", tf)
             listed = set(_re.findall(r'"([a-z0-9-]+)"', m.group(1)) if m else
                          _re.findall(r'"([a-z0-9-]+)"\s*=', _re.search(r"pipeline_stack_kind = \{([^}]*)\}", tf).group(1)))
-            have = {p.parent.name for p in (stacks.REPO_ROOT / "pipelines").glob(f"*/{cloud}/*/stack-setup.yml")}
+            have = {p.parent.name for k in ("serverless", "kubernetes")
+                    for p in (stacks.REPO_ROOT / "pipelines" / k).glob(f"{cloud}/*/stack-setup.yml")}
             self.assertEqual(listed, have, cloud)
+            self.assertNotIn("oidc", tf)   # infrastructure registers nothing for JFrog OIDC
+        # The JFrog OIDC stacks' pipelines and environments belong to their cloud's trust stack.
+        tf = (stacks.STACKS_DIR / "oidc" / "azure" / "azure-jfrog-trust" / "pipelines.tf").read_text()
+        listed = set(_re.findall(r'"([a-z0-9-]+)"\s*=\s*\{', _re.search(r"oidc_pipelines = \{(.*?)\n  \}", tf, _re.S).group(1)))
+        have = {p.parent.name for p in (stacks.REPO_ROOT / "pipelines" / "oidc").glob("azure/*/stack-setup.yml")}
+        self.assertEqual(listed, have)
+        self.assertEqual([p for p in (stacks.REPO_ROOT / "pipelines" / "oidc").glob("gcp/*/stack-setup.yml")], [])
 
     def test_each_serverless_type_is_its_own_stack(self):
         # The real stacks: one per workload type, each standing only on its cloud's foundation.
@@ -928,8 +936,39 @@ class ServerTests(unittest.TestCase):
     def test_lists_catalogue(self):
         st, body, hdrs = self.req("GET", "/api/stacks")
         self.assertEqual(st, 200)
-        self.assertEqual([s["id"] for s in json.loads(body)["stacks"]], list(stacks.IDS))
+        data = json.loads(body)
+        self.assertEqual([s["id"] for s in data["stacks"]], [s for s in stacks.IDS if stacks.get(s)["kind"] != "JFrog OIDC"])
+        self.assertEqual(data["scope"], "infra")
         self.assertIn("Content-Security-Policy", hdrs)
+        self.assertEqual(self.req("GET", "/api/stacks/gcp-jfrog-trust/inputs")[0], 404)   # JFrog OIDC: not served here
+        self.assertEqual(self.req("POST", "/api/stacks/aks-jfrog-trust/jobs", {"action": "plan-apply"})[0], 404)
+
+    def test_oidc_scope_serves_only_jfrog_oidc_stacks(self):
+        o = SetupServer(token=TOKEN, root=self.root.dir, state_root=self.root.state, log=open("/dev/null", "w"),
+                        jobs=self.console.jobs, base="/oidc", scope="oidc")
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(o))
+        o.port = httpd.server_address[1]
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        self.addCleanup(httpd.server_close)
+        self.addCleanup(httpd.shutdown)
+        port, self.console.port = self.console.port, o.port
+        try:
+            data = json.loads(self.req("GET", "/api/stacks")[1])
+            self.assertEqual([s["id"] for s in data["stacks"]], ["gcp-jfrog-trust", "azure-jfrog-trust", "aks-jfrog-trust"])
+            self.assertEqual(data["titles"]["aks-cluster"], "AKS cluster")   # names what it stands on, nothing more
+            self.assertEqual(self.req("GET", "/api/stacks/gcp-cloud-run/inputs")[0], 404)
+            self.assertEqual(self.req("POST", "/api/stacks/gcp-foundation/jobs", {"action": "plan-apply"})[0], 404)
+            self.assertEqual(self.req("GET", "/api/stacks/gcp-jfrog-trust/inputs")[0], 200)
+        finally:
+            self.console.port = port
+        self.assertEqual(self.req("PUT", "/api/stacks/gcp-cloud-run/inputs", {"values": {"gcp_project_id": "proj-9"}})[0], 200)
+        self.assertEqual(self.req("POST", "/api/stacks/gcp-cloud-run/jobs", {"action": "plan-apply"})[0], 202)
+        self.assertEqual(o.history(), [])
+        jid = self.console.history()[0]["id"]
+        with self.assertRaises(Exception):
+            o.job(jid)
+        with self.assertRaises(ValueError):
+            SetupServer(token=TOKEN, scope="both")
 
     def test_page_carries_base(self):
         st, body, _ = self.req("GET", "/", token=None, headers={"Sec-Fetch-Site": "none"})
@@ -949,7 +988,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual({f["name"]: f.get("current") for f in json.loads(body)["fields"]}["name"], "x")
         self.assertEqual(self.req("POST", "/api/stacks/gcp-cloud-run/jobs", {"action": "plan-apply"})[0], 202)
         self.assertEqual(self.req("POST", "/api/stacks/azure-container-apps/jobs", {"action": "plan-apply"})[0], 400)
-        self.assertEqual(self.req("POST", "/api/stacks/nope/jobs", {"action": "plan-apply"})[0], 400)
+        self.assertEqual(self.req("POST", "/api/stacks/nope/jobs", {"action": "plan-apply"})[0], 404)
         self.assertEqual(self.req("GET", "/api/options/nope")[0], 404)
         st, body, _ = self.req("GET", "/api/jobs")
         self.assertEqual(st, 200)

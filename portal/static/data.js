@@ -200,22 +200,23 @@ function proofOf(it, run) {
 // stack's stack-setup pipeline. Each row opens its log on the page it was run from.
 const SETUP_STATE = { done: "succeeded", failed: "failed", running: "running" };
 const SETUP_ACTION = { "plan-apply": "Deploy plan", "plan-destroy": "Destroy plan", apply: "Apply", forget: "Forget" };
-async function infrastructure() {
-  const { jobs } = await get("/setup/api/jobs");
-  const iso = (t) => t ? new Date(t * 1000).toISOString().replace(/\.\d+Z$/, "Z") : "";
-  const runRows = jobs.map((j) => {
-    const page = j.kind === "JFrog OIDC" ? "/setup/oidc" : "/setup";
-    return { cloud: j.cloud, section: null, name: j.title, mark: j.cloud,
-      type: `${j.kind === "JFrog OIDC" ? "JFrog OIDC" : `${j.kind} infrastructure`} · ${SETUP_ACTION[j.action] || words(j.action)}`,
-      status: SETUP_STATE[j.state] || j.state, created: iso(j.started), id: j.id, area: "infrastructure",
-      api: `/setup/api/jobs/${encodeURIComponent(j.id)}`, href: `${page}?job=${encodeURIComponent(j.id)}`,
-      typeHref: j.cloud ? (j.kind === "JFrog OIDC" ? `${page}-${j.cloud}` : `${page}?cloud=${j.cloud}`) : page };
-  });
-  return { items: [], runs: runRows };
+// Each from its own mount: /setup lists only infrastructure runs, /oidc only JFrog OIDC runs.
+function setupRuns(page, area, typeOf) {
+  return async () => {
+    const { jobs } = await get(`${page}/api/jobs`);
+    const iso = (t) => t ? new Date(t * 1000).toISOString().replace(/\.\d+Z$/, "Z") : "";
+    return { items: [], runs: jobs.map((j) => ({ cloud: j.cloud, section: null, name: j.title, mark: j.cloud,
+      type: `${typeOf(j)} · ${SETUP_ACTION[j.action] || words(j.action)}`,
+      status: SETUP_STATE[j.state] || j.state, created: iso(j.started), id: j.id, area,
+      api: `${page}/api/jobs/${encodeURIComponent(j.id)}`, href: `${page}?job=${encodeURIComponent(j.id)}`,
+      typeHref: j.cloud ? `${page}?cloud=${j.cloud}` : page })) };
+  };
 }
+const infrastructure = setupRuns("/setup", "infrastructure", (j) => `${j.kind} infrastructure`);
+const jfrogOidc = setupRuns("/oidc", "oidc", () => "JFrog OIDC");
 
 // Everything, newest run first. A source that fails is reported, not shown as empty.
-const SOURCES = [["Serverless", serverless], ["Kubernetes", kubernetes], ["Infrastructure", infrastructure]];
+const SOURCES = [["Serverless", serverless], ["Kubernetes", kubernetes], ["Infrastructure", infrastructure], ["JFrog OIDC", jfrogOidc]];
 export async function loadAll() {
   const results = await Promise.allSettled(SOURCES.map(([, f]) => f()));
   const ok = results.filter((r) => r.status === "fulfilled").map((r) => r.value);

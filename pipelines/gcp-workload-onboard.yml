@@ -18,6 +18,7 @@ parameters:
 
 variables:
   - template: vars/gcp-test.yml
+  - template: vars/gcp-test-jfrog.yml
   - group: jfrog-oidc-gcp-test
   - group: jfrog-oidc-gcp-test-jfrog   # JFrog OIDC (gcp-jfrog-trust)
 

@@ -4,6 +4,7 @@
 # here: terraform/stacks/serverless/gcp/gcp-foundation writes them to the variable group jfrog-oidc-gcp-<env>.
 # JFrog values (JFROG_URL, JFROG_OIDC_PROVIDER) come only from jfrog-oidc-gcp-<env>-jfrog, written by
 # terraform/stacks/oidc/gcp/gcp-jfrog-trust, and only build-deploy and onboarding runs read it.
+# JFrog repository names are in gcp-<env>-jfrog.yml, read by the same runs only.
 variables:
   ENVIRONMENT: test
   # Written by terraform/stacks/serverless/gcp/gcp-foundation (token issuers only, no Azure access);
@@ -11,6 +12,3 @@ variables:
   BUILD_SERVICE_CONNECTION: jfrog-oidc-gcp-build
   SETUP_SERVICE_CONNECTION: jfrog-oidc-gcp-setup
   TERRAFORM_VERSION: 1.17.1
-  JFROG_DOCKER_REMOTE: docker-remote
-  # PyPI remote the function build vendors its packages from (no public PyPI in the build).
-  JFROG_PYPI_REPO: pypi-remote

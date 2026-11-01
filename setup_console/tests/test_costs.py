@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from setup_console import costs, stacks
+from setup_console import costs, oidc, stacks
 
 
 class FakeJobs:
@@ -77,24 +77,24 @@ class CostsTest(unittest.TestCase):
         self.assertTrue(all(stacks.get(s)["group"] == "Azure" for s in costs.select("azure")))
 
     def test_down_approves_the_exact_plan_with_the_name_typed(self):
-        jobs = FakeJobs(self.tmp, gone={"gke-cluster"})
+        jobs = FakeJobs(self.tmp, gone={"gke-cluster"}, down={"aks-jfrog-trust"})
         res = costs.run_all(self.runner(jobs, FakeAdo([])), "down", ["aks-cluster", "gke-cluster"])
         self.assertEqual(res, {"aks-cluster": "destroyed", "gke-cluster": "already deleted"})
         plan = next(c for c in jobs.calls if c[:2] == ("aks-cluster", "plan-destroy"))
         apply = next(c for c in jobs.calls if c[:2] == ("aks-cluster", "apply"))
         self.assertEqual(apply[2], {"plan_sha256": f"{jobs.calls.index(plan) + 1:064x}", "typed_confirmation": "aks-cluster"})
         self.assertFalse(any(c[:2] == ("gke-cluster", "apply") for c in jobs.calls))
-        self.assertEqual([c[0] for c in jobs.calls if c[1] == "status"], ["azure-foundation", "gcp-foundation"])
+        self.assertEqual([c[0] for c in jobs.calls if c[1] == "status"], ["azure-foundation", "gcp-foundation", "aks-jfrog-trust"])
 
-    def test_up_brings_back_a_foundation_deleted_outside_with_its_jfrog_trust_first(self):
+    def test_up_brings_back_a_foundation_deleted_outside_first_and_never_its_jfrog_trust(self):
         self.save("gke-cluster", {"node_count": 1})
         jobs = FakeJobs(self.tmp, down={"gcp-foundation"})
         costs.run_all(self.runner(jobs, FakeAdo([])), "up", ["gke-cluster"])
         order = [c[0] for c in jobs.calls if c[1] == "apply"]
-        self.assertEqual(order, ["gcp-foundation", "gcp-jfrog-trust", "gke-cluster"])
+        self.assertEqual(order, ["gcp-foundation", "gke-cluster"])
 
     def test_down_goes_on_when_a_foundation_is_gone(self):
-        jobs = FakeJobs(self.tmp, down={"azure-foundation"}, gone={"aks-cluster"})
+        jobs = FakeJobs(self.tmp, down={"azure-foundation", "aks-jfrog-trust"}, gone={"aks-cluster"})
         res = costs.run_all(self.runner(jobs, FakeAdo([])), "down", ["aks-cluster"])
         self.assertEqual(res, {"aks-cluster": "already deleted"})
         self.assertFalse(any(c[1] == "plan-apply" for c in jobs.calls))
@@ -138,22 +138,22 @@ class CostsTest(unittest.TestCase):
             self.runner(jobs, FakeAdo([])).up("aks-cluster")
         self.assertEqual(jobs.calls, [])
 
-    def test_the_clusters_jfrog_trust_comes_up_after_it_and_goes_down_before_it(self):
+    def test_infrastructure_never_runs_a_jfrog_oidc_stack(self):
         self.save("aks-cluster", {"node_count": 1})
         self.save("aks-jfrog-trust", {"cluster_name": "c"})
         jobs = FakeJobs(self.tmp)
         self.runner(jobs, FakeAdo([])).up("aks-cluster")
-        self.assertEqual([c[0] for c in jobs.calls if c[1] == "apply"], ["aks-cluster", "aks-jfrog-trust"])
-        jobs = FakeJobs(self.tmp)
+        self.assertEqual({c[0] for c in jobs.calls}, {"aks-cluster"})
+        jobs = FakeJobs(self.tmp, down={"aks-jfrog-trust"})
         costs.run_all(self.runner(jobs, FakeAdo([])), "down", ["aks-cluster"])
-        self.assertEqual([c[0] for c in jobs.calls if c[1] == "apply"], ["aks-jfrog-trust", "aks-cluster"])
+        self.assertEqual([c[0] for c in jobs.calls if c[1] == "apply"], ["aks-cluster"])
 
-    def test_up_stops_when_the_clusters_jfrog_trust_is_not_filled_in(self):
-        self.save("aks-cluster", {"node_count": 1})
+    def test_down_refuses_while_a_jfrog_oidc_stack_still_stands_on_it(self):
         jobs = FakeJobs(self.tmp)
-        with self.assertRaisesRegex(costs.CostError, "aks-jfrog-trust"):
-            self.runner(jobs, FakeAdo([])).up("aks-cluster")
-        self.assertEqual(jobs.calls, [])
+        res = costs.run_all(self.runner(jobs, FakeAdo([])), "down", ["aks-cluster"])
+        self.assertIn("aks-jfrog-trust still stands on it", res["aks-cluster"])
+        self.assertIn("setup_console.oidc down", res["aks-cluster"])
+        self.assertFalse(any(c[1] in ("plan-destroy", "apply") for c in jobs.calls))
 
     def test_a_cluster_has_no_build_deploy(self):
         self.save("gke-cluster", {"node_count": 1})
@@ -164,3 +164,38 @@ class CostsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OidcTest(unittest.TestCase):
+    setUp, save = CostsTest.setUp, CostsTest.save
+
+    def orunner(self, jobs):
+        return oidc.OidcRunner(jobs, FakeAdo([]), "test", state_root=self.tmp, sleep=lambda s: None, out=self.lines.append)
+
+    def test_only_jfrog_oidc_stacks(self):
+        self.assertEqual(set(oidc.OIDC), {"gcp-jfrog-trust", "azure-jfrog-trust", "aks-jfrog-trust"})
+        self.assertFalse(set(oidc.OIDC) & set(costs.COSTING))
+        self.assertEqual(oidc.select("azure"), ["azure-jfrog-trust", "aks-jfrog-trust"])
+
+    def test_up_skips_a_stack_whose_infrastructure_is_down(self):
+        self.save("aks-jfrog-trust", {"cluster_name": "c"})
+        jobs = FakeJobs(self.tmp, down={"aks-cluster"})
+        res = oidc.run_all(self.orunner(jobs), "up", ["aks-jfrog-trust"])
+        self.assertIn("skipped: aks-cluster is not deployed", res["aks-jfrog-trust"])
+        self.assertFalse(any(c[1] == "apply" for c in jobs.calls))
+
+    def test_up_then_down_in_reverse(self):
+        self.save("azure-jfrog-trust", {"ado_org": "o"})
+        self.save("aks-jfrog-trust", {"cluster_name": "c"})
+        jobs = FakeJobs(self.tmp)
+        oidc.run_all(self.orunner(jobs), "up", ["azure-jfrog-trust", "aks-jfrog-trust"])
+        self.assertEqual([c[0] for c in jobs.calls if c[1] == "apply"], ["azure-jfrog-trust", "aks-jfrog-trust"])
+        jobs = FakeJobs(self.tmp)
+        oidc.run_all(self.orunner(jobs), "down", ["azure-jfrog-trust", "aks-jfrog-trust"])
+        self.assertEqual([c[0] for c in jobs.calls if c[1] == "apply"], ["aks-jfrog-trust", "azure-jfrog-trust"])
+
+    def test_up_stops_when_inputs_are_missing(self):
+        jobs = FakeJobs(self.tmp)
+        res = oidc.run_all(self.orunner(jobs), "up", ["aks-jfrog-trust"])
+        self.assertIn("inputs not set", res["aks-jfrog-trust"])
+        self.assertEqual(jobs.calls, [])

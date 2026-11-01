@@ -18,7 +18,10 @@ pipelines/kubernetes/<cloud>/<stack>/stack-setup.yml); nothing stands on them. C
 own state store.
 
 Infrastructure never touches JFrog: no foundation, workload or cluster stack has a JFrog provider,
-input or setting. JFrog is OIDC configuration, made only once the infrastructure exists: the
+input or setting, and none registers anything for JFrog OIDC (its pipelines, environments and approvals
+are made by the OIDC stacks themselves). The UI serves them apart (server.py scopes: /setup infra,
+/oidc JFrog OIDC), as do the pipelines (terraform-stack.sh vs oidc-stack.sh) and the commands
+(costs vs oidc). JFrog is OIDC configuration, made only once the infrastructure exists: the
 "JFrog OIDC" stacks (terraform/stacks/oidc/<cloud>/<cloud>-jfrog-trust: the pipelines' JFrog
 integration, mappings and JFrog variable group; on GCP also the console operator; aks-jfrog-trust: the
 AKS cluster's issuer, mapping and credential provider, in its own ADO pipeline) and, per workload,
@@ -130,7 +133,7 @@ IDS = tuple(s["id"] for s in CATALOGUE)
 # Only cloud-level inputs prefill another stack's form. A workload's own name, image and switches
 # never do: each workload stack is separate and two must never get the same resources.
 SHARED_INPUTS = frozenset({"jfrog_url", "jfrog_reader_group", "ado_org", "ado_project", "ado_tenant_id",
-                           "pipeline_environment", "gcp_project_id", "gcp_region",
+                           "pipeline_environment", "ado_repository", "ado_approvers", "gcp_project_id", "gcp_region",
                            "azure_subscription_id", "azure_tenant_id", "azure_location",
                            "deployer_service_account", "deployer_principal_id", "image_repository", "tags"})
 # The foundation whose inputs a remote backend's location derives from, by backend type.

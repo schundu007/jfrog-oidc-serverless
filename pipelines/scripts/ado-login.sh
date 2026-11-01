@@ -1,0 +1,60 @@
+# Sourced by every pipeline script. Cloud sign-in only: nothing here knows about JFrog.
+# Azure DevOps issues a service connection's token only to a job that references the
+# connection: the Azure pipelines run these scripts in AzureCLI@2, the GCP pipelines in a
+# bash step after a skipped AzureCLI@2 reference.
+#
+# The service connection's OIDC token (requested from System.OidcRequestUri with the job
+# token: Entra-issued, aud api://AzureADTokenExchange, sub unique to the connection) is
+# written to $OIDC_DIR/id-token and becomes:
+#   - a gcloud / Google ADC login through Workload Identity Federation (GCP_SERVICE_ACCOUNT set)
+#   - an AWS role through AssumeRoleWithWebIdentity (AWS_ROLE_ARN set)
+# Everything lives in a private temp dir removed on exit. No token is printed.
+
+: "${SYSTEM_ACCESSTOKEN:?map SYSTEM_ACCESSTOKEN: \$(System.AccessToken) on the step}"
+: "${ADO_SERVICE_CONNECTION_ID:?map ADO_SERVICE_CONNECTION_ID on the step}"
+
+umask 077
+OIDC_DIR=$(mktemp -d)
+trap 'rm -rf "$OIDC_DIR"' EXIT
+
+python3 - "$OIDC_DIR/id-token" <<'PY'
+import json, os, sys, urllib.parse, urllib.request
+uri = os.environ["SYSTEM_OIDCREQUESTURI"]
+if not uri.startswith("https://"):
+    sys.exit("SYSTEM_OIDCREQUESTURI must be https")
+q = urllib.parse.urlencode({"api-version": "7.1-preview.1", "serviceConnectionId": os.environ["ADO_SERVICE_CONNECTION_ID"]})
+req = urllib.request.Request(f"{uri}{'&' if '?' in uri else '?'}{q}", data=b"{}", method="POST", headers={
+    "Authorization": "Bearer " + os.environ["SYSTEM_ACCESSTOKEN"], "Content-Type": "application/json"})
+with urllib.request.urlopen(req, timeout=30) as r:
+    token = json.load(r).get("oidcToken")
+if not isinstance(token, str) or token.count(".") != 2:
+    sys.exit("Azure DevOps did not return the connection's OIDC token")
+with open(sys.argv[1], "w", encoding="ascii") as f:
+    f.write(token)
+PY
+unset SYSTEM_ACCESSTOKEN
+
+export DOCKER_CONFIG="$OIDC_DIR/docker"
+
+if [ -n "${GCP_SERVICE_ACCOUNT:-}" ]; then
+  : "${GCP_WIF_PROVIDER:?}" "${GCP_PROJECT:?}"
+  export CLOUDSDK_CONFIG="$OIDC_DIR/gcloud"
+  export GOOGLE_APPLICATION_CREDENTIALS="$OIDC_DIR/gcp-credentials.json"
+  gcloud iam workload-identity-pools create-cred-config "$GCP_WIF_PROVIDER" \
+    --service-account="$GCP_SERVICE_ACCOUNT" \
+    --credential-source-file="$OIDC_DIR/id-token" \
+    --output-file="$GOOGLE_APPLICATION_CREDENTIALS" --quiet
+  gcloud auth login --cred-file="$GOOGLE_APPLICATION_CREDENTIALS" --quiet
+  gcloud config set project "$GCP_PROJECT" --quiet
+fi
+
+# AWS: the same token assumes the connection's role (needs an aws-foundation stack; none today).
+# The AWS CLI and the Terraform AWS provider read these two variables themselves
+# (AssumeRoleWithWebIdentity); no keys are written anywhere.
+if [ -n "${AWS_ROLE_ARN:-}" ]; then
+  : "${AWS_REGION:?}"
+  export AWS_WEB_IDENTITY_TOKEN_FILE="$OIDC_DIR/id-token"
+  export AWS_ROLE_SESSION_NAME="ado-${BUILD_BUILDID:-local}"
+  export AWS_CONFIG_FILE="$OIDC_DIR/aws-config" AWS_SHARED_CREDENTIALS_FILE="$OIDC_DIR/aws-credentials" AWS_PAGER=""
+  aws sts get-caller-identity --query Arn --output text
+fi

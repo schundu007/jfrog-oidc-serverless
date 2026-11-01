@@ -1,0 +1,99 @@
+# Template: plan -> apply (or destroy) for ONE Azure JFrog OIDC stack (terraform/stacks/oidc/azure/<stack>),
+# which runs after the infrastructure it trusts exists. Used only by pipelines/oidc/azure/<stack>/stack-setup.yml,
+# one pipeline per stack. Never used by an infrastructure stack (those use azure-stack-setup.yml, which has no
+# JFrog token, provider or variable). Reads the JFrog variable group and gets its JFrog admin token from the
+# setup connection's OIDC token (the ado-setup mapping); never a stored token. The apply stage targets the ADO
+# environment "<stack>-<environment>" (approval) and applies exactly the reviewed plan file;
+# action=destroy plans `terraform plan -destroy` and applies that the same way.
+
+parameters:
+  - name: stack
+    type: string
+  - name: action
+    type: string
+  - name: environment
+    type: string
+  - name: inputs
+    type: object
+  - name: state
+    type: object
+
+variables:
+  - template: /pipelines/vars/azure-${{ parameters.environment }}.yml
+  - group: jfrog-oidc-azure-${{ parameters.environment }}
+  - template: /pipelines/vars/azure-${{ parameters.environment }}-jfrog.yml
+  - group: jfrog-oidc-azure-${{ parameters.environment }}-jfrog   # JFROG_URL, JFROG_OIDC_PROVIDER
+  - name: PLAN_FILE
+    value: $(Pipeline.Workspace)/plan/tfplan
+  - name: PLAN_ACTION
+    ${{ if eq(parameters.action, 'destroy') }}:
+      value: plan-destroy
+    ${{ else }}:
+      value: plan
+
+stages:
+  - stage: plan
+    displayName: Plan ${{ parameters.action }} ${{ parameters.stack }}
+    jobs:
+      - job: plan
+        pool:
+          vmImage: ubuntu-24.04
+        timeoutInMinutes: 30
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - bash: pipelines/scripts/install-terraform.sh
+            displayName: Install Terraform $(TERRAFORM_VERSION)
+          - bash: mkdir -p "$(Pipeline.Workspace)/plan"
+            displayName: Prepare
+          - task: AzureCLI@2
+            name: tf
+            displayName: terraform ${{ parameters.action }} plan (OIDC)
+            inputs:
+              azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
+              scriptType: bash
+              scriptLocation: scriptPath
+              scriptPath: pipelines/scripts/oidc-stack.sh
+              arguments: $(PLAN_ACTION) ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+              JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
+              STACK_INPUTS: ${{ convertToJson(parameters.inputs) }}
+              STACK_STATE: ${{ convertToJson(parameters.state) }}
+          - publish: $(Pipeline.Workspace)/plan
+            artifact: plan
+            condition: and(succeeded(), eq(variables['tf.hasChanges'], 'true'))
+
+  - stage: apply
+    displayName: Apply
+    dependsOn: plan
+    condition: and(succeeded(), eq(dependencies.plan.outputs['plan.tf.hasChanges'], 'true'))
+    jobs:
+      - deployment: apply
+        pool:
+          vmImage: ubuntu-24.04
+        environment: ${{ parameters.stack }}-${{ parameters.environment }}
+        timeoutInMinutes: 60
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  fetchDepth: 1
+                - download: current
+                  artifact: plan
+                - bash: pipelines/scripts/install-terraform.sh
+                  displayName: Install Terraform $(TERRAFORM_VERSION)
+                - task: AzureCLI@2
+                  displayName: terraform apply (OIDC)
+                  inputs:
+                    azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
+                    scriptType: bash
+                    scriptLocation: scriptPath
+                    scriptPath: pipelines/scripts/oidc-stack.sh
+                    arguments: apply ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
+                  env:
+                    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+                    JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
+                    STACK_INPUTS: ${{ convertToJson(parameters.inputs) }}
+                    STACK_STATE: ${{ convertToJson(parameters.state) }}

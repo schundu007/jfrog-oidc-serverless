@@ -3,7 +3,7 @@ build-deploy run that built it, and what that run pulled from JFrog with its OID
 
 Read-only and best effort: Verify shows it next to the runtime proof and never fails because of it.
 The image tag is the commit (12 characters) the build-deploy scripts tag with, which ties the image to its
-ADO run. Base images and Python packages come only through JFrog (pipelines/vars/<cloud>-<env>.yml names
+ADO run. Base images and Python packages come only through JFrog (pipelines/vars/<cloud>-<env>-jfrog.yml names
 the remotes); JFrog's own "last downloaded by" on the base image names the pipeline's OIDC user.
 """
 
@@ -66,13 +66,15 @@ def running_image(cfg, sh) -> str:
 
 def _jfrog_remotes(repo_root, cloud: str, env: str) -> dict:
     out = {}
-    try:
-        for line in (Path(repo_root) / "pipelines" / "vars" / f"{cloud}-{env}.yml").read_text().splitlines():
-            m = re.match(r"\s*(JFROG_DOCKER_REMOTE|JFROG_PYPI_REPO):\s*(\S+)", line)
-            if m:
-                out[m.group(1)] = m.group(2)
-    except OSError:
-        pass
+    # The JFrog repository names live in <cloud>-<env>-jfrog.yml (read only by build-deploy and onboarding runs).
+    for name in (f"{cloud}-{env}-jfrog.yml", f"{cloud}-{env}.yml"):
+        try:
+            for line in (Path(repo_root) / "pipelines" / "vars" / name).read_text().splitlines():
+                m = re.match(r"\s*(JFROG_DOCKER_REMOTE|JFROG_PYPI_REPO):\s*(\S+)", line)
+                if m:
+                    out.setdefault(m.group(1), m.group(2))
+        except OSError:
+            pass
     return out
 
 

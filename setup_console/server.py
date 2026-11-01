@@ -1,6 +1,9 @@
-"""Setup section of the portal (/setup): deploy and destroy test infrastructure.
+"""Infrastructure (/setup) and JFrog OIDC (/oidc) sections of the portal: two mounts of this server,
+each with its own scope. scope="infra" serves only the Serverless and Kubernetes infrastructure stacks;
+scope="oidc" only the JFrog OIDC stacks. A stack, run or plan of the other scope answers 404 there.
+OIDC may read infrastructure's state (it stands on it); neither mount can change the other's stacks.
 
-Mounted by the portal like the other two sections, with the same session token, Host/Origin
+Mounted by the portal like the other sections, with the same session token, Host/Origin
 checks, CSP and redaction. Nothing runs without a plan, an approval of that plan's sha256 and,
 for anything that deletes, the stack name typed.
 """
@@ -42,11 +45,20 @@ class HttpError(Exception):
         self.status = status
 
 
+SCOPES = ("infra", "oidc")
+
+
+def scope_of(stack_id: str) -> str:
+    return "oidc" if stacks.get(stack_id)["kind"] == "JFrog OIDC" else "infra"
+
+
 class SetupServer:
     def __init__(self, token: str, jobs: Jobs | None = None, env_name: str = "test", base: str = "/setup",
                  host: str = "127.0.0.1", port: int = 0, log=sys.stderr, root=stacks.STACKS_DIR,
-                 state_root=stacks.STATE_ROOT):
-        self.token, self.base, self.host, self.port, self.log = token, base, host, port, log
+                 state_root=stacks.STATE_ROOT, scope: str = "infra"):
+        if scope not in SCOPES:
+            raise ValueError(f"scope must be one of {SCOPES}")
+        self.token, self.base, self.host, self.port, self.log, self.scope = token, base, host, port, log, scope
         self.env_name, self.root, self.state_root = env_name, root, state_root
         self.jobs = jobs or Jobs(env_name=env_name, root=root, state_root=state_root)
         stacks.separate_jfrog_inputs(env_name, root, state_root)   # infrastructure inputs hold nothing for JFrog
@@ -54,6 +66,31 @@ class SetupServer:
 
     def allowed_hosts(self) -> set:
         return {f"127.0.0.1:{self.port}", f"localhost:{self.port}"}
+
+    def mine(self, stack_id: str) -> bool:
+        try:
+            return scope_of(stack_id) == self.scope
+        except stacks.StackError:
+            return False
+
+    def check(self, stack_id: str) -> None:
+        if not self.mine(stack_id):
+            raise HttpError(404, "no such stack here")
+
+    def stack_list(self) -> dict:
+        # Titles of every stack, so a row can name the infrastructure it stands on; nothing else of it.
+        return {"env": self.env_name, "scope": self.scope,
+                "stacks": [s for s in self.jobs.stacks() if self.mine(s["id"])],
+                "titles": {s["id"]: s["title"] for s in stacks.CATALOGUE}}
+
+    def history(self) -> list:
+        return [r for r in self.jobs.history() if self.mine(r.get("stack") or "")]
+
+    def job(self, job_id: str) -> dict:
+        j = self.jobs.get(job_id)
+        if not self.mine(j.get("stack") or ""):
+            raise HttpError(404, "no such job")
+        return j
 
     def options(self, source: str, scope: str | None = None) -> list:
         """Live choices for a picker (read-only listings): [{id, name}]. People are listed by email:
@@ -188,10 +225,10 @@ def make_handler(console: SetupServer):
         def _api(self, method, parts):
             m = (method, parts[0] if parts else "", len(parts))
             if m == ("GET", "stacks", 1):
-                return self._json(200, {"env": console.env_name, "stacks": console.jobs.stacks()})
+                return self._json(200, console.stack_list())
             if parts[:1] == ["stacks"] and len(parts) == 3:
                 sid, what = parts[1], parts[2]
-                stacks.get(sid)
+                console.check(sid)
                 if what == "inputs" and method == "GET":
                     return self._json(200, stacks.form(sid, console.env_name, console.root, console.state_root))
                 if what == "inputs" and method == "PUT":
@@ -209,10 +246,11 @@ def make_handler(console: SetupServer):
                 scope = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("scope", [None])[0]
                 return self._json(200, {"options": console.options(parts[1], scope)})
             if m == ("GET", "jobs", 1):
-                return self._json(200, {"jobs": console.jobs.history()})
+                return self._json(200, {"jobs": console.history()})
             if m == ("GET", "jobs", 2):
-                return self._json(200, console.jobs.get(parts[1]))
+                return self._json(200, console.job(parts[1]))
             if m == ("DELETE", "jobs", 2):
+                console.job(parts[1])
                 console.jobs.audit(parts[1], "delete-run", self.headers.get("User-Agent"))
                 return self._json(200, console.jobs.remove(parts[1]))
             raise HttpError(404, "not found")

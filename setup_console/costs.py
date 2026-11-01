@@ -3,13 +3,15 @@
 Takes down, and brings back, only the test infrastructure that costs money while it stands: every
 serverless workload stack and the two test clusters. Their monitoring and logging go with them
 (each Azure workload's Log Analytics workspace; the AKS cluster's Log Analytics workspace and
-Container Insights rule; GKE's cluster logging and managed Prometheus). Foundations and the JFrog
-trust stacks stay: they cost nothing, hold the pipelines' trust and the state stores, and keep the
-saved inputs valid. A stack that stands on a costing one (aks-jfrog-trust on aks-cluster: the new
-cluster's issuer in JFrog and its credential provider) comes up right after it and goes down before it.
+Container Insights rule; GKE's cluster logging and managed Prometheus). Foundations stay: they cost
+nothing, hold the pipelines' trust and the state stores, and keep the saved inputs valid.
 
-Every change goes through the Setup console's own gates (Jobs): a plan, then an apply of exactly
-that plan, approved by its sha256 with the stack name typed. Stacks with a stack-setup pipeline run
+Infrastructure only: nothing here touches JFrog or a JFrog OIDC stack. Those have their own command,
+python -m setup_console.oidc (after up: oidc up; before down: oidc down for any stack that stands on a
+costing one, e.g. aks-jfrog-trust on aks-cluster; down refuses while one still does).
+
+Every change goes through the Setup console's own gates (Jobs, setup_console/runner.py): a plan, then
+an apply of exactly that plan, approved by its sha256 with the stack name typed. Stacks with a stack-setup pipeline run
 in Azure DevOps, as from the page.
 
 down  destroys each stack (already deleted is fine).
@@ -24,13 +26,12 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from console import redact
-
 from . import stacks
+from .runner import POLL, RunError
+from .runner import Runner as Gates
 
 COSTING = ("gcp-cloud-run", "gcp-cloud-run-service", "gcp-cloud-run-function", "gcp-cloud-run-worker-pool",
            "azure-container-apps", "azure-container-app", "azure-functions-aca", "azure-functions-premium",
@@ -43,61 +44,15 @@ SWITCHES = {"gcp-cloud-run": "deploy_job", "gcp-cloud-run-service": "deploy_serv
             "azure-functions-aca": "deploy_function"}
 # build-deploy's first-image warning: "... pushed X. In Setup, set <input> to it and <switch> on, ..."
 FIRST = re.compile(r"(?:pushed|uploaded) (\S+?)\. In Setup, set (\w+) to it and (\w+) on")
-POLL = 5
-
-
-def followers(sid) -> list:
-    """Stacks that stand on this one ("after"): up after it, down before it."""
-    return [s["id"] for s in stacks.CATALOGUE if s.get("after") == sid]
 BUILD_TIMEOUT = 45 * 60
 
 
-class CostError(RuntimeError):
+class CostError(RunError):
     pass
 
 
-class Runner:
-    def __init__(self, jobs, ado, env: str, root=stacks.STACKS_DIR, state_root=stacks.STATE_ROOT,
-                 sleep=time.sleep, out=print):
-        self.jobs, self.ado, self.env, self.root, self.state_root = jobs, ado, env, root, state_root
-        self.sleep, self._out, self._lock = sleep, out, threading.Lock()
-
-    def say(self, sid, text):
-        with self._lock:
-            self._out(redact.text(f"{time.strftime('%H:%M:%S')}  {sid:<26} {text}"))
-
-    # -- Setup jobs ---------------------------------------------------------------------------
-
-    def job(self, sid, action, approval=None) -> dict:
-        j = self.jobs.start(sid, action, approval)
-        while j["state"] == "running":
-            self.sleep(POLL)
-            j = self.jobs.get(j["id"])
-        if j["state"] != "done":
-            raise CostError(f"{action} failed: {(j.get('error') or '').splitlines()[0][:400] if j.get('error') else 'no detail'}")
-        return j.get("result") or {}
-
-    def _change(self, sid, plan_action) -> str:
-        verb = "destroy" if plan_action == "plan-destroy" else "deploy"
-        self.say(sid, f"planning the {verb}…")
-        plan = self.job(sid, plan_action)
-        if plan.get("already_deleted"):
-            return "already deleted"
-        if not plan.get("sha256"):
-            return "no changes"
-        s = ", ".join(f"{n} {a}" for a, n in sorted((plan.get("summary") or {}).items()))
-        self.say(sid, f"plan {plan['sha256'][:12]} ({s or 'outputs only'}): approving and applying…")
-        self.job(sid, "apply", {"plan_sha256": plan["sha256"], "typed_confirmation": sid})
-        return "destroyed" if verb == "destroy" else "deployed"
-
-    def destroy(self, sid) -> str:
-        return self._change(sid, "plan-destroy")
-
-    def deploy(self, sid) -> str:
-        return self._change(sid, "plan-apply")
-
-    def read(self, sid) -> dict:
-        return self.job(sid, "status")
+class Runner(Gates):
+    error = CostError
 
     # -- build-deploy pipelines ---------------------------------------------------------------
 
@@ -124,18 +79,18 @@ class Runner:
     # -- one stack ----------------------------------------------------------------------------
 
     def up(self, sid) -> str:
-        for x in (sid, *followers(sid)):   # stop before any run when one of them is not filled in
-            gaps = stacks.missing(x, self.env, self.root, self.state_root)
-            if gaps:   # a stack that gained an input since it was saved: fill it in Setup first
-                raise CostError(f"{x}: inputs not set: {', '.join(gaps)} (fill them in Setup)")
-        done = self._up(sid)
-        for f in followers(sid):
-            self.say(f, self.deploy(f))
-        return done
+        gaps = stacks.missing(sid, self.env, self.root, self.state_root)
+        if gaps:   # a stack that gained an input since it was saved: fill it in Setup first
+            raise CostError(f"{sid}: inputs not set: {', '.join(gaps)} (fill them in Setup)")
+        return self._up(sid)
 
     def down(self, sid) -> str:
-        for f in followers(sid):
-            self.say(f, self.destroy(f))
+        # Infrastructure knows nothing about JFrog OIDC; it only never pulls a stack out from under
+        # another one that still stands on it (aks-jfrog-trust on aks-cluster).
+        on = [s["id"] for s in stacks.CATALOGUE if s.get("after") == sid and self.deployed(s["id"])]
+        if on:
+            raise CostError(f"{', '.join(on)} still stands on it: take that down first "
+                            f"(python -m setup_console.oidc down --only {' '.join(on)})")
         return self.destroy(sid)
 
     def _up(self, sid) -> str:
@@ -171,17 +126,14 @@ def select(cloud=None, only=None) -> list:
 
 def run_all(runner: Runner, action: str, picked: list, parallel: int = 1) -> dict:
     # A workload keeps its state in its foundation's store: read the foundations first. One that is
-    # gone (deleted outside the console) comes back first on up, with its cloud's JFrog trust, which
-    # names the foundation's service connections; on down its workloads went with its store.
+    # gone (deleted outside the console) comes back first on up; on down its workloads went with its store.
     for f in sorted({stacks.depends_on(s, runner.root) for s in picked} - {None}):
-        if runner.read(f).get("deployed"):
+        if runner.deployed(f):
             continue
         if action != "up":
             runner.say(f, "not deployed: its workloads' state store is gone with it")
             continue
         runner.say(f, runner.deploy(f))
-        for trust in (s["id"] for s in stacks.CATALOGUE if s.get("after") == f):
-            runner.say(trust, runner.deploy(trust))
         runner.read(f)
 
     def one(sid):
@@ -219,8 +171,7 @@ def main(argv=None) -> int:
     a = delivery["ado"]
     ado = Ado(Shell(mode="live", log=lambda line: None), a["organization"], a["project"],
               branch=a.get("target_branch") or "main", repo=a.get("repository") or "")
-    from kcp_console.jfrog import OperatorToken   # the JFrog trust stacks' token, as the portal gets it
-    runner = Runner(Jobs(env_name=env, ado=ado, token_source=OperatorToken().get), ado, env)
+    runner = Runner(Jobs(env_name=env, ado=ado), ado, env)   # no JFrog token: infrastructure never needs one
     picked = select(args.cloud, args.only)
     try:
         results = run_all(runner, args.action, picked, args.parallel)

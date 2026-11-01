@@ -23,7 +23,7 @@ def cfg():
 def repo():
     d = Path(tempfile.mkdtemp())
     (d / "pipelines" / "vars").mkdir(parents=True)
-    (d / "pipelines" / "vars" / "gcp-test.yml").write_text("variables:\n  JFROG_DOCKER_REMOTE: docker-remote\n")
+    (d / "pipelines" / "vars" / "gcp-test-jfrog.yml").write_text("variables:\n  JFROG_DOCKER_REMOTE: docker-remote\n")
     return d
 
 

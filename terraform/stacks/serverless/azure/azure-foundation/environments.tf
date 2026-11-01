@@ -2,13 +2,13 @@
 # only after approval on <stack>-<pipeline_environment>. Approvers: ado_approvers (user principal
 # names); empty leaves the environments without a check.
 
-# The stacks with a stack-setup pipeline (serverless workloads, the test cluster and its JFrog OIDC),
-# by their folder kind. Fixed by the repo, not a target input: pipelines/<kind>/azure/<stack>/stack-setup.yml exists for each.
+# The infrastructure stacks with a stack-setup pipeline (serverless workloads, the test cluster), by
+# their folder kind. JFrog OIDC stacks' pipelines and environments belong to azure-jfrog-trust. Fixed by the repo, not a target input: pipelines/<kind>/azure/<stack>/stack-setup.yml exists for each.
 locals {
   pipeline_stack_kind = {
     "azure-container-apps"    = "serverless", "azure-container-app" = "serverless", "azure-functions-aca" = "serverless",
     "azure-functions-premium" = "serverless", "azure-functions-flex" = "serverless",
-    "aks-cluster"             = "kubernetes", "aks-jfrog-trust" = "oidc",
+    "aks-cluster"             = "kubernetes",
   }
   pipeline_stacks = keys(local.pipeline_stack_kind)
 }

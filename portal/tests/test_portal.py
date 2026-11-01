@@ -112,7 +112,7 @@ class PortalTests(unittest.TestCase):
     def test_one_menu_for_every_page(self):
         # Serverless and Kubernetes are one product: every page, whichever console serves it, loads the
         # same flat sidebar (console/static/shell.js): six list pages; cloud and type are filters on them.
-        for p in ("/", "/runs", "/setup", "/setup/oidc", "/serverless/", "/serverless/gcp", "/k8s/clusters", "/k8s/clusters/aks"):
+        for p in ("/", "/runs", "/setup", "/oidc", "/oidc?cloud=azure", "/serverless/", "/serverless/gcp", "/k8s/clusters", "/k8s/clusters/aks"):
             st, _, raw = self.req("GET", p, token=False, headers={"Sec-Fetch-Site": "none"})
             self.assertEqual(st, 200, p)
             self.assertIn(b'<aside class="sidenav"><script src="/serverless/static/shell.js"></script></aside>', raw, p)
@@ -122,7 +122,7 @@ class PortalTests(unittest.TestCase):
         text = shell.decode()
         at = 0
         for s in ('"Home", "/"', '"Infrastructure", "/setup"', '"Serverless", "/serverless/"', '"Kubernetes", "/k8s/clusters"',
-                  '"JFrog OIDC", "/setup/oidc"', '"Runs", "/runs"'):
+                  '"JFrog OIDC", "/oidc"', '"Runs", "/runs"'):
             at = text.index(s, at) + len(s)
         self.assertIn("window.consoleBlade", text)
 

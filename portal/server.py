@@ -1,5 +1,7 @@
 """One origin for the consoles: Serverless (console/) at /serverless, Kubernetes (kcp_console/) at /k8s,
-and Setup (setup_console/, test infrastructure only) at /setup.
+Infrastructure (setup_console/, test infrastructure only) at /setup and JFrog OIDC (setup_console/ with
+scope "oidc": the JFrog trust stacks only) at /oidc. The two share the run engine but neither serves or
+changes the other's stacks.
 
 The portal holds no product logic. It removes the section prefix and hands the request to that
 console's own handler, which keeps its own Host/Origin/token checks, CSP and redaction. The two
@@ -21,7 +23,7 @@ from console import server as oidc
 from kcp_console import server as kcp
 from setup_console import server as setup
 
-SERVERLESS, K8S, SETUP = "/serverless", "/k8s", "/setup"
+SERVERLESS, K8S, SETUP, OIDC = "/serverless", "/k8s", "/setup", "/oidc"
 STATIC_DIR = Path(__file__).parent / "static"
 # Home and Runs read both sections (every cloud's workloads, clusters and runs); every other page
 # belongs to one section.
@@ -32,7 +34,7 @@ CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; c
 
 def section_of(path: str):
     """(section, path inside it) for a portal path, or (None, path) for the portal's own pages."""
-    for prefix in (SERVERLESS, K8S, SETUP):
+    for prefix in (SERVERLESS, K8S, SETUP, OIDC):
         if path == prefix or path.startswith(prefix + "/"):
             return prefix, path[len(prefix):] or "/"
     return None, path
@@ -48,9 +50,13 @@ def legacy_target(path: str):
 
 class Portal:
     def __init__(self, oidc_console, kcp_console, host: str = "127.0.0.1", port: int = 8760, log=sys.stderr,
-                 setup_console=None):
+                 setup_console=None, oidc_setup=None):
         self.setup = setup_console or setup.SetupServer(token=oidc_console.token, base=SETUP)
-        if not (oidc_console.token == kcp_console.token == self.setup.token):
+        # JFrog OIDC: its own mount and scope; the same run engine, so one stack never runs twice at once.
+        self.oidc_setup = oidc_setup or setup.SetupServer(token=self.setup.token, jobs=self.setup.jobs, base=OIDC,
+                                                          env_name=self.setup.env_name, root=self.setup.root,
+                                                          state_root=self.setup.state_root, scope="oidc")
+        if not (oidc_console.token == kcp_console.token == self.setup.token == self.oidc_setup.token):
             raise ValueError("every console must share the portal's session token")
         self.oidc, self.kcp = oidc_console, kcp_console
         self.host, self.requested_port, self.log = host, port, log
@@ -73,7 +79,8 @@ class Portal:
         for c, mod in ((self.oidc, oidc), (self.kcp, kcp)):
             c.host, c.port = self.host, self.port
             c.static_files = {p.name for p in mod.STATIC_DIR.iterdir() if p.is_file() and p.suffix in mod.CONTENT_TYPES}
-        self.setup.host, self.setup.port = self.host, self.port
+        for s in (self.setup, self.oidc_setup):
+            s.host, s.port = self.host, self.port
         threading.Thread(target=self._httpd.serve_forever, kwargs={"poll_interval": 0.1},
                          name="portal-http", daemon=True).start()
 
@@ -87,7 +94,7 @@ class Portal:
 
 def _make_handler(portal: Portal):
     handlers = {SERVERLESS: oidc._make_handler(portal.oidc), K8S: kcp.make_handler(portal.kcp),
-                SETUP: setup.make_handler(portal.setup)}
+                SETUP: setup.make_handler(portal.setup), OIDC: setup.make_handler(portal.oidc_setup)}
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "jfrog-oidc-portal"

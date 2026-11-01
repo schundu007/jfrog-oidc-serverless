@@ -624,7 +624,12 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
   - JFrog: provider `<cluster>-oidc` (type Azure, the cluster's issuer read from azurerm) and mapping `<cluster>-mapping` (`system:serviceaccount:jfrog:jfrog-provider-sa` → `mapped_user`).
   - Cluster: namespace and service account (`JFrogExchange: "true"`), and an Argo CD Application installing `jfrog-credential-provider` 1.4.0 from charts.jfrog.io (values as `kcp_console.model.render_values`), auto-sync with prune and self-heal.
   - `aks-cluster` labels its nodes from the `node_labels` input (`credentialsProviderEnabled=true`).
-- `azure-stack-setup.yml` takes `jfrog: true`: that run reads `jfrog-oidc-azure-<env>-jfrog` and `terraform-stack.sh` exchanges the setup connection's OIDC token (ado-setup mapping) for the JFrog admin token. A plan that would create a JFrog provider or mapping that already exists imports it, then plans again.
-- `azure-foundation` adds the `aks-jfrog-trust-<env>` environment and registers the pipeline (`pipelines.tf`, input `ado_repository`).
-- `costs up` deploys `aks-jfrog-trust` right after `aks-cluster`; `down` destroys it first.
+- (Superseded by the split below.)
+
+## Infrastructure and JFrog OIDC fully separated (2026-11-01)
+
+- Pipelines: infra `azure-stack-setup.yml`/`gcp-stack-setup.yml` → `terraform-stack.sh` → `ado-login.sh` (cloud sign-in only; refuses a non-infra stack). JFrog OIDC `azure-oidc-stack-setup.yml` → `oidc-stack.sh` (refuses a non-OIDC stack; JFrog token from the setup connection via `ado-setup`; adopts existing JFrog objects, then plans again) → `oidc-login.sh` (sources `ado-login.sh`). JFrog repository names moved to `vars/<cloud>-<env>-jfrog.yml`, included only by build-deploy and onboarding.
+- Terraform: `azure-foundation` no longer registers anything for OIDC (`pipelines.tf` removed, `aks-jfrog-trust` out of its environments). `azure-jfrog-trust/pipelines.tf` registers the OIDC stack-setup pipelines, their environments `<stack>-<env>`, approval checks and pipeline authorizations (inputs `ado_repository`, `ado_approvers`, prefilled from the foundation). Apply `azure-foundation` first (it destroys the old ones), then `azure-jfrog-trust`.
+- UI: `/setup` (scope infra) and `/oidc` (scope oidc) are separate mounts; each 404s the other's stacks and runs. Sidebar JFrog OIDC → `/oidc`, `/oidc?cloud=<cloud>`; Runs has a JFrog OIDC tab (`area=oidc`, from `/oidc/api/jobs`).
+- Commands: `setup_console.costs` is infra only (refuses `down` while a JFrog OIDC stack stands on the stack); `setup_console.oidc status|down|up` runs the JFrog OIDC stacks. Both use `setup_console/runner.py` for the gates.
 - KCP console: Set up and Tear down are refused on AKS (guard names the pipeline); Verify and Prove stay.

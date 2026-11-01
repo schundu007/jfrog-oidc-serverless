@@ -23,11 +23,10 @@ parameters:
     default: {}
 
 extends:
-  template: /pipelines/templates/azure-stack-setup.yml
+  template: /pipelines/templates/azure-oidc-stack-setup.yml
   parameters:
     stack: aks-jfrog-trust
     action: ${{ parameters.action }}
     environment: ${{ parameters.environment }}
     inputs: ${{ parameters.inputs }}
     state: ${{ parameters.state }}
-    jfrog: true

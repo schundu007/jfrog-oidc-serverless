@@ -58,7 +58,7 @@ stages:
             displayName: terraform ${{ parameters.action }} plan (OIDC)
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-              JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
+              ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
               STACK_INPUTS: ${{ convertToJson(parameters.inputs) }}
               STACK_STATE: ${{ convertToJson(parameters.state) }}
               GCP_SERVICE_ACCOUNT: $(GCP_SETUP_SERVICE_ACCOUNT)
@@ -100,7 +100,7 @@ stages:
                   displayName: terraform apply (OIDC)
                   env:
                     SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-                    JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
+                    ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
                     STACK_INPUTS: ${{ convertToJson(parameters.inputs) }}
                     STACK_STATE: ${{ convertToJson(parameters.state) }}
                     GCP_SERVICE_ACCOUNT: $(GCP_SETUP_SERVICE_ACCOUNT)

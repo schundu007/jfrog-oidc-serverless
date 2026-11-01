@@ -246,7 +246,8 @@ async function editInputs(stack) {
   catch (e) { fill(panel.status, statusPill("failed", e.message)); }
 }
 
-const titleOf = (id) => byId[id] ? byId[id].title : id;
+// A JFrog OIDC row names the infrastructure it stands on, which this page does not list: its title only.
+const titleOf = (id) => byId[id] ? byId[id].title : lastData?.titles?.[id] || id;
 const ACTION_NAME = { status: "State read", "plan-apply": "Deploy plan", "plan-destroy": "Destroy plan", apply: "Apply", forget: "Forget state" };
 
 // Terraform's error, cut to its point: no "terraform x failed (exit 1): Error:" prefix, one short line.
@@ -328,7 +329,8 @@ const SERVES = { "gcp-cloud-run": "gcp?type=gcp_run_job", "gcp-cloud-run-service
   "azure-functions-aca": "azure?type=azure_functions_aca", "azure-functions-premium": "azure?type=azure_functions_premium",
   "azure-functions-flex": "azure?type=azure_functions_flex" };
 const CLUSTERS = { "aks-cluster": "/k8s/clusters/aks", "gke-cluster": "/k8s/clusters/gke" };
-const runsHref = (s) => `/runs?area=infrastructure&cloud=${CLOUD_ID[s.group] || ""}&q=${encodeURIComponent(s.title)}`;
+const runsArea = () => (OIDC ? "oidc" : "infrastructure");
+const runsHref = (s) => `/runs?area=${runsArea()}&cloud=${CLOUD_ID[s.group] || ""}&q=${encodeURIComponent(s.title)}`;
 const nameHref = (s) => (SERVES[s.id] ? `/serverless/${SERVES[s.id]}` : CLUSTERS[s.id] || runsHref(s));
 
 let byId = {};
@@ -346,12 +348,14 @@ function iconEl(key, cls) {
 }
 
 // Filters over the grouped view: Cloud, Type, Status and free text, kept in the address.
-// JFrog OIDC (/setup/oidc) holds both clouds' trust stacks; /setup/oidc-<cloud> opens it on that cloud.
-const OIDC = /\/oidc(-[a-z]+)?\/?$/.test(location.pathname);
+// JFrog OIDC is its own mount (/oidc, scope "oidc"): both clouds' trust stacks; /oidc?cloud=<cloud> opens
+// it on that cloud. Infrastructure (/setup) never lists them, and this page never lists infrastructure.
+const BASE = document.querySelector('meta[name="console-base"]')?.content || "";
+const OIDC = BASE === "/oidc";
 const STATES = OIDC ? [["on", "Onboarded"], ["off", "Not onboarded"]]
   : [["deployed", "Deployed"], ["not", "Not deployed"], ["attention", "Needs attention"]];
 const stateOf = (s) => (s.status?.deployed ? "deployed" : partlyDeleted(s) || lastFailure(s) || s.missing?.length ? "attention" : "not");
-const F = { q: "", cloud: location.pathname.match(/\/oidc-(gcp|azure)\/?$/)?.[1] || "", kind: "", state: "" };
+const F = { q: "", cloud: "", kind: "", state: "" };
 {
   const u = new URLSearchParams(location.search);
   for (const k of ["q", "cloud", "kind", "state"]) if (u.get(k)) F[k] = u.get(k);
@@ -361,8 +365,7 @@ let lastData = null;
 function saveQuery() {
   const u = new URLSearchParams();
   for (const k of ["q", "cloud", "kind", "state"]) if (F[k]) u.set(k, F[k]);
-  const base = (document.querySelector('meta[name="console-base"]')?.content || "") + (OIDC ? "/oidc" : "");
-  history.replaceState(null, "", `${base || "/"}${u.toString() ? `?${u}` : ""}`);
+  history.replaceState(null, "", `${BASE || "/"}${u.toString() ? `?${u}` : ""}`);
 }
 
 function drawFilters(kinds) {
@@ -391,7 +394,7 @@ function draw(withFilters = true) {
   // <stack>-<env> and the variable groups jfrog-oidc-<cloud>-<env>.
   // Infrastructure (/setup): the cloud is the root, and under it Common (the CI/CD bootstrap, used by
   // both kinds), Serverless and Kubernetes, each its own table. JFrog OIDC is not infrastructure: it
-  // has its own page per cloud (/setup/oidc-<cloud>), made only once that cloud's infrastructure exists.
+  // has its own section (/oidc), made only once that cloud's infrastructure exists.
   const ORDER = ["Common", "Serverless", "Kubernetes", "JFrog OIDC"];
   // On JFrog OIDC, a cluster's trust is its own Kubernetes section, never mixed with the pipelines' trust.
   const sectionOf = (s) => (s.id.endsWith("-foundation") ? "Common" : (OIDC && s.section) || s.kind);
@@ -411,13 +414,13 @@ function draw(withFilters = true) {
   const groups = [...new Set(shown.map((s) => s.group))].sort((x, y) => rank(x) - rank(y));
   const cols = OIDC ? ["Name", "Status", "Stack", "Last checked", ""] : ["Name", "Status", "Stack", "Runs in", "Last checked", ""];
   const head = (g, list) => h("h2", { class: "cloud-title home-group-name" }, iconEl(CLOUD_ID[g], "home-group-logo"),
-    OIDC ? h("a", { href: `/setup/oidc-${CLOUD_ID[g]}` }, g) : h("a", { href: `/setup?cloud=${CLOUD_ID[g]}` }, g),
+    h("a", { href: `${BASE}?cloud=${CLOUD_ID[g]}` }, g),
     h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }));
   // Under each cloud, CI/CD, Serverless and Kubernetes never mix: each has its own heading and rows.
   const LABEL = { Common: "CI/CD", "JFrog OIDC": "Pipelines" };
   const sections = ORDER.filter((k) => shown.some((s) => sectionOf(s) === k));
   const subHead = (k, list) => h("tr", { class: "home-group home-subgroup" }, h("th", { scope: "colgroup", colspan: String(cols.length) },
-    h("span", { class: "home-group-name" }, h("a", { href: `${OIDC ? "/setup/oidc" : "/setup"}?${new URLSearchParams({ ...(list[0] && !OIDC ? { cloud: CLOUD_ID[list[0].group] } : {}), kind: k })}` }, LABEL[k] || k), h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }))));
+    h("span", { class: "home-group-name" }, h("a", { href: `${BASE}?${new URLSearchParams({ ...(list[0] && !OIDC ? { cloud: CLOUD_ID[list[0].group] } : {}), kind: k })}` }, LABEL[k] || k), h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }))));
   // Each cloud is its own block: its heading (logo, name, count) above its own table with its own
   // column headers, so a cloud name never sits under another cloud's header row.
   const table = (rows) => h("div", { class: "table-wrap" }, h("table", { class: `blade-table home-table stack-table cloud-table cols-${cols.length}` },
@@ -434,7 +437,7 @@ function draw(withFilters = true) {
   })) : null);
 }
 
-// JFrog OIDC (/setup/oidc) is its own step, after Infrastructure: it never deploys anything there.
+// JFrog OIDC (/oidc) is its own step, after Infrastructure: it never deploys anything there.
 // Per cloud, never mixed: Serverless (each live workload, onboarded for the runtime exchange or not),
 // Kubernetes (each cluster's kubelet credential provider) and Pipelines (the build pipelines' own JFrog
 // trust, optional: production adds only the runtime exchange to live services).
@@ -542,7 +545,7 @@ function drawOidc(data, withFilters) {
   const clouds = ["azure", "gcp"].filter((c) => shown.some((r) => r.cloud === c));
   const sections = SECTIONS.filter((k) => shown.some((r) => r.section === k));
   const subHead = (k, list) => h("tr", { class: "home-group home-subgroup" }, h("th", { scope: "colgroup", colspan: String(cols.length) },
-    h("span", { class: "home-group-name" }, h("a", { href: `/setup/oidc?${new URLSearchParams({ cloud: list[0].cloud, kind: k })}`, text: k }),
+    h("span", { class: "home-group-name" }, h("a", { href: `/oidc?${new URLSearchParams({ cloud: list[0].cloud, kind: k })}`, text: k }),
       h("small", { text: `${list.filter((r) => r.on).length} of ${list.length} onboarded` }))));
   fill($("groups"), shown.length ? h("div", { class: "cloud-tables" }, clouds.map((c) => {
     const inCloud = shown.filter((r) => r.cloud === c);
@@ -552,7 +555,7 @@ function drawOidc(data, withFilters) {
     }).filter(Boolean);
     return h("section", { class: "cloud-block" },
       clouds.length > 1 ? h("h2", { class: "cloud-title home-group-name" }, iconEl(c, "home-group-logo"),
-        h("a", { href: `/setup/oidc-${c}` }, CLOUD_NAME[c]), h("small", { text: `${inCloud.filter((r) => r.on).length} of ${inCloud.length} onboarded` })) : null,
+        h("a", { href: `/oidc?cloud=${c}` }, CLOUD_NAME[c]), h("small", { text: `${inCloud.filter((r) => r.on).length} of ${inCloud.length} onboarded` })) : null,
       h("div", { class: "table-wrap" }, h("table", { class: `blade-table home-table stack-table cloud-table cols-${cols.length}` },
         h("thead", {}, h("tr", {}, cols.map((t) => h("th", { scope: "col", text: t })))), bodies)));
   })) : null);
@@ -594,6 +597,7 @@ function essentials(data, all) {
 }
 
 $("refresh").onclick = () => load().catch(() => {});
+document.querySelector('a.blade-cmd[href^="/runs"]')?.setAttribute("href", `/runs?area=${runsArea()}`);
 $("ess-h").onclick = () => {
   const open = $("ess-h").getAttribute("aria-expanded") !== "true";
   $("ess-h").setAttribute("aria-expanded", String(open));
