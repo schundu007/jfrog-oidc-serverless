@@ -60,7 +60,11 @@ function renderTrail(r) {
 function applyShell() {
   if (BASE) {
     // The switch to the Kubernetes section (a different console) is a full page load.
-    for (const a of document.querySelectorAll('a[href^="/"]:not([data-section])')) a.setAttribute("href", BASE + a.getAttribute("href"));
+    // The sidebar (shell.js) already writes portal paths; a link that carries the prefix keeps it.
+    for (const a of document.querySelectorAll('a[href^="/"]:not([data-section])')) {
+      const to = a.getAttribute("href");
+      if (!a.closest(".sidenav") && to !== BASE && !to.startsWith(`${BASE}/`)) a.setAttribute("href", BASE + to);
+    }
     for (const el of document.querySelectorAll("[data-portal]")) el.hidden = false;
   }
   document.title = CLOUD ? `JFrog OIDC Console · ${CLOUDS[CLOUD]}` : "JFrog OIDC Console";
