@@ -43,8 +43,13 @@ case "$KIND" in
     build_image
     gcloud run jobs describe "$WORKLOAD" "${loc[@]}" --format='value(name)' >/dev/null 2>&1 || first_image "Cloud Run job" job_image deploy_job
     gcloud run jobs update "$WORKLOAD" --image "$image" "${loc[@]}" --quiet
-    gcloud run jobs execute "$WORKLOAD" "${loc[@]}" --wait --quiet
-    echo "deployed and ran $image"
+    # Run it only once JFrog OIDC onboarding (its own step, later) has set what it reads.
+    if gcloud run jobs describe "$WORKLOAD" "${loc[@]}" --format=json | grep -q '"JFROG_ARTIFACT_PATH"'; then
+      gcloud run jobs execute "$WORKLOAD" "${loc[@]}" --wait --quiet
+      echo "deployed and ran $image"
+    else
+      echo "deployed $image; not run: not onboarded to JFrog OIDC yet"
+    fi
     ;;
   service)
     build_image

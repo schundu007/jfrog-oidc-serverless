@@ -67,6 +67,9 @@ case "$KIND" in
     az containerapp job show --name "$job" --resource-group "$rg" --only-show-errors >/dev/null 2>&1 \
       || first_image "Container Apps job ${job}" job_image deploy_job
     az containerapp job update --name "$job" --resource-group "$rg" --image "$image" --only-show-errors >/dev/null
+    # Run it only once JFrog OIDC onboarding (its own step, later) has set what it reads.
+    az containerapp job show --name "$job" --resource-group "$rg" -o json --only-show-errors | grep -q '"JFROG_ARTIFACT_PATH"' || {
+      echo "deployed ${image}; not run: not onboarded to JFrog OIDC yet"; exit 0; }
     execution=$(az containerapp job start --name "$job" --resource-group "$rg" --query name -o tsv --only-show-errors)
     for _ in $(seq 1 60); do
       status=$(az containerapp job execution show --name "$job" --resource-group "$rg" \
