@@ -193,23 +193,35 @@
     const up = location.pathname.replace(/\/+$/, "").split("/").slice(0, -1).join("/");
     location.assign(up || "/");
   };
-  const addBack = () => {
-    const bar = document.querySelector(".topbar");
-    if (!bar || bar.querySelector(".nav-back")) return;
-    const b = document.createElement("button");
-    b.type = "button"; b.className = "nav-back"; b.title = "Back"; b.setAttribute("aria-label", "Back");
-    b.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>Back</span>';
-    b.addEventListener("click", backTo);
-    bar.querySelector(".brand")?.after(b);
-    const show = () => { b.hidden = location.pathname === "/" || location.pathname === ""; };
-    show();
-    addEventListener("popstate", show);
-    for (const fn of ["pushState", "replaceState"]) {
-      const orig = history[fn].bind(history);
-      history[fn] = (...a) => { const r = orig(...a); queueMicrotask(show); return r; };
+  // It sits in the page, top left: in the breadcrumb row when the page shows one, else just above the heading.
+  const back = document.createElement("button");
+  back.type = "button"; back.className = "page-back"; back.title = "Back";
+  back.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>Back</span>';
+  back.addEventListener("click", backTo);
+  const row = document.createElement("div");
+  row.className = "back-row";
+  const place = () => {
+    const main = document.querySelector("main");
+    if (!main) return;
+    if (location.pathname === "/" || location.pathname === "") { back.remove(); row.remove(); return; }
+    const top = main.querySelector(".page-top");
+    if (top && !top.hidden) {
+      if (top.firstElementChild !== back) top.prepend(back);
+      row.remove();
+      return;
     }
+    const h1 = main.querySelector("h1");
+    if (!h1) return;
+    const head = h1.closest("header") || h1;
+    if (row.nextElementSibling !== head || back.parentNode !== row) { row.replaceChildren(back); head.before(row); }
   };
-  addBack();
+  const watch = () => {
+    let queued = false;
+    place();
+    new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; place(); }); } })
+      .observe(document.querySelector("main") || document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden"] });
+  };
+  document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", watch) : watch();
   // Service icons for other pages (list rows, Home): constant inline SVG, no user data.
   const icon = glyph;
   window.consoleNav = { icon, select, SECTIONS, sectionOfKind, section: (key) => SECTIONS[key] || null, current: () => sel.nav };
