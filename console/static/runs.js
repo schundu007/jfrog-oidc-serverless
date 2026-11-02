@@ -5,7 +5,7 @@
 import { $, api, h, fill, streamEvents, statusIcon, statusPill, template, armed, href, ago, stamp, clock, dur,
   runDuration, stepDuration, LIVE, help, status as setStatus } from "./core.js";
 
-const rs = { id: null, name: null, snap: null, selected: null, abort: null, log: [], refetch: null, userPicked: false, tick: null };
+const rs = { id: null, name: null, snap: null, selected: null, abort: null, log: [], refetch: null, userPicked: false, tick: null, tab: null };
 
 const note = (text, kind) => setStatus($("run-status"), text, kind);
 
@@ -247,13 +247,13 @@ function viewProve(step, ev) {
   if (f?.who) out.push(kv([["Artifact", f.who.artifact], ["Last downloaded by", f.who.last_downloaded_by],
     ["When", f.who.last_downloaded ? stamp(f.who.last_downloaded) : null], ["Downloads", f.who.downloads]]));
   if (f?.answers?.length) {
-    out.push(h("h3", {}, "JFrog's answers", help("What JFrog answered to the workload's own identity at each stage: HTTP status and message. Never a token.")));
+    out.push(h("h3", {}, "JFrog responses", help("What JFrog answered to the workload's own identity at each stage: HTTP status and message. Never a token.")));
     out.push(table(["Stage", "HTTP", "Answer", "At"], f.answers.map((x) => [PROVE_STAGE[x.stage] || x.stage, x.status ?? "—",
       x.answer, x.at ? stamp(x.at) : ""]), f.answers.map((x) => x.status !== 200 && x.stage !== "refused" ? "bad" : x.status !== 200 ? "warn" : "")));
   }
   const wl = f?.workload_log;
   if (wl) {
-    out.push(h("h3", {}, "Workload log", help("The workload's own live log for the proof window, read from the platform. Each self-test prints one line with JFrog's answer; tokens are never logged.")));
+    out.push(h("h3", {}, "Workload logs", help("The workload's own live log for the proof window, read from the platform. Each self-test prints one line with JFrog's answer; tokens are never logged.")));
     out.push(kv([["Source", wl.source], ["Workload", wl.workload], ["Since", wl.since ? stamp(wl.since) : null],
       ["Lines", wl.error || String((wl.rows || []).length)]]));
     if (wl.rows?.length) out.push(table(["At", "Level", "Message"], wl.rows.map((r) => [stamp(r.at), r.level, r.message]),
@@ -270,7 +270,7 @@ function viewProve(step, ev) {
       link.click();
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     });
-    out.push(h("p", {}, dl));
+    out.push(h("p", { class: "keep-top" }, dl));
   }
   return out;
 }
@@ -332,6 +332,8 @@ function stepLines() {
 function renderLog() {
   const lines = stepLines();
   $("run-log-count").textContent = lines.length ? String(lines.length) : "";
+  const tabCount = document.querySelector('#run-detail [data-tab="Step log"] .count-badge');
+  if (tabCount) tabCount.textContent = $("run-log-count").textContent;
   $("run-log-copy").disabled = !lines.length;
   fill($("run-log"), lines.length
     ? h("table", { class: "log-table" },
@@ -478,9 +480,36 @@ function renderDetail(step) {
   if (step.note) parts.push(h("p", { class: "muted small", text: step.note }));
   const view = { preflight: viewPreflight, discover: viewDiscover, simulate: viewSimulate, publish: viewPublish,
     plan: viewPlan, apply: viewApply, wire: viewWire, verify: viewVerify, prove: viewProve }[step.name];
-  if (view) parts.push(...view(step, ev));
-  if (parts.length === 1) parts.push(h("p", { class: "muted", text: step.status === "pending" ? "Not started yet." : "No evidence." }));
+  const body = view ? view(step, ev).filter(Boolean) : [];
+  // The outcome line and the download stay above the tabs; each h3 section becomes its own tab.
+  for (const n of body.filter((n) => n.classList?.contains("outcome") || n.classList?.contains("keep-top"))) parts.push(n);
+  const tabs = [];
+  for (const n of body) {
+    if (n.classList?.contains("outcome") || n.classList?.contains("keep-top")) continue;
+    if (n.tagName === "H3") { tabs.push({ label: n.firstChild?.textContent || n.textContent, nodes: [] }); continue; }
+    if (!tabs.length) tabs.push({ label: step.name === "prove" ? "Proof results" : "Details", nodes: [] });
+    tabs.at(-1).nodes.push(n);
+  }
+  if (!tabs.length && parts.length === 1)
+    tabs.push({ label: "Details", nodes: [h("p", { class: "muted", text: step.status === "pending" ? "Not started yet." : "No evidence." })] });
+  tabs.push({ label: "Step log", log: true });
+  if (!tabs.some((t) => t.label === rs.tab)) rs.tab = tabs[0].label;
+  const panels = [];
+  const bar = h("div", { class: "tabs detail-tabs", role: "tablist", "aria-label": step.title });
+  const pick = (label) => {
+    rs.tab = label;
+    for (const b of bar.children) b.setAttribute("aria-selected", String(b.dataset.tab === label));
+    for (const [t, el] of panels) el.hidden = t.label !== label;
+    $("run-log-panel").hidden = label !== "Step log";
+  };
+  for (const t of tabs) {
+    bar.append(h("button", { type: "button", role: "tab", "data-tab": t.label, onclick: () => pick(t.label) }, t.label,
+      t.log ? h("span", { class: "count-badge", text: $("run-log-count").textContent }) : null));
+    if (!t.log) panels.push([t, h("div", { role: "tabpanel", class: "detail-panel" }, t.nodes)]);
+  }
+  parts.push(bar, ...panels.map(([, el]) => el));
   fill($("run-detail"), parts);
+  pick(rs.tab);
 }
 
 // ----------------------------------------------------------------- actions

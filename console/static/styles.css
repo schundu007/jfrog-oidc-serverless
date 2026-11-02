@@ -1131,3 +1131,11 @@ td.nowrap { white-space: nowrap; }
 .table-wrap > table.kv-table tbody tr + tr td { border-top: 1px solid #f0f0f0; }
 .table-wrap { margin: var(--s-2) 0 var(--s-4); }
 .table-wrap + p { margin-top: var(--s-3); }
+
+/* A run step's sections as tabs: Checks · JFrog's answers · Workload log · Log. */
+.detail-tabs { margin: var(--s-3) 0 var(--s-4); overflow: visible; }
+.detail-tabs button[role="tab"] { background: none; border: 0; border-bottom: 3px solid transparent; border-radius: 0; cursor: pointer; font: inherit; }
+.detail-tabs button[role="tab"][aria-selected="true"] { border-bottom-color: var(--brand); }
+.detail-tabs .count-badge:empty { display: none; }
+#run-log-panel .log-head { justify-content: flex-end; }
+#run-log-panel .log-head { margin-top: 0; padding-top: 0; border-top: 0; margin-bottom: var(--s-3); }
