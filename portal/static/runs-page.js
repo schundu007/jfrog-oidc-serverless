@@ -2,7 +2,7 @@
 // selected, Clear finished), Essentials, tabs by area (All, Serverless, Kubernetes, Infrastructure), then
 // one filter bar ("Filter for any field…", Cloud, Type, Status) over one table grouped by cloud. Filters
 // live in the address. Each row opens its run. Data: data.js.
-import { CLOUD_NAMES, LIVE_STATES, h, markEl, when, runPill, loadAll, removeRun, archivedStacks } from "./data.js";
+import { CLOUD_NAMES, LIVE_STATES, h, markEl, when, runPill, loadAll, removeRun } from "./data.js";
 
 const $ = (id) => document.getElementById(id);
 const TABS = ["", "serverless", "kubernetes", "infrastructure", "oidc", "archived"];
@@ -10,7 +10,7 @@ const TAB_ID = (t) => `tab-${t || "all"}`;
 const u0 = new URLSearchParams(location.search);
 const F = { area: TABS.includes(u0.get("area")) ? u0.get("area") : "", q: u0.get("q") || "", cloud: u0.get("cloud") || "",
   type: u0.get("type") || "", status: u0.get("status") || "" };
-let all = [], shown = [], gone = [];
+let all = [], shown = [];
 const picked = new Set();  // run api paths
 let pending = null;  // runs awaiting the inline Delete/Keep answer
 
@@ -54,7 +54,6 @@ function draw() {
     b.textContent = `${t ? b.dataset.label : "All"}${all.length ? ` (${n})` : ""}`;
   }
   $("runs-panel").setAttribute("aria-labelledby", TAB_ID(F.area));
-  drawGone();
   const rows = inTab();
   const clouds = [...new Set(rows.map((r) => r.cloud).filter(Boolean))];
   const types = [...new Set(rows.map(typeOf).filter(Boolean))].sort();
@@ -102,23 +101,6 @@ function render() {
   $("runs-none").hidden = shown.length > 0;
   $("runs-none").textContent = rows.length ? "No run matches the filters" : "No runs yet";
   sync();
-}
-
-const cloudLogo = (c) => { const e = h("span", { class: "home-group-logo" }); e.innerHTML = (c && window.consoleNav?.icon(c)) || ""; return e; };   // constant SVG only
-// Archived tab: the stacks with nothing standing, one table above their runs; Deploy opens the stack.
-function drawGone() {
-  const box = $("archived-stacks");
-  box.hidden = F.area !== "archived" || !gone.length;
-  if (box.hidden) return box.replaceChildren();
-  box.replaceChildren(h("h2", { class: "home-group-name archived-title" }, "Stacks", h("small", { text: String(gone.length) })),
-    h("div", { class: "table-wrap" }, h("table", { class: "blade-table home-table list-table" },
-      h("thead", {}, h("tr", {}, ["Name", "Status", "Stack", "Area", ""].map((t) => h("th", { scope: "col", text: t })))),
-      h("tbody", {}, gone.map((s) => h("tr", {},
-        h("td", {}, h("span", { class: "blade-name" }, cloudLogo(s.cloud), h("span", { text: s.name }))),
-        h("td", {}, h("span", { class: `blade-state ${s.status === "Partly deleted" ? "warn" : ""}`, text: s.status })),
-        h("td", { text: s.stack }), h("td", { text: s.area }),
-        h("td", {}, h("a", { href: s.href, text: "Deploy" }))))))),
-    h("h2", { class: "home-group-name archived-title" }, "Runs"));
 }
 
 // Essentials: label : value, two columns; a value with a filtered view links to it.
@@ -189,7 +171,6 @@ async function load() {
   $("runs-errors").hidden = !bad.length;
   $("runs-errors").textContent = bad.map((e) => `${e.source}: ${e.message}`).join(" · ");
   all = runs;
-  gone = await archivedStacks().catch(() => []);
   essentials();
   draw();
 }
