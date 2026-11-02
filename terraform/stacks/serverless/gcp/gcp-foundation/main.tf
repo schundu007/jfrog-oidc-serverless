@@ -1,6 +1,6 @@
 # Google Cloud foundation for the ADO pipelines (apply once, locally): Workload Identity
 # Federation for the ADO service connections, their service accounts, the image repository
-# and the Terraform state bucket of the GCP stacks. No Azure, JFrog or AWS resources here: the
+# and the Terraform state bucket of the GCP stacks. No Azure or JFrog resources here: the
 # pipelines' JFrog trust is OIDC configuration, made afterwards by terraform/stacks/oidc/gcp/gcp-jfrog-trust.
 
 locals {

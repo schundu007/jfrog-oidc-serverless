@@ -353,8 +353,8 @@ class TerraformValidateTests(Base):
         shutil.rmtree(d)
 
     def test_every_kind(self):
-        from console.tests.test_tfgen_aws_openshift import aws_cfg, openshift_cfg
-        make = {"gcp": gcp_cfg, "azure": azure_cfg, "aws": aws_cfg, "openshift": openshift_cfg}
+        from console.tests.test_tfgen_openshift import openshift_cfg
+        make = {"gcp": gcp_cfg, "azure": azure_cfg, "openshift": openshift_cfg}
         for kind in model.KINDS:
             with self.subTest(kind=kind):
                 self.validate(make[model.cloud_of(kind)](kind, name="t-" + kind.replace("_", "-")))

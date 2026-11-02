@@ -27,12 +27,9 @@ from .shell import Shell
 DEFAULT_REGION = "us-central1"
 SCOPE_RE = {"gcp": re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$"),
             "azure": re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I),
-            "aws": re.compile(r"^[A-Za-z0-9_.@+-]{1,64}$"),                  # an AWS CLI profile
             "openshift": re.compile(r"^[A-Za-z0-9_.:/@+-]{1,253}$")}         # a kube context
 # The defaults field that names the listed scope.
-SCOPE_KEY = {"gcp": "project", "azure": "subscription", "aws": "profile", "openshift": "context"}
-AWS_DEFAULT_REGION = "us-east-1"
-ECS_FAMILY_CAP = 50
+SCOPE_KEY = {"gcp": "project", "azure": "subscription", "openshift": "context"}
 LOCATION = "cloud.googleapis.com/location"
 
 
@@ -185,58 +182,6 @@ def azure(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, list
     return {"subscription": sub, "subscription_name": acct.get("name", "")}, out
 
 
-def _aws_scopes(sh: Shell, errors: list) -> list:
-    res = sh.run(["aws", "configure", "list-profiles"], timeout=30)
-    if not res.ok:
-        errors.append(f"aws configure list-profiles: {res.error_text(200)}")
-        return []
-    return [{"id": p, "name": p} for p in sorted({ln.strip() for ln in res.stdout.splitlines() if ln.strip()})
-            if SCOPE_RE["aws"].match(p)]
-
-
-def aws(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, list]:
-    """Lambda functions, ECS services (and task families no service runs) and App Runner services
-    of one profile's account, in the profile's default region."""
-    prof = ["--profile", scope] if scope else []
-    # Listing needs a region; only a configured one becomes a default for the form.
-    configured = _value(sh, ["aws", "configure", "get", "region", *prof])
-    region = configured or AWS_DEFAULT_REGION
-    o = ["--region", region, *prof, "--output", "json"]
-    res = sh.run(["aws", "sts", "get-caller-identity", *o], timeout=60)
-    account = ((res.json() or {}) if res.ok else {}).get("Account", "")
-    defaults = {"profile": scope or "", "account": account, "region": configured}
-    out: list = []
-    if not account:
-        errors.append(f"aws is not logged in{f' for profile {scope}' if scope else ''}: {_first_error(res, 160)} "
-                      f"(aws sso login{f' --profile {scope}' if scope else ''})")
-        return defaults, out
-    base = {"account": account, "region": region, "profile": scope or "", "cluster": "", "supported": True}
-
-    def listing(argv, what):
-        r = sh.run([*argv, *o], timeout=120)
-        if not r.ok:
-            errors.append(f"{what}: {_first_error(r)}")
-            return None
-        return r.json()
-
-    for name in listing(["aws", "lambda", "list-functions", "--query", "Functions[].FunctionName"], "lambda list-functions") or []:
-        out.append({**base, "kind": "aws_lambda", "name": name})
-    served = set()
-    for arn in (listing(["aws", "ecs", "list-clusters"], "ecs list-clusters") or {}).get("clusterArns") or []:
-        cluster = arn.rsplit("/", 1)[-1]
-        for sarn in (listing(["aws", "ecs", "list-services", "--cluster", cluster], "ecs list-services") or {}).get("serviceArns") or []:
-            name = sarn.rsplit("/", 1)[-1]
-            served.add(name)
-            out.append({**base, "kind": "aws_ecs_task", "name": name, "cluster": cluster})
-    fams = (listing(["aws", "ecs", "list-task-definition-families", "--status", "ACTIVE"], "ecs list-task-definition-families")
-            or {}).get("families") or []
-    for fam in [f for f in fams if f not in served][:ECS_FAMILY_CAP]:
-        out.append({**base, "kind": "aws_ecs_task", "name": fam})
-    for s in (listing(["aws", "apprunner", "list-services"], "apprunner list-services") or {}).get("ServiceSummaryList") or []:
-        out.append({**base, "kind": "aws_app_runner", "name": s.get("ServiceName", "")})
-    return defaults, out
-
-
 # Contexts that point at OpenShift: an `oc login` context (namespace/api-host:6443/user) or an
 # OpenShift API server (api.<cluster>:6443, *.openshiftapps.com). AKS, GKE, EKS and local clusters are left out.
 OPENSHIFT_SERVER_RE = re.compile(r"^https://api\.[^/:]+:6443/?$|openshiftapps\.com|\.openshift\.")
@@ -299,8 +244,6 @@ def openshift(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, 
 def _key(cloud: str, t: dict) -> tuple:
     if cloud == "gcp":
         return (t.get("project"), t.get("region"), t.get("name"))
-    if cloud == "aws":
-        return (t.get("account"), t.get("region"), t.get("name"))
     if cloud == "openshift":
         return (t.get("context"), t.get("namespace"), t.get("name"))
     return (str(t.get("subscription") or "").lower(), str(t.get("resource_group") or "").lower(), t.get("name"))
@@ -334,11 +277,11 @@ def fetch(cloud: str, sh: Shell, scope: str | None = None) -> dict:
     """The live listing: the slow part (minutes across many projects), cacheable."""
     errors: list = []
     if scope and not SCOPE_RE[cloud].match(scope):
-        what = {"gcp": "project ID", "azure": "subscription ID", "aws": "AWS CLI profile", "openshift": "kube context"}
+        what = {"gcp": "project ID", "azure": "subscription ID", "openshift": "kube context"}
         return {"cloud": cloud, "defaults": {}, "scopes": [], "workloads": [],
                 "errors": [f"not a {what[cloud]}: {scope!r}"]}
-    scopes = {"gcp": _gcp_scopes, "azure": _azure_scopes, "aws": _aws_scopes, "openshift": _k8s_scopes}[cloud](sh, errors)
-    defaults, workloads = {"gcp": gcp, "azure": azure, "aws": aws, "openshift": openshift}[cloud](sh, errors, scope)
+    scopes = {"gcp": _gcp_scopes, "azure": _azure_scopes, "openshift": _k8s_scopes}[cloud](sh, errors)
+    defaults, workloads = {"gcp": gcp, "azure": azure, "openshift": openshift}[cloud](sh, errors, scope)
     if cloud in ("gcp", "azure"):
         # Profiles and contexts each need their own login: listing them all would prompt or fail per scope.
         scopes = _with_workloads(cloud, sh, scopes, defaults.get(SCOPE_KEY[cloud]) or "")

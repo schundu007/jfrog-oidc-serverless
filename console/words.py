@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import urlsplit
 
-TOOLS = {"gcloud": "Google Cloud", "az": "Azure", "aws": "AWS", "kubectl": "Kubernetes", "oc": "OpenShift",
+TOOLS = {"gcloud": "Google Cloud", "az": "Azure", "kubectl": "Kubernetes", "oc": "OpenShift",
          "helm": "Helm", "terraform": "Terraform", "git": "Git", "docker": "Docker", "gsutil": "Cloud Storage",
          "jf": "JFrog CLI", "curl": "HTTP"}
 
@@ -34,8 +34,7 @@ NOUNS = {("projects",): "project", ("services",): "enabled APIs", ("run", "servi
          ("functionapp", "config", "appsettings"): "function app settings", ("keyvault", "secret"): "Key Vault secret",
          ("identity",): "managed identity", ("account",): "account", ("group",): "resource group",
          ("acr",): "container registry", ("aks",): "AKS cluster", ("role", "assignment"): "role assignment",
-         ("ad", "app"): "Entra app", ("ad", "sp"): "service principal", ("lambda",): "Lambda function",
-         ("ecs",): "ECS", ("apprunner",): "App Runner service", ("sts",): "AWS identity", ("iam",): "IAM"}
+         ("ad", "app"): "Entra app", ("ad", "sp"): "service principal", ("iam",): "IAM"}
 
 BOOL_FLAGS = {"--quiet", "-q", "--enabled", "--wait", "--gen2", "--yes", "-y", "--no-wait", "--only-show-errors", "--all",
               "--force", "--async", "--overwrite", "--allow-unauthenticated", "--no-allow-unauthenticated"}
@@ -106,7 +105,7 @@ def _what(tool, name, words, args) -> str:
             if w == "version" and not groups:
                 return f"Checked the {name} CLI"
             noun = NOUNS.get(groups) or " ".join(groups) or name
-            subject = f"{name} {noun}" if noun != name and not noun.startswith(("Cloud Run", "Azure", "AWS")) else noun
+            subject = f"{name} {noun}" if noun != name and not noun.startswith(("Cloud Run", "Azure")) else noun
             return f"{VERBS[w]} {subject}{' ' + rest[0] if rest else ''}"
     return f"Ran {name} {' '.join(words[:2])}".rstrip()
 

@@ -24,20 +24,13 @@ class DefaultsTests(unittest.TestCase):
             self.assertEqual(model.validate(cfg)["errors"], [], kind)
 
 
-class AwsOpenShiftModelTests(unittest.TestCase):
+class OpenShiftModelTests(unittest.TestCase):
     def test_defaults_are_runtime_only(self):
-        for kind in ("aws_lambda", "aws_ecs_task", "aws_app_runner", "openshift_knative_service"):
+        for kind in ("openshift_knative_service",):
             cfg = model.default_config(kind, name="orders")
             self.assertNotIn("pull_path", cfg, kind)
             self.assertEqual(model.validate(cfg)["errors"], [], kind)
             self.assertEqual(model.dedicated_identity_name(cfg), "jfrog-orders")
-
-    def test_aws_fields(self):
-        cfg = model.default_config("aws_ecs_task", name="orders")
-        cfg["target"]["aws"].update(account="12345", region="Mars")
-        self.assertTrue({"aws_account", "aws_region"} <= codes(model.validate(cfg)["errors"]))
-        cfg["target"]["aws"]["account"] = ""
-        self.assertIn("target.aws.account", {e["path"] for e in model.validate(cfg)["errors"]})
 
     def test_openshift_fields(self):
         cfg = model.default_config("openshift_knative_service", name="orders")
@@ -45,10 +38,6 @@ class AwsOpenShiftModelTests(unittest.TestCase):
         errs = model.validate(cfg)["errors"]
         self.assertIn("cluster_name", codes(errs))
         self.assertIn("target.openshift.namespace", {e["path"] for e in errs})
-
-    def test_long_name_role(self):
-        cfg = model.default_config("aws_lambda", name="a" * 63)
-        self.assertLessEqual(len(model.dedicated_identity_name(cfg)), 64)
 
 
 class ValidateTests(unittest.TestCase):

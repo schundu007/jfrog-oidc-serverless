@@ -197,7 +197,7 @@ class LogTests(unittest.TestCase):
 
 class OtherKindsTests(unittest.TestCase):
     def test_runtime_path_only_kinds_are_skipped(self):
-        cfg = model.default_config("aws_lambda", name="t")
+        cfg = model.default_config("openshift_knative_service", name="t")
         res, _, _ = go(cfg, [])
         self.assertEqual(res["status"], "skipped")
 

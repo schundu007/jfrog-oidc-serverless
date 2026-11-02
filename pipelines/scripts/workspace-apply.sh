@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# workspace-apply.sh <gcp|azure|aws|openshift> [workspace-dir...]
+# workspace-apply.sh <gcp|azure|openshift> [workspace-dir...]
 #
 # Without workspace arguments, takes the terraform/workspaces/<cloud>_* directories
 # changed by the last commit. Each one: init (backend.tf.json), plan, apply, then
@@ -9,13 +9,11 @@
 set -euo pipefail
 cd "$BUILD_SOURCESDIRECTORY"
 
-cloud=${1:?usage: workspace-apply.sh <gcp|azure|aws|openshift> [workspace-dir...]}
+cloud=${1:?usage: workspace-apply.sh <gcp|azure|openshift> [workspace-dir...]}
 shift
 case "$cloud" in
   gcp) export GCP_SERVICE_ACCOUNT="${GCP_SETUP_SERVICE_ACCOUNT:?}" ;;
   azure) ;;
-  # AWS: AssumeRoleWithWebIdentity as ado-setup (oidc-login.sh).
-  aws) export AWS_ROLE_ARN="${AWS_SETUP_ROLE_ARN:?}" AWS_REGION="${AWS_REGION:?}" ;;
   # Knative: the Kubernetes@1 login step wrote KUBECONFIG; the workspace's provider reads it.
   # KUBE_CONTEXT (optional) names the cluster's context in that kubeconfig when it differs from the console's.
   openshift)

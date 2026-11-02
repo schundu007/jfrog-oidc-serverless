@@ -21,7 +21,6 @@ import time
 
 from .. import gcprun, model
 from ..shell import Shell
-from .aws import AwsDiscover
 from .openshift import OpenShiftDiscover
 
 DEFAULT_COMPUTE_SA = re.compile(r"^\d+-compute@developer\.gserviceaccount\.com$")
@@ -60,7 +59,7 @@ def _prop(d: dict, key: str, default=None):
 BASIC_ROLES = ("roles/owner", "roles/editor", "roles/viewer")
 
 
-class Discover(AwsDiscover, OpenShiftDiscover):
+class Discover(OpenShiftDiscover):
     def __init__(self, cfg: dict, sh: Shell):
         self.cfg = cfg
         self.sh = sh

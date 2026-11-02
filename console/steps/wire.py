@@ -24,7 +24,6 @@ import json
 
 from .. import gcprun, model, redact
 from ..shell import Shell
-from .aws import AwsWire
 from .openshift import OpenShiftWire
 
 CONTAINER_KINDS = ("azure_container_app", "azure_container_app_job", "azure_functions_aca")
@@ -59,7 +58,7 @@ def _entry(scope, key, current, desired):
 JOB_KINDS = ("gcp_run_job", "azure_container_app_job")
 
 
-class Wire(AwsWire, OpenShiftWire):
+class Wire(OpenShiftWire):
     def __init__(self, cfg: dict, sh: Shell, outputs: dict):
         self.cfg, self.sh, self.out = cfg, sh, outputs or {}
         self.kind = model.get_path(cfg, "target.kind")
@@ -69,7 +68,6 @@ class Wire(AwsWire, OpenShiftWire):
         # Registry server for image pulls: the Docker repo's dedicated host, never the
         # platform host (repository-path pulls failed on the AKS pilot's instance).
         self.docker_host = model.docker_host(cfg)
-        self._aws_cache = {}
         self.runtime = bool(model.get_path(cfg, "runtime.enabled", True))
         self.dedicated = self._dedicated()
         if self.dedicated and self.cloud == "azure":
@@ -81,13 +79,11 @@ class Wire(AwsWire, OpenShiftWire):
         """The identity the workspace created for an existing app without one (None when it has its own)."""
         if not self.d.get("dedicated_identity"):
             return None
-        key = {"gcp": "dedicated_service_accounts", "azure": "dedicated_identities", "aws": "dedicated_roles",
+        key = {"gcp": "dedicated_service_accounts", "azure": "dedicated_identities",
                "openshift": "dedicated_service_accounts"}[self.cloud]
         made = (self.out.get(key) or {}).get(self.cfg["name"])
         if not made:
             raise WireError(f"workspace outputs missing ({key}.{self.cfg['name']}): run Plan and Apply first")
-        if self.cloud == "aws":
-            return {"id": made, "arn": made}
         return {"id": made} if self.cloud in ("gcp", "openshift") else made
 
     # -- desired -------------------------------------------------------------------
@@ -101,8 +97,6 @@ class Wire(AwsWire, OpenShiftWire):
     def desired_env(self) -> dict:
         if not self.runtime:
             return {}
-        if self.cloud == "aws":
-            return self._aws_env()
         if self.cloud == "openshift":
             return self._k8s_env()
         if self.cloud == "gcp":
@@ -131,9 +125,6 @@ class Wire(AwsWire, OpenShiftWire):
         env = self.desired_env()
         if self.cloud == "gcp":
             diff, commands, notes = self._gcp(env)
-        elif self.cloud == "aws":
-            diff, commands, notes = self._aws(env)
-            self._aws_cache = {}          # the reads held the whole environment: drop it
         elif self.cloud == "openshift":
             diff, commands, notes = self._openshift(env)
         elif self._is_container_app():
@@ -151,8 +142,6 @@ class Wire(AwsWire, OpenShiftWire):
         if self.cloud == "gcp":
             g = model.get_path(self.cfg, "target.gcp")
             return f"gcp:{g['project']}:{g['region']}:{self._gcp_resource()}/{self._gcp_name()}"
-        if self.cloud == "aws":
-            return self._aws_target_id()
         if self.cloud == "openshift":
             return self._k8s_target_id()
         return self.d.get("resource_id") or "azure:" + str(model.get_path(self.cfg, "target.azure.name", ""))
@@ -291,8 +280,6 @@ class Wire(AwsWire, OpenShiftWire):
 
     def _resolve(self, argv: list) -> list:
         """Commands that send a whole configuration back carry a placeholder; fill it from a fresh read."""
-        if self.cloud == "aws":
-            return self._aws_resolve(argv)
         return self._k8s_resolve(argv) if self.cloud == "openshift" else argv
 
     def apply(self, plan: dict, approval) -> dict:
@@ -307,7 +294,6 @@ class Wire(AwsWire, OpenShiftWire):
         for argv in fresh["commands"]:
             # The filled argv may carry the app's other settings: log the placeholder form only.
             res = self.sh.run(self._resolve(argv), timeout=600, sensitive=True, shown=argv)
-            self._aws_cache = {}
             if not res.ok:
                 raise WireError(f"{' '.join(argv[:4])} failed after {len(ran)} of {len(fresh['commands'])} "
                                 f"command(s): {res.error_text(400)}")

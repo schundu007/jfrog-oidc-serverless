@@ -29,12 +29,10 @@ FAULT_TYPES = {
     "sa_recreated": "alias of identity_recreated for GCP service accounts",
     "mapping_revoked": "an identity mapping is removed (params.mapping: runtime)",
     "integration_misconfigured": "the JFrog integration's issuer is wrong (params.issuer)",
-    "federation_disabled": "AWS outbound identity federation is off: STS GetWebIdentityToken returns 403",
 }
 # Faults that only exist on some clouds (the rest apply everywhere).
 FAULT_CLOUDS = {
     "sa_recreated": ("gcp",),
-    "federation_disabled": ("aws",),
 }
 
 DEFAULT_LOAD = {"cold_starts_per_hour": 6.0, "requests_per_minute": 2.0, "instance_lifetime_minutes": 60.0}

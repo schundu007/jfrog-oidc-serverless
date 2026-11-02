@@ -36,7 +36,7 @@ these places, and `docs/kcp-progress.md` §Traceability says which:
   subscription (`az aks list`) or project (`gcloud projects list` +
   `gcloud container clusters list`) the operator can see. Every step adopts what
   exists.
-- **Seam for later:** EKS, OpenShift (`model.PLATFORMS`). The upstream README lists them as supported.
+- **Seam for later:** OpenShift (`model.PLATFORMS`). The upstream README lists them as supported.
 - **Modes:** *pilot* drives `argocd-utility` with its `TestScenario` names;
   *template* drives `jfrog-kcp-cluster.yml` (`Action`) and
   `jfrog-kcp-mappings.yml`.

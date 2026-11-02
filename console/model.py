@@ -20,9 +20,6 @@ KINDS = {
     "azure_functions_aca": {"cloud": "azure", "label": "Functions on Container Apps"},
     "azure_functions_premium": {"cloud": "azure", "label": "Functions Premium/Dedicated"},
     "azure_functions_flex": {"cloud": "azure", "label": "Functions Flex Consumption"},
-    "aws_lambda": {"cloud": "aws", "label": "Lambda function"},
-    "aws_ecs_task": {"cloud": "aws", "label": "ECS Fargate task/service"},
-    "aws_app_runner": {"cloud": "aws", "label": "App Runner service"},
     "openshift_knative_service": {"cloud": "openshift", "label": "Knative service"},
 }
 
@@ -30,31 +27,24 @@ KINDS = {
 TARGET_FIELDS = {
     "gcp": ("project", "region", "name"),
     "azure": ("subscription", "resource_group", "name"),
-    # profile (optional): the AWS CLI profile for the account; cluster (optional): ECS only,
-    # empty for a standalone task definition family.
-    "aws": ("account", "region", "name"),
     # context: the kube context; cluster: a short name for the cluster (it names the workspace).
     "openshift": ("context", "cluster", "namespace", "name"),
 }
 EMPTY_TARGET = {
     "gcp": {"project": "", "region": "", "name": ""},
     "azure": {"subscription": "", "resource_group": "", "name": "", "identity_type": "user_assigned"},
-    "aws": {"account": "", "region": "", "name": "", "profile": "", "cluster": ""},
     "openshift": {"context": "", "cluster": "", "namespace": "", "name": ""},
 }
 SAMPLE_TARGET = {
     "gcp": {"project": "my-project", "region": "us-central1"},
     "azure": {"subscription": "00000000-0000-0000-0000-000000000000", "resource_group": "rg-apps"},
-    "aws": {"account": "123456789012", "region": "us-east-1"},
     "openshift": {"context": "default", "cluster": "my-cluster", "namespace": "default"},
 }
 # Runtime path only on every cloud: images reach the platform's own registry at build time
 # (the ADO pipeline's OIDC token to JFrog), and the platform pulls with its identity.
-# Default integration names. Each AWS account and each cluster is its own issuer, so Discover
-# turns the defaults into aws-<account> / openshift-<cluster>.
-DEFAULT_INTEGRATIONS = {"gcp": "gcp-cloudrun", "azure": "azure-entra", "aws": "aws-sts", "openshift": "openshift-knative"}
-ACCOUNT_RE = re.compile(r"^\d{12}$")
-AWS_REGION_RE = re.compile(r"^[a-z]{2}(-gov)?-[a-z]+-\d$")
+# Default integration names. Each cluster is its own issuer, so Discover
+# turns the default into openshift-<cluster>.
+DEFAULT_INTEGRATIONS = {"gcp": "gcp-cloudrun", "azure": "azure-entra", "openshift": "openshift-knative"}
 CLUSTER_RE = re.compile(r"^[a-z][a-z0-9-]{0,30}[a-z0-9]$")
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
@@ -117,7 +107,6 @@ def dedicated_identity_name(cfg: dict) -> str:
 
     GCP: a service account ID (6-30 chars, starts with a letter): jfrog-<name>.
     Azure: a user-assigned identity name (CAF prefix): id-<name>-jfrog.
-    AWS: an IAM role name (max 64): jfrog-<name>.
     OpenShift / Knative: a service account in the app's namespace: jfrog-<name>.
     Discover also uses it to recognise an identity the console created earlier.
     """
@@ -125,7 +114,7 @@ def dedicated_identity_name(cfg: dict) -> str:
     cloud = cloud_of(get_path(cfg, "target.kind"))
     if cloud == "gcp":
         return f"jfrog-{name[:24]}".rstrip("-")
-    if cloud in ("aws", "openshift"):
+    if cloud == "openshift":
         return f"jfrog-{name[:57]}".rstrip("-")
     return f"id-{name}-jfrog"
 
@@ -228,12 +217,6 @@ def validate(cfg: dict) -> dict:
             err(f"target.{cloud}.{f}", "required", f"{f} is required for {KINDS[kind]['label']}")
     if not get_path(cfg, f"jfrog.integration_names.{cloud}"):
         err(f"jfrog.integration_names.{cloud}", "required", "integration name is required")
-    if cloud == "aws":
-        acct, region = str(get_path(cfg, "target.aws.account") or ""), str(get_path(cfg, "target.aws.region") or "")
-        if acct and not ACCOUNT_RE.match(acct):
-            err("target.aws.account", "aws_account", "AWS account ID is 12 digits")
-        if region and not AWS_REGION_RE.match(region):
-            err("target.aws.region", "aws_region", "not an AWS region, e.g. us-east-1")
     if cloud == "openshift":
         cl = str(get_path(cfg, "target.openshift.cluster") or "")
         if cl and not CLUSTER_RE.match(cl):

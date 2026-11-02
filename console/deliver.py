@@ -35,9 +35,8 @@ from .steps import wire as wiremod
 
 ADO_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798"   # Azure DevOps
 REQUIRED = {"ado": ("organization", "project", "repository")}
-STATE_FIELDS = {"gcs": ("bucket",), "azurerm": ("resource_group_name", "storage_account_name", "container_name"),
-                "s3": ("bucket", "region"), "kubernetes": ("namespace",)}
-STATE_TYPES = {"gcp": "gcs", "azure": "azurerm", "aws": "s3", "openshift": "kubernetes"}
+STATE_FIELDS = {"gcs": ("bucket",), "azurerm": ("resource_group_name", "storage_account_name", "container_name"), "kubernetes": ("namespace",)}
+STATE_TYPES = {"gcp": "gcs", "azure": "azurerm", "openshift": "kubernetes"}
 WORKSPACE_FILES = ("backend.tf.json", "console.json", "main.tf.json", "terraform.tfvars.json")
 # The ADO pipeline running pipelines/<cloud>-workload-onboard.yml, by its name in ADO.
 ONBOARD_PIPELINES = {"gcp": "Google Cloud - Onboard workloads to JFrog", "azure": "Azure - Onboard workloads to JFrog"}
@@ -121,8 +120,6 @@ def _backend(settings: dict, cloud: str, ws_name: str) -> dict:
         raise DeliveryError(f"delivery state for {cloud} needs {', '.join(missing)}")
     if t == "gcs":
         return {"type": t, "bucket": b["bucket"], "prefix": f"workspaces/{ws_name}"}
-    if t == "s3":
-        return {"type": t, "bucket": b["bucket"], "region": b["region"], "key": f"workspaces/{ws_name}.tfstate"}
     if t == "kubernetes":
         # Secret tfstate-default-<suffix>: a DNS label, so no underscores.
         return {"type": t, "namespace": b["namespace"], "secret_suffix": ws_name.lower().replace("_", "-")[:50],
@@ -248,13 +245,9 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
 
 
 def pipeline_target(cfg: dict, env) -> dict:
-    """The pipeline's own login replaces the operator's local one: an AWS profile from the
-    console's machine does not exist on the agent (the role comes from AWS_ROLE_ARN), and
-    the agent's kubeconfig may name the cluster's context differently (KUBE_CONTEXT)."""
+    """The pipeline's own login replaces the operator's local one: the agent's kubeconfig may name the cluster's context differently (KUBE_CONTEXT)."""
     cfg = copy.deepcopy(cfg)
     t = cfg.get("target") or {}
-    if "aws" in t and env.get("AWS_ROLE_ARN"):
-        t["aws"]["profile"] = ""
     if "openshift" in t and env.get("KUBE_CONTEXT"):
         t["openshift"]["context"] = env["KUBE_CONTEXT"]
     return cfg

@@ -14,7 +14,6 @@ SERVERLESS  /serverless/  console/       Cloud Run, Container Apps, Function App
 KUBERNETES  /k8s/         kcp_console/   kubelet credential provider on clusters
             Azure AKS     /k8s/clusters/aks/...
             Google GKE    /k8s/clusters/gke/...
-            AWS EKS       /k8s/clusters/eks/...
             OpenShift     /k8s/clusters/openshift/...
 ```
 
@@ -26,7 +25,7 @@ The Serverless console still runs on its own (`python -m console`, seam default 
 - **Code:** the portal dispatches by prefix and holds no product logic. The browser side is one UI: the Kubernetes pages (`kcp_console/static`) import the console's shared modules from `/serverless/static` (`core.js` session, API and DOM helpers, `time.js`, `logview.js`), as `/setup` does; a UI change is made once. The Python packages still never import each other; only `portal/` imports both.
 - **State:** separate stores (`.console/` and `.kcp-console/`), configs, runs, inventory caches, simulators and approval gates. A serverless config never appears in KCP, and the other way round.
 - **UI:** the sidebar has two labelled sections. The section you're in is expanded and highlighted, and the other shows only as a single link to switch over. The topbar shows the current section ("Serverless" or "Kubernetes"). Pages inside a section show nothing from the other.
-- **Inside each section:** the current per-cloud and per-platform separation stays (GCP and Azure; AKS, GKE, EKS and OpenShift).
+- **Inside each section:** the current per-cloud and per-platform separation stays (GCP and Azure; AKS, GKE and OpenShift).
 - **Shared:** only the session token (one sign-in), the security headers and the CSS design tokens (KCP's `:root` tokens: `--fs-*`, `--s1..s6`, `--r-*`, `--sh-*`, `--ctl-h`, color roles).
 
 ## Design

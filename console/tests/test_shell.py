@@ -58,12 +58,12 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(res.stdout.strip(), "''")
 
     def test_env_allow_list(self):
-        with mock.patch.dict(os.environ, {"JFROG_ACCESS_TOKEN": "secret-value-123", "AWS_SECRET_ACCESS_KEY": "x",
+        with mock.patch.dict(os.environ, {"JFROG_ACCESS_TOKEN": "secret-value-123", "ARM_CLIENT_SECRET": "x",
                                           "AZURE_CONFIG_DIR": "/tmp/az", "LC_ALL": "C"}):
             res = self.sh.run([PY, "-c", "import os, json; print(json.dumps(dict(os.environ)))"])
             env = json.loads(res.stdout)
             self.assertNotIn("JFROG_ACCESS_TOKEN", env)
-            self.assertNotIn("AWS_SECRET_ACCESS_KEY", env)
+            self.assertNotIn("ARM_CLIENT_SECRET", env)
             self.assertEqual(env["AZURE_CONFIG_DIR"], "/tmp/az")
             self.assertEqual(env["LC_ALL"], "C")
             res = self.sh.run([PY, "-c", "import os; print(os.environ['JFROG_ACCESS_TOKEN'] == 'given')"],

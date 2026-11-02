@@ -18,7 +18,6 @@ import urllib.parse
 
 from .. import model
 from ..shell import Shell
-from .aws import AwsPreflight
 from .openshift import OpenShiftPreflight
 
 TF_MIN = (1, 6)
@@ -81,7 +80,7 @@ def _version_tuple(text: str):
 # Azure DevOps' Entra resource: az rest gets an ADO token for it from the az login.
 ADO_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798"
 
-class Preflight(AwsPreflight, OpenShiftPreflight):
+class Preflight(OpenShiftPreflight):
     def __init__(self, cfg: dict, sh: Shell, env=None, delivery=False, repo_root=None):
         self.cfg = cfg
         self.repo_root = repo_root
@@ -409,8 +408,6 @@ class Preflight(AwsPreflight, OpenShiftPreflight):
         """The iss this target's tokens carry, or None when it is not known yet."""
         if self.cloud == "gcp":
             return "https://accounts.google.com"
-        if self.cloud == "aws":
-            return self.facts.get("aws_issuer")
         if self.cloud == "openshift":
             return self.facts.get("k8s_issuer")
         tenant = self.facts.get("azure_tenant")

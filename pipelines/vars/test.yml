@@ -1,9 +1,9 @@
-# Only for the AWS and Knative pipelines, which are out of use (no foundation stack).
+# Only for the Knative pipelines, which are out of use (no foundation stack).
 # GCP and Azure pipelines use vars/gcp-<env>.yml and vars/azure-<env>.yml.
 variables:
   ENVIRONMENT: test
   # No connections: each cloud owns its own, written by its foundation stack, and
-  # AWS and Knative have none yet.
+  # Knative has none yet.
   BUILD_SERVICE_CONNECTION: ""
   SETUP_SERVICE_CONNECTION: ""
   TERRAFORM_VERSION: 1.17.1

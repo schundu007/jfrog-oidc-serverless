@@ -645,3 +645,8 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
 - JFrog: URL plus an admin token checked against `/access/api/v1/oidc`. The token is held in memory only (never saved, logged or returned) and must be entered again after a restart. The console-operator path still works without it.
 - API `/api/settings…`: session token, same-origin and JSON only; answers go through `redact.obj`.
 - Settings: login switch labelled "Computer's login" (terminal gcloud/az login, JFROG_ACCESS_TOKEN) / "Signed in here" (login kept by the console in `.console/connections/`, token in memory). AWS is paused: its connector (profile switch, sign-in by profile kind) stays in code but is hidden (`PAUSED` in `settings-page.js`).
+
+## AWS removed (2026-11-01)
+
+- All AWS code is gone: the UI (AWS page, form fields, Settings sign-in, EKS cluster platform), client `AwsStsSource` and `sigv4.py`, `console/steps/aws.py`, the AWS emulator, its scenarios and the `federation_disabled` fault, tfgen's `aws_<account>` workspace and the s3 backend, `terraform/modules/aws-identity`, the `aws` input of `jfrog-oidc`, `aws-workload-onboard`/`aws-build-deploy` and `apps/aws-lambda`. AWS notes earlier in this file are history.
+- Clouds now: GCP, Azure and Knative (runtime path only).

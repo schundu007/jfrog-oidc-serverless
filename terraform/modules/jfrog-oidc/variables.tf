@@ -28,26 +28,6 @@ variable "azure" {
   default = null
 }
 
-variable "aws" {
-  description = <<-EOT
-    Trust JWTs from STS GetWebIdentityToken (IAM outbound identity federation).
-    issuer is the account's issuer (aws iam get-outbound-web-identity-federation-info:
-    https://<id>.tokens.sts.global.api.aws); audience is what workloads request
-    (JFROG_OIDC_AUDIENCE). Set to null to skip.
-  EOT
-  type = object({
-    provider_name = string
-    issuer        = string
-    audience      = optional(string, "jfrog-aws")
-  })
-  default = null
-
-  validation {
-    condition     = var.aws == null || can(regex("^https://[^/]+$", var.aws.issuer))
-    error_message = "aws.issuer must be the bare https issuer URL, with no path or trailing slash."
-  }
-}
-
 variable "openshift" {
   description = <<-EOT
     Trust projected service-account tokens from one Kubernetes cluster (OpenShift
@@ -78,10 +58,9 @@ variable "workloads" {
   description = <<-EOT
     One identity mapping per workload identity. Key = mapping name.
 
-    cloud       "gcp", "azure", "aws" or "openshift".
+    cloud       "gcp", "azure" or "openshift".
     subject     GCP: the service account's unique_id (numeric, matches the sub claim).
                 Azure: the managed identity's principal (object) ID (matches oid).
-                AWS: the IAM role ARN (matches sub).
                 OpenShift/Knative: system:serviceaccount:<namespace>:<name> (matches sub).
     username    Optional. Only set it where a fixed JFrog user is needed (the
                 foundations' setup and console-operator mappings). JFrog adds
@@ -105,8 +84,8 @@ variable "workloads" {
   }))
 
   validation {
-    condition     = alltrue([for w in values(var.workloads) : contains(["gcp", "azure", "aws", "openshift"], w.cloud)])
-    error_message = "Each workload's cloud must be \"gcp\", \"azure\", \"aws\" or \"openshift\"."
+    condition     = alltrue([for w in values(var.workloads) : contains(["gcp", "azure", "openshift"], w.cloud)])
+    error_message = "Each workload's cloud must be \"gcp\", \"azure\" or \"openshift\"."
   }
 
   validation {
