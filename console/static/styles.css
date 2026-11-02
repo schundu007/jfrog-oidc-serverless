@@ -1131,3 +1131,37 @@ td.nowrap { white-space: nowrap; }
 .table-wrap > table.kv-table tbody tr + tr td { border-top: 1px solid #f0f0f0; }
 .table-wrap { margin: var(--s-2) 0 var(--s-4); }
 .table-wrap + p { margin-top: var(--s-3); }
+
+/* Proof DAG (dag.js): stage columns joined by arrows, checks as nodes joined by lines; click a node for its detail. */
+.dag-wrap { display: flex; flex-direction: column; gap: var(--s-4, 16px); }
+.dag { display: grid; grid-template-columns: repeat(var(--dag-cols, 3), minmax(0, 1fr)); gap: 40px; }
+.dag-stage { position: relative; border: 1px solid var(--card-line); border-radius: var(--card-r); padding: 12px 14px 14px; background: var(--surface); min-width: 0; }
+.dag-stage.has-next::after { content: ""; position: absolute; top: 50%; right: -36px; width: 30px; height: 2px; background: var(--border-strong); }
+.dag-stage.has-next::before { content: ""; position: absolute; top: calc(50% - 5px); right: -38px; border: 6px solid transparent; border-left: 8px solid var(--border-strong); border-right: 0; }
+.dag-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.dag-title { font-weight: 600; }
+.dag-badge { font-size: var(--t-xs); padding: 1px 8px; border-radius: var(--r-pill); border: 1px solid; white-space: nowrap; }
+.dag-nodes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.dag-nodes li { position: relative; }
+.dag-nodes li + li::before { content: ""; position: absolute; left: 19px; top: -14px; height: 14px; width: 2px; background: var(--border-strong); }
+.dag-node { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 7px 10px; min-height: 36px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--fg); font: inherit; cursor: pointer; }
+.dag-node:hover { border-color: var(--border-strong); }
+.dag-node:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 1px; }
+.dag-node[aria-pressed="true"] { border-color: var(--navy); box-shadow: inset 0 0 0 1px var(--navy); }
+.dag-node-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.dag-dot { flex: none; display: inline-flex; width: 20px; height: 20px; border-radius: 50%; align-items: center; justify-content: center; background: var(--neutral-line); }
+.dag-dot svg { width: 14px; height: 14px; }
+.dag-dot.t-ok { background: var(--ok-line); }   .dag-node.t-ok { background: var(--ok-bg); }
+.dag-dot.t-bad { background: var(--bad-line); } .dag-node.t-bad { background: var(--bad-bg); }
+.dag-dot.t-warn { background: var(--warn-line); } .dag-node.t-warn { background: var(--warn-bg); }
+.dag-dot.t-wait, .dag-dot.t-run { background: var(--navy); }
+.dag-badge.t-ok { color: var(--ok-fg); background: var(--ok-bg); border-color: var(--ok-line); }
+.dag-badge.t-bad { color: var(--bad-fg); background: var(--bad-bg); border-color: var(--bad-line); }
+.dag-badge.t-warn { color: var(--warn-fg); background: var(--warn-bg); border-color: var(--warn-line); }
+.dag-badge.t-run, .dag-badge.t-idle { color: var(--neutral-fg); background: var(--neutral-bg); border-color: var(--neutral-line); }
+.dag-state { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.dag-detail td.dag-evidence { white-space: normal; min-width: 240px; }
+@media (max-width: 900px) { .dag { grid-template-columns: 1fr; gap: 28px; }
+  .dag-stage.has-next::after { top: auto; bottom: -24px; right: auto; left: 50%; width: 2px; height: 20px; }
+  .dag-stage.has-next::before { top: auto; bottom: -28px; right: auto; left: calc(50% - 5px); border: 6px solid transparent; border-top: 8px solid var(--border-strong); border-bottom: 0; } }

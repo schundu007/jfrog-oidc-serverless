@@ -4,6 +4,7 @@
 
 import { $, api, h, fill, streamEvents, statusIcon, statusPill, template, armed, href, ago, stamp, clock, dur,
   runDuration, stepDuration, LIVE, help, status as setStatus } from "./core.js";
+import { dag } from "./dag.js";
 
 const rs = { id: null, name: null, snap: null, selected: null, abort: null, log: [], refetch: null, userPicked: false, tick: null };
 
@@ -213,8 +214,8 @@ function viewWire(step, ev) {
 
 // Prove: the same proof the KCP console gives a cluster. Rows in order; the trust is removed only after the
 // approval (bound to the mapping's hash) and always restored. Evidence downloads as JSON, built here.
-const ROW_TONE = { ok: "succeeded", done: "succeeded", warn: "warn", failed: "failed", running: "running",
-  needs_approval: "needs_approval", pending: "pending", skipped: "skipped" };
+const PROVE_STAGES = [["No stored secret", ["secret", "keys"]], ["Live exchange", ["granted", "who"]],
+  ["Trust removed", ["break", "refused", "restore", "repull"]]];
 const PROVE_STAGE = { granted: "With trust", refused: "Trust removed", repull: "Trust restored" };
 
 // A plain table; tones[i] "bad" paints row i red (an expected refusal is "warn": shown, not a failure).
@@ -238,10 +239,10 @@ function viewProve(step, ev) {
   }
   const rows = ev.rows || [];
   if (rows.length) {
-    out.push(h("div", { class: "table-wrap" }, h("table", { class: "kv-table" },
-      h("thead", {}, h("tr", {}, ["", "Check", "Result"].map((t) => h("th", { scope: "col", text: t })))),
-      h("tbody", {}, rows.map((r) => h("tr", {}, h("td", {}, statusIcon(ROW_TONE[r.status] || r.status)),
-        h("td", { text: r.title }), h("td", { class: "mono", text: r.text || r.status })))))));
+    const by = Object.fromEntries(rows.map((r) => [r.id, r]));
+    out.push(dag({ label: "Proof steps", stages: PROVE_STAGES.map(([title, ids]) => ({ title, nodes: ids.filter((i) => by[i]).map((i) => ({
+      id: i, title: by[i].title, status: by[i].status, detail: by[i].text,
+      facts: (ev.facts?.answers || []).filter((x) => x.stage === i).map((x) => ["JFrog HTTP", `${x.status ?? "—"} ${x.answer || ""}`.trim()]) })) })) }));
   }
   const f = ev.facts;
   if (f?.who) out.push(kv([["Artifact", f.who.artifact], ["Last downloaded by", f.who.last_downloaded_by],

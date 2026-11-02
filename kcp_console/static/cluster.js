@@ -10,6 +10,7 @@ import { $, muted, brief, icon, checklist, pips, when, duration, moreMenu, confi
   TITLES, ACTIVE, isDry, runTitle, runStarted } from "./ui.js";
 import { renderConfig } from "./configure.js";
 import { clock } from "/serverless/static/time.js";
+import { dag } from "/serverless/static/dag.js";
 
 const live = {};            // config name -> {loading, facts, preflight, proof, error}
 const acts = {};            // config name -> the newest action: {which, dry, real, error}
@@ -312,6 +313,16 @@ function proveFacts(run) {
   ];
 }
 
+// The three stages as a DAG; a node shows its status, evidence and JFrog's HTTP answer when clicked.
+function proofDag(run) {
+  const stages = PROVE_GROUPS.map(([title, ids]) => ({ title, nodes: ids.map((id) => run.result.steps.find((s) => s.id === id)).filter(Boolean)
+    .map((s) => ({ id: s.id, title: s.title || s.id, status: s.status, detail: s.detail,
+      facts: s.facts?.jfrog ? [["JFrog HTTP", String(s.facts.jfrog.status)], ["JFrog's answer", s.facts.jfrog.answer]] : [] })) }));
+  const missing = PROVE_GROUPS.some(([, ids]) => ids.some((id) => !ADDED_LATER.has(id) && !run.result.steps.some((s) => s.id === id)));
+  return card("Proof steps", h("span", { class: `badge ${proven(run) && !missing ? "ok" : "fail"}` }, proven(run) && !missing ? "Proven" : "Not proven"),
+    dag({ stages, label: "Proof steps" }));
+}
+
 const proven = (run) => run.status === "succeeded" && !(run.result.steps || []).some((s) => s.status === "failed" || s.status === "warn");
 
 function proofTab(c) {
@@ -330,11 +341,7 @@ function proofTab(c) {
         muted(when(run.created)), runLink(name, run.id)],
         h("div", { class: "stats" }, proveFacts(run).map(([k, cls, v]) =>
           h("div", { class: `stat s-${cls === "ok" ? "working" : cls}` }, h("b", {}, v), h("span", {}, k))))),
-      h("div", { class: "stack" }, PROVE_GROUPS.map(([title, ids]) => {
-        const steps = ids.map((id) => run.result.steps.find((s) => s.id === id)).filter(Boolean);
-        const bad = steps.some((s) => s.status === "failed" || s.status === "warn") || steps.length < ids.filter((i) => !ADDED_LATER.has(i)).length;
-        return card(title, h("span", { class: `badge ${bad ? "fail" : "ok"}` }, bad ? "Not proven" : "Proven"), checklist(steps));
-      })),
+      proofDag(run),
       jfrogCard(run),
       EVENT_PULLS.map(([title, id]) => eventsCard(run, title, id)),
     ] : (a?.which === "prove" ? null : !runsOf[name] ? muted("Loading…") : h("div", { class: "empty slim" }, h("p", {}, "No proof yet"))));
