@@ -76,6 +76,14 @@ class ArchiveTests(unittest.TestCase):
         self.assertTrue((self.root / "runs" / "20261101-000000-bbbbbb").is_dir())
         self.assertEqual(self.a.names(), set())
 
+    def test_drop_run_deletes_one_archived_run(self):
+        run = fake_run(self.root, "20261101-000000-dddddd", "orders")
+        e = self.a.add("orders", "k", "gone", runs={"20261101-000000-dddddd": run})
+        self.assertTrue(self.a.drop_run("20261101-000000-dddddd"))
+        self.assertIsNone(self.a.run_dir("20261101-000000-dddddd"))
+        self.assertEqual(self.a.list()[0]["runs"], [])
+        self.assertFalse(self.a.drop_run("20261101-000000-dddddd"))
+
     def test_run_dir_rejects_traversal(self):
         self.assertIsNone(self.a.run_dir("../x"))
         self.assertIsNone(self.a.run_dir(".."))

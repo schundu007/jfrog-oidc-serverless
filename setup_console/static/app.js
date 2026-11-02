@@ -358,16 +358,18 @@ const OIDC = BASE === "/oidc";
 const STATES = OIDC ? [["on", "Onboarded"], ["off", "Not onboarded"]]
   : [["deployed", "Deployed"], ["not", "Not deployed"], ["attention", "Needs attention"]];
 const stateOf = (s) => (s.status?.deployed ? "deployed" : partlyDeleted(s) || lastFailure(s) || s.missing?.length ? "attention" : "not");
-const F = { q: "", cloud: "", kind: "", state: "" };
+const F = { q: "", cloud: "", kind: "", state: "", view: "" };
 {
   const u = new URLSearchParams(location.search);
-  for (const k of ["q", "cloud", "kind", "state"]) if (u.get(k)) F[k] = u.get(k);
+  for (const k of ["q", "cloud", "kind", "state", "view"]) if (u.get(k)) F[k] = u.get(k);
 }
+// The live page lists only what stands; ?view=archived lists the rest (never deployed, destroyed, gone).
+const ARCHIVED = () => F.view === "archived";
 let lastData = null;
 
 function saveQuery() {
   const u = new URLSearchParams();
-  for (const k of ["q", "cloud", "kind", "state"]) if (F[k]) u.set(k, F[k]);
+  for (const k of ["q", "cloud", "kind", "state", "view"]) if (F[k]) u.set(k, F[k]);
   history.replaceState(null, "", `${BASE || "/"}${u.toString() ? `?${u}` : ""}`);
 }
 
@@ -445,13 +447,23 @@ function draw(withFilters = true) {
     return h("section", { class: "cloud-block" }, groups.length > 1 ? head(g, inCloud) : null, table(bodies));
   }));
   };
-  const up = shown.filter(standing), gone = shown.filter((s) => !standing(s));
-  fill($("groups"), shown.length ? [
-    up.length ? blocks(up) : h("p", { class: "muted", text: "Nothing deployed." }),
-    gone.length ? h("section", { class: "archived-block" },
-      h("h2", { class: "home-group-name archived-title" }, "Archived", h("small", { text: `${gone.length} not deployed` }),
-        help("Stacks with nothing standing: never deployed, destroyed, or deleted outside the console. Their runs stay under Runs › Archived for 7 days. Deploy from ⋯ brings one back.")),
-      blocks(gone)) : null] : null);
+  const list = shown.filter((s) => standing(s) !== ARCHIVED());
+  viewChrome(all.filter((s) => !standing(s)).length);
+  $("count").textContent = `Showing ${list.length} of ${all.filter((s) => standing(s) !== ARCHIVED()).length} records.`;
+  $("none").hidden = list.length > 0;
+  fill($("groups"), list.length ? blocks(list) : null);
+}
+
+// Live page vs Archived view: the title, the toolbar link between them, and the empty text.
+function viewChrome(nGone) {
+  const base = OIDC ? "JFrog OIDC" : "Infrastructure";
+  $("page-title").textContent = ARCHIVED() ? `${base} · Archived` : base;
+  // Gone stacks are listed under Runs › Archived; this page links back only from its archived view.
+  const a = $("view-link");
+  a.hidden = !ARCHIVED();
+  a.textContent = `${base} (${nGone} archived)`.replace(/ \(\d+ archived\)$/, "");
+  a.href = BASE;
+  $("none").textContent = ARCHIVED() ? "Nothing archived." : (OIDC ? "Nothing onboarded." : "Nothing deployed.");
 }
 
 // A stack stands when it is deployed, or a run or plan on it is under way.
@@ -581,13 +593,11 @@ function drawOidc(data, withFilters) {
       h("div", { class: "table-wrap" }, h("table", { class: `blade-table home-table stack-table cloud-table cols-${cols.length}` },
         h("thead", {}, h("tr", {}, cols.map((t) => h("th", { scope: "col", text: t })))), bodies)));
   }));
-  const up = shown.filter((r) => !r.gone), gone = shown.filter((r) => r.gone);
-  fill($("groups"), shown.length ? [
-    up.length ? blocks(up) : h("p", { class: "muted", text: live.loading ? "" : "Nothing onboarded." }),
-    gone.length ? h("section", { class: "archived-block" },
-      h("h2", { class: "home-group-name archived-title" }, "Archived", h("small", { text: `${gone.length} not deployed` }),
-        help("Trust stacks with nothing standing: never deployed, destroyed, or their cloud's infrastructure is gone. Their runs stay under Runs › Archived for 7 days. Deploy from ⋯ brings one back.")),
-      blocks(gone)) : null] : null);
+  const list = shown.filter((r) => !!r.gone === ARCHIVED());
+  viewChrome(rows.filter((r) => r.gone).length);
+  if (!(live.loading && !live.workloads.length)) $("count").textContent = `Showing ${list.length} of ${rows.filter((r) => !!r.gone === ARCHIVED()).length} records.`;
+  $("none").hidden = list.length > 0 || live.loading;
+  fill($("groups"), list.length ? blocks(list) : null);
   if (live.errors.length) $("count").append(" ", help(live.errors.join(" ")));
 }
 

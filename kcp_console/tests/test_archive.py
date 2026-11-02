@@ -75,6 +75,11 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(self.srv.status.get("gone"), {"notes": "x"})
         self.assertEqual([r["id"] for r in self.srv.runs.list()], [RID])
 
+    def test_drop_run(self):
+        self.srv.sweep()
+        self.assertTrue(self.srv.archive.drop_run(RID))
+        self.assertEqual(self.get(f"/api/runs/{RID}")[0], 404)
+
     def test_purged_after_seven_days(self):
         self.srv.sweep()
         self.srv.archive.clock = lambda: time.time() + 7 * DAY + 1

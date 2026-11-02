@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import sys
 import threading
+import time
 import webbrowser
 
 from console import deliver
@@ -25,6 +26,7 @@ from setup_console.ado import Ado
 from setup_console.jobs import Jobs
 from setup_console.server import SetupServer
 
+from . import retention
 from .connections import Connections
 from .server import K8S, OIDC, SERVERLESS, SETUP, Portal
 
@@ -102,6 +104,13 @@ def main(argv=None) -> int:
     # Workloads and clusters whose resources are gone leave the live pages for the archive (kept 7 days).
     serverless.start_sweeper()
     k8s.start_sweeper()
+    # Only the newest 7 runs are kept, live or archived, across every console: now and every minute.
+    if not (args.fixtures or args.kcp_fixtures):
+        def keep_seven():
+            while True:
+                retention.trim(serverless, k8s, setup.jobs)
+                time.sleep(60)
+        threading.Thread(target=keep_seven, name="run-retention", daemon=True).start()
     url = portal.url()
     print(f"JFrog OIDC console (Serverless {SERVERLESS}, Kubernetes {K8S}, Infrastructure {SETUP}, JFrog OIDC {OIDC}): {url}")
     print("Ctrl+C to stop.", flush=True)

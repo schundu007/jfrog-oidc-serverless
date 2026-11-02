@@ -241,6 +241,24 @@ async function archived() {
   return { items: [], runs: rows };
 }
 
+// Stacks with nothing standing (never deployed, destroyed, gone): listed only under Runs › Archived,
+// never on the live Infrastructure or JFrog OIDC pages. Deploy opens the stack on its page's archived view.
+const STACK_CLOUD = { Azure: "azure", "Google Cloud": "gcp" };
+export async function archivedStacks() {
+  const out = [];
+  for (const [page, area] of [["/setup", "Infrastructure"], ["/oidc", "JFrog OIDC"]]) {
+    const { stacks = [] } = await get(`${page}/api/stacks`);
+    for (const s of stacks) {
+      if ((page === "/oidc") !== (s.kind === "JFrog OIDC")) continue;
+      if (s.status?.deployed || s.busy || s.plan || s.job) continue;
+      const partly = Boolean(s.status?.deleted && Object.keys(s.status.outputs || {}).length);
+      out.push({ cloud: STACK_CLOUD[s.group] || null, name: s.title, stack: s.id, area,
+        status: partly ? "Partly deleted" : "Not deployed", href: `${page}?view=archived&q=${encodeURIComponent(s.id)}` });
+    }
+  }
+  return out;
+}
+
 // Everything, newest run first. A source that fails is reported, not shown as empty.
 const SOURCES = [["Serverless", serverless], ["Kubernetes", kubernetes], ["Infrastructure", infrastructure], ["JFrog OIDC", jfrogOidc], ["Archived", archived]];
 export async function loadAll() {

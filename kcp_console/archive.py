@@ -157,6 +157,18 @@ class Archive:
             shutil.rmtree(d, ignore_errors=True)
             return e
 
+    def drop_run(self, run_id: str) -> bool:
+        """Delete one archived run (the portal keeps only the newest runs)."""
+        with self.lock:
+            d = self.run_dir(run_id)
+            if d is None:
+                return False
+            e = json.loads((d.parent.parent / "entry.json").read_text())
+            shutil.rmtree(d, ignore_errors=True)
+            e["runs"] = [r for r in e.get("runs") or [] if r != run_id]
+            self._write(e)
+            return True
+
     def purge(self) -> list:
         """Delete every entry older than the retention. Returns their ids."""
         gone = []

@@ -351,6 +351,15 @@ class Jobs:
             rows.append(r)
         return sorted(rows, key=lambda r: r["started"] or 0, reverse=True)
 
+    def remove_archived(self, job_id: str) -> bool:
+        """Delete one archived run (the portal keeps only the newest runs)."""
+        if not JOB_ID.fullmatch(str(job_id)):
+            return False
+        f = self._archive_dir() / f"{job_id}.json"
+        existed = f.is_file()
+        f.unlink(missing_ok=True)
+        return existed
+
     def remove(self, job_id: str) -> dict:
         """Forget one finished run: its record and log. A running one answers 409."""
         with self._lock:

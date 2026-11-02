@@ -141,6 +141,3 @@
 #groups .stack-table .help { width: 14px; height: 14px; font-size: 9px; vertical-align: 0; }
 
 /* Archived: stacks with nothing standing, below the live tables, set apart by a thin rule. */
-#groups .archived-block { padding-top: 20px; border-top: 1px solid var(--line, #d0d7de); }
-#groups .archived-title { display: flex; align-items: baseline; gap: 8px; margin: 0 0 12px; font-size: 18px; }
-#groups .archived-block [data-state] b { font-weight: 600; }

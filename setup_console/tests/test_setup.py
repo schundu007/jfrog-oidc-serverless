@@ -587,7 +587,10 @@ class JobTests(unittest.TestCase):
         self.assertEqual(len(arch), 4)
         self.assertTrue(all(r["archived"] and r["expires_at"] > time.time() + 6 * 86400 for r in arch))
         self.assertTrue(self.jobs.get(j["id"])["archived"])
-        self.assertEqual(self.jobs.purge_archive(now=time.time() + 7 * 86400 + 1).__len__(), 4)
+        self.assertTrue(self.jobs.remove_archived(arch[-1]["id"]))
+        self.assertEqual(len(self.jobs.archived()), 3)
+        self.assertFalse(self.jobs.remove_archived("../x"))
+        self.assertEqual(self.jobs.purge_archive(now=time.time() + 7 * 86400 + 1).__len__(), 3)
         with self.assertRaises(JobError):
             self.jobs.get(j["id"])
 
