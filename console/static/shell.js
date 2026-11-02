@@ -64,9 +64,20 @@
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const glyph = (k) => (k === "boot" ? BOOT : CLOUD_LOGO[k] || NAV_ICON[k] || ICON[k] || "");
   const CHEV = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
-  // Every load starts fully collapsed (the current section stays tinted); the chevrons open it.
-  // Folds made on the page last until the next load.
-  const opened = new Set();
+  // A fresh open or a refresh starts fully collapsed (the current section stays tinted); the chevrons
+  // open it. Folds made in the tab (sections and cloud groups) carry over when a sidebar link opens the
+  // next page, so the item clicked stays in view; a refresh clears them. A new tab has none.
+  const FOLD_KEY = "console-nav-folds";
+  const isReload = performance.getEntriesByType?.("navigation")[0]?.type === "reload";
+  const folds = (() => {
+    if (isReload) { try { sessionStorage.removeItem(FOLD_KEY); } catch { /* memory only */ } return {}; }
+    try { return JSON.parse(sessionStorage.getItem(FOLD_KEY)) || {}; } catch { return {}; }
+  })();
+  const opened = new Set(folds.blocks || []);
+  const openSubs = new Set(folds.subs || []);
+  const saveFolds = () => {
+    try { sessionStorage.setItem(FOLD_KEY, JSON.stringify({ blocks: [...opened], subs: [...openSubs] })); } catch { /* memory only */ }
+  };
   const block = ([key, label, href, icon, kids]) => {
     const top = `<a class="nav-item" href="${esc(href)}" data-section data-nav="${key}">${NAV_ICON[key] || glyph(icon)}<span>${esc(label)}</span></a>`;
     if (!kids.length) return `<div class="nav-block" data-block="${key}">${top}</div>`;
@@ -107,14 +118,15 @@
   function setOpen(b, on, remember = true) {
     b.classList.toggle("open", on);
     b.querySelector(".nav-chev")?.setAttribute("aria-expanded", String(on));
-    if (remember) { if (on) opened.add(b.dataset.block); else opened.delete(b.dataset.block); }
+    if (remember) { if (on) opened.add(b.dataset.block); else opened.delete(b.dataset.block); saveFolds(); }
   }
-  // Cloud groups inside a section start folded.
-  function setSub(s, on) {
+  // Cloud groups inside a section start folded, unless opened earlier in this tab.
+  function setSub(s, on, remember = true) {
     s.classList.toggle("folded", !on);
     s.querySelector(".cloudfold-chev").setAttribute("aria-expanded", String(on));
+    if (remember) { if (on) openSubs.add(s.dataset.sub); else openSubs.delete(s.dataset.sub); saveFolds(); }
   }
-  for (const s of root.querySelectorAll(".cloudfold")) setSub(s, false);
+  for (const s of root.querySelectorAll(".cloudfold")) setSub(s, openSubs.has(s.dataset.sub), false);
   root.addEventListener("click", (e) => {
     const sc = e.target.closest(".cloudfold-chev");
     if (sc) { const s = sc.closest(".cloudfold"); setSub(s, s.classList.contains("folded")); return; }
