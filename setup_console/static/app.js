@@ -416,29 +416,46 @@ function draw(withFilters = true) {
   const rank = (g) => (CLOUD_ORDER.includes(g) ? CLOUD_ORDER.indexOf(g) : CLOUD_ORDER.length);
   const groups = [...new Set(shown.map((s) => s.group))].sort((x, y) => rank(x) - rank(y));
   const cols = OIDC ? ["Name", "Status", "Stack", "Last checked", ""] : ["Name", "Status", "Stack", "Runs in", "Last checked", ""];
+  const count = (list) => (list.every((x) => !standing(x)) ? `${list.length} archived`
+    : `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed`);
   const head = (g, list) => h("h2", { class: "cloud-title home-group-name" }, iconEl(CLOUD_ID[g], "home-group-logo"),
-    h("a", { href: `${BASE}?cloud=${CLOUD_ID[g]}` }, g),
-    h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }));
+    h("a", { href: `${BASE}?cloud=${CLOUD_ID[g]}` }, g), h("small", { text: count(list) }));
   // Under each cloud, CI/CD, Serverless and Kubernetes never mix: each has its own heading and rows.
   const LABEL = { Common: "CI/CD", "JFrog OIDC": "Pipelines" };
   const sections = ORDER.filter((k) => shown.some((s) => sectionOf(s) === k));
   const subHead = (k, list) => h("tr", { class: "home-group home-subgroup" }, h("th", { scope: "colgroup", colspan: String(cols.length) },
-    h("span", { class: "home-group-name" }, h("a", { href: `${BASE}?${new URLSearchParams({ ...(list[0] && !OIDC ? { cloud: CLOUD_ID[list[0].group] } : {}), kind: k })}` }, LABEL[k] || k), h("small", { text: `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed` }))));
+    h("span", { class: "home-group-name" }, h("a", { href: `${BASE}?${new URLSearchParams({ ...(list[0] && !OIDC ? { cloud: CLOUD_ID[list[0].group] } : {}), kind: k })}` }, LABEL[k] || k), h("small", { text: count(list) }))));
   // Each cloud is its own block: its heading (logo, name, count) above its own table with its own
   // column headers, so a cloud name never sits under another cloud's header row.
   const table = (rows) => h("div", { class: "table-wrap" }, h("table", { class: `blade-table home-table stack-table cloud-table cols-${cols.length}` },
     h("thead", {}, h("tr", {}, cols.map((c) => h("th", { scope: "col", text: c })))), rows));
-  fill($("groups"), shown.length ? h("div", { class: "cloud-tables" }, groups.map((g) => {
-    const inCloud = shown.filter((s) => s.group === g);
+  // Live tables list only what stands (deployed, running, or a plan waiting); every other stack (never
+  // deployed, destroyed, deleted outside, partly deleted) is in Archived below, where Deploy still starts it.
+  const blocks = (list) => {
+    const clouds = groups.filter((g) => list.some((s) => s.group === g));
+    return h("div", { class: "cloud-tables" }, clouds.map((g) => {
+    const inCloud = list.filter((s) => s.group === g);
     const bodies = sections.map((k) => {
       const list = inCloud.filter((s) => sectionOf(s) === k);
       // A section heading only when more than one section is listed (one alone repeats the Type filter).
       return list.length ? h("tbody", {}, sections.length > 1 ? subHead(k, list) : null, list.map((s) => row(s, k))) : null;
     }).filter(Boolean);
     // A cloud heading only when more than one cloud is listed: alone, it repeats the filter.
+    // A cloud heading whenever the page lists more than one cloud (alone, it repeats the filter).
     return h("section", { class: "cloud-block" }, groups.length > 1 ? head(g, inCloud) : null, table(bodies));
-  })) : null);
+  }));
+  };
+  const up = shown.filter(standing), gone = shown.filter((s) => !standing(s));
+  fill($("groups"), shown.length ? [
+    up.length ? blocks(up) : h("p", { class: "muted", text: "Nothing deployed." }),
+    gone.length ? h("section", { class: "archived-block" },
+      h("h2", { class: "home-group-name archived-title" }, "Archived", h("small", { text: `${gone.length} not deployed` }),
+        help("Stacks with nothing standing: never deployed, destroyed, or deleted outside the console. Their runs stay under Runs › Archived for 7 days. Deploy from ⋯ brings one back.")),
+      blocks(gone)) : null] : null);
 }
+
+// A stack stands when it is deployed, or a run or plan on it is under way.
+const standing = (s) => Boolean(s.status?.deployed || s.busy || s.plan || s.job);
 
 // JFrog OIDC (/oidc) is its own step, after Infrastructure: it never deploys anything there.
 // Per cloud, never mixed: Serverless (each live workload, onboarded for the runtime exchange or not),
@@ -528,7 +545,7 @@ function drawOidc(data, withFilters) {
       text: [w.name, w.region, live.kinds[w.kind]?.label], el: () => workloadRow(w) })),
     ...live.clusters.map((c) => ({ cloud: CLUSTER_CLOUD[c.platform], section: "Kubernetes", on: c.state === "working",
       text: [c.name, c.platform, c.location], el: () => clusterRow(c) })),
-    ...trust.map((s) => ({ cloud: CLOUD_ID[s.group], section: "Pipelines", on: !!s.status?.deployed,
+    ...trust.map((s) => ({ cloud: CLOUD_ID[s.group], section: "Pipelines", on: !!s.status?.deployed, gone: !standing(s),
       text: [s.title, s.id, s.about], el: () => row(s, "Pipelines") })),
   ];
   if (withFilters) drawFilters(SECTIONS);
@@ -550,8 +567,10 @@ function drawOidc(data, withFilters) {
   const subHead = (k, list) => h("tr", { class: "home-group home-subgroup" }, h("th", { scope: "colgroup", colspan: String(cols.length) },
     h("span", { class: "home-group-name" }, h("a", { href: `/oidc?${new URLSearchParams({ cloud: list[0].cloud, kind: k })}`, text: k }),
       h("small", { text: `${list.filter((r) => r.on).length} of ${list.length} onboarded` }))));
-  fill($("groups"), shown.length ? h("div", { class: "cloud-tables" }, clouds.map((c) => {
-    const inCloud = shown.filter((r) => r.cloud === c);
+  // Workloads and clusters are listed from live cloud reads, so they exist; a trust stack with nothing
+  // standing goes to Archived below, where Deploy still starts it.
+  const blocks = (list) => h("div", { class: "cloud-tables" }, clouds.filter((c) => list.some((r) => r.cloud === c)).map((c) => {
+    const inCloud = list.filter((r) => r.cloud === c);
     const bodies = sections.map((k) => {
       const list = inCloud.filter((r) => r.section === k);
       return list.length ? h("tbody", {}, sections.length > 1 ? subHead(k, list) : null, list.map((r) => r.el())) : null;
@@ -561,7 +580,14 @@ function drawOidc(data, withFilters) {
         h("a", { href: `/oidc?cloud=${c}` }, CLOUD_NAME[c]), h("small", { text: `${inCloud.filter((r) => r.on).length} of ${inCloud.length} onboarded` })) : null,
       h("div", { class: "table-wrap" }, h("table", { class: `blade-table home-table stack-table cloud-table cols-${cols.length}` },
         h("thead", {}, h("tr", {}, cols.map((t) => h("th", { scope: "col", text: t })))), bodies)));
-  })) : null);
+  }));
+  const up = shown.filter((r) => !r.gone), gone = shown.filter((r) => r.gone);
+  fill($("groups"), shown.length ? [
+    up.length ? blocks(up) : h("p", { class: "muted", text: live.loading ? "" : "Nothing onboarded." }),
+    gone.length ? h("section", { class: "archived-block" },
+      h("h2", { class: "home-group-name archived-title" }, "Archived", h("small", { text: `${gone.length} not deployed` }),
+        help("Trust stacks with nothing standing: never deployed, destroyed, or their cloud's infrastructure is gone. Their runs stay under Runs › Archived for 7 days. Deploy from ⋯ brings one back.")),
+      blocks(gone)) : null] : null);
   if (live.errors.length) $("count").append(" ", help(live.errors.join(" ")));
 }
 
