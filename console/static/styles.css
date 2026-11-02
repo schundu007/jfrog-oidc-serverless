@@ -446,7 +446,7 @@ table.facts td { word-break: break-all; font-size: var(--t-sm); }
 /* ================================================================== flyout (side panel) */
 
 .flyout {
-  position: fixed; top: var(--top-h); right: 0; bottom: 0; z-index: 20; width: min(560px, 100vw);
+  position: fixed; top: var(--top-h); right: 0; bottom: 0; z-index: 20; width: min(728px, 100vw);   /* 130% of 560 */
   display: flex; flex-direction: column; background: #ffffff; border-left: 1px solid var(--card-line);
   box-shadow: -12px 0 32px -16px rgba(0, 0, 0, 0.3);
 }
