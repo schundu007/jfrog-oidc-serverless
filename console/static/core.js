@@ -14,7 +14,7 @@ if (REDIRECTING) location.replace(location.href.replace("//localhost", "//127.0.
 export const BASE = document.querySelector('meta[name="console-base"]')?.content || "";
 export const localPath = () => (BASE && location.pathname.startsWith(BASE) ? location.pathname.slice(BASE.length) || "/" : location.pathname);
 
-export const CLOUDS = { gcp: "Google Cloud", azure: "Azure", aws: "AWS", openshift: "OpenShift" };
+export const CLOUDS = { gcp: "Google Cloud", azure: "Azure", openshift: "OpenShift" };
 export const CLOUD = [localPath().split("/")[1], new URLSearchParams(location.search).get("cloud")]
   .find((c) => Object.hasOwn(CLOUDS, c)) || null;
 export const ofCloud = (kind) => !!kind && String(kind).startsWith(`${CLOUD}_`);

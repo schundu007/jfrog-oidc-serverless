@@ -2,11 +2,11 @@
 // DevOps, JFrog, more to come), like an integrations page: stat cards, a filter bar, rows grouped by
 // category; a row opens the side panel with its details and sign-in. A new connection is one entry in
 // CONNECTORS (its row facts and its panel). Google Cloud shows Google's link and takes the code back;
-// Azure and AWS SSO show a device code; the JFrog token is kept in server memory only and never shown.
+// Azure shows a device code; the JFrog token is kept in server memory only and never shown.
 // API: /api/settings (portal/server.py, portal/connections.py).
 import { api, h, help } from "/serverless/static/core.js";
 
-const LOGO = {"gcp": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 19.3\" aria-hidden=\"true\"><path fill=\"#EA4335\" d=\"M15.2 5.3h.7l2-2 .1-.9C14.2-.9 8.5-.5 5.2 3.3c-.9 1-1.6 2.3-2 3.6.2-.1.5-.1.7 0l4-.7s.2-.3.3-.3c1.8-2 4.8-2.2 6.9-.5h.1z\"/><path fill=\"#4285F4\" d=\"M20.8 6.9c-.5-1.7-1.4-3.2-2.7-4.4l-2.8 2.8c1.2 1 1.9 2.5 1.8 4v.5c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5h-5l-.5.5v3l.5.5h5c3.6 0 6.5-2.9 6.5-6.5 0-2.2-1.1-4.2-2.8-5.4z\"/><path fill=\"#34A853\" d=\"M7.1 19.3h5v-4h-5c-.4 0-.7-.1-1-.2l-.7.2-2 2-.2.7c1.1.8 2.5 1.3 3.9 1.3z\"/><path fill=\"#FBBC05\" d=\"M7.1 6.3C3.5 6.3.6 9.3.6 12.9c0 2 1 3.9 2.6 5.2l2.9-2.9c-1.3-.6-1.8-2.1-1.3-3.3.6-1.3 2.1-1.8 3.3-1.3.6.3 1 .7 1.3 1.3l2.9-2.9c-1.2-1.6-3.1-2.6-5.2-2.6z\"/></svg>","azure": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"#0078D4\" d=\"M5.483 21.3H24L14.025 4.013l-3.038 8.347 5.836 6.938L5.483 21.3zM13.23 2.7L6.105 8.677 0 19.253h5.505v.014L13.23 2.7z\"/></svg>","ado": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path fill=\"#0078D4\" d=\"M17 4v9.74l-4 3.28-6.2-2.26V17l-3.51-4.59 10.23.8V4.44zm-3.41.49L7.85 1v2.29L2.58 4.84 1 6.87v4.61l2.26 1V6.57z\"/></svg>","jfrog": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect width=\"24\" height=\"24\" rx=\"5\" fill=\"#40BE46\"/><circle cx=\"8\" cy=\"9\" r=\"2.2\" fill=\"#fff\"/><circle cx=\"16\" cy=\"9\" r=\"2.2\" fill=\"#fff\"/><path d=\"M6 14.5c1.6 2.2 3.7 3.2 6 3.2s4.4-1 6-3.2\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\"/></svg>","aws": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect width=\"24\" height=\"24\" rx=\"5\" fill=\"#232F3E\"/><text x=\"12\" y=\"13\" text-anchor=\"middle\" font-family=\"Arial,Helvetica,sans-serif\" font-weight=\"700\" font-size=\"8\" fill=\"#fff\">aws</text><path d=\"M6 16c3.6 2 8.4 2 12 0\" stroke=\"#FF9900\" stroke-width=\"1.6\" fill=\"none\" stroke-linecap=\"round\"/><path d=\"M16.6 15.2l1.6.6-.5 1.6\" stroke=\"#FF9900\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\"/></svg>"};   // constant SVG only   // constant SVG only
+const LOGO = {"gcp": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 19.3\" aria-hidden=\"true\"><path fill=\"#EA4335\" d=\"M15.2 5.3h.7l2-2 .1-.9C14.2-.9 8.5-.5 5.2 3.3c-.9 1-1.6 2.3-2 3.6.2-.1.5-.1.7 0l4-.7s.2-.3.3-.3c1.8-2 4.8-2.2 6.9-.5h.1z\"/><path fill=\"#4285F4\" d=\"M20.8 6.9c-.5-1.7-1.4-3.2-2.7-4.4l-2.8 2.8c1.2 1 1.9 2.5 1.8 4v.5c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5h-5l-.5.5v3l.5.5h5c3.6 0 6.5-2.9 6.5-6.5 0-2.2-1.1-4.2-2.8-5.4z\"/><path fill=\"#34A853\" d=\"M7.1 19.3h5v-4h-5c-.4 0-.7-.1-1-.2l-.7.2-2 2-.2.7c1.1.8 2.5 1.3 3.9 1.3z\"/><path fill=\"#FBBC05\" d=\"M7.1 6.3C3.5 6.3.6 9.3.6 12.9c0 2 1 3.9 2.6 5.2l2.9-2.9c-1.3-.6-1.8-2.1-1.3-3.3.6-1.3 2.1-1.8 3.3-1.3.6.3 1 .7 1.3 1.3l2.9-2.9c-1.2-1.6-3.1-2.6-5.2-2.6z\"/></svg>","azure": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"#0078D4\" d=\"M5.483 21.3H24L14.025 4.013l-3.038 8.347 5.836 6.938L5.483 21.3zM13.23 2.7L6.105 8.677 0 19.253h5.505v.014L13.23 2.7z\"/></svg>","ado": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path fill=\"#0078D4\" d=\"M17 4v9.74l-4 3.28-6.2-2.26V17l-3.51-4.59 10.23.8V4.44zm-3.41.49L7.85 1v2.29L2.58 4.84 1 6.87v4.61l2.26 1V6.57z\"/></svg>","jfrog": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect width=\"24\" height=\"24\" rx=\"5\" fill=\"#40BE46\"/><circle cx=\"8\" cy=\"9\" r=\"2.2\" fill=\"#fff\"/><circle cx=\"16\" cy=\"9\" r=\"2.2\" fill=\"#fff\"/><path d=\"M6 14.5c1.6 2.2 3.7 3.2 6 3.2s4.4-1 6-3.2\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\"/></svg>",};   // constant SVG only   // constant SVG only
 const $ = (id) => document.getElementById(id);
 const SOURCE = { console: "Signed in here", machine: "Computer's login" };
 const LOGIN_TIP = "Computer's login: the one made in a terminal on the computer running this console (gcloud auth login, az login). "
@@ -171,31 +171,6 @@ const ALL_CONNECTORS = [
           : actions(button("Change subscription", () => choices("azure"), "secondary", signingIn(s)))) : null,
       ];
     } },
-  { id: "aws", name: "AWS", category: "cloud",
-    about: "The AWS CLI acts as this profile.",
-    scope: (s) => [s.in_use, s.region].filter(Boolean).join(" · "),
-    panel: (s) => {
-      const kind = (s.kinds || {})[s.in_use] || "keys";
-      const KIND = { login: "aws login", sso: "IAM Identity Center (SSO)", keys: "Access keys" };
-      return [
-        section("Connection", facts([["Account", s.account], ["Identity", s.arn], ["Sign-in", KIND[kind]], ["Region", s.region]]),
-          missing(s, "AWS CLI"),
-          switcher("Use profile", "This computer's AWS profiles (~/.aws/config). The one in use is filled.", s.in_use,
-            (s.profiles || []).map((p) => [p, p, ""]), (login) => post("aws", "use", { login }), s),
-          kind === "keys" || s.pending?.state === "waiting" ? null
-            : s.signed_in
-              ? actions(button("Sign out", async () => { await post("aws", "signout"); await load(); }, "secondary"))
-              : actions(button("Sign in", async () => { await post("aws", "signin", { profile: s.in_use }); await load(); }, "primary",
-                () => (s.cli === false ? "AWS CLI is not installed" : "")))),
-        pending("aws", s.pending),
-        section("Region",
-          h("div", { class: "conn-inline" },
-            field("aws", "region", "", { value: s.region, placeholder: "us-east-1" }),
-            button("Save", async () => { await put("aws", { profile: s.in_use, region: val("aws", "region") }); await load(); }, "primary",
-              need(signingIn(s), changed([[["aws", "region"], s.region]]),
-                () => (/^[a-z]{2}(-[a-z]+)+-\d$/.test(val("aws", "region")) || !val("aws", "region") ? "" : "Region looks like us-east-1"))))),
-      ];
-    } },
   { id: "ado", name: "Azure DevOps", category: "cicd",
     about: "Pipelines, pull requests and approvals. Signs in through Azure: the Azure account must be a member of the organization.",
     scope: (s) => [s.values?.organization, s.values?.project].filter(Boolean).join(" / "),
@@ -239,9 +214,7 @@ const ALL_CONNECTORS = [
     ] },
 ];
 
-// AWS is paused (Azure and Google Cloud only for now): kept here, not shown. Drop it from PAUSED to bring it back.
-const PAUSED = new Set(["aws"]);
-const CONNECTORS = ALL_CONNECTORS.filter((c) => !PAUSED.has(c.id));
+const CONNECTORS = ALL_CONNECTORS;
 
 // [dot class, text, filter key]
 function statusOf(s) {

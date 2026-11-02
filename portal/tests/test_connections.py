@@ -63,9 +63,6 @@ def fixtures(token_present=True):
         {"http": "GET https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1", "status": 200,
          "body": json.dumps({"emailAddress": "me@contoso.com"})},
         {"http": "GET https://dev.azure.com/acme/_apis/projects/web?api-version=7.1", "status": 404, "body": "{}"},
-        {"argv": ["aws", "configure", "list-profiles"], "stdout": "default\nsso-dev\n"},
-        {"argv": ["aws", "sts", "get-caller-identity", "--output", "json"],
-         "stdout": json.dumps({"Account": "123456789012", "Arn": "arn:aws:sts::123456789012:assumed-role/dev/me"})},
         {"http": "GET https://acme.jfrog.io/access/api/v1/oidc", "status": 200, "body": "[]"},
     ]
     return fx
@@ -75,7 +72,7 @@ class ConnectionsTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
-        self.env = {"PATH": os.environ.get("PATH", ""), "AWS_CONFIG_FILE": str(self.root / "no-aws-config")}
+        self.env = {"PATH": os.environ.get("PATH", "")}
         self.log = []
         bin_dir = self.root / "bin"
         bin_dir.mkdir()
@@ -108,7 +105,7 @@ class ConnectionsTests(unittest.TestCase):
         self.assertEqual(s["ado"]["account"], "me@contoso.com")
         self.assertFalse(s["ado"]["project_ok"])
         self.assertIn("Project web in acme", s["ado"]["error"])
-        self.assertEqual(s["aws"]["profiles"], ["default", "sso-dev"])
+        self.assertNotIn("aws", s)
         self.assertTrue(s["jfrog"]["signed_in"] and s["jfrog"]["admin"])
         text = json.dumps(s) + "\n".join(self.log)
         self.assertNotIn(TOKEN, text)
@@ -148,7 +145,7 @@ class ConnectionsTests(unittest.TestCase):
         with self.assertRaises(SettingsError):
             c.set_values("ado", {"organization": "acme"})
         with self.assertRaises(SettingsError):
-            c.set_values("aws", {"region": "nowhere"})
+            c.sign_in("aws", {})
 
     def test_saving_a_secret_shaped_value_is_refused(self):
         c = self.conn()
@@ -269,46 +266,16 @@ class ConnectionsTests(unittest.TestCase):
         with self.assertRaises(SettingsError):
             c.use("jfrog", {"login": "console"})
 
-    def test_aws_profile_switch_and_sign_in_by_kind(self):
-        cfg = self.root / "aws-config"
-        cfg.write_text("[default]\nlogin_session = arn:aws:iam::123456789012:user/me\nregion = us-east-1\n"
-                       "[profile sso-dev]\nsso_session = corp\nsso_account_id = 1\n[profile keys]\nregion = eu-west-1\n")
-        self.env["AWS_CONFIG_FILE"] = str(cfg)
-        c = self.conn()
-        self.assertEqual(c.aws_kinds(), {"default": "login", "sso-dev": "sso", "keys": "keys"})
-        s = c.status()["aws"]
-        self.assertEqual(s["kinds"]["sso-dev"], "sso")
-        self.assertEqual(s["in_use"], "default")
-        self.assertEqual(s["region"], "us-east-1")
-        c.use("aws", {"login": "sso-dev"})
-        self.assertEqual(self.env["AWS_PROFILE"], "sso-dev")
-        c.set_values("aws", {"profile": "sso-dev", "region": "eu-west-1"})
-        c.use("aws", {"login": "default"})
-        self.assertEqual((self.env["AWS_PROFILE"], self.env["AWS_REGION"]), ("default", "eu-west-1"))
-        with self.assertRaises(SettingsError):
-            c.use("aws", {"login": "nobody"})
-        self.assertEqual(c._aws_sign_argv("in", "default")[:3], ["aws", "login", "--remote"])
-        self.assertEqual(c._aws_sign_argv("in", "sso-dev")[:3], ["aws", "sso", "login"])
-        self.assertEqual(c._aws_sign_argv("out", "default"), ["aws", "logout", "--profile", "default"])
-        self.assertEqual(c._aws_sign_argv("out", "sso-dev"), ["aws", "sso", "logout", "--profile", "sso-dev"])
-        with self.assertRaises(SettingsError):
-            c._aws_sign_argv("in", "keys")
-
     def test_apply_restores_machine_logins(self):
-        self.env.update({"AZURE_CONFIG_DIR": "/machine/azure", "AWS_PROFILE": "machine"})
+        self.env.update({"AZURE_CONFIG_DIR": "/machine/azure"})
         c = self.conn()
         (self.root / "connections" / "azure").mkdir(parents=True)
         c._update("azure", {"mode": "console"})
-        c._update("aws", {"profile": "sso-dev", "region": "eu-west-1"})
         c.apply()
         self.assertEqual(self.env["AZURE_CONFIG_DIR"], str(self.root / "connections" / "azure"))
-        self.assertEqual((self.env["AWS_PROFILE"], self.env["AWS_REGION"]), ("sso-dev", "eu-west-1"))
         c._update("azure", None)
-        c._update("aws", None)
         c.apply()
         self.assertEqual(self.env["AZURE_CONFIG_DIR"], "/machine/azure")
-        self.assertEqual(self.env["AWS_PROFILE"], "machine")
-        self.assertNotIn("AWS_REGION", self.env)
 
 
 class SettingsApiTests(unittest.TestCase):

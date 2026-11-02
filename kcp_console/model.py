@@ -14,7 +14,7 @@ import re
 from . import knowledge, logic, platforms
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
-PLATFORMS = {"aks": True, "eks": False, "gke": True, "openshift": False}   # seam: AKS and GKE are built
+PLATFORMS = {"aks": True, "gke": True, "openshift": False}   # seam: AKS and GKE are built
 ENVIRONMENTS = ("SBX", "NPE", "PRD")
 CACHE_WARN_SECONDS = 1800
 

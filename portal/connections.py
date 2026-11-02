@@ -1,7 +1,7 @@
 """Settings: who the consoles act as, entered on the page instead of the machine's own logins.
 
 One connection per tool. Each starts on this machine's own login (~/.config/gcloud, ~/.azure,
-~/.aws, an exported JFROG_ACCESS_TOKEN); signing in on Settings switches it to the console's own:
+an exported JFROG_ACCESS_TOKEN); signing in on Settings switches it to the console's own:
 
 - Google Cloud: `gcloud auth login --no-launch-browser --update-adc` into .console/connections/gcloud
   (CLOUDSDK_CONFIG, and GOOGLE_APPLICATION_CREDENTIALS for Terraform). The page shows Google's link;
@@ -11,18 +11,16 @@ One connection per tool. Each starts on this machine's own login (~/.config/gclo
 - Azure DevOps: organization, project, repository and branch (no secret: the Azure sign-in's token).
 - JFrog: platform URL and an admin access token. The token lives in this process only
   (JFROG_ACCESS_TOKEN, which every redactor masks); it is never written, logged or returned.
-- AWS: a profile (and region) from the AWS config; SSO profiles sign in with a device code.
 
-What gcloud, az and aws cache in their config directories is their own storage, in a 0700 directory
+What gcloud and az cache in their config directories is their own storage, in a 0700 directory
 outside git. settings.json holds only non-secret choices. Every process env change goes through
-apply(), so the consoles' shells (which pass CLOUDSDK_CONFIG, AZURE_CONFIG_DIR, AWS_PROFILE ... through
+apply(), so the consoles' shells (which pass CLOUDSDK_CONFIG, AZURE_CONFIG_DIR ... through
 their allow-list) pick it up on their next call.
 """
 
 from __future__ import annotations
 
 import concurrent.futures
-import configparser
 import json
 import os
 import re
@@ -34,14 +32,14 @@ from pathlib import Path
 from console import redact
 from console.shell import Shell
 
-TOOLS = ("gcp", "azure", "ado", "jfrog", "aws")
+TOOLS = ("gcp", "azure", "ado", "jfrog")
 ADO_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798"
 ADO_KEYS = ("organization", "project", "repository", "target_branch")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,99}$")
 GUID_OR_DOMAIN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]{1,253}$")
 PROJECT_RE = re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
 URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+(:\d+)?/?$")
-DEVICE_URL = re.compile(r"https://\S*(?:devicelogin|device|activate|awsapps\.com/start)\S*", re.I)
+DEVICE_URL = re.compile(r"https://\S*(?:devicelogin|device|activate)\S*", re.I)
 DEVICE_CODE = re.compile(r"\b(?:code|enter)\b[^A-Z0-9]*\b([A-Z0-9]{4,}(?:-[A-Z0-9]{4,})?)\b")
 GOOGLE_URL = re.compile(r"https://accounts\.google\.com/\S+")
 PENDING_SECONDS = 900
@@ -66,7 +64,7 @@ class Connections:
         self._jfrog_token = ""          # in memory only
         self._jfrog_login = "machine"   # which token JFrog calls use: the entered one or the machine's
         self._machine = {k: self.environ.get(k) for k in ("CLOUDSDK_CONFIG", "GOOGLE_APPLICATION_CREDENTIALS",
-                                                         "AZURE_CONFIG_DIR", "AWS_PROFILE", "AWS_REGION",
+                                                         "AZURE_CONFIG_DIR",
                                                          "JFROG_ACCESS_TOKEN")}
 
     # -- stored choices (non-secret) -----------------------------------------------------------
@@ -100,7 +98,7 @@ class Connections:
             return data
 
     def dir_of(self, tool: str) -> Path:
-        return self.root / {"gcp": "gcloud", "azure": "azure", "aws": "aws"}[tool]
+        return self.root / {"gcp": "gcloud", "azure": "azure"}[tool]
 
     # -- process environment -------------------------------------------------------------------
 
@@ -126,9 +124,6 @@ class Connections:
         a = self.dir_of("azure")
         put("AZURE_CONFIG_DIR", str(a) if (s.get("azure") or {}).get("mode") == "console" and a.is_dir()
             else self._machine["AZURE_CONFIG_DIR"])
-        aws = s.get("aws") or {}
-        put("AWS_PROFILE", aws.get("profile") or self._machine["AWS_PROFILE"])
-        put("AWS_REGION", aws.get("region") or self._machine["AWS_REGION"])
         put("JFROG_ACCESS_TOKEN", self._jfrog_token if self._jfrog_login == "console" and self._jfrog_token
             else self._machine["JFROG_ACCESS_TOKEN"])
 
@@ -150,16 +145,6 @@ class Connections:
     def use(self, tool: str, body: dict) -> dict:
         """Switch which login a tool acts as. Neither login is removed, so switching back is instant."""
         login = str(body.get("login") or "")
-        if tool == "aws":
-            known = set(self.aws_kinds())
-            lp = self.shell_factory().run(["aws", "configure", "list-profiles"], timeout=30)
-            known |= set(lp.stdout.split()) if lp.ok else set()
-            if not NAME_RE.match(login) or login not in known:
-                raise SettingsError("pick one of this machine's AWS profiles")
-            keep = dict(self.settings().get("aws") or {})
-            self._update("aws", {**keep, "profile": login})
-            self.apply()
-            return {"login": login}
         if tool not in ("gcp", "azure", "jfrog"):
             raise SettingsError(f"{tool} has one login only", 404)
         if login not in ("machine", "console"):
@@ -180,14 +165,14 @@ class Connections:
         d.mkdir(parents=True, exist_ok=True)
         os.chmod(self.root, 0o700)
         os.chmod(d, 0o700)
-        return {"gcp": {"CLOUDSDK_CONFIG": str(d)}, "azure": {"AZURE_CONFIG_DIR": str(d)}, "aws": {}}[tool]
+        return {"gcp": {"CLOUDSDK_CONFIG": str(d)}, "azure": {"AZURE_CONFIG_DIR": str(d)}}[tool]
 
     # -- status -------------------------------------------------------------------------------
 
     def status(self) -> dict:
         # Each tool on its own shell, all at once: the page waits for the slowest CLI, not their sum.
         s = self.settings()
-        readers = {"gcp": self._gcp, "azure": self._azure, "ado": self._ado, "jfrog": self._jfrog, "aws": self._aws}
+        readers = {"gcp": self._gcp, "azure": self._azure, "ado": self._ado, "jfrog": self._jfrog}
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(readers), thread_name_prefix="settings") as pool:
             futures = {k: pool.submit(fn, self.shell_factory(), s) for k, fn in readers.items()}
             return {k: f.result() for k, f in futures.items()}
@@ -202,8 +187,7 @@ class Connections:
         sess, lines = p["session"], p["session"].lines
         text = "\n".join(lines)
         out = {"state": "done" if sess.done else "waiting", "lines": lines[-12:]}
-        url = ((GOOGLE_URL.search(text) if tool == "gcp" else None) or DEVICE_URL.search(text)
-               or (re.search(r"https://\S+", text) if tool == "aws" else None))
+        url = ((GOOGLE_URL.search(text) if tool == "gcp" else None) or DEVICE_URL.search(text))
         if url:
             out["url"] = url.group(0).rstrip(".,)")
         code = DEVICE_CODE.search(text) if tool != "gcp" else None
@@ -291,67 +275,12 @@ class Connections:
             return {"signed_in": False, "error": "JFrog rejected the token: expired, revoked or another platform's."}
         return {"signed_in": False, "error": f"JFrog answered {r.status or r.error}."}
 
-    def _aws(self, sh, s) -> dict:
-        lp = sh.run(["aws", "configure", "list-profiles"], timeout=30)
-        profiles = [p for p in lp.stdout.split() if p] if lp.ok else []
-        out = {"profiles": profiles, "profile": self.environ.get("AWS_PROFILE") or "",
-               "region": self.environ.get("AWS_REGION") or "", "account": "", "arn": "", "cli": lp.rc != 127}
-        if lp.ok:
-            r = sh.run(["aws", "sts", "get-caller-identity", "--output", "json"], timeout=30)
-            ident = r.json({}) if r.ok else {}
-            out["account"], out["arn"] = (ident or {}).get("Account") or "", (ident or {}).get("Arn") or ""
-        out["signed_in"] = bool(out["arn"])
-        out["pending"] = self._pending("aws")
-        out["kinds"] = self.aws_kinds()
-        out["profiles"] = sorted(set(profiles) | set(out["kinds"]), key=lambda p: (p != "default", p))
-        out["in_use"] = out["profile"] or "default"
-        out["region"] = out["region"] or self._aws_profile_region(out["in_use"])
-        return out
-
-    def _aws_profile_region(self, profile: str) -> str:
-        cp = configparser.ConfigParser(interpolation=None)
-        try:
-            cp.read(Path(self.environ.get("AWS_CONFIG_FILE") or Path.home() / ".aws" / "config"))
-        except (OSError, configparser.Error):
-            return ""
-        sec = "default" if profile == "default" else f"profile {profile}"
-        return cp.get(sec, "region", fallback="") if cp.has_section(sec) else ""
-
-    def aws_kinds(self) -> dict:
-        """Each profile in the AWS config file and how it signs in: aws login, IAM Identity Center (SSO),
-        or access keys (nothing to sign in or out)."""
-        path = Path(self.environ.get("AWS_CONFIG_FILE") or Path.home() / ".aws" / "config")
-        cp = configparser.ConfigParser(interpolation=None)
-        try:
-            cp.read(path)
-        except (OSError, configparser.Error):
-            return {}
-        out = {}
-        for sec in cp.sections():
-            name = "default" if sec == "default" else sec[len("profile "):] if sec.startswith("profile ") else ""
-            if not name or not NAME_RE.match(name):
-                continue
-            body = cp[sec]
-            out[name] = ("login" if "login_session" in body else
-                         "sso" if "sso_session" in body or "sso_start_url" in body else "keys")
-        return out
-
-    def _aws_sign_argv(self, way: str, profile: str) -> list:
-        kind = self.aws_kinds().get(profile)
-        if kind == "login":
-            return (["aws", "login", "--remote", "--profile", profile] if way == "in"
-                    else ["aws", "logout", "--profile", profile])
-        if kind == "sso":
-            return (["aws", "sso", "login", "--profile", profile, "--use-device-code", "--no-browser"] if way == "in"
-                    else ["aws", "sso", "logout", "--profile", profile])
-        raise SettingsError(f"profile {profile} uses access keys: there is nothing to sign in or out")
-
     # -- sign in / out ------------------------------------------------------------------------
 
     def sign_in(self, tool: str, body: dict) -> dict:
         if tool == "jfrog":
             return self._jfrog_sign_in(body)
-        if tool not in ("gcp", "azure", "aws"):
+        if tool not in ("gcp", "azure"):
             raise SettingsError(f"no sign-in for {tool}", 404)
         with self._lock:
             p = self._signin.get(tool)
@@ -361,19 +290,13 @@ class Connections:
         if tool == "gcp":
             argv = ["gcloud", "auth", "login", "--no-launch-browser", "--update-adc", "--brief"]
             extra, saved = self._env_for("gcp"), {"mode": "console"}
-        elif tool == "azure":
+        else:
             tenant = str(body.get("tenant") or "").strip()
             if tenant and not GUID_OR_DOMAIN.match(tenant):
                 raise SettingsError("tenant must be a tenant ID or a domain such as contoso.onmicrosoft.com")
             argv = ["az", "login", "--use-device-code", "--allow-no-subscriptions", "-o", "none"]
             argv += ["--tenant", tenant] if tenant else []
             extra, saved = self._env_for("azure"), {"mode": "console", **({"tenant": tenant} if tenant else {})}
-        else:
-            profile = str(body.get("profile") or self.environ.get("AWS_PROFILE") or "default").strip()
-            if not NAME_RE.match(profile):
-                raise SettingsError("pick an AWS profile first")
-            argv = self._aws_sign_argv("in", profile)
-            extra, saved = {}, None
         sess = sh.start(argv, timeout=PENDING_SECONDS, extra_env=extra)
         with self._lock:
             self._signin[tool] = {"session": sess, "started": self.clock()}
@@ -420,13 +343,6 @@ class Connections:
         if tool == "jfrog":
             self._jfrog_token, self._jfrog_login = "", "machine"
             self.apply()
-            return {"signed_out": True}
-        if tool == "aws":
-            self.cancel("aws")
-            profile = self.environ.get("AWS_PROFILE") or "default"
-            r = self.shell_factory().run(self._aws_sign_argv("out", profile), timeout=60)
-            if not r.ok:
-                raise SettingsError("AWS did not sign out: " + redact.text(r.stderr.strip())[:200])
             return {"signed_out": True}
         if tool not in ("gcp", "azure"):
             raise SettingsError(f"nothing to sign out for {tool}", 404)
@@ -478,15 +394,6 @@ class Connections:
             self._update("ado", vals)
             if self.on_ado:
                 self.on_ado(vals)
-            return {"saved": True}
-        if tool == "aws":
-            profile, region = str(body.get("profile") or "").strip(), str(body.get("region") or "").strip()
-            if profile and not NAME_RE.match(profile):
-                raise SettingsError("profile: letters, digits, dots, dashes, underscores")
-            if region and not re.match(r"^[a-z]{2}(-[a-z]+)+-\d$", region):
-                raise SettingsError("region looks like us-east-1")
-            self._update("aws", {k: v for k, v in (("profile", profile), ("region", region)) if v} or None)
-            self.apply()
             return {"saved": True}
         if tool == "azure":
             sub = str(body.get("subscription") or "").strip()

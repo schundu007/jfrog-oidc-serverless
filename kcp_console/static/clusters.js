@@ -107,7 +107,7 @@ function view() {
   if (!fleet && !fleetLoading) loadFleet();
   const d = fleet || { clusters: [], platforms: {} };
   const k = cloud();
-  // A platform the console can't read yet (EKS, OpenShift): what it will need.
+  // A platform the console can't read yet (OpenShift): what it will need.
   if (k && !BUILT.includes(k)) return h("div", { class: "page" }, head(), notYet(k, CLOUD[k]));
   const built = BUILT.filter((p) => (d.platforms || {})[p] !== false);
   const n = d.clusters.length;
@@ -312,13 +312,6 @@ async function add(c, k) {
 
 // A platform the console can't read yet: what it will do there, what it needs, and where to go now.
 const NOT_YET = {
-  eks: {
-    will: "List your EKS clusters, trust each cluster's OIDC issuer in JFrog, install the JFrog credential provider on the nodes and prove a pull with no pull secret: the same Set up and Verify as AKS and GKE.",
-    needs: ["The AWS CLI signed in to the account (aws sts get-caller-identity works)",
-      "kubectl access to the cluster (aws eks update-kubeconfig)",
-      "The cluster's OIDC issuer, which EKS turns on for every cluster",
-      "A Kubernetes version whose kubelet hands service account tokens to credential providers"],
-  },
   openshift: {
     will: "Read your OpenShift clusters, trust each cluster's service account issuer in JFrog, roll the JFrog credential provider out to the nodes and prove a pull with no pull secret.",
     needs: ["oc logged in to the cluster with cluster-admin (the provider is a node change)",

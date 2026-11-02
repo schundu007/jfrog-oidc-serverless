@@ -5,7 +5,7 @@
 
 import { $, api, h, fill, BASE, CLOUD, TYPE, template, help, status as setStatus } from "./core.js";
 
-const LIVE = ["azure", "gcp"];   // the clouds read live (AWS and OpenShift are runtime path only)
+const LIVE = ["azure", "gcp"];   // the clouds read live (OpenShift is runtime path only)
 const NAMES = { azure: "Azure", gcp: "Google Cloud" };
 const ls = { rows: [], configs: [], schema: null, errors: [], loading: 0 };
 const F = { q: "", cloud: LIVE.includes(CLOUD) ? CLOUD : "", type: TYPE || "", state: "" };

@@ -82,7 +82,7 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.req("GET", "/static/app.js", token=False)[0].status, 200)
 
     def test_page_routes_serve_the_app(self):
-        for p in ("/clusters", "/configure", "/clusters/aks-prod-01", "/clusters/aks", "/clusters/gke", "/clusters/eks",
+        for p in ("/clusters", "/configure", "/clusters/aks-prod-01", "/clusters/aks", "/clusters/gke",
                   "/clusters/openshift", "/clusters/aks/aks-prod-01", "/clusters/gke/gke-a/edit",
                   "/clusters/aks/aks-prod-01/runs/20261031-003126-23e903"):
             r, raw = self.req("GET", p, token=False)

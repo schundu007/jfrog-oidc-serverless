@@ -742,7 +742,7 @@ details[open] > summary::before { transform: rotate(45deg) translate(-2px, -2px)
   .flyout { top: 0; z-index: 50; }
 }
 
-/* Not available yet (AWS, OpenShift): same page as the Kubernetes section's. */
+/* Not available yet (OpenShift): same page as the Kubernetes section's. */
 .page-id { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); min-width: 0; }
 .page-id::after { content: ""; width: 64px; height: 6px; background: var(--brand); }
 .page-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); min-height: 36px; }

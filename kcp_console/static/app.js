@@ -31,12 +31,12 @@ function showAuth() {
 
 // One URL per page, each cloud kept apart (docs/ui-pattern.md):
 //   /clusters                             every platform's clusters, one filtered list (clusters.js)
-//   /clusters/<cloud>                     the same list filtered to one platform (aks, gke, eks, openshift)
+//   /clusters/<cloud>                     the same list filtered to one platform (aks, gke, openshift)
 //   /clusters/<cloud>/<name>?tab=…        one cluster: Summary, Proof, Runs or Configuration
 //   /clusters/<cloud>/<name>/runs/<id>    one run: its step tree and log
 // /clusters, /clusters/<name>, /configure and .../<name>/edit are older links; they move to the paths above.
 // The server serves index.html for all of them, so a reload or a shared link opens the same page.
-export const CLOUDS = { aks: "Azure AKS", gke: "Google GKE", eks: "AWS EKS", openshift: "OpenShift" };
+export const CLOUDS = { aks: "Azure AKS", gke: "Google GKE", openshift: "OpenShift" };
 export const TABS = { summary: "Summary", proof: "Proof", runs: "Runs", config: "Configuration" };
 const PAGES = ["list", "cluster", "run"];
 
@@ -78,7 +78,7 @@ function transition(update) {
   for (const p of [t.ready, t.finished, t.updateCallbackDone]) p.catch(() => {});
 }
 
-// A product mark (aks, gke, eks, openshift, k8s) or the arrow icon, cloned from the page's template.
+// A product mark (aks, gke, openshift, k8s) or the arrow icon, cloned from the page's template.
 export const markOf = (k) => $("marks").content.querySelector(`[data-mark="${k}"] svg`).cloneNode(true);
 
 // Where you are: Kubernetes > <cluster> > Run <id>. Names come from the path.

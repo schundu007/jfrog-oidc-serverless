@@ -1,16 +1,9 @@
 // A cloud the console doesn't set up live yet: what it will do there, what it needs, and where to go now.
-// Same page as the Kubernetes section's EKS and OpenShift.
+// Same page as the Kubernetes section's OpenShift.
 
 import { h, BASE, CLOUDS, help } from "./core.js";
 
 export const NOT_YET = {
-  aws: {
-    will: "Find your Lambda functions, ECS tasks and App Runner services, trust the account's outbound identity in JFrog, give each workload its own role and prove the exchange: the same Set up and Verify as Google Cloud and Azure.",
-    needs: ["The AWS CLI signed in to the account (aws sts get-caller-identity works)",
-      "Outbound web identity federation turned on for the account (aws iam enable-outbound-web-identity-federation)",
-      "sts:GetWebIdentityToken allowed for each workload's role",
-      "An Azure DevOps service connection that can reach the account"],
-  },
   openshift: {
     will: "Find your Knative services, trust the cluster's service account issuer in JFrog, give each service a projected token for JFrog and prove the exchange: the same Set up and Verify as Google Cloud and Azure.",
     needs: ["A kubectl or oc context for the cluster",

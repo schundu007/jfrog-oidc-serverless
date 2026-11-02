@@ -42,7 +42,7 @@ PAGE_ROUTES = {"/", "/clusters", "/configure"}
 # /clusters/<cloud> lists one platform's clusters, /clusters/<cloud>/<name> is one cluster (its tab in ?tab=),
 # /clusters/<cloud>/<name>/runs/<run id> is one run. /clusters/<name> and .../<name>/edit are older links
 # (the page moves them).
-CLUSTER_PAGE_RE = re.compile(r"^/clusters/(?:(?:aks|gke|eks|openshift)(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,62}"
+CLUSTER_PAGE_RE = re.compile(r"^/clusters/(?:(?:aks|gke|openshift)(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,62}"
                              r"(?:/edit|/runs/[0-9]{8}-[0-9]{6}-[0-9a-f]{6})?)?|[A-Za-z0-9][A-Za-z0-9._-]{0,62})$")
 MAX_BODY = 1024 * 1024
 MAX_DRAIN = 8 * 1024 * 1024

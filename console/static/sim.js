@@ -20,12 +20,10 @@ const FAULT_LABELS = {
   identity_recreated: "App identity recreated", sa_recreated: "Service account recreated",
   mapping_revoked: "JFrog mapping removed",
   integration_misconfigured: "JFrog trust has the wrong issuer",
-  federation_disabled: "AWS outbound federation off",
 };
-const CLOUD_ONLY_FAULTS = { sa_recreated: ["gcp"],
-  federation_disabled: ["aws"] };
+const CLOUD_ONLY_FAULTS = { sa_recreated: ["gcp"] };
 const faultLabel = (t) => FAULT_LABELS[t] || t.replaceAll("_", " ");
-const ACRONYMS = { jfrog: "JFrog", gcp: "GCP", aws: "AWS", sa: "SA", aca: "ACA", ecs: "ECS", arm: "ARM" };
+const ACRONYMS = { jfrog: "JFrog", gcp: "GCP", sa: "SA", aca: "ACA", arm: "ARM" };
 const scenarioLabel = (s) => {
   const words = s.name.split("-").map((w) => ACRONYMS[w] || w).join(" ");
   return `${words[0].toUpperCase()}${words.slice(1)}`;

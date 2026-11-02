@@ -124,7 +124,7 @@ async function start() {
   const schema = await connect();
   if (!schema || mounted) return;
   mounted = true;
-  // AWS and OpenShift: not set up live yet, every path shows what they will need.
+  // OpenShift: not set up live yet, every path shows what they will need.
   const r = NOT_YET[CLOUD] ? { page: "not-yet" } : CLOUD ? route() : { page: "list" };
   if (r.legacy) history.replaceState(null, "", href.list());
   renderTrail(r);
