@@ -577,7 +577,9 @@ class Jobs:
                 result = self._public_plan(p)
                 self._say(job, f"Plan ready: {_summary_text(p.get('summary'))}. Nothing changes until you approve it.")
             self._finish(job, "done", result=result)
-            if action == "apply" or (action == "status" and result.get("deployed")):
+            # Read the stacks on it again after a change, a read as deployed, or a read as partly deleted
+            # (its store gone: they read as deleted, and a destroy no longer waits on them).
+            if action == "apply" or (action == "status" and (result.get("deployed") or result.get("deleted"))):
                 self._reread_dependents(sid)
         except (TerraformError, ApplyRefused, stacks.StackError, AdoError, OSError) as exc:
             msg = redact.text(str(exc))[:2000]

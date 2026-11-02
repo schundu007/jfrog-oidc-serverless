@@ -64,6 +64,8 @@ def command(argv: list, rc: int, seconds: float, meaning: dict | None = None) ->
     tool = Path(argv[0]).name
     name = TOOLS.get(tool, tool)
     words = _positionals(argv[1:])
+    if tool == "terraform" and "-detailed-exitcode" in argv:   # 2 = a plan with changes, an answer not a failure
+        meaning = {0: "ok, no changes", 2: "ok, changes to make", **(meaning or {})}
     return f"{_what(tool, name, words, argv[1:])}: {_result(rc, seconds, meaning)}"
 
 

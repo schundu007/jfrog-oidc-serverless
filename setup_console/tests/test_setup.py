@@ -938,6 +938,19 @@ class DeletedOutsideTests(unittest.TestCase):
         self.assertTrue(st["deleted"].startswith("Partly deleted outside the console"))
         self.assertEqual(st["outputs"], {"tfstate_bucket": "proj-1-tfstate"})
 
+    def test_a_partly_deleted_foundation_reads_its_stacks_so_destroy_unlocks(self):
+        """Its stacks were never read (they wait for a deployed foundation), so Destroy stayed greyed out
+        behind "check what may stand on it first" for good. Reading it as partly deleted reads them."""
+        jobs = self.jobs("missing")
+        jobs._status.pop("gcp-foundation")
+        self.ws("gcp-foundation", ".fake_outputs.json", json.dumps({"tfstate_bucket": {"value": "proj-1-tfstate"}}))
+        wait(jobs, jobs.start("gcp-foundation", "status"))
+        for x in [x for x in jobs._jobs.values() if x["stack"] != "gcp-foundation"]:
+            wait(jobs, x)
+        row = [s for s in jobs.stacks() if s["id"] == "gcp-foundation"][0]
+        self.assertEqual(row["unchecked"], [])
+        self.assertIn("deleted", self.status(jobs, "gcp-cloud-run"))
+
     def test_destroy_forgets_what_the_cloud_says_is_gone_and_plans_the_rest(self):
         jobs = self.jobs("unknown")
         repo_id = "projects/proj-1/locations/us-central1/repositories/platform"
