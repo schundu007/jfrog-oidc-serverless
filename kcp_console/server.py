@@ -29,6 +29,7 @@ from pathlib import Path
 from . import diagnose as diag, direct, fleet, knowledge, logic, model, platforms, redact, report
 from .checks import artifactory as art_checks, hygiene, preflight as pf, verify as vchecks
 from .jfrog import Jfrog, OperatorToken, StaticToken
+from .archive import Archive
 from .runner import RunError, RunManager, bundle as run_bundle, pod_from_log
 from .shell import Shell, load_fixtures
 from .sim import engine
@@ -96,6 +97,9 @@ class KcpServer:
         self.run_store = RunStore(self.store.root)
         self.runs = RunManager(self.run_store, self.shell, env=self.env, sleep=sleep, poll_seconds=poll_seconds,
                                root=self.store.root, tokens=self.tokens)
+        # Clusters that no longer exist: config, status and finished runs kept apart for 7 days.
+        self.archive = Archive(self.store.root)
+        self._sweeper = None
         self.read_lock = threading.Lock()
         self._reads = {}  # (name, with_preflight) -> the in-flight read other callers join
         self._reads_lock = threading.Lock()
@@ -116,7 +120,7 @@ class KcpServer:
 
     def fleet(self) -> dict:
         """Every saved cluster from its last read and its runs: no live calls (fleet.py)."""
-        configs = self.store.list()
+        configs = self.saved()
         statuses = {}
         for c in configs:
             try:
@@ -126,9 +130,15 @@ class KcpServer:
         rows = fleet.rows(configs, statuses, self.runs.list())
         return {"clusters": rows, "counts": fleet.counts(rows), "platforms": fleet.platforms()}
 
+    def saved(self) -> list:
+        """The saved clusters, without the archived ones."""
+        gone = self.archive.names()
+        return [c for c in self.store.list() if c["name"] not in gone]
+
     def fleet_live(self) -> dict:
         """Read-only: does each saved cluster still exist? {name: present|missing|unknown}.
-        One az aks list per subscription and one gcloud container clusters list per project."""
+        One az aks list per subscription and one gcloud container clusters list per project.
+        Archived clusters are read too: one that exists again comes back."""
         sh, lists, out = self.shell(), {}, {}
 
         def listing(argv):
@@ -139,9 +149,16 @@ class KcpServer:
                               else (c.get("location"), c.get("name")) for c in r.json([]) or []} if r.ok else None
             return lists[key]
 
-        for c in self.store.list():
+        archived = self.archive.names()
+        rows = [(c["name"], c.get("platform"), None) for c in self.store.list() if c["name"] not in archived]
+        for name in sorted(archived):
+            kept = self.archive.config(name)
+            if isinstance(kept, dict):
+                rows.append((name, kept.get("platform"), kept))
+        for name, platform, kept in rows:
+            c = {"name": name, "platform": platform}
             try:
-                cl = self.config(c["name"]).get("cluster") or {}
+                cl = (model.merged(kept) if kept else self.config(c["name"])).get("cluster") or {}
             except Exception:  # noqa: BLE001 - an unreadable config is just unknown
                 out[c["name"]] = "unknown"
                 continue
@@ -155,6 +172,70 @@ class KcpServer:
                 key = ((cl.get("resource_group") or "").lower(), cl.get("name"))
             out[c["name"]] = "unknown" if found is None else ("present" if key in found else "missing")
         return out
+
+    def sweep(self) -> dict:
+        """Read the clusters live; archive each one read as missing (never one only unknown), bring back an
+        archived one that exists again, and delete archive entries past their 7 days."""
+        live = self.fleet_live()
+        archived = self.archive.names()
+        for name, state in live.items():
+            if name in archived and state == "present":
+                self.unarchive(name)
+            elif name not in archived and state == "missing":
+                self.archive_cluster(name, "Cluster not found")
+        self.archive.purge()
+        return live
+
+    def archive_cluster(self, name: str, reason: str) -> dict:
+        try:
+            platform = (self.store.get(name) or {}).get("platform") or "aks"
+        except (FileNotFoundError, StoreError, ValueError):
+            platform = ""
+        return self.archive.add(name, platform, reason,
+                                files={"config.json": self.store._path(name), "status.json": self.status._p(name)},
+                                runs=self.runs.take_for(name))
+
+    def unarchive(self, name: str):
+        e = self.archive.entry(name)
+        if not e:
+            return None
+        self.archive.restore(name, files={"config.json": self.store._path(name), "status.json": self.status._p(name)},
+                             runs_dir=self.run_store.dir)
+        self.runs.adopt(e.get("runs") or [])
+        return e
+
+    def archived_run(self, run_id: str):
+        d = self.archive.run_dir(run_id)
+        try:
+            r = json.loads((d / "run.json").read_text()) if d else None
+        except (OSError, ValueError):
+            return None
+        return dict(r, archived=True) if isinstance(r, dict) and r.get("id") == run_id else None
+
+    def archived(self) -> dict:
+        """The archive for the Runs page: each entry with its runs."""
+        out = []
+        for e in self.archive.list():
+            rows = [self.runs.public(r) for r in (self.archived_run(rid) for rid in e.get("runs") or []) if r]
+            for r in rows:
+                r.pop("events", None)
+            out.append(dict(e, run_rows=rows))
+        return {"retention_days": self.archive.days, "entries": out}
+
+    def start_sweeper(self, interval: float = 6 * 3600) -> None:
+        """Sweep now and every interval, in the background (live mode only)."""
+        if self._sweeper or self.mode == "replay":
+            return
+
+        def loop():
+            while True:
+                try:
+                    self.sweep()
+                except Exception as exc:  # noqa: BLE001 - a failed read archives nothing
+                    self.log.write(redact.text(f"archive sweep: {exc}") + "\n")
+                time.sleep(interval)
+        self._sweeper = threading.Thread(target=loop, name="kcp-archive-sweep", daemon=True)
+        self._sweeper.start()
 
     def gke_clusters(self) -> dict:
         """The GKE clusters in every project the operator's gcloud login can see (read-only)."""
@@ -503,7 +584,9 @@ def make_handler(console: KcpServer):
                                         "provider_request": model.provider_request(cfg), "mapping_request": model.mapping_request(cfg),
                                         "test_pod": model.test_pod_yaml(cfg), "provider_name": model.provider_name(cfg)})
             if method == "GET" and parts == ["fleet", "live"]:
-                return self._json(200, {"clusters": console.fleet_live()})
+                return self._json(200, {"clusters": console.sweep()})
+            if method == "GET" and parts == ["archive"]:
+                return self._json(200, console.archived())
             if method == "GET" and parts == ["fleet"]:
                 return self._json(200, console.fleet())
             if method == "GET" and parts == ["aks"]:
@@ -607,7 +690,21 @@ def make_handler(console: KcpServer):
                     raise HttpError(404, "no such run")
                 if method == "DELETE" and len(rest) == 1:
                     return self._json(200, console.runs.delete(rest[0]))
-                run = console.runs.get(rest[0])
+                try:
+                    run = console.runs.get(rest[0])
+                except RunError:
+                    # A run of a cluster that no longer exists: read-only from the archive.
+                    run = console.archived_run(rest[0]) if method == "GET" else None
+                    if run is None:
+                        raise
+                    if len(rest) == 1:
+                        return self._json(200, console.runs.public(run))
+                    if rest[1:] == ["log"]:
+                        d = console.archive.run_dir(rest[0])
+                        return self._json(200, {"log": (d / "log.txt").read_text() if (d / "log.txt").is_file() else ""})
+                    if rest[1:] == ["events"]:
+                        return self._stream_done(run)
+                    raise HttpError(404, "no such endpoint")
                 if method == "GET" and len(rest) == 1:
                     return self._json(200, console.runs.public(run))
                 if method == "GET" and rest[1:] == ["log"]:
@@ -623,6 +720,13 @@ def make_handler(console: KcpServer):
                 raise HttpError(404, "no such endpoint")
             except RunError as exc:
                 raise HttpError(exc.status, str(exc)) from None
+
+        def _stream_done(self, run):
+            self._headers(200, "text/event-stream; charset=utf-8", extra={"X-Accel-Buffering": "no"})
+            self.close_connection = True
+            out = "".join(sse_frame("event", ev) for ev in run.get("events") or []) + sse_frame("done", console.runs.public(run))
+            self.wfile.write(out.encode())
+            self.wfile.flush()
 
         def _stream_run(self, run_id):
             self._headers(200, "text/event-stream; charset=utf-8", extra={"X-Accel-Buffering": "no"})
@@ -648,16 +752,23 @@ def make_handler(console: KcpServer):
         def _configs(self, method: str, rest: list):
             try:
                 if method == "GET" and not rest:
-                    return self._json(200, {"configs": console.store.list()})
+                    return self._json(200, {"configs": console.saved()})
                 if len(rest) != 1:
                     raise HttpError(404, "no such endpoint")
                 if method == "GET":
-                    return self._json(200, {"config": console.store.get(rest[0])})
+                    try:
+                        return self._json(200, {"config": console.store.get(rest[0])})
+                    except FileNotFoundError:
+                        kept = console.archive.config(rest[0])
+                        if kept is None:
+                            raise
+                        return self._json(200, {"config": kept, "archived": console.archive.entry(rest[0])})
                 if method == "PUT":
                     cfg = self._body().get("config")
                     if not isinstance(cfg, dict):
                         raise HttpError(400, "config must be an object")
                     cfg = console.store.put(rest[0], cfg)
+                    console.archive.release(rest[0])   # saved anew: back on the live pages
                     return self._json(200, {"config": cfg, "issues": model.validate(model.merged(cfg))})
                 if method == "DELETE":
                     if not console.store.delete(rest[0]):

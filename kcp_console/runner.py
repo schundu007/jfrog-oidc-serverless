@@ -11,6 +11,7 @@ the default wherever the scenario supports it.
 
 from __future__ import annotations
 
+import json
 import re
 import secrets
 import threading
@@ -283,6 +284,31 @@ class RunManager:
             del self.runs[run_id]
         self.store.delete(run_id)
         return {"deleted": run_id}
+
+    def take_for(self, config: str) -> dict:
+        """Hand over the finished runs of one cluster (to the archive): {run id: folder}, out of the list.
+        Active runs (prepared, queued, running) stay."""
+        out = {}
+        with self.lock:
+            for rid, r in list(self.runs.items()):
+                if r.get("config") == config and r.get("status") not in ("prepared", "queued", "running"):
+                    self.runs.pop(rid)
+                    out[rid] = self.store._d(rid)
+        return out
+
+    def adopt(self, run_ids) -> int:
+        """Runs moved back under runs/ (from the archive): list them again."""
+        n = 0
+        with self.lock:
+            for rid in run_ids:
+                try:
+                    r = json.loads((self.store._d(rid) / "run.json").read_text())
+                except (OSError, ValueError):
+                    continue
+                if isinstance(r, dict) and r.get("id") == rid:
+                    self.runs[rid] = r
+                    n += 1
+        return n
 
     def prune(self, config: str) -> dict:
         """Clear old runs of one cluster. The newest finished run of each action stays: it is the evidence the

@@ -426,9 +426,10 @@ function renderHead() {
   fill($("run-facts"),
     h("span", { title: stamp(snap.created), text: `Started ${ago(snap.created)}` }),
     took ? h("span", { text: took }) : null,
+    snap.archived ? h("span", { text: "Archived: the workload is gone; deleted 7 days after" }) : null,
     h("a", { href: href.workload(rs.name, "runs"), text: `Back to ${rs.name}` }));
   $("run-cancel").hidden = !live;
-  $("run-delete").hidden = live;
+  $("run-delete").hidden = live || Boolean(snap.archived);   // the archive deletes it after 7 days
   // A live run's clock and step durations tick.
   if (live && !rs.tick) rs.tick = setInterval(() => rs.snap && (renderHead(), renderTree()), 1000);
   if (!live && rs.tick) { clearInterval(rs.tick); rs.tick = null; }

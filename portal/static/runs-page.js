@@ -5,7 +5,7 @@
 import { CLOUD_NAMES, LIVE_STATES, h, markEl, when, runPill, loadAll, removeRun } from "./data.js";
 
 const $ = (id) => document.getElementById(id);
-const TABS = ["", "serverless", "kubernetes", "infrastructure", "oidc"];
+const TABS = ["", "serverless", "kubernetes", "infrastructure", "oidc", "archived"];
 const TAB_ID = (t) => `tab-${t || "all"}`;
 const u0 = new URLSearchParams(location.search);
 const F = { area: TABS.includes(u0.get("area")) ? u0.get("area") : "", q: u0.get("q") || "", cloud: u0.get("cloud") || "",
@@ -27,8 +27,8 @@ function saveQuery() {
 function row(r) {
   const [cls, text] = runPill(r.status);
   const live = LIVE_STATES.has(r.status);
-  const box = h("input", { type: "checkbox", "aria-label": `Select run of ${r.name}`, disabled: live || null,
-    title: live ? "In progress: cancel it first" : null });
+  const box = h("input", { type: "checkbox", "aria-label": `Select run of ${r.name}`, disabled: live || !r.api || null,
+    title: live ? "In progress: cancel it first" : !r.api ? "Archived: deleted automatically" : null });
   box.checked = picked.has(r.api);
   box.addEventListener("change", () => { box.checked ? picked.add(r.api) : picked.delete(r.api); sync(); });
   const tr = h("tr", { class: r.href ? "row-link" : null },
@@ -41,7 +41,8 @@ function row(r) {
   return tr;
 }
 
-const inTab = () => all.filter((r) => !F.area || r.area === F.area);
+// All lists the live runs; archived ones only on their own tab.
+const inTab = () => all.filter((r) => (F.area ? r.area === F.area : r.area !== "archived"));
 
 // Tabs, pills (their options follow the tab's rows), then the rows.
 function draw() {
@@ -49,7 +50,7 @@ function draw() {
     const b = $(TAB_ID(t));
     b.setAttribute("aria-selected", String(t === F.area));
     b.tabIndex = t === F.area ? 0 : -1;
-    const n = t ? all.filter((r) => r.area === t).length : all.length;
+    const n = t ? all.filter((r) => r.area === t).length : all.filter((r) => r.area !== "archived").length;
     b.textContent = `${t ? b.dataset.label : "All"}${all.length ? ` (${n})` : ""}`;
   }
   $("runs-panel").setAttribute("aria-labelledby", TAB_ID(F.area));
@@ -104,11 +105,13 @@ function render() {
 
 // Essentials: label : value, two columns; a value with a filtered view links to it.
 function essentials() {
-  const n = (f) => all.filter((r) => f(r.status)).length;
-  const last = all[0], oldest = all[all.length - 1];
+  const live = all.filter((r) => r.area !== "archived");
+  const n = (f) => live.filter((r) => f(r.status)).length;
+  const last = live[0], oldest = live[live.length - 1];
   const pair = (label, value, href) => [h("div", { class: "ess-pair" }, h("dt", { text: label }), h("dd", {}, href ? h("a", { href, text: value }) : value))];
   $("ess-left").replaceChildren(
-    ...pair("Runs kept", String(all.length)),
+    ...pair("Runs kept", String(live.length)),
+    ...pair("Archived (7 days)", String(all.length - live.length), all.length > live.length ? "/runs?area=archived" : null),
     ...pair("Oldest kept", oldest ? when(oldest.created) : "—"));
   $("ess-right").replaceChildren(
     ...pair("In progress", String(n(STATUS.active)), n(STATUS.active) ? "/runs?status=active" : null),

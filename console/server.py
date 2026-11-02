@@ -30,7 +30,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import live, inventory, model, redact
-from .runner import STEPS, RunError, RunManager
+from .archive import Archive
+from .runner import STEPS, Run, RunError, RunManager
 from .shell import Shell, load_fixtures
 from .sim import scenario as sc
 from .sim.engine import Simulation
@@ -40,6 +41,7 @@ from .store import Store, StoreError, summary as store_summary
 STATIC_DIR = Path(__file__).parent / "static"
 # Page URLs: /gcp and /azure, and each tab under them; all serve index.html.
 CLOUDS = ("gcp", "azure", "aws", "openshift")
+CLOUD_TITLES = {"gcp": "Google Cloud", "azure": "Azure", "aws": "AWS", "openshift": "OpenShift"}
 # Pages (all served by index.html; the UI routes): /<cloud> (Workloads), /<cloud>/new, /<cloud>/w/<name>,
 # /<cloud>/w/<name>/runs/<run id>. The old tabs (/<cloud>/configs|configure|runs|simulate) land on Workloads.
 PAGE_ROUTES = re.compile(r"^/(?:" + "|".join(CLOUDS) + r")(?:/(?:configs|configure|runs|simulate|new)"
@@ -203,6 +205,9 @@ class ConsoleServer:
                                env=self.step_env(), simulate=self.simulate_config, store=self.store,
                                delivery=delivery, repo_root=repo_root)
         self.repo_root = repo_root
+        # Workloads whose resources are gone: config and finished runs kept apart for 7 days.
+        self.archive = Archive(self.store.root)
+        self._sweeper = None
         self._catalogue = None
         self._httpd = None
         self.port = None
@@ -219,8 +224,10 @@ class ConsoleServer:
     def workloads(self) -> list:
         """Saved configs plus every onboarded one from git; source: saved or git, onboarded: in a workspace."""
         git = self.delivered()
+        gone = self.archive.names()
+        git = {k: v for k, v in git.items() if k not in gone}
         rows = [{**c, "source": "saved", "onboarded": git.get(c["name"], {}).get("target", {}).get("kind") == c["kind"]}
-                for c in self.store.list()]
+                for c in self.store.list() if c["name"] not in gone]
         saved = {c["name"] for c in rows}
         rows += [{**store_summary(cfg, name), "source": "git", "onboarded": True}
                  for name, cfg in sorted(git.items()) if name not in saved]
@@ -238,7 +245,84 @@ class ConsoleServer:
             except (FileNotFoundError, StoreError):
                 if row["name"] in git:
                     cfgs.append(git[row["name"]])
+        # Archived ones too: one that exists again comes back.
+        for name in sorted(self.archive.names()):
+            cfg = self.archive.config(name)
+            if isinstance(cfg, dict) and model.cloud_of(model.get_path(cfg, "target.kind")) == cloud:
+                cfgs.append(cfg)
         return live.status(cloud, cfgs, self.shell())
+
+    def sweep(self, cloud: str) -> dict:
+        """Read the cloud's workloads live; archive each one read as gone (never one only unknown), bring
+        back an archived one that exists again, and delete archive entries past their 7 days."""
+        status = self.live_status(cloud)
+        archived = self.archive.names()
+        git = self.delivered()
+        for name, st in status.items():
+            state = (st or {}).get("state")
+            if name in archived and state in ("wired", "not_wired"):
+                self.unarchive(name)
+            elif name not in archived and state == "missing":
+                self.archive_workload(name, f"Not found in {CLOUD_TITLES.get(cloud, cloud)}", git)
+        self.archive.purge()
+        return status
+
+    def archive_workload(self, name: str, reason: str, git=None) -> dict:
+        git = self.delivered() if git is None else git
+        path = self.store._path(name)
+        saved = path.is_file()
+        cfg = None
+        if saved:
+            try:
+                cfg = self.store.get(name)
+            except (FileNotFoundError, StoreError, ValueError):
+                cfg = None
+        cfg = cfg or git.get(name) or {}
+        return self.archive.add(name, model.get_path(cfg, "target.kind") or "", reason,
+                                files={"config.json": path} if saved else None, runs=self.runs.take_for(name),
+                                data=None if saved else {"config.json": cfg}, source="saved" if saved else "git")
+
+    def unarchive(self, name: str):
+        e = self.archive.entry(name)
+        if not e:
+            return None
+        self.archive.restore(name, files={"config.json": self.store._path(name)} if e.get("source") == "saved" else None,
+                             runs_dir=self.store.root / "runs")
+        self.runs.adopt(e.get("runs") or [])
+        return e
+
+    def archived(self) -> dict:
+        """The archive for the Runs page: each entry with its runs' summaries."""
+        out = []
+        for e in self.archive.list():
+            rows = []
+            for rid in e.get("runs") or []:
+                d = self.archive.run_dir(rid)
+                run = Run.restore(d) if d else None
+                if run is not None:
+                    rows.append(dict(run.summary(), archived=True))
+            out.append(dict(e, run_rows=rows))
+        return {"retention_days": self.archive.days, "entries": out}
+
+    def start_sweeper(self, clouds=("gcp", "azure"), interval: float = 6 * 3600) -> None:
+        """Sweep each cloud now and every interval, in the background (the portal's live mode only)."""
+        if self._sweeper or self.mode == "replay":
+            return
+
+        def loop():
+            while True:
+                for c in clouds:
+                    try:
+                        self.sweep(c)
+                    except Exception as exc:  # noqa: BLE001 - a failed read archives nothing
+                        self.log.write(redact.text(f"archive sweep {c}: {exc}") + "\n")
+                try:
+                    self.archive.purge()
+                except OSError:
+                    pass
+                time.sleep(interval)
+        self._sweeper = threading.Thread(target=loop, name="archive-sweep", daemon=True)
+        self._sweeper.start()
 
     def shell(self, on_line=None) -> Shell:
         def log(line):
@@ -469,7 +553,9 @@ def _make_handler(console: ConsoleServer):
                 cloud = (self._query().get("cloud") or [""])[0]
                 if cloud not in CLOUDS:
                     raise HttpError(400, "cloud must be one of " + ", ".join(CLOUDS))
-                return self._json(200, {"status": console.live_status(cloud)})
+                return self._json(200, {"status": console.sweep(cloud)})
+            if method == "GET" and parts == ["archive"]:
+                return self._json(200, console.archived())
             if method == "GET" and len(parts) == 2 and parts[0] == "inventory" and parts[1] in CLOUDS:
                 q = self._query()
                 return self._inventory(parts[1], (q.get("scope") or [None])[0], (q.get("refresh") or [""])[0] == "1")
@@ -516,12 +602,16 @@ def _make_handler(console: ConsoleServer):
                         return self._json(200, {"config": console.store.get(name), "source": "saved"})
                     except FileNotFoundError:
                         # Not saved here but onboarded: Terraform's workspace holds the config it applied.
-                        cfg = console.delivered().get(name)
+                        cfg = None if name in console.archive.names() else console.delivered().get(name)
                         if cfg is None:
-                            raise
+                            kept = console.archive.config(name)
+                            if kept is None:
+                                raise
+                            return self._json(200, {"config": kept, "source": "archive", "archived": console.archive.entry(name)})
                         return self._json(200, {"config": cfg, "source": "git"})
                 if method == "PUT":
                     cfg = console.store.put(name, self._config_from_body())
+                    console.archive.release(name)   # saved anew: back on the live pages
                     return self._json(200, {"config": cfg, "validation": model.validate(cfg)})
                 if method == "DELETE":
                     if not console.store.delete(name):
@@ -636,7 +726,16 @@ def _make_handler(console: ConsoleServer):
                     raise HttpError(404, "no such run")
                 if method == "DELETE" and len(rest) == 1:
                     return self._json(200, console.runs.delete(rest[0]))
-                run = console.runs.get(rest[0])
+                try:
+                    run = console.runs.get(rest[0])
+                except RunError:
+                    # A run of a workload whose resources are gone: read-only from the archive.
+                    d = console.archive.run_dir(rest[0]) if method == "GET" else None
+                    run = Run.restore(d) if d else None
+                    if run is None:
+                        raise
+                    if len(rest) == 1:
+                        return self._json(200, dict(run.snapshot(), archived=True))
                 if method == "GET" and len(rest) == 1:
                     return self._json(200, run.snapshot())
                 if method == "GET" and rest[1:] == ["events"]:

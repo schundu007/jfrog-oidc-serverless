@@ -104,8 +104,8 @@ function render(focusTree = false) {
         h("div", { class: "page-title" }, icon(run.status), h("h1", {}, runTitle(run)),
           h("span", { class: `badge ${PILL[kind] || ""}` }, run.status === "prepared" ? "Waiting for approval" : KIND_TEXT[kind])),
         h("p", { class: "facts" }, `Run ${run.id} · `, started ? [`started ${when(started)}`, run.finished || ACTIVE.includes(run.status) ? duration(started, run.finished) : run.status].join(" · ") : `prepared ${when(run.created)}`,
-          " · ", backLink(r))),
-      active ? h("div", { class: "head-actions" }, h("button", { class: "secondary", onclick: cancel }, "Cancel"))
+          run.archived ? " · Archived: the cluster is gone; deleted 7 days after" : "", " · ", backLink(r))),
+      active && !run.archived ? h("div", { class: "head-actions" }, h("button", { class: "secondary", onclick: cancel }, "Cancel"))
         : run.name === "prove" && !isDry(run) ? h("div", { class: "head-actions" }, h("button", { class: "primary", onclick: () => go(clusterPath(r.name, "proof")) }, "Open proof"))
         : null),
     error ? h("div", { class: "callout fail" }, brief(error)) : null,

@@ -86,6 +86,9 @@ class SetupServer:
     def history(self) -> list:
         return [r for r in self.jobs.history() if self.mine(r.get("stack") or "")]
 
+    def archived(self) -> list:
+        return [r for r in self.jobs.archived() if self.mine(r.get("stack") or "")]
+
     def job(self, job_id: str) -> dict:
         j = self.jobs.get(job_id)
         if not self.mine(j.get("stack") or ""):
@@ -247,6 +250,8 @@ def make_handler(console: SetupServer):
                 return self._json(200, {"options": console.options(parts[1], scope)})
             if m == ("GET", "jobs", 1):
                 return self._json(200, {"jobs": console.history()})
+            if m == ("GET", "jobs", 2) and parts[1] == "archive":
+                return self._json(200, {"jobs": console.archived(), "retention_days": 7})
             if m == ("GET", "jobs", 2):
                 return self._json(200, console.job(parts[1]))
             if m == ("DELETE", "jobs", 2):

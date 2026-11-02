@@ -31,6 +31,7 @@ from .ado import AdoError
 
 MAX_LOG = 5000   # lines kept per job
 JOB_ID = re.compile(r"[0-9a-f]{12}")
+RETENTION_DAYS = 7   # runs of a stack that is gone stay in its archive this long, then are deleted
 POLL_SECONDS = 10
 RUN_TIMEOUT = 90 * 60   # a pipeline run that takes longer is reported, not waited on
 
@@ -141,6 +142,9 @@ class Jobs:
                 return {k: (list(v) if k in ("log", "log_times") else v) for k, v in j.items() if not k.startswith("_")}
         kept = self._read_kept(job_id)
         if not kept:
+            old = self._read_archived(job_id)
+            if old:
+                return old
             raise JobError(404, "no such job")
         return self._settle(kept)
 
@@ -251,6 +255,100 @@ class Jobs:
                 r.update(kind=meta["kind"], group=meta["group"], title=meta["title"], cloud={"Google Cloud": "gcp", "Azure": "azure"}.get(meta["group"]),
                          error=(r["error"] or "").splitlines()[0][:300] if r["error"] else "")
                 rows.append(r)
+        return sorted(rows, key=lambda r: r["started"] or 0, reverse=True)
+
+    # -- archive: the runs of a stack that is gone, kept apart for RETENTION_DAYS -------------------
+
+    def _archive_dir(self):
+        return stacks.Path(self.state_root) / self.env_name / "jobs-archive"
+
+    def _read_archived(self, job_id: str):
+        if not JOB_ID.fullmatch(str(job_id)):
+            return None
+        try:
+            rec = json.loads((self._archive_dir() / f"{job_id}.json").read_text())
+        except (OSError, ValueError):
+            return None
+        return dict(rec, archived=True) if isinstance(rec, dict) else None
+
+    def archive_stack(self, sid: str, reason: str) -> list:
+        """The stack is gone (destroyed, deleted outside, state forgotten, read as not deployed): its finished
+        runs leave Runs for the archive. A running one, and the plan still waiting on Approve, stay."""
+        with self._lock:
+            keep = {j["id"] for j in self._jobs.values() if j["stack"] == sid and j["state"] == "running"}
+            p = self._plans.get(sid)
+            if p and p.get("job"):
+                keep.add(p["job"])
+        moved = []
+        try:
+            files = list(self._history_dir().glob("*.json"))
+        except OSError:
+            files = []
+        now = time.time()
+        for f in files:
+            try:
+                rec = json.loads(f.read_text())
+            except (OSError, ValueError):
+                continue
+            if not isinstance(rec, dict) or rec.get("stack") != sid or rec.get("id") in keep or rec.get("state") == "running":
+                continue
+            d = self._archive_dir()
+            try:
+                d.mkdir(parents=True, exist_ok=True)
+                tmp = d / f".{rec['id']}.tmp"
+                tmp.write_text(json.dumps(dict(rec, archived_at=now, archived_reason=reason), default=str))
+                os.replace(tmp, d / f"{rec['id']}.json")
+                f.unlink(missing_ok=True)
+            except OSError:
+                continue
+            moved.append(rec["id"])
+        with self._lock:
+            for jid in moved:
+                j = self._jobs.get(jid)
+                if j and j["state"] != "running":
+                    del self._jobs[jid]
+        return moved
+
+    def purge_archive(self, now=None) -> list:
+        cutoff = (time.time() if now is None else now) - RETENTION_DAYS * 86400
+        gone = []
+        try:
+            files = list(self._archive_dir().glob("*.json"))
+        except OSError:
+            return gone
+        for f in files:
+            try:
+                rec = json.loads(f.read_text())
+                if (rec.get("archived_at") or 0) <= cutoff:
+                    f.unlink(missing_ok=True)
+                    gone.append(f.stem)
+            except (OSError, ValueError, AttributeError):
+                continue
+        return gone
+
+    def archived(self) -> list:
+        """The archived runs, newest first, without logs, each with when it is deleted."""
+        self.purge_archive()
+        fields = ("id", "stack", "action", "state", "started", "finished", "error", "archived_at", "archived_reason")
+        rows = []
+        try:
+            files = list(self._archive_dir().glob("*.json"))
+        except OSError:
+            files = []
+        for f in files:
+            try:
+                rec = json.loads(f.read_text())
+            except (OSError, ValueError):
+                continue
+            meta = next((s for s in stacks.CATALOGUE if s["id"] == rec.get("stack")), None) if isinstance(rec, dict) else None
+            if not meta or not JOB_ID.fullmatch(str(rec.get("id", ""))):
+                continue
+            r = {k: rec.get(k) for k in fields}
+            r.update(kind=meta["kind"], group=meta["group"], title=meta["title"],
+                     cloud={"Google Cloud": "gcp", "Azure": "azure"}.get(meta["group"]),
+                     error=(r["error"] or "").splitlines()[0][:300] if r["error"] else "",
+                     expires_at=(r["archived_at"] or 0) + RETENTION_DAYS * 86400, archived=True)
+            rows.append(r)
         return sorted(rows, key=lambda r: r["started"] or 0, reverse=True)
 
     def remove(self, job_id: str) -> dict:
@@ -627,6 +725,11 @@ class Jobs:
         with self._lock:
             job.update(state=state, result=result, error=error, finished=time.time())
         self._keep(job)
+        res = result if isinstance(result, dict) else {}
+        if state == "done" and (res.get("destroyed") or res.get("already_deleted") or res.get("forgotten")
+                                or (job["action"] == "status" and res.get("deployed") is False)):
+            self.archive_stack(job["stack"], res.get("deleted") or res.get("message")
+                               or ("Destroyed" if res.get("destroyed") else "Not deployed"))
 
 
 def _name(sid: str) -> str:

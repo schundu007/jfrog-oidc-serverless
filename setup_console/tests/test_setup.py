@@ -572,6 +572,25 @@ class JobTests(unittest.TestCase):
                 again.remove(bad)
             self.assertEqual(e.exception.status, 404)
 
+    def test_a_destroyed_stack_moves_its_runs_to_the_archive(self):
+        # Gone infrastructure leaves Runs: its runs stay readable in the archive for 7 days, then go.
+        j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        wait(self.jobs, self.jobs.start("gcp-cloud-run", "apply", {"plan_sha256": j["result"]["sha256"]}))
+        self.assertEqual(len([r for r in self.jobs.history() if r["stack"] == "gcp-cloud-run"]), 2)
+        d = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["delete"]}}], "plan-destroy")
+        self.assertEqual([r["id"] for r in self.jobs.history() if r["stack"] == "gcp-cloud-run"][0], d["id"])   # plan waits: kept
+        done = wait(self.jobs, self.jobs.start("gcp-cloud-run", "apply", {"plan_sha256": d["result"]["sha256"],
+                                                                          "typed_confirmation": "gcp-cloud-run"}))
+        self.assertEqual(done["state"], "done", done)
+        self.assertEqual([r for r in self.jobs.history() if r["stack"] == "gcp-cloud-run"], [])
+        arch = self.jobs.archived()
+        self.assertEqual(len(arch), 4)
+        self.assertTrue(all(r["archived"] and r["expires_at"] > time.time() + 6 * 86400 for r in arch))
+        self.assertTrue(self.jobs.get(j["id"])["archived"])
+        self.assertEqual(self.jobs.purge_archive(now=time.time() + 7 * 86400 + 1).__len__(), 4)
+        with self.assertRaises(JobError):
+            self.jobs.get(j["id"])
+
     def test_kept_runs_are_redacted(self):
         j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
         secret = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJlc2lnbmF0dXJl"

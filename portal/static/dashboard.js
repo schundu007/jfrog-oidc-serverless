@@ -141,7 +141,8 @@ function essentials() {
 
 async function load() {
   $("home-count").textContent = "Loading…";
-  const { items, runs, errors, signedOut } = await loadAll();
+  const { items, runs: everything, errors, signedOut } = await loadAll();
+  const runs = everything.filter((r) => r.area !== "archived");   // archived runs only on Runs › Archived
   data = { items, runs };
   $("session-state").hidden = !signedOut;
   $("session-state").textContent = "Not signed in";

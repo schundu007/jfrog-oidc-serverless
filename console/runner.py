@@ -261,6 +261,28 @@ class RunManager:
             shutil.rmtree(run.dir, ignore_errors=True)
         return {"runs_deleted": len(deleted), "runs_kept": kept}
 
+    def take_for(self, name: str) -> dict:
+        """Hand over the finished runs of a name (to the archive): {run id: folder}, out of the list.
+        Active runs stay: they may be mid-change."""
+        out = {}
+        with self.lock:
+            for rid, run in list(self.runs.items()):
+                if run.name == name and run.status not in ("running", "waiting_approval"):
+                    out[rid] = self.runs.pop(rid).dir
+        return out
+
+    def adopt(self, run_ids) -> int:
+        """Runs moved back under <root>/runs (from the archive): list them again."""
+        n = 0
+        with self.lock:
+            for rid in run_ids:
+                run = Run.restore(self.root / "runs" / rid)
+                if run is not None:
+                    self.runs[rid] = run
+                    n += 1
+            self.runs = dict(sorted(self.runs.items()))
+        return n
+
     def delete(self, run_id: str) -> dict:
         """Forget one finished run and remove its folder. An active run must be cancelled first."""
         with self.lock:

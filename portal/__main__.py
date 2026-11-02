@@ -99,6 +99,9 @@ def main(argv=None) -> int:
         print(f"portal: cannot listen on {args.host}:{args.port}: {exc}", file=sys.stderr)
         return 1
     setup.jobs.refresh_all()   # Infrastructure and JFrog OIDC show what is deployed without a Check click
+    # Workloads and clusters whose resources are gone leave the live pages for the archive (kept 7 days).
+    serverless.start_sweeper()
+    k8s.start_sweeper()
     url = portal.url()
     print(f"JFrog OIDC console (Serverless {SERVERLESS}, Kubernetes {K8S}, Infrastructure {SETUP}, JFrog OIDC {OIDC}): {url}")
     print("Ctrl+C to stop.", flush=True)
