@@ -5,7 +5,8 @@
 import { api, h, fill, state, refreshConfigs, route, go, url, clusterPath } from "./app.js";
 import { $, muted, brief, icon, kindOf, KIND_TEXT, when, duration, link, liveSteps, ACTIVE, runTitle, runStarted, isDry } from "./ui.js";
 import { approvalBox, dryBefore } from "./cluster.js";
-import { logTable, timeToggle } from "./logview.js";
+import { logTable, timeToggle } from "/serverless/static/logview.js";
+import { clock } from "/serverless/static/time.js";
 
 const P = () => $("panel-run");
 const here = () => { const r = route(); return r.page === "run" ? r : null; };
@@ -113,7 +114,6 @@ function render(focusTree = false) {
 }
 
 // Local time of day, like every other time on the page.
-const clock = (iso) => { const d = new Date(iso || ""); return Number.isNaN(d.getTime()) ? "" : d.toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); };
 
 const backLink = (r) => link(go, url, clusterPath(r.name, "runs"), r.name);
 
@@ -153,30 +153,14 @@ function pane(r, sel) {
     run.status === "prepared" ? h("section", { class: "card needs-you" },
       h("div", { class: "card-head" }, icon("waiting"), h("h2", {}, "Approval needed"), muted(runTitle(run))),
       approvalBox(r.name, run, dry, () => { dry = null; load(run.id); })) : null,
-    tabbed(sel, [
-      ["Details", [sel.detail ? h("p", { class: "step-detail" }, brief(sel.detail)) : null,
-        (run.guards || []).length && sel.root ? h("div", { class: "callout fail" }, brief(run.guards.join(" "))) : null,
-        h("table", { class: "kv-table" }, h("thead", {}, h("tr", {}, facts.filter(Boolean).map(([k]) => h("th", { scope: "col" }, k)))), h("tbody", {}, h("tr", {}, facts.filter(Boolean).map(([, v]) => h("td", {}, v)))))]],
-      ["Log", [h("div", { class: "log-tools" }, muted(`${lines.length} line${lines.length === 1 ? "" : "s"}`), timeToggle(), copy),
-        rows.length ? logTable(rows) : muted(run.status === "prepared" ? "Starts after the approval." : "No output.")], lines.length]]));
-}
-
-// One card per step: Details and Log as tabs, not one under the other. The tab picked stays across refreshes.
-let paneTab = "Details";
-function tabbed(sel, tabs) {
-  const bar = h("div", { class: "tabs detail-tabs", role: "tablist", "aria-label": sel.title });
-  const panels = tabs.map(([label, kids]) => h("div", { role: "tabpanel", "data-tab": label, hidden: label !== paneTab ? true : null }, kids));
-  const pick = (label) => {
-    paneTab = label;
-    for (const b of bar.children) b.setAttribute("aria-selected", String(b.dataset.tab === label));
-    for (const p of panels) p.hidden = p.dataset.tab !== label;
-  };
-  for (const [label, , count] of tabs)
-    bar.append(h("button", { type: "button", role: "tab", "data-tab": label, "aria-selected": String(label === paneTab), onclick: () => pick(label) },
-      label, count ? h("span", { class: "count-badge" }, String(count)) : null));
-  return h("section", { class: "card" },
-    h("div", { class: "card-head" }, icon(sel.status), h("h2", {}, sel.title), muted(KIND_TEXT[kindOf(sel.status)])),
-    bar, ...panels);
+    h("section", { class: "card" },
+      h("div", { class: "card-head" }, icon(sel.status), h("h2", {}, sel.title), muted(KIND_TEXT[kindOf(sel.status)])),
+      sel.detail ? h("p", { class: "step-detail" }, brief(sel.detail)) : null,
+      (run.guards || []).length && sel.root ? h("div", { class: "callout fail" }, brief(run.guards.join(" "))) : null,
+      h("table", { class: "kv-table" }, h("thead", {}, h("tr", {}, facts.filter(Boolean).map(([k]) => h("th", { scope: "col" }, k)))), h("tbody", {}, h("tr", {}, facts.filter(Boolean).map(([, v]) => h("td", {}, v)))))),
+    h("section", { class: "card log-card" },
+      h("div", { class: "card-head" }, h("h2", {}, "Log"), muted(`${lines.length} line${lines.length === 1 ? "" : "s"}`), timeToggle(), copy),
+      rows.length ? logTable(rows) : muted(run.status === "prepared" ? "Starts after the approval." : "No output.")));
 }
 
 async function cancel() {

@@ -9,6 +9,7 @@ import { api, h, fill, help, state, refreshConfigs, route, go, url, clusterPath,
 import { $, muted, brief, icon, checklist, pips, when, duration, moreMenu, confirmed, link, liveSteps, stepStatuses,
   TITLES, ACTIVE, isDry, runTitle, runStarted } from "./ui.js";
 import { renderConfig } from "./configure.js";
+import { clock } from "/serverless/static/time.js";
 
 const live = {};            // config name -> {loading, facts, preflight, proof, error}
 const acts = {};            // config name -> the newest action: {which, dry, real, error}
@@ -235,7 +236,6 @@ const PROVE_GROUPS = [
 // Steps newer proofs add: an older run without them still reads as it did.
 const ADDED_LATER = new Set(["granted-1", "denied", "granted-2"]);
 const EVENT_PULLS = [["Pull with OIDC", "pull"], ["Pull without trust", "refused"], ["Pull with trust restored", "repull"]];
-const clock = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }); };
 
 // A failed pull event: Warnings, and Normal ones that report a failure (GKE marks BackOff as Normal).
 const evBad = (e) => e.type === "Warning" || /fail|backoff|err/i.test(e.reason || "");

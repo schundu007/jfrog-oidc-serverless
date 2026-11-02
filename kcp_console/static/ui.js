@@ -73,30 +73,7 @@ export function checklist(items) {
 
 // ----------------------------------------------------------------- time
 
-export function ago(iso) {
-  if (!iso) return "";
-  const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m} min ago`;
-  if (m < 48 * 60) return `${Math.round(m / 60)} h ago`;
-  return `${Math.round(m / 1440)} d ago`;
-}
-
-export function when(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "" : d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-// "1 m 32 s" between two timestamps (to: now when absent).
-export function duration(from, to) {
-  if (!from) return "";
-  const s = Math.max(0, Math.round(((to ? Date.parse(to) : Date.now()) - Date.parse(from)) / 1000));
-  if (Number.isNaN(s)) return "";
-  if (s < 60) return s < 1 ? "<1 s" : `${s} s`;
-  if (s < 3600) return `${Math.floor(s / 60)} m ${s % 60} s`;
-  return `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} m`;
-}
+export { ago, when, duration } from "/serverless/static/time.js";
 
 // ----------------------------------------------------------------- run facts
 

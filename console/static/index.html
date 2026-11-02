@@ -153,13 +153,11 @@
       </nav>
       <section class="card step-pane" aria-live="polite">
         <div id="run-detail"></div>
-        <div id="run-log-panel" role="tabpanel" aria-label="Log">
-          <div class="log-head">
-            <span id="run-log-count" class="count-badge" hidden></span>
-            <button type="button" id="run-log-copy" class="cmd secondary small-btn">Copy</button>
-          </div>
-          <div id="run-log" class="run-log" tabindex="0" aria-label="Step log"></div>
+        <div class="log-head">
+          <h3>Log <span id="run-log-count" class="count-badge"></span></h3>
+          <button type="button" id="run-log-copy" class="cmd secondary small-btn">Copy</button>
         </div>
+        <div id="run-log" class="run-log" tabindex="0" aria-label="Step log"></div>
       </section>
     </div>
   </template>

@@ -312,5 +312,5 @@ class BaseTest(unittest.TestCase):
         self.assertIn(b'<meta name="console-base" content="/k8s">', raw)
         self.assertNotIn(b'"/static/', raw)
         self.assertIn(b'"/k8s/static/app.js"', raw)
-        self.assertIn(b"<title>KCP Console</title>", raw)
+        self.assertIn(b'id="panel-cluster"', raw)
 

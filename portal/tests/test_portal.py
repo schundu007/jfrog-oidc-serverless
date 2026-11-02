@@ -93,7 +93,7 @@ class PortalTests(unittest.TestCase):
         for p in ("/k8s/clusters", "/k8s/clusters/aks"):
             st, _, raw = self.req("GET", p, token=False, headers={"Sec-Fetch-Site": "none"})
             self.assertEqual(st, 200, p)
-            self.assertIn(b"<title>KCP Console</title>", raw, p)
+            self.assertIn(b'id="panel-cluster"', raw, p)
             self.assertIn(b'<meta name="console-base" content="/k8s">', raw, p)
             # One design system: the shared stylesheet first, then the Kubernetes-only rules.
             self.assertLess(raw.index(b'href="/serverless/static/styles.css"'), raw.index(b'href="/k8s/static/styles.css"'), p)
