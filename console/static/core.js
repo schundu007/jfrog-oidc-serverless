@@ -1,4 +1,4 @@
-// Shared plumbing for every page: session token, API calls, event streams, DOM helpers,
+// Shared plumbing for every page of the one console (/serverless, /k8s, /setup): session token, API calls, event streams, DOM helpers,
 // the one status icon set, time formats, the "⋯" menu, two-click confirmation and the flyout.
 // Vanilla ES module, no build step, no CDN. Rendered with DOM APIs only (no innerHTML).
 
@@ -123,14 +123,14 @@ export async function streamEvents(path, onFrame, signal, { method = "GET", body
 
 export function h(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
+  for (const [k, v] of Object.entries(attrs || {})) {
     if (v === undefined || v === null || v === false) continue;
     if (k === "class") node.className = v;
     else if (k === "text") node.textContent = v;
     else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
     else node.setAttribute(k, v === true ? "" : String(v));
   }
-  for (const c of children.flat()) {
+  for (const c of children.flat(Infinity)) {
     if (c === null || c === undefined || c === false) continue;
     node.append(c instanceof Node ? c : document.createTextNode(String(c)));
   }
@@ -138,7 +138,7 @@ export function h(tag, attrs = {}, ...children) {
 }
 
 // replaceChildren() would turn null children into the text "null"; drop them.
-export const fill = (el, ...kids) => el.replaceChildren(...kids.flat().filter((k) => k !== null && k !== undefined && k !== false));
+export const fill = (el, ...kids) => el.replaceChildren(...kids.flat(Infinity).filter((k) => k !== null && k !== undefined && k !== false));
 
 // A page template from index.html, cloned.
 export const template = (id) => $(id).content.cloneNode(true);
@@ -299,6 +299,7 @@ export function closeFlyout() { $("flyout").hidden = true; }
 // Clicking it never toggles the checkbox it sits next to.
 let tips = 0;
 export function help(text) {
+  if (!text) return null;
   const id = `tip-${++tips}`;
   const tip = h("span", { class: "tip", role: "tooltip", id, "aria-hidden": "true" }, text);
   const el = h("span", { class: "help", tabindex: "0", role: "button", "aria-label": "What is this?", "aria-describedby": id,
@@ -320,7 +321,7 @@ export function help(text) {
 // Static pages mark an explanation with data-help="…": it becomes the element's circled "?".
 export function helpFromData(root = document) {
   for (const el of root.querySelectorAll("[data-help]")) {
-    if (!el.querySelector(":scope > .help")) el.append(help(el.dataset.help));
+    if (el.dataset.help && !el.querySelector(":scope > .help")) el.append(help(el.dataset.help));
   }
 }
 if (typeof document !== "undefined") helpFromData();

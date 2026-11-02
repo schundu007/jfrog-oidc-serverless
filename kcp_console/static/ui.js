@@ -1,9 +1,9 @@
 // Shared UI pieces for every page: the status icon set, time and duration text, the "⋯" menu, the
 // confirm-on-second-click pattern, check lists, step pips and the text filter for the screen.
 
-import { h } from "./app.js";
+import { $, h } from "/serverless/static/core.js";
 
-export const $ = (id) => document.getElementById(id);
+export { $ };
 export const muted = (t) => h("span", { class: "muted" }, t);
 
 // Short, non-identifying text for the screen: no URLs, IDs or image references, whatever a step or

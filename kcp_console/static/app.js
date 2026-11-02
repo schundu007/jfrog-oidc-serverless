@@ -1,45 +1,13 @@
-// KCP console UI. Vanilla ES module, no build step, no CDN.
-// The session token comes from the URL fragment and is sent only as the X-Console-Token header.
-// It is kept in localStorage for this origin so reloads and new tabs work: never in a cookie or the URL.
+// The Kubernetes pages of the one JFrog OIDC Console: the session, API calls and DOM helpers are the
+// console's own (/serverless/static/core.js), shared with /serverless and /setup.
+import { $, h, fill, help, api as coreApi, hasToken, setToken, takeTokenFromHash, REDIRECTING, BASE } from "/serverless/static/core.js";
 
 import { initClusters } from "./clusters.js";
 import { initCluster } from "./cluster.js";
 import { initRun } from "./run.js";
 
-const $ = (id) => document.getElementById(id);
-
-const REDIRECTING = location.hostname === "localhost";
-if (REDIRECTING) location.replace(location.href.replace("//localhost", "//127.0.0.1"));
-
-function takeTokenFromHash() {
-  const m = location.hash.match(/(?:^#|&)t=([A-Za-z0-9_-]+)/);
-  if (location.hash) history.replaceState(null, "", location.pathname + location.search);
-  return m ? m[1] : null;
-}
-
-const TOKEN_KEY = "kcp-console-session-token";
-function rememberToken(t) {
-  try { if (t) localStorage.setItem(TOKEN_KEY, t); } catch { /* storage blocked: memory only */ }
-  return t;
-}
-function storedToken() {
-  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
-}
-
-// The server puts the token in the page when the operator opened it directly (no #t= needed).
-function pageToken() {
-  const m = document.querySelector('meta[name="console-token"]');
-  const t = m ? m.content : null;
-  if (m) m.remove();
-  return t;
-}
-
-// The path this console is served under: "" on its own, "/k8s" inside the unified console. Paths inside
-// the app stay unprefixed; url() adds the base wherever the browser sees one (fetch, history, links).
-export const BASE = (document.querySelector('meta[name="console-base"]') || {}).content || "";
+export { h, fill, help, BASE };
 export const url = (path) => BASE + path;
-
-let TOKEN = REDIRECTING ? null : rememberToken(takeTokenFromHash() || pageToken()) || storedToken();
 
 // Shared state: the selected config and a tiny event bus ("config", "page").
 export const state = {
@@ -49,59 +17,9 @@ export const state = {
   emit(evt, data) { for (const fn of this.listeners[evt] || []) { try { fn(data); } catch (e) { console.error(e); } } },
 };
 
-class ApiError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
-}
-
-export async function api(path, { method = "GET", body } = {}) {
-  const headers = { "X-Console-Token": TOKEN || "" };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  const resp = await fetch(url(path), { method, headers, body: body === undefined ? undefined : JSON.stringify(body),
-    credentials: "omit", cache: "no-store" });
-  const text = await resp.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch { data = { error: text }; }
-  if (resp.status === 401) showAuth();
-  if (!resp.ok) throw new ApiError(resp.status, (data && data.error) || `HTTP ${resp.status}`);
-  return data;
-}
-
-// replaceChildren() would turn null children into the text "null"; drop them.
-export const fill = (el, ...kids) => el.replaceChildren(...kids.flat(Infinity).filter((k) => k !== null && k !== undefined && k !== false));
-
-export function h(tag, attrs = {}, ...kids) {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs || {})) {
-    if (v === null || v === undefined || v === false) continue;
-    if (k === "class") el.className = v;
-    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
-    else el.setAttribute(k, v === true ? "" : v);
-  }
-  fill(el, ...kids.map((k) => (typeof k === "string" || typeof k === "number" ? document.createTextNode(String(k)) : k)));
-  return el;
-}
-
-// A circled "?" that explains the thing next to it on hover or keyboard focus. The text is the
-// button's description; clicking it never reaches an enclosing label's input.
-let tips = 0;
-export function help(text) {
-  if (!text) return null;
-  const id = `tip-${++tips}`;
-  const tip = h("span", { class: "tip", role: "tooltip", id, "aria-hidden": "true" }, text);
-  const el = h("span", { class: "help", tabindex: "0", role: "button", "aria-label": "What is this?", "aria-describedby": id,
-    onclick: (e) => { e.preventDefault(); e.stopPropagation(); } }, "?", tip);
-  // Fixed to the viewport, placed on show: no card or table that clips its overflow can hide it.
-  const place = () => {
-    const r = el.getBoundingClientRect();
-    const above = r.top > tip.offsetHeight + 16;
-    tip.classList.toggle("tip-below", !above);
-    const half = Math.min(tip.offsetWidth / 2, r.left + r.width / 2 - 8);
-    tip.style.left = `${Math.max(8 + half, Math.min(r.left + r.width / 2, window.innerWidth - 8 - tip.offsetWidth / 2))}px`;
-    tip.style.top = above ? `${r.top - 10}px` : `${r.bottom + 10}px`;
-  };
-  el.addEventListener("mouseenter", place);
-  el.addEventListener("focus", place);
-  return el;
+// The console's api(); a 401 here asks for the sign-in link again.
+export async function api(path, opts) {
+  try { return await coreApi(path, opts); } catch (err) { if (err.status === 401) showAuth(); throw err; }
 }
 
 function showAuth() {
@@ -212,14 +130,14 @@ $("auth-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const m = $("auth-input").value.match(/#t=([A-Za-z0-9_-]+)/) || $("auth-input").value.match(/^([A-Za-z0-9_-]{40,})$/);
   if (!m) return;
-  TOKEN = rememberToken(m[1]);
+  setToken(m[1]);
   $("auth-input").value = "";
   start();
 });
 
 async function start() {
   if (REDIRECTING) return;
-  if (!TOKEN) { showAuth(); return; }
+  if (!hasToken()) { showAuth(); return; }
   let session;
   try {
     session = await api("/api/session");
@@ -255,5 +173,5 @@ export async function refreshConfigs(select) {
 }
 
 wireTabs();
-window.addEventListener("hashchange", () => { const t = takeTokenFromHash(); if (t) { TOKEN = rememberToken(t); start(); } });
+window.addEventListener("hashchange", () => { const t = takeTokenFromHash(); if (t) { setToken(t); start(); } });
 start();

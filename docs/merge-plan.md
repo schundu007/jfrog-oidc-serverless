@@ -23,7 +23,7 @@ The Serverless console still runs on its own (`python -m console`, seam default 
 ## Separation rules
 
 - **URLs:** every serverless page, API call and static file lives under `/serverless/`, and every KCP one under `/k8s/`. Nothing is shared at the root except the landing page and `/favicon.ico`. The old paths redirect: `/gcp*` and `/azure*` go to `/serverless/...`, and `/clusters*` goes to `/k8s/clusters/...`.
-- **Code:** the portal dispatches by prefix and holds no product logic. `console/` and `kcp_console/` never import each other; only `portal/` imports both.
+- **Code:** the portal dispatches by prefix and holds no product logic. The browser side is one UI: the Kubernetes pages (`kcp_console/static`) import the console's shared modules from `/serverless/static` (`core.js` session, API and DOM helpers, `time.js`, `logview.js`), as `/setup` does; a UI change is made once. The Python packages still never import each other; only `portal/` imports both.
 - **State:** separate stores (`.console/` and `.kcp-console/`), configs, runs, inventory caches, simulators and approval gates. A serverless config never appears in KCP, and the other way round.
 - **UI:** the sidebar has two labelled sections. The section you're in is expanded and highlighted, and the other shows only as a single link to switch over. The topbar shows the current section ("Serverless" or "Kubernetes"). Pages inside a section show nothing from the other.
 - **Inside each section:** the current per-cloud and per-platform separation stays (GCP and Azure; AKS, GKE, EKS and OpenShift).
