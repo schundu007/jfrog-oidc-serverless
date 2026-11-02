@@ -3,6 +3,7 @@
 import http.client
 import json
 import os
+import shutil
 import tempfile
 import time
 import unittest
@@ -162,6 +163,24 @@ class ServerArchiveTests(unittest.TestCase):
         self.console.sweep("gcp")
         self.assertEqual(self.req("GET", f"/api/runs/{self.rid}")[0], 404)
         self.assertEqual(self.console.archive.list(), [])
+
+    def test_onboarded_from_git_stays_hidden_after_the_archive_is_emptied(self):
+        """A workload known only from git (an onboarding workspace) that is gone stays off the live pages
+        when its archive entry is deleted, and comes back when it exists again."""
+        self.console.delivered = lambda: {"shipped": cfg("shipped")}
+        self.state["shipped"] = "missing"
+        self.console.sweep("gcp")
+        for e in self.console.archive.list():          # the operator empties the archive
+            shutil.rmtree(self.console.archive.dir / e["id"])
+        names = [c["name"] for c in self.req("GET", "/api/configs")[1]["configs"]]
+        self.assertNotIn("shipped", names)
+        self.console.sweep("gcp")                        # still gone: not archived again
+        self.assertEqual(self.console.archive.list(), [])
+        self.assertNotIn("shipped", [c["name"] for c in self.req("GET", "/api/configs")[1]["configs"]])
+        self.state["shipped"] = "wired"
+        self.console.sweep("gcp")
+        names = [c["name"] for c in self.req("GET", "/api/configs")[1]["configs"]]
+        self.assertIn("shipped", names)
 
 
 if __name__ == "__main__":

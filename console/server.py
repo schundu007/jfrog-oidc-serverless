@@ -207,6 +207,9 @@ class ConsoleServer:
         self.repo_root = repo_root
         # Workloads whose resources are gone: config and finished runs kept apart for 7 days.
         self.archive = Archive(self.store.root)
+        # Workloads read as gone at the last sweep. Kept apart from the archive, so emptying the archive
+        # does not bring back a gone workload that git still lists (an onboarding workspace).
+        self._gone_file = self.store.root / "gone.json"
         self._sweeper = None
         self._catalogue = None
         self._httpd = None
@@ -224,7 +227,7 @@ class ConsoleServer:
     def workloads(self) -> list:
         """Saved configs plus every onboarded one from git; source: saved or git, onboarded: in a workspace."""
         git = self.delivered()
-        gone = self.archive.names()
+        gone = self.archive.names() | self.gone()
         git = {k: v for k, v in git.items() if k not in gone}
         rows = [{**c, "source": "saved", "onboarded": git.get(c["name"], {}).get("target", {}).get("kind") == c["kind"]}
                 for c in self.store.list() if c["name"] not in gone]
@@ -245,10 +248,12 @@ class ConsoleServer:
             except (FileNotFoundError, StoreError):
                 if row["name"] in git:
                     cfgs.append(git[row["name"]])
-        # Archived ones too: one that exists again comes back.
-        for name in sorted(self.archive.names()):
-            cfg = self.archive.config(name)
-            if isinstance(cfg, dict) and model.cloud_of(model.get_path(cfg, "target.kind")) == cloud:
+        # Archived and gone ones too: one that exists again comes back.
+        listed = {c.get("name") for c in cfgs if isinstance(c, dict)}
+        for name in sorted(self.archive.names() | self.gone()):
+            cfg = self.archive.config(name) or git.get(name)
+            if (name not in listed and isinstance(cfg, dict)
+                    and model.cloud_of(model.get_path(cfg, "target.kind")) == cloud):
                 cfgs.append(cfg)
         return live.status(cloud, cfgs, self.shell())
 
@@ -258,14 +263,34 @@ class ConsoleServer:
         status = self.live_status(cloud)
         archived = self.archive.names()
         git = self.delivered()
+        gone = self.gone()
         for name, st in status.items():
             state = (st or {}).get("state")
-            if name in archived and state in ("wired", "not_wired"):
-                self.unarchive(name)
-            elif name not in archived and state == "missing":
-                self.archive_workload(name, f"Not found in {CLOUD_TITLES.get(cloud, cloud)}", git)
+            if state in ("wired", "not_wired"):
+                gone.discard(name)
+                if name in archived:
+                    self.unarchive(name)
+            elif state == "missing":
+                first = name not in gone   # archived once, when first read as gone; an emptied archive stays empty
+                gone.add(name)
+                if first and name not in archived:
+                    self.archive_workload(name, f"Not found in {CLOUD_TITLES.get(cloud, cloud)}", git)
+        self._set_gone(gone)
         self.archive.purge()
         return status
+
+    def gone(self) -> set:
+        """Names read as gone at the last sweep (never one only unknown)."""
+        try:
+            names = json.loads(self._gone_file.read_text())
+        except (OSError, ValueError):
+            return set()
+        return {n for n in names if isinstance(n, str)} if isinstance(names, list) else set()
+
+    def _set_gone(self, names: set) -> None:
+        tmp = self._gone_file.with_suffix(".tmp")
+        tmp.write_text(json.dumps(sorted(names)))
+        tmp.replace(self._gone_file)
 
     def archive_workload(self, name: str, reason: str, git=None) -> dict:
         git = self.delivered() if git is None else git
@@ -612,6 +637,7 @@ def _make_handler(console: ConsoleServer):
                 if method == "PUT":
                     cfg = console.store.put(name, self._config_from_body())
                     console.archive.release(name)   # saved anew: back on the live pages
+                    console._set_gone(console.gone() - {name})
                     return self._json(200, {"config": cfg, "validation": model.validate(cfg)})
                 if method == "DELETE":
                     if not console.store.delete(name):

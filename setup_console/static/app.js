@@ -2,6 +2,7 @@
 // plan first, show the plan, and run it only after Approve (destroy also needs the stack name typed).
 import { $, api, h, hasToken, setToken, statusPill, flyout, closeFlyout, help, menu, listEditor, mapEditor, markKnown } from "/serverless/static/core.js";
 import { logBox as tableLog } from "/serverless/static/logview.js";
+import { counts, lastFailure, partlyDeleted, standing, stateOf } from "./listing.js";
 
 const POLL_MS = 1000;
 const fill = (el, ...kids) => { el.replaceChildren(...kids.flat().filter(Boolean)); return el; };
@@ -259,7 +260,6 @@ function brief(text, max = 140) {
 // What stops or failed this stack, each with where to go: the foundation it needs, the stacks that
 // stand on it, the last run that failed. A failed state read is left out when the missing foundation
 // already explains it.
-const partlyDeleted = (s) => Boolean(s.status?.deleted && Object.keys(s.status.outputs || {}).length);
 
 // What stops or failed this stack, as plain sentences: shown only behind the circled "?" next to its
 // status, never as a banner. A failed state read is left out when the missing foundation explains it.
@@ -274,7 +274,6 @@ function warnings(s) {
   if (failed) out.push(`${ACTION_NAME[failed.action] || "Last run"} failed: ${brief(failed.error) || "see the log"}`);
   return out;
 }
-const lastFailure = (s) => (s.failed && !s.busy && !(s.failed.action === "status" && s.needs?.length) ? s.failed : null);
 
 function row(s, section) {
   // Nothing is removed from under another stack: deployed ones block, and so do ones not read yet.
@@ -357,7 +356,6 @@ const BASE = document.querySelector('meta[name="console-base"]')?.content || "";
 const OIDC = BASE === "/oidc";
 const STATES = OIDC ? [["on", "Onboarded"], ["off", "Not onboarded"]]
   : [["deployed", "Deployed"], ["not", "Not deployed"], ["attention", "Needs attention"]];
-const stateOf = (s) => (s.status?.deployed ? "deployed" : partlyDeleted(s) || lastFailure(s) || s.missing?.length ? "attention" : "not");
 const F = { q: "", cloud: "", kind: "", state: "", view: "" };
 {
   const u = new URLSearchParams(location.search);
@@ -466,8 +464,6 @@ function viewChrome(nGone) {
   $("none").textContent = ARCHIVED() ? "Nothing archived." : (OIDC ? "Nothing onboarded." : "Nothing deployed.");
 }
 
-// A stack stands when it is deployed, or a run or plan on it is under way.
-const standing = (s) => Boolean(s.status?.deployed || s.busy || s.plan || s.job);
 
 // JFrog OIDC (/oidc) is its own step, after Infrastructure: it never deploys anything there.
 // Per cloud, never mixed: Serverless (each live workload, onboarded for the runtime exchange or not),
@@ -612,9 +608,7 @@ function essentials(data, all) {
   const mine = all.filter((s) => !F.cloud || CLOUD_ID[s.group] === F.cloud);
   const clouds = [...new Set(mine.map((s) => s.group))];
   const one = clouds.length === 1 ? clouds[0] : null;
-  const deployed = mine.filter((s) => s.status?.deployed).length;
-  const attention = mine.filter((s) => stateOf(s) === "attention").length;
-  const busy = mine.filter((s) => s.busy || s.plan).length;
+  const { deployed, attention, busy } = counts(mine);
   const last = mine.map(checkedAt).filter(Boolean).sort((x, y) => y - x)[0];
   const found = mine.find((s) => s.id.endsWith("-foundation"));
   const store = (() => {
@@ -627,7 +621,7 @@ function essentials(data, all) {
   const pair = (label, value, helpText) => [h("div", { class: "ess-pair" }, h("dt", { text: label }), h("dd", {}, value, helpText ? help(helpText) : null))];
   fill($("ess-left"),
     pair("Environment", data.env, `Stacks deploy to the ${data.env} environment: saved inputs, ADO environments <stack>-${data.env} and variable groups jfrog-oidc-<cloud>-${data.env}.`),
-    pair("Deployed", `${deployed} of ${mine.length}`));
+    pair("Deployed", String(deployed)));
   fill($("ess-right"),
     pair("Needs attention", String(attention)),
     pair("In progress", String(busy)),
