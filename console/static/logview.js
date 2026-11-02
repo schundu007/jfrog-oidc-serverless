@@ -77,7 +77,7 @@ function toDate(t) {
   const d = typeof t === "number" ? new Date(t * 1000) : new Date(t);
   return Number.isNaN(d.getTime()) ? null : d;
 }
-const hhmmss = (d) => (d ? d.toLocaleTimeString([], { hour12: false }) : "");
+const hhmmss = (d) => (d ? d.toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "");
 
 function tableRow(row) {
   let { t, text } = typeof row === "string" ? { t: null, text: row } : row;

@@ -211,7 +211,8 @@ export function ago(iso) {
 const asDate = (iso) => { const d = new Date(iso || ""); return Number.isNaN(d.getTime()) ? null : d; };
 export const stamp = (iso) => asDate(iso)?.toLocaleString([], { year: "numeric", month: "short", day: "numeric",
   hour: "2-digit", minute: "2-digit", second: "2-digit", timeZoneName: "short" }) || "";
-export const clock = (iso) => asDate(iso)?.toLocaleTimeString([], { hour12: false }) || "";
+// Date and time, 24-hour: "Nov 1, 2026, 09:10:41".
+export const clock = (iso) => asDate(iso)?.toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) || "";
 
 export function dur(ms) {
   if (!Number.isFinite(ms) || ms < 0) return "";

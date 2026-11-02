@@ -113,7 +113,7 @@ function render(focusTree = false) {
 }
 
 // Local time of day, like every other time on the page.
-const clock = (iso) => { const d = new Date(iso || ""); return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour12: false }); };
+const clock = (iso) => { const d = new Date(iso || ""); return Number.isNaN(d.getTime()) ? "" : d.toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); };
 
 const backLink = (r) => link(go, url, clusterPath(r.name, "runs"), r.name);
 
