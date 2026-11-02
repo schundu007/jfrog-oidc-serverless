@@ -1124,3 +1124,10 @@ html body .home-table tr.cloud-cols:hover { background: none; box-shadow: none; 
 tr.row-bad td { color: #b42318; }
 tr.row-warn td { color: #b54708; }
 td.nowrap { white-space: nowrap; }
+
+/* A table inside a bordered box never touches the border, and what follows the box never sits on it. */
+.table-wrap > table.kv-table { width: 100%; margin: 0; }
+.table-wrap > table.kv-table :is(th, td) { padding: 7px 12px; }
+.table-wrap > table.kv-table tbody tr + tr td { border-top: 1px solid #f0f0f0; }
+.table-wrap { margin: var(--s-2) 0 var(--s-4); }
+.table-wrap + p { margin-top: var(--s-3); }
