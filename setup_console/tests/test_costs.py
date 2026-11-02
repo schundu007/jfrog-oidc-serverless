@@ -10,7 +10,7 @@ class FakeJobs:
     """Plans return a sha; applies and reads succeed. Records every call with the inputs seen then."""
     def __init__(self, state_root, env="test", gone=(), down=()):
         self.calls, self.state_root, self.env, self.gone, self.n = [], state_root, env, set(gone), 0
-        self.down = set(down)
+        self.down, self.plans = set(down), {}
 
     def start(self, sid, action, approval=None):
         self.n += 1
@@ -19,11 +19,12 @@ class FakeJobs:
         if action == "status":
             res = {"deployed": sid not in self.down}
         elif action == "apply":
-            self.down.discard(sid)
+            (self.down.add if self.plans.get(sid) == "plan-destroy" else self.down.discard)(sid)
             res = {"applied": True}
         elif action == "plan-destroy" and sid in self.gone:
             res = {"already_deleted": True}
         elif action.startswith("plan-"):
+            self.plans[sid] = action
             res = {"sha256": f"{self.n:064x}", "summary": {"create": 1}}
         else:
             res = {"applied": True}
@@ -128,7 +129,9 @@ class CostsTest(unittest.TestCase):
         self.save("azure-functions-premium", {"workload": "fp", "plan_sku": "EP1"})
         ado, jobs = FakeAdo([]), FakeJobs(self.tmp)
         self.runner(jobs, ado).up("azure-functions-premium")
-        self.assertEqual([c[1] for c in jobs.calls], ["plan-apply", "apply"])
+        # Reads first: its JFrog trust (build-deploy reads its variable group), then its foundation.
+        self.assertEqual([c[:2] for c in jobs.calls], [("azure-jfrog-trust", "status"), ("azure-foundation", "status"),
+                                                       ("azure-functions-premium", "plan-apply"), ("azure-functions-premium", "apply")])
         self.assertEqual(len(ado.runs), 1)
 
     def test_up_stops_before_any_run_when_an_input_is_missing(self):
@@ -143,7 +146,8 @@ class CostsTest(unittest.TestCase):
         self.save("aks-jfrog-trust", {"cluster_name": "c"})
         jobs = FakeJobs(self.tmp)
         self.runner(jobs, FakeAdo([])).up("aks-cluster")
-        self.assertEqual({c[0] for c in jobs.calls}, {"aks-cluster"})
+        self.assertEqual({c[0] for c in jobs.calls if c[1] != "status"}, {"aks-cluster"})
+        self.assertEqual({c[0] for c in jobs.calls if c[1] == "status"}, {"azure-foundation"})
         jobs = FakeJobs(self.tmp, down={"aks-jfrog-trust"})
         costs.run_all(self.runner(jobs, FakeAdo([])), "down", ["aks-cluster"])
         self.assertEqual([c[0] for c in jobs.calls if c[1] == "apply"], ["aks-cluster"])
@@ -154,6 +158,24 @@ class CostsTest(unittest.TestCase):
         self.assertIn("aks-jfrog-trust still stands on it", res["aks-cluster"])
         self.assertIn("setup_console.oidc down", res["aks-cluster"])
         self.assertFalse(any(c[1] in ("plan-destroy", "apply") for c in jobs.calls))
+
+    def test_up_never_deploys_before_its_foundation_stands(self):
+        self.save("gke-cluster", {"node_count": 1})
+        jobs = FakeJobs(self.tmp, down={"gcp-foundation"})
+        with self.assertRaisesRegex(costs.CostError, "gcp-foundation not deployed"):
+            self.runner(jobs, FakeAdo([])).up("gke-cluster")
+        self.assertFalse(any(c[1] != "status" for c in jobs.calls))
+
+    def test_build_deploy_waits_for_its_clouds_jfrog_trust(self):
+        sid = "azure-container-app"
+        self.save(sid, {"workload": "aca-demo", "deploy_app": True, "app_image": "aca-demo:old"})
+        saved = stacks.read_inputs(sid, "test", self.tmp)
+        ado, jobs = FakeAdo([]), FakeJobs(self.tmp, down={"azure-jfrog-trust"})
+        res = self.runner(jobs, ado).up(sid)
+        self.assertIn("build-deploy not run: azure-jfrog-trust not deployed", res)
+        self.assertEqual(ado.runs, [])
+        self.assertFalse([c[3] for c in jobs.calls if c[1] == "plan-apply"][0]["deploy_app"])   # infra only
+        self.assertEqual(stacks.read_inputs(sid, "test", self.tmp), saved)
 
     def test_a_cluster_has_no_build_deploy(self):
         self.save("gke-cluster", {"node_count": 1})
@@ -183,6 +205,19 @@ class OidcTest(unittest.TestCase):
         res = oidc.run_all(self.orunner(jobs), "up", ["aks-jfrog-trust"])
         self.assertIn("skipped: aks-cluster is not deployed", res["aks-jfrog-trust"])
         self.assertFalse(any(c[1] == "apply" for c in jobs.calls))
+
+    def test_up_skips_aks_trust_while_its_clouds_trust_is_down(self):
+        self.save("aks-jfrog-trust", {"cluster_name": "c"})
+        jobs = FakeJobs(self.tmp, down={"azure-jfrog-trust"})
+        res = oidc.run_all(self.orunner(jobs), "up", ["aks-jfrog-trust"])
+        self.assertIn("skipped: azure-jfrog-trust is not deployed", res["aks-jfrog-trust"])
+        self.assertFalse(any(c[1] == "apply" for c in jobs.calls))
+
+    def test_down_refuses_a_trust_while_aks_trust_stands_on_it(self):
+        jobs = FakeJobs(self.tmp)
+        res = oidc.run_all(self.orunner(jobs), "down", ["azure-jfrog-trust"])
+        self.assertIn("aks-jfrog-trust still stands on it", res["azure-jfrog-trust"])
+        self.assertFalse(any(c[1] in ("plan-destroy", "apply") for c in jobs.calls))
 
     def test_up_then_down_in_reverse(self):
         self.save("azure-jfrog-trust", {"ado_org": "o"})

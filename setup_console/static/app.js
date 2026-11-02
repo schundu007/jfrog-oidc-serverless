@@ -40,8 +40,8 @@ function stackStatus(s) {
   if (s.missing?.length) return dot("warn", "Inputs needed");
   if (s.busy) return dot("warn", "Running");
   if (s.plan) return dot("warn", s.plan.action === "destroy" ? "Destroy planned" : "Deploy planned");
-  // Waiting on another stack (its foundation): say which.
-  if (s.needs?.length && !s.status?.deployed) return dot("", `Needs ${titleOf(s.needs[0])}`);
+  // Waiting on the stacks it stands on (all of them, upstream first): say which.
+  if (s.needs?.length && !s.status?.deployed) return dot("", `Needs ${s.needs.map(titleOf).join(", ")}`);
   if (!s.status) return dot("", "Checking…");
   if (s.status.deployed) return dot("ok", "Deployed");
   // Deleted outside the console, validated with the cloud: the evidence is behind the row's "?".
@@ -269,6 +269,7 @@ function warnings(s) {
   else if (s.status?.error && !s.needs?.length) out.push(s.status.error);
   if (s.needs?.length) out.push(`Deploy ${s.needs.map(titleOf).join(", ")} first.`);
   if (s.dependents?.length) out.push(`Destroy ${s.dependents.map(titleOf).join(", ")} first.`);
+  else if (s.unchecked?.length) out.push(`Destroy waits until ${s.unchecked.map(titleOf).join(", ")} ${s.unchecked.length > 1 ? "are" : "is"} checked.`);
   const failed = lastFailure(s);
   if (failed) out.push(`${ACTION_NAME[failed.action] || "Last run"} failed: ${brief(failed.error) || "see the log"}`);
   return out;
@@ -276,7 +277,9 @@ function warnings(s) {
 const lastFailure = (s) => (s.failed && !s.busy && !(s.failed.action === "status" && s.needs?.length) ? s.failed : null);
 
 function row(s, section) {
-  const blockedDestroy = s.dependents?.length ? `Destroy ${s.dependents.map(titleOf).join(", ")} first` : "";
+  // Nothing is removed from under another stack: deployed ones block, and so do ones not read yet.
+  const blockedDestroy = s.dependents?.length ? `Destroy ${s.dependents.map(titleOf).join(", ")} first`
+    : s.unchecked?.length ? `Checking ${s.unchecked.map(titleOf).join(", ")} first` : "";
   const plan = s.plan ? h("button", { type: "button", class: "primary", text: "Review plan" }) : null;
   if (plan) plan.onclick = () => { const p = flyout(`${s.group} · ${s.title}`); fill(p.body, planView(s, s.plan, p)); };
   // A running job keeps going when its drawer is closed or the page reloads: this reopens its live log.

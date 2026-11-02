@@ -123,7 +123,7 @@ CATALOGUE = (
     # The AKS cluster's JFrog OIDC: after the cluster, in its own stack-setup pipeline (JFrog token from
     # the setup connection's OIDC token). Each redeployed cluster has a new issuer, trusted again here.
     {"id": "aks-jfrog-trust", "kind": "JFrog OIDC", "section": "Kubernetes", "group": "Azure",
-     "title": "AKS credential provider", "after": "aks-cluster",
+     "title": "AKS credential provider", "after": ("aks-cluster", "azure-jfrog-trust"),
      "about": "The AKS cluster's issuer trusted in JFrog, its credential provider's service account mapped "
               "to a JFrog user, and an Argo CD Application that installs the kubelet credential provider "
               "on the labelled nodes. Nothing runs from your machine: it is an ADO pipeline.",
@@ -293,15 +293,56 @@ def backend_kind(stack_id: str, root: Path = STACKS_DIR) -> str | None:
     return m.group(1) if m else None
 
 
+def _after(stack_id: str) -> tuple:
+    a = get(stack_id).get("after") or ()
+    return (a,) if isinstance(a, str) else tuple(a)
+
+
 def depends_on(stack_id: str, root: Path = STACKS_DIR) -> str | None:
-    """The foundation a stack stands on: its remote state and pipeline trust live there (a JFrog OIDC
-    stack reads its service connections). None for a foundation (local state) itself."""
-    after = get(stack_id).get("after")
-    if after:
-        return after
+    """The first stack this one stands on: its `after`, else the foundation whose store holds its state
+    (a JFrog OIDC stack reads its service connections). None for a foundation (local state) itself."""
+    ups = upstreams(stack_id, root)
+    return ups[0] if ups else None
+
+
+def upstreams(stack_id: str, root: Path = STACKS_DIR) -> tuple:
+    """Every stack this one stands on directly: its `after` stacks (whose outputs, pipeline or trust it
+    uses) and the foundation whose store holds its remote state."""
     kind = backend_kind(stack_id, root)
-    dep = FOUNDATION.get(kind) if kind else None
-    return dep if dep != stack_id else None
+    store = FOUNDATION.get(kind) if kind else None
+    ups = [*_after(stack_id), *([store] if store and store != stack_id else [])]
+    return tuple(dict.fromkeys(ups))
+
+
+def ancestors(stack_id: str, root: Path = STACKS_DIR) -> tuple:
+    """Everything a stack stands on, directly or through another stack, in deploy (catalogue) order.
+    None of it may be missing when the stack is deployed."""
+    seen, todo = set(), list(upstreams(stack_id, root))
+    while todo:
+        x = todo.pop()
+        if x not in seen:
+            seen.add(x)
+            todo.extend(upstreams(x, root))
+    return tuple(x for x in IDS if x in seen)
+
+
+def descendants(stack_id: str, root: Path = STACKS_DIR) -> tuple:
+    """Everything that stands on a stack, directly or through another stack, in destroy (reverse
+    catalogue) order. None of it may still stand when the stack is destroyed."""
+    return tuple(x for x in reversed(IDS) if stack_id in ancestors(x, root))
+
+
+# A workload's build-deploy pipeline reads its cloud's JFrog variable group (JFROG_URL,
+# JFROG_OIDC_PROVIDER), which only that cloud's JFrog trust stack writes.
+TRUST = {"Google Cloud": "gcp-jfrog-trust", "Azure": "azure-jfrog-trust"}
+
+
+def build_upstreams(stack_id: str, root: Path = STACKS_DIR) -> tuple:
+    """What a workload's build-deploy run needs standing: the stack itself, all it stands on, and its
+    cloud's JFrog trust (with all that stands under it). Deploy order."""
+    trust = TRUST.get(get(stack_id)["group"])
+    need = {stack_id, *ancestors(stack_id, root), *((trust, *ancestors(trust, root)) if trust else ())}
+    return tuple(x for x in IDS if x in need)
 
 
 # -- saved inputs ------------------------------------------------------------------------------------

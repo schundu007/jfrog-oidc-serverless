@@ -446,8 +446,11 @@ class AdoJobTests(unittest.TestCase):
                    ado=self.ado, repo_root=self.repo, sleep=lambda s: gate.wait())
         for f in ("gcp-foundation", "azure-foundation"):
             old._set_status(f, {"deployed": True, "outputs": {}})
-        return old, Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state,
-                         ado=self.ado, repo_root=self.repo, sleep=lambda s: None)
+        new = Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state,
+                   ado=self.ado, repo_root=self.repo, sleep=lambda s: None)
+        for f in ("gcp-foundation", "azure-foundation"):   # the fresh console reads them again on load
+            new._set_status(f, {"deployed": True, "outputs": {}})
+        return old, new
 
     def test_an_apply_survives_a_restart_and_is_read_from_ado(self):
         old, _ = self._restarted([PLANNED])
@@ -680,6 +683,8 @@ class JobTests(unittest.TestCase):
         # The foundation's resources were deleted outside the console: the destroy plan cannot read
         # them (403). Next: Forget its local state (no cloud call), or Check status, or try again.
         sid = "gcp-foundation"
+        for x in ("gcp-cloud-run", "gcp-jfrog-trust"):   # read: nothing stands on it
+            self.jobs._set_status(x, {"deployed": False, "outputs": {}})
         d = stacks.stack_dir(sid, self.root.dir)
         (d / "terraform.tfstate").write_text('{"version": 4, "resources": [{"type": "x"}]}')
         (d / ".fake_fail_plan").write_text(REFRESH_403)
@@ -782,6 +787,53 @@ class JobTests(unittest.TestCase):
         # Other clouds are never involved.
         self.assertEqual([s for s in self.jobs.stacks() if s["id"] == "azure-foundation"][0]["dependents"], [])
 
+    def test_upstreams_are_transitive_and_cover_every_stack_used(self):
+        self.assertEqual(stacks.upstreams("aks-jfrog-trust"), ("aks-cluster", "azure-jfrog-trust", "azure-foundation"))
+        self.assertEqual(stacks.ancestors("aks-jfrog-trust"), ("azure-foundation", "azure-jfrog-trust", "aks-cluster"))
+        self.assertEqual(stacks.descendants("azure-foundation")[0], "aks-jfrog-trust")   # destroy order
+        self.assertIn("azure-jfrog-trust", stacks.descendants("azure-foundation"))
+        self.assertEqual(stacks.ancestors("gcp-foundation"), ())
+        self.assertEqual(stacks.build_upstreams("gcp-cloud-run"), ("gcp-foundation", "gcp-cloud-run", "gcp-jfrog-trust"))
+        for s in stacks.CATALOGUE:   # never across clouds; deploy order is catalogue order
+            for a in stacks.ancestors(s["id"]):
+                self.assertEqual(stacks.get(a)["group"], s["group"], s["id"])
+                self.assertLess(stacks.IDS.index(a), stacks.IDS.index(s["id"]), s["id"])
+
+    def test_deploy_refused_while_any_upstream_is_missing_even_indirectly(self):
+        self.root.save("aks-jfrog-trust", {})
+        self.jobs._set_status("aks-cluster", {"deployed": True, "outputs": {}})
+        row = [s for s in self.jobs.stacks() if s["id"] == "aks-jfrog-trust"][0]
+        self.assertEqual(row["needs"], ["azure-jfrog-trust"])
+        with self.assertRaisesRegex(JobError, "azure-jfrog-trust"):
+            self.jobs.start("aks-jfrog-trust", "plan-apply")
+        self.jobs._set_status("azure-foundation", {"deployed": False, "outputs": {}})
+        row = [s for s in self.jobs.stacks() if s["id"] == "aks-jfrog-trust"][0]
+        self.assertEqual(row["needs"], ["azure-foundation", "azure-jfrog-trust"])
+
+    def test_approval_rechecks_the_upstream(self):
+        # Planned while the foundation stood; it was destroyed before Approve: the apply is refused.
+        j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        self.jobs._set_status("gcp-foundation", {"deployed": False, "outputs": {}})
+        with self.assertRaisesRegex(JobError, "gcp-foundation") as e:
+            self.jobs.start("gcp-cloud-run", "apply", {"plan_sha256": j["result"]["sha256"]})
+        self.assertEqual(e.exception.status, 409)
+        self.assertFalse([c for c in self.root.calls("gcp-cloud-run") if "apply" in c])
+
+    def test_approval_rechecks_what_stands_on_it(self):
+        for x in ("gcp-cloud-run", "gcp-jfrog-trust"):
+            self.jobs._set_status(x, {"deployed": False, "outputs": {}})
+        j = self._plan("gcp-foundation", [{"address": "a.b", "type": "x", "change": {"actions": ["delete"]}}], "plan-destroy")
+        self.jobs._set_status("gcp-cloud-run", {"deployed": True, "outputs": {}})   # deployed meanwhile
+        with self.assertRaisesRegex(JobError, "gcp-cloud-run"):
+            self.jobs.start("gcp-foundation", "apply", {"plan_sha256": j["result"]["sha256"], "typed_confirmation": "gcp-foundation"})
+
+    def test_destroy_waits_for_stacks_on_it_to_be_read(self):
+        self.jobs._set_status("gcp-jfrog-trust", {"deployed": False, "outputs": {}})
+        row = [s for s in self.jobs.stacks() if s["id"] == "gcp-foundation"][0]
+        self.assertEqual(row["unchecked"], ["gcp-cloud-run"])   # inputs saved, state not read yet
+        with self.assertRaisesRegex(JobError, "check what may stand on gcp-foundation first"):
+            self.jobs.start("gcp-foundation", "plan-destroy")
+
     def test_failed_job_named_on_its_stack(self):
         (stacks.stack_dir("azure-container-apps", self.root.dir) / ".fake_fail_plan").write_text("")
         j = wait(self.jobs, self.jobs.start("azure-container-apps", "plan-apply"))
@@ -819,6 +871,10 @@ class DeletedOutsideTests(unittest.TestCase):
         for f in ("gcp-foundation", "azure-foundation"):
             j._set_status(f, {"deployed": True, "outputs": {}})
         return j
+
+    def nothing_on(self, jobs, *sids):   # read: nothing stands on the foundation
+        for x in sids:
+            jobs._set_status(x, {"deployed": False, "outputs": {}})
 
     def status(self, jobs, sid):
         return [s for s in jobs.stacks() if s["id"] == sid][0]["status"]
@@ -880,6 +936,7 @@ class DeletedOutsideTests(unittest.TestCase):
             {"address": "google_artifact_registry_repository.images", "values": {"id": repo_id}}]}}}))
         self.ws("gcp-foundation", ".fake_plan.json", json.dumps(
             [{"address": "platform_oidc_configuration.ado", "type": "platform_oidc_configuration", "change": {"actions": ["delete"]}}]))
+        self.nothing_on(jobs, "gcp-cloud-run", "gcp-jfrog-trust")
         j = wait(jobs, jobs.start("gcp-foundation", "plan-destroy"))
         self.assertEqual(j["state"], "done", j)
         forgotten = (stacks.stack_dir("gcp-foundation", self.root.dir) / ".fake_forgotten").read_text().split()
@@ -893,6 +950,7 @@ class DeletedOutsideTests(unittest.TestCase):
         self.ws("gcp-foundation", ".fake_refresh.jsonl", json.dumps(
             {"type": "resource_drift", "change": {"resource": {"addr": "google_service_account.ado"}, "action": "delete"}}))
         self.ws("gcp-foundation", ".fake_plan.json", "[]")
+        self.nothing_on(jobs, "gcp-cloud-run", "gcp-jfrog-trust")
         j = wait(jobs, jobs.start("gcp-foundation", "plan-destroy"))
         self.assertEqual(j["state"], "done", j)
         self.assertTrue(j["result"]["already_deleted"])

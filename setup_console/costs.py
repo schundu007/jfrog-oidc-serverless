@@ -87,16 +87,21 @@ class Runner(Gates):
     def down(self, sid) -> str:
         # Infrastructure knows nothing about JFrog OIDC; it only never pulls a stack out from under
         # another one that still stands on it (aks-jfrog-trust on aks-cluster).
-        on = [s["id"] for s in stacks.CATALOGUE if s.get("after") == sid and self.deployed(s["id"])]
+        on = self.standing_on(sid)
         if on:
             raise CostError(f"{', '.join(on)} still stands on it: take that down first "
                             f"(python -m setup_console.oidc down --only {' '.join(on)})")
-        return self.destroy(sid)
+        return self._change(sid, "plan-destroy")   # standing_on was just read
 
     def _up(self, sid) -> str:
         inputs = stacks.read_inputs(sid, self.env, self.state_root)
         switch = SWITCHES.get(sid)
         build = self.build_pipeline(sid) and inputs.get("workload")
+        if build:   # build-deploy reads the JFrog variable group: its cloud's JFrog trust must stand
+            trust = [x for x in stacks.build_upstreams(sid, self.root) if x not in stacks.ancestors(sid, self.root) and x != sid]
+            gaps = [x for x in trust if not self.deployed(x)]
+            if gaps:
+                return self._up_without_build(sid, inputs, switch, gaps)
         if not (switch and inputs.get(switch) and build):
             done = self.deploy(sid)
             if build:
@@ -115,6 +120,21 @@ class Runner(Gates):
         self.deploy(sid)
         self.build_deploy(sid, inputs["workload"])
         return "deployed and rolled out"
+
+
+    def _up_without_build(self, sid, inputs, switch, gaps) -> str:
+        """The infrastructure only, its switch off (its image lived in its own registry), saved inputs kept:
+        build-deploy never runs before the JFrog trust it reads exists."""
+        if switch and inputs.get(switch):
+            try:
+                stacks.write_inputs(sid, self.env, dict(inputs, **{switch: False}), self.root, self.state_root)
+                self.deploy(sid)
+            finally:
+                stacks.write_inputs(sid, self.env, inputs, self.root, self.state_root)
+        else:
+            self.deploy(sid)
+        return (f"deployed; build-deploy not run: {', '.join(gaps)} not deployed "
+                f"(python -m setup_console.oidc up, then costs up --only {sid})")
 
 
 def select(cloud=None, only=None) -> list:

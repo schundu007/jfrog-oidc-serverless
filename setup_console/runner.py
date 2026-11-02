@@ -56,10 +56,36 @@ class Runner:
         return "destroyed" if verb == "destroy" else "deployed"
 
     def destroy(self, sid) -> str:
+        on = self.standing_on(sid)
+        if on:
+            raise self.error(f"{', '.join(on)} still stands on it: take that down first")
         return self._change(sid, "plan-destroy")
 
     def deploy(self, sid) -> str:
+        gaps = self.missing_upstreams(sid)
+        if gaps:
+            raise self.error(f"{', '.join(gaps)} not deployed: deploy {'it' if len(gaps) == 1 else 'them'} first")
         return self._change(sid, "plan-apply")
+
+    # -- order: nothing runs before what it stands on, nothing is removed from under another --------
+
+    def missing_upstreams(self, sid) -> list:
+        """Every stack `sid` stands on, directly or not, whose state does not read as deployed."""
+        return [a for a in stacks.ancestors(sid, self.root) if not self.deployed(a)]
+
+    def standing_on(self, sid) -> list:
+        """Stacks that stand on `sid`, directly or not, and read as deployed (or cannot be read). One
+        whose inputs were never saved was never deployed from here."""
+        out = []
+        for d in stacks.descendants(sid, self.root):
+            try:
+                if self.deployed(d):
+                    out.append(d)
+            except stacks.StackError:   # inputs never filled in: never deployed
+                continue
+            except Exception:           # cannot tell: never pull a stack out from under it
+                out.append(d)
+        return out
 
     def read(self, sid) -> dict:
         return self.job(sid, "status")

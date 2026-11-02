@@ -37,9 +37,9 @@ class OidcRunner(Runner):
         gaps = stacks.missing(sid, self.env, self.root, self.state_root)
         if gaps:
             raise OidcError(f"{sid}: inputs not set: {', '.join(gaps)} (fill them in JFrog OIDC)")
-        base = stacks.get(sid).get("after")
-        if base and not self.deployed(base):
-            return f"skipped: {base} is not deployed (python -m setup_console.costs up first)"
+        gaps = self.missing_upstreams(sid)
+        if gaps:
+            return f"skipped: {', '.join(gaps)} {'is' if len(gaps) == 1 else 'are'} not deployed (python -m setup_console.costs up first)"
         return self.deploy(sid)
 
     def down(self, sid) -> str:

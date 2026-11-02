@@ -81,10 +81,11 @@ class Jobs:
             out = []
             for s in stacks.CATALOGUE:
                 sid = s["id"]
-                needs, dependents = self._needs(sid), self._dependents(sid)
+                needs, dependents, unchecked = self._needs(sid), self._dependents(sid), self._unchecked(sid)
                 out.append(dict(s, dir=f"terraform/stacks/{stacks.rel_dir(sid)}", status=self._status.get(sid), busy=sid in running, job=running.get(sid),
                                 plan=self._public_plan(self._plans.get(sid)), failed=failed.get(sid),
-                                depends_on=stacks.depends_on(sid, self.root), needs=needs, dependents=dependents,
+                                depends_on=stacks.depends_on(sid, self.root), upstreams=list(stacks.ancestors(sid, self.root)),
+                                needs=needs, dependents=dependents, unchecked=unchecked,
                                 missing=stacks.missing(sid, self.env_name, self.root, self.state_root),
                                 links=self._links(sid)))
             return out
@@ -102,14 +103,36 @@ class Jobs:
 
     # Callers hold self._lock.
     def _needs(self, sid) -> list:
-        """The foundation this stack stands on, unless its state shows it deployed. Order is strict:
-        only a foundation read as deployed satisfies it; not yet read counts as missing."""
-        dep = stacks.depends_on(sid, self.root)
-        return [dep] if dep and not (self._status.get(dep) or {}).get("deployed") else []
+        """Every stack this one stands on, directly or not, that its state does not show deployed, in
+        deploy order. Order is strict: only a stack read as deployed satisfies it; not yet read, or a
+        read that failed, counts as missing."""
+        return [a for a in stacks.ancestors(sid, self.root) if not (self._status.get(a) or {}).get("deployed")]
 
     def _dependents(self, sid) -> list:
-        """Deployed stacks that stand on this one (destroy them first)."""
-        return [x for x in stacks.IDS if stacks.depends_on(x, self.root) == sid and (self._status.get(x) or {}).get("deployed")]
+        """Deployed stacks that stand on this one, directly or not (destroy them first), in destroy order."""
+        return [x for x in stacks.descendants(sid, self.root) if (self._status.get(x) or {}).get("deployed")]
+
+    def _unchecked(self, sid) -> list:
+        """Stacks that stand on this one and may be deployed: inputs saved but state not read yet. A
+        destroy waits until each is read; one never saved was never deployed from here."""
+        return [x for x in stacks.descendants(sid, self.root) if x not in self._status
+                and stacks.inputs_file(x, self.env_name, self.state_root).is_file()]
+
+    def _blocked(self, sid, destroy: bool) -> str | None:
+        """Why a deploy (or destroy) of this stack may not run now; None when every stack it stands on
+        is deployed (and nothing stands on it). Callers hold self._lock."""
+        if not destroy:
+            needs = self._needs(sid)
+            if needs:
+                names = ", ".join(_name(x) for x in needs)
+                return f"deploy {names} first: {sid} stands on {'it' if len(needs) == 1 else 'them'}"
+            return None
+        on, unread = self._dependents(sid), self._unchecked(sid)
+        if on:
+            return f"destroy what stands on {sid} first: {', '.join(_name(x) for x in on)}"
+        if unread:
+            return f"check what may stand on {sid} first: {', '.join(_name(x) for x in unread)}"
+        return None
 
     def get(self, job_id: str) -> dict:
         with self._lock:
@@ -284,13 +307,14 @@ class Jobs:
         with self._lock:
             if any(j["stack"] == stack_id and j["state"] == "running" for j in self._jobs.values()):
                 raise JobError(409, f"{stack_id} is busy")
-            if action == "plan-apply" and self._needs(stack_id):
-                dep = stacks.get(self._needs(stack_id)[0])
-                raise JobError(409, f"deploy {dep['kind']} · {dep['group']} · {dep['title']} ({dep['id']}) first: {stack_id} keeps its state there")
-            if action == "plan-destroy" and self._dependents(stack_id):
-                names = ", ".join(stacks.get(x)["title"] + f" ({x})" for x in self._dependents(stack_id))
-                raise JobError(409, f"destroy what stands on {stack_id} first: {names}")
             plan = self._plans.get(stack_id)
+            # Upstream first, always: checked when planning and again when the plan is approved, since a
+            # stack it stands on may have been destroyed (or one standing on it deployed) in between.
+            if action in ("plan-apply", "plan-destroy") or (action == "apply" and plan):
+                destroy = action == "plan-destroy" or (action == "apply" and plan["action"] == "destroy")
+                why = self._blocked(stack_id, destroy)
+                if why:
+                    raise JobError(409, why)
             if action == "apply":
                 if not plan:
                     raise JobError(409, "plan first")
@@ -527,9 +551,9 @@ class Jobs:
         return self._public_plan(p)
 
     def _reread_dependents(self, sid) -> None:
-        """A foundation that was just deployed or destroyed changes what its stacks can read: read them again."""
+        """A stack that was just deployed or destroyed changes what the stacks on it can read: read them again."""
         for x in stacks.IDS:
-            if stacks.depends_on(x, self.root) == sid:
+            if sid in stacks.upstreams(x, self.root):
                 try:
                     self.start(x, "status")
                 except (JobError, stacks.StackError):
@@ -603,6 +627,11 @@ class Jobs:
         with self._lock:
             job.update(state=state, result=result, error=error, finished=time.time())
         self._keep(job)
+
+
+def _name(sid: str) -> str:
+    m = stacks.get(sid)
+    return f"{m['kind']} · {m['group']} · {m['title']} ({sid})"
 
 
 def state_store(kind: str, found: dict) -> dict | None:
