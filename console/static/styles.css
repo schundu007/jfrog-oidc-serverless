@@ -130,6 +130,14 @@ a.brand, a.brand:hover { color: #ffffff; text-decoration: none; }
 .logo { width: 28px; height: 28px; flex: none; fill: var(--brand); }
 .logo .logo-in { fill: var(--navy); }
 .topbar :focus-visible { outline-color: #ffffff; }
+.nav-back {
+  display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 10px 0 6px; cursor: pointer;
+  color: #ffffff; background: transparent; border: 1px solid rgba(255, 255, 255, 0.45); border-radius: var(--r-sm);
+  font: inherit; font-size: 13px; margin-left: var(--s-3);
+}
+.nav-back[hidden] { display: none; }
+.nav-back:hover { background: rgba(255, 255, 255, 0.12); border-color: #ffffff; }
+.nav-back .ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
 
 /* Home button and breadcrumb at the top of the page. */
 .page-top { display: flex; align-items: center; gap: var(--s-3); margin-bottom: var(--s-4); min-height: 32px; }

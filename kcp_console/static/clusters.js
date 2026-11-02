@@ -19,7 +19,7 @@ const STAT_HELP = {
   working: "A pull through JFrog was proven with no pull secret.",
   attention: "A check fails: the provider, the JFrog side or the values file.",
   not_proven: "Installed, but no pull through JFrog has been proven yet.",
-  approval: "A dry run passed and waits for your approval.",
+  approval: "A plan passed and waits for your approval.",
   not_installed: "The credential provider isn't installed yet.",
 };
 const RUN_TEXT = { prepared: "waiting for approval", queued: "queued", running: "running", succeeded: "succeeded", failed: "failed",
@@ -163,7 +163,7 @@ function fillTable() {
 function lastRun(a) {
   if (!a) return muted("No runs yet");
   const took = a.started && a.finished ? duration(a.started, a.finished) : "";
-  return [h("div", {}, `${TITLES[a.which] || a.which}${a.dry ? " · dry run" : ""}`),
+  return [h("div", {}, `${TITLES[a.which] || a.which}${a.dry ? " · plan" : ""}`),
     h("div", { class: "sub" }, [RUN_TEXT[a.status] || a.status, ago(a.at), took].filter(Boolean).join(" · "))];
 }
 

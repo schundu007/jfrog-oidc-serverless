@@ -160,13 +160,6 @@ function transition(update) {
   for (const p of [t.ready, t.finished, t.updateCallbackDone]) p.catch(() => {});
 }
 
-// One level up: run → its cluster's Runs tab → its platform's list → Home.
-function parent(r) {
-  if (r.page === "run") return { path: clusterPath(r.name, "runs"), label: r.name };
-  if (r.name) return { path: "/clusters", label: "Kubernetes" };
-  return { home: true, label: "Home" };
-}
-
 // A product mark (aks, gke, eks, openshift, k8s) or the arrow icon, cloned from the page's template.
 export const markOf = (k) => $("marks").content.querySelector(`[data-mark="${k}"] svg`).cloneNode(true);
 
@@ -190,18 +183,6 @@ function renderTrail(r) {
   $("trail").closest(".page-top").hidden = steps.length < 2;
 }
 
-// Back walks up one level, as the breadcrumb does.
-function backButton(r) {
-  const b = $("nav-back");
-  const up = parent(r);
-  b.hidden = !up;
-  b.title = up ? `Back to ${up.label}` : "Back";
-  b.onclick = () => {
-    if (up?.home) location.assign("/");
-    else if (up) go(up.path);
-  };
-}
-
 let shown = "";
 function show() {
   const r = route();
@@ -209,7 +190,6 @@ function show() {
   const now = route();
   for (const p of PAGES) $(`panel-${p}`).hidden = p !== now.page;
   window.consoleNav?.select("k8s");
-  backButton(now);
   renderTrail(now);
   // A tab switch keeps the scroll position; a new page starts at the top.
   const key = `${now.page}|${now.name}|${now.run}`;

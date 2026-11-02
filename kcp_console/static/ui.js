@@ -103,7 +103,7 @@ export function duration(from, to) {
 export const TITLES = { setup: "Set up", verify: "Verify", prove: "Prove", teardown: "Tear down" };
 export const ACTIVE = ["queued", "running"];
 export const isDry = (r) => r.request?.parameters?.DryRun !== false;
-export const runTitle = (r) => `${TITLES[r.name] || r.name}${isDry(r) ? " · dry run" : ""}`;
+export const runTitle = (r) => `${TITLES[r.name] || r.name}${isDry(r) ? " · plan" : ""}`;
 export const runStarted = (r) => r.approved?.at || "";
 // A run's step statuses: what ran, then the plan's steps it did not reach.
 export function stepStatuses(r) {

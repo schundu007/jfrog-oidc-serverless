@@ -185,6 +185,31 @@
     history[fn] = (...a) => { const r = orig(...a); queueMicrotask(mark); return r; };
   }
   addEventListener("popstate", mark);
+
+  // Back, on every page but Home: the page you came from, or one level up when you opened this one directly.
+  const backTo = () => {
+    const sameSite = document.referrer.startsWith(location.origin + "/");
+    if (window.navigation?.canGoBack || (sameSite && history.length > 1)) return history.back();
+    const up = location.pathname.replace(/\/+$/, "").split("/").slice(0, -1).join("/");
+    location.assign(up || "/");
+  };
+  const addBack = () => {
+    const bar = document.querySelector(".topbar");
+    if (!bar || bar.querySelector(".nav-back")) return;
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "nav-back"; b.title = "Back"; b.setAttribute("aria-label", "Back");
+    b.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>Back</span>';
+    b.addEventListener("click", backTo);
+    bar.querySelector(".brand")?.after(b);
+    const show = () => { b.hidden = location.pathname === "/" || location.pathname === ""; };
+    show();
+    addEventListener("popstate", show);
+    for (const fn of ["pushState", "replaceState"]) {
+      const orig = history[fn].bind(history);
+      history[fn] = (...a) => { const r = orig(...a); queueMicrotask(show); return r; };
+    }
+  };
+  addBack();
   // Service icons for other pages (list rows, Home): constant inline SVG, no user data.
   const icon = glyph;
   window.consoleNav = { icon, select, SECTIONS, sectionOfKind, section: (key) => SECTIONS[key] || null, current: () => sel.nav };

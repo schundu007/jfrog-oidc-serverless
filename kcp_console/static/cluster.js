@@ -37,7 +37,7 @@ const CARD_HELP = {
   Problems: "Checks that fail now. Each one blocks pulls through JFrog or will soon.",
   "OIDC proof": "The last proof: a test pod pulled an image through JFrog with no pull secret, and JFrog logged the mapped user.",
   Essentials: "What the cluster and JFrog report right now, read live with read-only calls.",
-  "Set up": "Dry run first, then your approval, then the real change: Helm install, JFrog OIDC provider and mapping.",
+  "Set up": "Plan it first, then your approval, then the real change: Helm install, JFrog OIDC provider and mapping.",
   Verify: "Read-only: re-reads the cluster and JFrog and pulls the test image again.",
   "JFrog token exchange": "JFrog's own replies, read live: the console asked JFrog's token endpoint with the pod service account's token, as the credential provider does, with the trust in place, removed and restored. No token is kept.",
   "Pod events: Pull with OIDC": "Read live from the cluster: the kubelet's events for the test pod: no pull secret, the image pulled through the credential provider.",
@@ -47,7 +47,7 @@ const CARD_HELP = {
   "No stored secret": "No pull secret on the service account or in its namespace, and no long-lived JFrog token for the mapped user.",
   "Live exchange": "A recreated service account (nothing cached) pulls through JFrog; JFrog records the mapped user.",
   "Trust removed": "The identity mapping is removed: the same pull is refused. Restored: it works again.",
-  "Tear down": "Removes what Set up created on this cluster and in JFrog. Dry run and approval first.",
+  "Tear down": "Removes what Set up created on this cluster and in JFrog. Plan it and approve first.",
 };
 
 const P = () => $("panel-cluster");
@@ -547,13 +547,13 @@ function actionCard(name) {
   const stages = [], parts = [];
   if (d) {
     if (d.status === "refused") stages.push([brief(d.guards.join(" ")), "error"]);
-    else if (d.status === "prepared" || ACTIVE.includes(d.status)) { stages.push(["Dry run…", ""]); parts.push(progress(d)); }
-    else if (d.status === "succeeded") stages.push(["Dry run passed", "ok"]);
+    else if (d.status === "prepared" || ACTIVE.includes(d.status)) { stages.push(["Planning…", ""]); parts.push(progress(d)); }
+    else if (d.status === "succeeded") stages.push(["Plan passed", "ok"]);
     else {
-      stages.push([d.status === "interrupted" ? "Dry run interrupted (the console restarted)" : "Dry run failed", "error"]);
+      stages.push([d.status === "interrupted" ? "Plan interrupted (the console restarted)" : "Plan failed", "error"]);
       parts.push(stepTable(d.result), causeEl(name, d));
     }
-    if (d.status === "succeeded" && !r) stages.push(fresh(d) ? ["Preparing the approval…", ""] : ["Dry run expired: start again", "muted"]);
+    if (d.status === "succeeded" && !r) stages.push(fresh(d) ? ["Preparing the approval…", ""] : ["Plan expired: plan it again", "muted"]);
   }
   if (r) {
     if (r.status === "refused") stages.push([brief(r.guards.join(" ")), "error"]);
@@ -617,7 +617,7 @@ export function approvalBox(name, run, dry, done) {
   const msg = h("p", { class: "error small" });
   const el = h("div", { class: "approve-box" },
     checklist(run.request.parameters.steps.map((s) => ({ status: dryById[s.id]?.status || "", title: s.title, detail: dryById[s.id]?.detail }))),
-    h("p", { class: "small muted" }, "Request ", h("code", {}, run.request_sha256.slice(0, 12)), dry ? ` · dry run ${dry.status} ${when(dry.created)}` : ""),
+    h("p", { class: "small muted" }, "Request ", h("code", {}, run.request_sha256.slice(0, 12)), dry ? ` · plan ${dry.status} ${when(dry.created)}` : ""),
     h("div", { class: "approve" }, run.needs_typed_cluster ? [h("label", { class: "small" }, `Type ${run.cluster} to confirm`), typed] : null, yes, no), msg);
   const box = { el, done };
   // A tear down needs the cluster name typed: Approve stays greyed out until it matches.

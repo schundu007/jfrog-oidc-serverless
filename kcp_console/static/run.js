@@ -148,7 +148,7 @@ function pane(r, sel) {
     ? [["Action", runTitle(run)], ["Cluster", run.cluster], ["Prepared", when(run.created)], ["Approved", when(run.approved?.at) || "—"],
       ["Finished", when(run.finished) || "—"], ["Request", h("code", {}, (run.request_sha256 || "").slice(0, 12))]]
     : [["Status", KIND_TEXT[kindOf(sel.status)]], ["Duration", sel.from ? duration(sel.from, sel.to || undefined) : "—"],
-      ["Kind", sel.plan.kind || "—"], sel.plan.dry_run_note ? ["Dry run", sel.plan.dry_run_note] : null];
+      ["Kind", sel.plan.kind || "—"], sel.plan.dry_run_note ? ["Plan", sel.plan.dry_run_note] : null];
   return h("div", { class: "run-pane" },
     run.status === "prepared" ? h("section", { class: "card needs-you" },
       h("div", { class: "card-head" }, icon("waiting"), h("h2", {}, "Approval needed"), muted(runTitle(run))),
