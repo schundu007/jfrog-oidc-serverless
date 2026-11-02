@@ -274,7 +274,7 @@
 .conn-inline .field { flex: 1; min-width: 0; }
 .conn-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; }
 /* Use login: a two-way switch, the login in use filled. */
-.conn-switch { display: inline-flex; border: 1px solid var(--border); width: max-content; }
+.conn-switch { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); width: max-content; max-width: 100%; }
 .conn-switch button { border: 0; border-radius: 0; background: var(--surface); color: var(--fg); padding: 6px 14px; font: inherit; }
 .conn-switch button + button { border-left: 1px solid var(--border); }
 .conn-switch button:hover:not(:disabled) { background: var(--surface-2); }

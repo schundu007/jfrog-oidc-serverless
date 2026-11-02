@@ -22,6 +22,7 @@ their allow-list) pick it up on their next call.
 from __future__ import annotations
 
 import concurrent.futures
+import configparser
 import json
 import os
 import re
@@ -148,9 +149,19 @@ class Connections:
 
     def use(self, tool: str, body: dict) -> dict:
         """Switch which login a tool acts as. Neither login is removed, so switching back is instant."""
+        login = str(body.get("login") or "")
+        if tool == "aws":
+            known = set(self.aws_kinds())
+            lp = self.shell_factory().run(["aws", "configure", "list-profiles"], timeout=30)
+            known |= set(lp.stdout.split()) if lp.ok else set()
+            if not NAME_RE.match(login) or login not in known:
+                raise SettingsError("pick one of this machine's AWS profiles")
+            keep = dict(self.settings().get("aws") or {})
+            self._update("aws", {**keep, "profile": login})
+            self.apply()
+            return {"login": login}
         if tool not in ("gcp", "azure", "jfrog"):
             raise SettingsError(f"{tool} has one login only", 404)
-        login = str(body.get("login") or "")
         if login not in ("machine", "console"):
             raise SettingsError("login is machine or console")
         if login == "console" and not self.logins(tool)["console"]:
@@ -191,7 +202,8 @@ class Connections:
         sess, lines = p["session"], p["session"].lines
         text = "\n".join(lines)
         out = {"state": "done" if sess.done else "waiting", "lines": lines[-12:]}
-        url = (GOOGLE_URL.search(text) if tool == "gcp" else None) or DEVICE_URL.search(text)
+        url = ((GOOGLE_URL.search(text) if tool == "gcp" else None) or DEVICE_URL.search(text)
+               or (re.search(r"https://\S+", text) if tool == "aws" else None))
         if url:
             out["url"] = url.group(0).rstrip(".,)")
         code = DEVICE_CODE.search(text) if tool != "gcp" else None
@@ -290,7 +302,49 @@ class Connections:
             out["account"], out["arn"] = (ident or {}).get("Account") or "", (ident or {}).get("Arn") or ""
         out["signed_in"] = bool(out["arn"])
         out["pending"] = self._pending("aws")
+        out["kinds"] = self.aws_kinds()
+        out["profiles"] = sorted(set(profiles) | set(out["kinds"]), key=lambda p: (p != "default", p))
+        out["in_use"] = out["profile"] or "default"
+        out["region"] = out["region"] or self._aws_profile_region(out["in_use"])
         return out
+
+    def _aws_profile_region(self, profile: str) -> str:
+        cp = configparser.ConfigParser(interpolation=None)
+        try:
+            cp.read(Path(self.environ.get("AWS_CONFIG_FILE") or Path.home() / ".aws" / "config"))
+        except (OSError, configparser.Error):
+            return ""
+        sec = "default" if profile == "default" else f"profile {profile}"
+        return cp.get(sec, "region", fallback="") if cp.has_section(sec) else ""
+
+    def aws_kinds(self) -> dict:
+        """Each profile in the AWS config file and how it signs in: aws login, IAM Identity Center (SSO),
+        or access keys (nothing to sign in or out)."""
+        path = Path(self.environ.get("AWS_CONFIG_FILE") or Path.home() / ".aws" / "config")
+        cp = configparser.ConfigParser(interpolation=None)
+        try:
+            cp.read(path)
+        except (OSError, configparser.Error):
+            return {}
+        out = {}
+        for sec in cp.sections():
+            name = "default" if sec == "default" else sec[len("profile "):] if sec.startswith("profile ") else ""
+            if not name or not NAME_RE.match(name):
+                continue
+            body = cp[sec]
+            out[name] = ("login" if "login_session" in body else
+                         "sso" if "sso_session" in body or "sso_start_url" in body else "keys")
+        return out
+
+    def _aws_sign_argv(self, way: str, profile: str) -> list:
+        kind = self.aws_kinds().get(profile)
+        if kind == "login":
+            return (["aws", "login", "--remote", "--profile", profile] if way == "in"
+                    else ["aws", "logout", "--profile", profile])
+        if kind == "sso":
+            return (["aws", "sso", "login", "--profile", profile, "--use-device-code", "--no-browser"] if way == "in"
+                    else ["aws", "sso", "logout", "--profile", profile])
+        raise SettingsError(f"profile {profile} uses access keys: there is nothing to sign in or out")
 
     # -- sign in / out ------------------------------------------------------------------------
 
@@ -315,10 +369,10 @@ class Connections:
             argv += ["--tenant", tenant] if tenant else []
             extra, saved = self._env_for("azure"), {"mode": "console", **({"tenant": tenant} if tenant else {})}
         else:
-            profile = str(body.get("profile") or (self.settings().get("aws") or {}).get("profile") or "").strip()
-            if not profile or not NAME_RE.match(profile):
+            profile = str(body.get("profile") or self.environ.get("AWS_PROFILE") or "default").strip()
+            if not NAME_RE.match(profile):
                 raise SettingsError("pick an AWS profile first")
-            argv = ["aws", "sso", "login", "--profile", profile, "--use-device-code", "--no-browser"]
+            argv = self._aws_sign_argv("in", profile)
             extra, saved = {}, None
         sess = sh.start(argv, timeout=PENDING_SECONDS, extra_env=extra)
         with self._lock:
@@ -366,6 +420,13 @@ class Connections:
         if tool == "jfrog":
             self._jfrog_token, self._jfrog_login = "", "machine"
             self.apply()
+            return {"signed_out": True}
+        if tool == "aws":
+            self.cancel("aws")
+            profile = self.environ.get("AWS_PROFILE") or "default"
+            r = self.shell_factory().run(self._aws_sign_argv("out", profile), timeout=60)
+            if not r.ok:
+                raise SettingsError("AWS did not sign out: " + redact.text(r.stderr.strip())[:200])
             return {"signed_out": True}
         if tool not in ("gcp", "azure"):
             raise SettingsError(f"nothing to sign out for {tool}", 404)

@@ -8,7 +8,9 @@ import { api, h, help } from "/serverless/static/core.js";
 
 const LOGO = {"gcp": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 19.3\" aria-hidden=\"true\"><path fill=\"#EA4335\" d=\"M15.2 5.3h.7l2-2 .1-.9C14.2-.9 8.5-.5 5.2 3.3c-.9 1-1.6 2.3-2 3.6.2-.1.5-.1.7 0l4-.7s.2-.3.3-.3c1.8-2 4.8-2.2 6.9-.5h.1z\"/><path fill=\"#4285F4\" d=\"M20.8 6.9c-.5-1.7-1.4-3.2-2.7-4.4l-2.8 2.8c1.2 1 1.9 2.5 1.8 4v.5c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5h-5l-.5.5v3l.5.5h5c3.6 0 6.5-2.9 6.5-6.5 0-2.2-1.1-4.2-2.8-5.4z\"/><path fill=\"#34A853\" d=\"M7.1 19.3h5v-4h-5c-.4 0-.7-.1-1-.2l-.7.2-2 2-.2.7c1.1.8 2.5 1.3 3.9 1.3z\"/><path fill=\"#FBBC05\" d=\"M7.1 6.3C3.5 6.3.6 9.3.6 12.9c0 2 1 3.9 2.6 5.2l2.9-2.9c-1.3-.6-1.8-2.1-1.3-3.3.6-1.3 2.1-1.8 3.3-1.3.6.3 1 .7 1.3 1.3l2.9-2.9c-1.2-1.6-3.1-2.6-5.2-2.6z\"/></svg>","azure": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"#0078D4\" d=\"M5.483 21.3H24L14.025 4.013l-3.038 8.347 5.836 6.938L5.483 21.3zM13.23 2.7L6.105 8.677 0 19.253h5.505v.014L13.23 2.7z\"/></svg>","ado": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path fill=\"#0078D4\" d=\"M17 4v9.74l-4 3.28-6.2-2.26V17l-3.51-4.59 10.23.8V4.44zm-3.41.49L7.85 1v2.29L2.58 4.84 1 6.87v4.61l2.26 1V6.57z\"/></svg>","jfrog": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect width=\"24\" height=\"24\" rx=\"5\" fill=\"#40BE46\"/><circle cx=\"8\" cy=\"9\" r=\"2.2\" fill=\"#fff\"/><circle cx=\"16\" cy=\"9\" r=\"2.2\" fill=\"#fff\"/><path d=\"M6 14.5c1.6 2.2 3.7 3.2 6 3.2s4.4-1 6-3.2\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\"/></svg>","aws": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect width=\"24\" height=\"24\" rx=\"5\" fill=\"#232F3E\"/><text x=\"12\" y=\"13\" text-anchor=\"middle\" font-family=\"Arial,Helvetica,sans-serif\" font-weight=\"700\" font-size=\"8\" fill=\"#fff\">aws</text><path d=\"M6 16c3.6 2 8.4 2 12 0\" stroke=\"#FF9900\" stroke-width=\"1.6\" fill=\"none\" stroke-linecap=\"round\"/><path d=\"M16.6 15.2l1.6.6-.5 1.6\" stroke=\"#FF9900\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\"/></svg>"};   // constant SVG only   // constant SVG only
 const $ = (id) => document.getElementById(id);
-const SOURCE = { console: "This console", machine: "This machine" };
+const SOURCE = { console: "Signed in here", machine: "Computer's login" };
+const LOGIN_TIP = "Computer's login: the one made in a terminal on the computer running this console (gcloud auth login, az login). "
+  + "Signed in here: a separate login made on this page and kept by the console only; the computer's login is not touched.";
 const CATEGORY = { cloud: "Cloud providers", cicd: "CI/CD", artifacts: "Artifact platforms" };
 
 let state = null, timer = null, open = null;
@@ -94,21 +96,23 @@ function pending(tool, p) {
   box.append(actions(button("Cancel sign-in", async () => { await post(tool, "cancel"); await load(); })));
   return box;
 }
-// Which login a tool acts as: this machine's or the one signed in on this console. Both are kept, so
-// switching is instant; the console's option needs a sign-in here first.
-function loginSwitch(tool, s) {
-  const has = s.logins || {};
-  const opt = (login, label, why) => {
-    const on = s.source === login;
-    const b = button(label, async () => { await post(tool, "use", { login }); await load(); }, "", need(signingIn(s),
-      () => (on ? "In use" : ""), () => (has[login] ? "" : why)));
+// A two-way (or n-way) switch: the option in use is filled; the others switch at once.
+// opts: [value, label, why-not-available or ""]; set(value) does the switch.
+function switcher(label, tip, inUse, opts, set, s) {
+  const bs = opts.map(([v, text, why]) => {
+    const on = inUse === v;
+    const b = button(text, async () => { await set(v); await load(); }, "", need(signingIn(s), () => (on ? "In use" : ""), () => why || ""));
     b.setAttribute("aria-pressed", String(on));
     return b;
-  };
-  return h("div", { class: "field" }, h("span", { class: "field-label" }, "Use login"),
-    h("div", { class: "conn-switch", role: "group", "aria-label": "Use login" },
-      opt("machine", "This machine", "No login on this machine"), opt("console", "This console", "Sign in on this console first")));
+  });
+  return h("div", { class: "field" }, h("span", { class: "field-label" }, label, tip ? help(tip) : null),
+    h("div", { class: "conn-switch", role: "group", "aria-label": label }, ...bs));
 }
+// Which login a tool acts as. Both are kept, so switching is instant; "Signed in here" needs a sign-in first.
+const loginSwitch = (tool, s, tip = LOGIN_TIP) => switcher("Use login", tip, s.source, [
+  ["machine", SOURCE.machine, s.logins?.machine ? "" : "No login on this computer"],
+  ["console", SOURCE.console, s.logins?.console ? "" : "Sign in here first"]],
+(login) => post(tool, "use", { login }), s);
 // Sign in and sign out take turns: a console login exists → Sign out (removes it); none → Sign in.
 // While a sign-in waits, the pending box carries Cancel instead.
 function signInOut(tool, s, signIn, when) {
@@ -127,9 +131,9 @@ async function choices(tool) {
 // ------------------------------------------------------------------------------------------- connectors
 
 // status(s): [dot, text] for the list; scope(s): what it points at; panel(s): the side panel's sections.
-const CONNECTORS = [
+const ALL_CONNECTORS = [
   { id: "gcp", name: "Google Cloud", category: "cloud",
-    about: "gcloud and Terraform act as this account. Sign in here to use a login kept by this console instead of this machine's.",
+    about: "gcloud and Terraform act as this account.",
     scope: (s) => s.project,
     panel: (s) => {
       const pick = state.choices?.gcp;
@@ -169,20 +173,29 @@ const CONNECTORS = [
     } },
   { id: "aws", name: "AWS", category: "cloud",
     about: "The AWS CLI acts as this profile.",
-    scope: (s) => [s.profile, s.region].filter(Boolean).join(" · "),
-    panel: (s) => [
-      section("Connection", facts([["Account", s.account], ["Identity", s.arn], ["Profile", s.profile], ["Region", s.region]]), missing(s, "AWS CLI")),
-      pending("aws", s.pending),
-      section("Profile",
-        h("div", { class: "conn-fields" },
-          field("aws", "profile", "Profile", { list: (s.profiles || []).map((p) => [p, p]), value: s.profile }),
-          field("aws", "region", "Region", { value: s.region, placeholder: "us-east-1" })),
-        actions(button("Save", async () => { await put("aws", { profile: val("aws", "profile"), region: val("aws", "region") }); await load(); }, "primary",
-          need(signingIn(s), filled(["aws", "profile"]), changed([[["aws", "profile"], s.profile], [["aws", "region"], s.region]]),
-            () => (/^[a-z]{2}(-[a-z]+)+-\d$/.test(val("aws", "region")) || !val("aws", "region") ? "" : "Region looks like us-east-1"))),
-          button("SSO sign-in", async () => { await post("aws", "signin", { profile: val("aws", "profile") }); await load(); }, "secondary",
-            need(signingIn(s), () => (s.cli === false ? "AWS CLI is not installed" : ""), () => (val("aws", "profile") ? "" : "Choose a profile first"))))),
-    ] },
+    scope: (s) => [s.in_use, s.region].filter(Boolean).join(" · "),
+    panel: (s) => {
+      const kind = (s.kinds || {})[s.in_use] || "keys";
+      const KIND = { login: "aws login", sso: "IAM Identity Center (SSO)", keys: "Access keys" };
+      return [
+        section("Connection", facts([["Account", s.account], ["Identity", s.arn], ["Sign-in", KIND[kind]], ["Region", s.region]]),
+          missing(s, "AWS CLI"),
+          switcher("Use profile", "This computer's AWS profiles (~/.aws/config). The one in use is filled.", s.in_use,
+            (s.profiles || []).map((p) => [p, p, ""]), (login) => post("aws", "use", { login }), s),
+          kind === "keys" || s.pending?.state === "waiting" ? null
+            : s.signed_in
+              ? actions(button("Sign out", async () => { await post("aws", "signout"); await load(); }, "secondary"))
+              : actions(button("Sign in", async () => { await post("aws", "signin", { profile: s.in_use }); await load(); }, "primary",
+                () => (s.cli === false ? "AWS CLI is not installed" : "")))),
+        pending("aws", s.pending),
+        section("Region",
+          h("div", { class: "conn-inline" },
+            field("aws", "region", "", { value: s.region, placeholder: "us-east-1" }),
+            button("Save", async () => { await put("aws", { profile: s.in_use, region: val("aws", "region") }); await load(); }, "primary",
+              need(signingIn(s), changed([[["aws", "region"], s.region]]),
+                () => (/^[a-z]{2}(-[a-z]+)+-\d$/.test(val("aws", "region")) || !val("aws", "region") ? "" : "Region looks like us-east-1"))))),
+      ];
+    } },
   { id: "ado", name: "Azure DevOps", category: "cicd",
     about: "Pipelines, pull requests and approvals. Signs in through Azure: the Azure account must be a member of the organization.",
     scope: (s) => [s.values?.organization, s.values?.project].filter(Boolean).join(" / "),
@@ -212,7 +225,8 @@ const CONNECTORS = [
     panel: (s) => [
       section("Connection", facts([["Platform", s.url], ["Admin token", s.token_present ? "Present" : ""],
         ["Admin rights", s.admin === null || s.admin === undefined ? "" : s.admin ? "Yes" : "No"], ["Console operator", s.operator]]),
-        s.error ? h("p", { class: "conn-msg bad" }, s.error) : null, loginSwitch("jfrog", s),
+        s.error ? h("p", { class: "conn-msg bad" }, s.error) : null, loginSwitch("jfrog", s, "Computer's login: the JFROG_ACCESS_TOKEN set on the computer running this console. "
+          + "Signed in here: the token pasted on this page, kept in the console's memory only."),
         s.logins?.console ? null : h("div", { class: "conn-fields" },
           field("jfrog", "url", "Platform URL", { type: "url", value: s.url, placeholder: "https://acme.jfrog.io" }),
           field("jfrog", "token", "Admin access token", { type: "password", placeholder: "Paste a token",
@@ -224,6 +238,10 @@ const CONNECTORS = [
           () => ($("f-jfrog-token")?.value ? "" : "Paste an admin token")))),
     ] },
 ];
+
+// AWS is paused (Azure and Google Cloud only for now): kept here, not shown. Drop it from PAUSED to bring it back.
+const PAUSED = new Set(["aws"]);
+const CONNECTORS = ALL_CONNECTORS.filter((c) => !PAUSED.has(c.id));
 
 // [dot class, text, filter key]
 function statusOf(s) {
