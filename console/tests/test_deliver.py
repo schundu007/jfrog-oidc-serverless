@@ -252,6 +252,25 @@ class LoadTests(unittest.TestCase):
         (stacks / "serverless/azure/azure-foundation" / "terraform.tfstate").unlink()    # not deployed: that cloud is left out
         self.assertNotIn("azure", deliver.load_settings(d / "delivery.json", stacks)["state"])
 
+    def test_refresh_reads_a_foundation_deployed_after_start(self):
+        d = Path(tempfile.mkdtemp(prefix="deliver-cfg-"))
+        self.addCleanup(shutil.rmtree, d, True)
+        (d / "delivery.json").write_text(json.dumps({"ado": DELIVERY["ado"]}))
+        stacks = d / "stacks"
+        s = deliver.load_settings(d / "delivery.json", stacks)   # the console starts before the foundation
+        self.assertEqual(s["state"], {})
+        f = stacks / "serverless/gcp/gcp-foundation"
+        f.mkdir(parents=True)
+        (f / "terraform.tfstate").write_text(json.dumps({"outputs": {"tfstate_bucket": {"value": "p-tfstate"},
+                                                                     "gcp_service_accounts": {"value": {"setup": "ado-setup@p.iam"}}}}))
+        deliver.refresh(s)
+        self.assertEqual(s["state"]["gcp"], {"type": "gcs", "bucket": "p-tfstate"})
+        self.assertEqual(s["pipeline_identity"]["gcp"], "ado-setup@p.iam")
+        (f / "terraform.tfstate").unlink()   # torn down again: dropped, not kept from before
+        deliver.refresh(s)
+        self.assertNotIn("gcp", s["state"])
+        deliver.refresh(None)   # local mode: nothing to refresh
+
 
 class WireWorkspaceTests(unittest.TestCase):
     def setUp(self):

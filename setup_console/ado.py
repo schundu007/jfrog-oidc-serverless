@@ -241,8 +241,13 @@ class Ado:
         return None
 
     def answer(self, approval_id: str, approve: bool, comment: str) -> None:
-        self._call("PATCH", "/pipelines/approvals",
-                   [{"approvalId": approval_id, "status": "approved" if approve else "rejected", "comment": comment}])
+        try:
+            self._call("PATCH", "/pipelines/approvals",
+                       [{"approvalId": approval_id, "status": "approved" if approve else "rejected", "comment": comment}])
+        except AdoError as exc:
+            # Already answered (e.g. in ADO itself): following the run says whether it was approved.
+            if "already in completed state" not in str(exc):
+                raise
 
     def stack_run(self, run_id: int) -> dict:
         """Where a stack-setup run is. phase: planning | waiting_approval | applying | done | declined | failed.

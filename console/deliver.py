@@ -103,10 +103,28 @@ def load_settings(path, stacks_dir=None, overrides=None) -> dict | None:
         missing = [k for k in keys if not (data.get(section) or {}).get(k)]
         if missing:
             raise DeliveryError(f"{path.name}: {section} needs {', '.join(missing)}")
-    found = foundation_settings(stacks_dir or path.resolve().parent.parent / "terraform" / "stacks")
-    for key in ("pipeline_identity", "state"):
-        data[key] = {**(data.get(key) or {}), **found[key]}
+    data = Settings(data, stacks_dir or path.resolve().parent.parent / "terraform" / "stacks")
+    refresh(data)
     return data
+
+
+class Settings(dict):
+    """The delivery settings, plus where to re-read the foundations' outputs from (refresh)."""
+
+    def __init__(self, data: dict, stacks_dir):
+        super().__init__(data)
+        self.stacks_dir = Path(stacks_dir)
+        self.file_values = {k: dict(data.get(k) or {}) for k in ("pipeline_identity", "state")}
+
+
+def refresh(settings):
+    """Re-read pipeline identities and state backends from the foundations, in place: a foundation
+    deployed (or destroyed) while the console runs counts at once, without a restart."""
+    if isinstance(settings, Settings):
+        found = foundation_settings(settings.stacks_dir)
+        for key in ("pipeline_identity", "state"):
+            settings[key] = {**settings.file_values[key], **found[key]}
+    return settings
 
 
 def _backend(settings: dict, cloud: str, ws_name: str) -> dict:

@@ -151,6 +151,14 @@ class AdoTests(unittest.TestCase):
         c.answer("ap-1", False, "declined")
         self.assertEqual(sh.sent[-1][3][0]["status"], "rejected")
 
+    def test_answer_to_an_approval_already_completed_is_not_an_error(self):
+        # ADO answers 409 when the approval was already answered; the run itself says what happened.
+        c, _ = self.client({("PATCH", "/pipelines/approvals"): (409, {"message": "Approval update failed. Approval is already in completed state."})})
+        c.answer("ap-1", True, "plan abc approved in the console")
+        c, _ = self.client({("PATCH", "/pipelines/approvals"): (409, {"message": "Some other conflict"})})
+        with self.assertRaises(ado.AdoError):
+            c.answer("ap-1", True, "plan abc approved in the console")
+
     def test_build_warnings_name_the_first_image(self):
         recs = {"records": [{"type": "Task", "name": "Roll out artifact-reader (OIDC)", "state": "completed", "result": "succeeded",
                              "issues": [{"type": "warning", "message": "Cloud Run job artifact-reader does not exist yet: pushed "

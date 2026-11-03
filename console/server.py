@@ -29,7 +29,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import live, inventory, model, redact
+from . import deliver, live, inventory, model, redact
 from .archive import Archive
 from .runner import STEPS, Run, RunError, RunManager
 from .shell import Shell, load_fixtures
@@ -675,7 +675,7 @@ def _make_handler(console: ConsoleServer):
                 raise HttpError(409, "another Preflight or Discover is still running")
             try:
                 sh = console.shell()
-                result = (preflight.run(cfg, sh, env=console.step_env(), delivery=console.delivery or False,
+                result = (preflight.run(cfg, sh, env=console.step_env(), delivery=deliver.refresh(console.delivery) or False,
                                          repo_root=console.repo_root)
                           if step == "preflight" else discover.run(cfg, sh))
                 console.save_recording(sh, step)
@@ -697,7 +697,7 @@ def _make_handler(console: ConsoleServer):
             def work():
                 try:
                     sh = console.shell(on_line=lambda line: frames.put(("log", {"line": line, "t": time.time()})))
-                    result = preflight.run(cfg, sh, env=console.step_env(), delivery=console.delivery or False,
+                    result = preflight.run(cfg, sh, env=console.step_env(), delivery=deliver.refresh(console.delivery) or False,
                                            repo_root=console.repo_root, on_check=lambda c: frames.put(("check", c)))
                     console.save_recording(sh, "preflight")
                     result["mode"] = console.mode
