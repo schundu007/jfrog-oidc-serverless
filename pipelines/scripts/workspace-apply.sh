@@ -6,6 +6,8 @@
 # `python -m console.deliver wire` with the outputs. GCP workspaces log in to
 # GCP through WIF as the setup service account; Azure ones use the AzureCLI@2
 # login. The JFrog admin token comes from the setup connection's OIDC token.
+# WORKSPACE_DESTROY=true (the pipeline's destroy parameter) destroys the named
+# workspaces instead: plan -destroy, apply, no wiring.
 set -euo pipefail
 cd "$BUILD_SOURCESDIRECTORY"
 
@@ -74,6 +76,20 @@ for c in json.load(sys.stdin).get("resource_changes", []):
   [ "$imported" = false ] || terraform -chdir="$ws" plan -input=false -no-color -lock-timeout=5m -out=tfplan \
     -var "adopt_jfrog_integration=$adopt" 2>>"$OIDC_DIR/plan.err"
 }
+
+if [ "$(echo "${WORKSPACE_DESTROY:-false}" | tr A-Z a-z)" = true ]; then
+  [ "$#" -gt 0 ] || { echo "destroy needs the workspace parameter" >&2; exit 2; }
+  for ws in "${workspaces[@]}"; do
+    echo "== destroy $ws"
+    terraform -chdir="$ws" init -input=false -no-color
+    # Whatever the workspace created (adopted or not) is in its state; destroy exactly that.
+    adopt=false
+    terraform -chdir="$ws" state list 2>/dev/null | grep -q '^module.jfrog_oidc.platform_oidc_configuration' || adopt=true
+    terraform -chdir="$ws" plan -destroy -input=false -no-color -lock-timeout=5m -out=tfplan -var "adopt_jfrog_integration=$adopt"
+    terraform -chdir="$ws" apply -input=false -no-color -lock-timeout=5m tfplan
+  done
+  exit 0
+fi
 
 for ws in "${workspaces[@]}"; do
   [ -f "$ws/main.tf.json" ] || { echo "$ws: removed, skipping"; continue; }

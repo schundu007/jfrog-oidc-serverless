@@ -15,6 +15,10 @@ parameters:
     displayName: Workspace to re-apply (empty = those changed by the last commit)
     type: string
     default: ' '
+  - name: destroy
+    displayName: Destroy the named workspace instead (its JFrog integration, mappings and identities); needs workspace
+    type: boolean
+    default: false
 
 variables:
   - template: vars/gcp-test.yml
@@ -47,5 +51,6 @@ jobs:
         displayName: Apply and wire (OIDC)
         env:
           SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          WORKSPACE_DESTROY: ${{ parameters.destroy }}
           JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
           GCP_SETUP_SERVICE_ACCOUNT: $(GCP_SETUP_SERVICE_ACCOUNT)
