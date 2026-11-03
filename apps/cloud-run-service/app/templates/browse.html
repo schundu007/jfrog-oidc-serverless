@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ item.path }} - JFrog browser{% endblock %}
+{% block content %}
+<h1 class="crumbs">
+  <a href="{{ url_for('home') }}">Repositories</a>
+  {% for name, path in crumbs %}<span class="sep">/</span>{% if loop.last %}<span>{{ name }}</span>{% else %}<a href="{{ url_for('browse', repo_path=path) }}">{{ name }}</a>{% endif %}{% endfor %}
+</h1>
+{% if item.folder %}
+<section class="card">
+  <table>
+    <thead><tr><th>Name</th><th>Kind</th></tr></thead>
+    <tbody>
+    {% for c in item.children %}
+      <tr>
+        <td><a href="{{ url_for('browse', repo_path=item.path ~ '/' ~ c.name) }}">{{ c.name }}{% if c.folder %}/{% endif %}</a></td>
+        <td>{% if c.folder %}<span class="pill">folder</span>{% else %}<span class="pill">file</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="2" class="muted">Empty folder.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% else %}
+<section class="card">
+  <table>
+    <thead><tr><th>Field</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Size</td><td>{{ item.size | human }}</td></tr>
+      <tr><td>Type</td><td>{{ item.mime_type }}</td></tr>
+      <tr><td>Modified</td><td>{{ item.modified or "-" }}</td></tr>
+      <tr><td>SHA-256</td><td class="mono">{{ item.sha256 or "-" }}</td></tr>
+    </tbody>
+  </table>
+  <p class="actions">
+    {% if too_big %}<span class="muted">Larger than this service streams.</span>
+    {% else %}<a class="button" href="{{ url_for('download', repo_path=item.path) }}">Download</a>{% endif %}
+    <a href="{{ url_for('api_item', repo_path=item.path) }}">JSON</a>
+  </p>
+</section>
+{% endif %}
+{% endblock %}

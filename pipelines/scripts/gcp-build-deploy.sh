@@ -17,6 +17,17 @@ KIND=${KIND:-job}
 source pipelines/scripts/oidc-login.sh
 loc=(--region "$GCP_REGION" --project "$GCP_PROJECT")
 
+# An app with requirements.txt gets its wheels from JFrog (python 3.12, linux x86_64) with the
+# OIDC token; its Dockerfile installs only from apps/<app>/wheels (never public PyPI).
+fetch_wheels() {   # $1 = app dir
+  [ -f "apps/$1/requirements.txt" ] && grep -q '/wheels' "apps/$1/Dockerfile" || return 0
+  : "${JFROG_PYPI_REPO:?}"
+  rm -rf "apps/$1/wheels"
+  python3 -m jfrog_oidc pip --repo "$JFROG_PYPI_REPO" -- download --quiet --dest "apps/$1/wheels" \
+    --only-binary=:all: --platform manylinux2014_x86_64 --python-version 3.12 --implementation cp \
+    -r "apps/$1/requirements.txt"
+}
+
 build_image() {
   : "${IMAGE_REPOSITORY:?}" "${JFROG_DOCKER_REMOTE:?}" "${BASE_IMAGE:?}"
   # JFROG_DOCKER_LOCAL comes from gcp-jfrog-trust (variable group jfrog-oidc-gcp-<env>-jfrog).
@@ -28,8 +39,10 @@ build_image() {
   image="${registry}/${GCP_PROJECT}/${IMAGE_REPOSITORY}/${WORKLOAD}:${tag}"
   python3 -m jfrog_oidc docker-login
   gcloud auth print-access-token | docker login --username oauth2accesstoken --password-stdin "https://${registry}"
+  fetch_wheels "$APP"
   docker build --pull \
     --file "apps/${APP}/Dockerfile" \
+    --build-arg APP_VERSION="$tag" \
     --build-arg BASE_IMAGE="${jfrog_host}/${JFROG_DOCKER_REMOTE}/${BASE_IMAGE}" \
     --label "org.opencontainers.image.revision=${BUILD_SOURCEVERSION}" \
     --tag "$jfrog_image" --tag "$image" .

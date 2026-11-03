@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ status }} - JFrog browser{% endblock %}
+{% block content %}
+<h1>{{ status }}</h1>
+<section class="card bad">
+  <p>{{ message }}</p>
+  <p class="muted mono">request {{ request_id }}</p>
+</section>
+<p><a href="{{ url_for('home') }}">Back to repositories</a></p>
+{% endblock %}

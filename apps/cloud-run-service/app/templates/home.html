@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Repositories</h1>
+{% if problem %}
+  <section class="card bad"><h2>JFrog</h2><p>{{ problem }}</p></section>
+{% endif %}
+{% if identity %}
+<section class="stats">
+  <div class="stat"><span class="label">Cloud identity</span><span class="value">{{ identity.cloud_identity or "-" }}</span></div>
+  <div class="stat"><span class="label">JFrog user</span><span class="value">{{ identity.jfrog_user }}</span></div>
+  <div class="stat"><span class="label">Token expires in</span><span class="value">{{ (identity.expires_in // 60) }} min</span></div>
+  <div class="stat"><span class="label">JFrog</span><span class="value"><a href="{{ settings.jfrog_url }}">{{ settings.jfrog_url | replace("https://", "") }}</a></span></div>
+</section>
+{% endif %}
+<section class="card">
+  <table>
+    <thead><tr><th>Repository</th><th>Type</th><th>Package type</th><th>Description</th></tr></thead>
+    <tbody>
+    {% for r in repos %}
+      <tr>
+        <td><a href="{{ url_for('browse', repo_path=r.key) }}">{{ r.key }}</a></td>
+        <td><span class="pill">{{ r.type }}</span></td>
+        <td>{{ r.package_type }}</td>
+        <td>{{ r.description }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="muted">No repository this service may read.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

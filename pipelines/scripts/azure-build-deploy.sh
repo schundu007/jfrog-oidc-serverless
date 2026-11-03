@@ -24,6 +24,17 @@ az group show --name "$rg" --only-show-errors >/dev/null 2>&1 || {
   exit 0
 }
 
+# An app with requirements.txt gets its wheels from JFrog (python 3.12, linux x86_64) with the
+# OIDC token; its Dockerfile installs only from apps/<app>/wheels (never public PyPI).
+fetch_wheels() {   # $1 = app dir
+  [ -f "apps/$1/requirements.txt" ] && grep -q '/wheels' "apps/$1/Dockerfile" || return 0
+  : "${JFROG_PYPI_REPO:?}"
+  rm -rf "apps/$1/wheels"
+  python3 -m jfrog_oidc pip --repo "$JFROG_PYPI_REPO" -- download --quiet --dest "apps/$1/wheels" \
+    --only-binary=:all: --platform manylinux2014_x86_64 --python-version 3.12 --implementation cp \
+    -r "apps/$1/requirements.txt"
+}
+
 build_image() {   # $1 = app dir, $2 = base image
   : "${JFROG_DOCKER_REMOTE:?}"
   acr=$(az acr list --resource-group "$rg" --query "[0].name" -o tsv)
@@ -33,7 +44,9 @@ build_image() {   # $1 = app dir, $2 = base image
   image="${registry}/${repo_tag}"
   python3 -m jfrog_oidc docker-login
   az acr login --name "$acr" --only-show-errors
+  fetch_wheels "$1"
   docker build --pull --file "apps/$1/Dockerfile" --build-arg BASE_IMAGE="$2" \
+    --build-arg APP_VERSION="${BUILD_SOURCEVERSION:0:12}" \
     --label "org.opencontainers.image.revision=${BUILD_SOURCEVERSION}" --tag "$image" .
   docker push "$image"
 }

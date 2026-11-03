@@ -36,13 +36,44 @@ resource "google_cloud_run_v2_service" "workload" {
   ingress             = "INGRESS_TRAFFIC_ALL"
 
   template {
-    service_account = google_service_account.workload.email
+    service_account                  = google_service_account.workload.email
+    timeout                          = "300s"
+    max_instance_request_concurrency = 40
     scaling {
       min_instance_count = 0
       max_instance_count = 2
     }
     containers {
       image = var.service_image
+      # gunicorn (apps/cloud-run-service) binds $PORT; 8000, never 8080.
+      ports {
+        container_port = 8000
+      }
+      resources {
+        limits = {
+          cpu    = "1"
+          memory = "512Mi"
+        }
+        cpu_idle          = true
+        startup_cpu_boost = true
+      }
+      # Liveness needs no JFrog: a JFrog outage must not restart healthy instances.
+      startup_probe {
+        http_get {
+          path = "/healthz"
+        }
+        period_seconds    = 2
+        failure_threshold = 15
+        timeout_seconds   = 2
+      }
+      liveness_probe {
+        http_get {
+          path = "/healthz"
+        }
+        period_seconds    = 30
+        failure_threshold = 3
+        timeout_seconds   = 3
+      }
     }
   }
 

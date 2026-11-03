@@ -2,3 +2,4 @@
 # runs (build-deploy, onboarding, the JFrog OIDC stacks); infrastructure runs never include it.
 variables:
   JFROG_DOCKER_REMOTE: docker-remote
+  JFROG_PYPI_REPO: pypi-remote

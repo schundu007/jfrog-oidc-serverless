@@ -53,6 +53,15 @@ def download(provider: JFrogTokenProvider, repo_path: str, dest: str, timeout: f
     return dest
 
 
+def open_artifact(provider: JFrogTokenProvider, repo_path: str, timeout: float = 60.0):
+    """Open <repo>/<path> for streaming: a file-like HTTP response (use it with `with`).
+
+    The token goes to JFrog only, never to a redirect target.
+    """
+    url = f"{provider.jfrog_url}/artifactory/{urllib.parse.quote(repo_path.lstrip('/'))}"
+    return _open(provider, url, timeout=timeout)
+
+
 def get_json(provider: JFrogTokenProvider, api_path: str) -> object:
     """GET a JFrog REST path, e.g. "/artifactory/api/storage/generic-local/models"."""
     import json

@@ -21,6 +21,7 @@ from jfrog_oidc import (
     IdentityError,
     JFrogTokenProvider,
     download,
+    open_artifact,
 )
 from jfrog_oidc.sources import detect_source
 
@@ -263,6 +264,14 @@ class GcpFlowTests(BaseCase):
             dest = download(p, "generic-local/models/m.bin", os.path.join(d, "m.bin"))
             with open(dest, "rb") as fh:
                 self.assertEqual(fh.read(), b"artifact-bytes")
+        self.assertEqual(len(FakeCloud.state["exchanges"]), 2)
+
+    def test_open_artifact_streams_with_the_token_and_refreshes_on_401(self):
+        p = self.gcp_provider()
+        p.token()
+        FakeCloud.state["current_access"] = "rotated-elsewhere"
+        with open_artifact(p, "generic-local/models/m.bin") as resp:
+            self.assertEqual(resp.read(), b"artifact-bytes")
         self.assertEqual(len(FakeCloud.state["exchanges"]), 2)
 
     def test_requires_https(self):

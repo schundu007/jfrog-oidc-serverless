@@ -16,7 +16,7 @@ Environment:
     JFROG_PROJECT_KEY     optional, for project-scoped identity mappings
 """
 
-from .artifactory import basic_auth_url, download, get_json
+from .artifactory import basic_auth_url, download, get_json, open_artifact
 from .errors import ExchangeError, IdentityError, JFrogOidcError
 from .exchange import JFrogToken, JFrogTokenProvider
 from .sources import (
@@ -36,6 +36,7 @@ __all__ = [
     "FileTokenSource",
     "detect_source",
     "download",
+    "open_artifact",
     "get_json",
     "basic_auth_url",
     "JFrogOidcError",

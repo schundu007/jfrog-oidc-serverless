@@ -38,3 +38,5 @@ tfplan
 # modules are not roots: no lock files; Claude Code worktrees
 terraform/modules/**/.terraform.lock.hcl
 .claude/worktrees/
+# wheels pulled from JFrog by the build
+apps/cloud-run-service/wheels/
