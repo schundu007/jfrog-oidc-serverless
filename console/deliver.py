@@ -278,7 +278,12 @@ def wire_workspace(ws_dir, sh: Shell, outputs: dict, wire_cls=wiremod.Wire, log=
     for p in sorted((Path(ws_dir) / "configs").glob("*.json")):
         cfg = pipeline_target(json.loads(p.read_text()), env or {})
         w = wire_cls(cfg, sh, outputs)
-        plan = w.plan()
+        try:
+            plan = w.plan()
+        except wiremod.TargetMissing as exc:   # deleted since onboarding: the others still get wired
+            results.append({"name": cfg["name"], "status": "skipped: not found"})
+            log(f"{cfg['name']}: skipped, the workload was not found ({exc})")
+            continue
         if plan["noop"]:
             results.append({"name": cfg["name"], "status": "already wired"})
             log(f"{cfg['name']}: already wired")
@@ -308,6 +313,9 @@ def main(argv=None) -> int:
     except (DeliveryError, wiremod.WireError, wiremod.WireRefused) as exc:
         say(f"wire failed: {exc}")
         return 1
+    for r in res:
+        if r["status"].startswith("skipped"):
+            say(f"##vso[task.logissue type=warning]{r['name']}: not wired, the workload was not found")
     say(json.dumps(res))
     return 0
 

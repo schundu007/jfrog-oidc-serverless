@@ -33,6 +33,19 @@ class WireError(RuntimeError):
     pass
 
 
+class TargetMissing(WireError):
+    """The workload is not there (deleted since it was onboarded)."""
+
+
+# What gcloud and az say when the resource itself does not exist.
+NOT_FOUND = ("Cannot find ", "ResourceNotFound", "could not be found", "was not found")
+
+
+def _unreadable(what: str, res) -> WireError:
+    text = res.error_text(300)
+    return (TargetMissing if any(m in text for m in NOT_FOUND) else WireError)(f"could not read {what}: {text}")
+
+
 class WireRefused(PermissionError):
     def __init__(self, code: str, message: str):
         super().__init__(message)
@@ -161,7 +174,7 @@ class Wire(OpenShiftWire):
         res = self.sh.run([*gcprun.group(self._gcp_resource()), "describe", self._gcp_name(), *loc, "--format=json"],
                           timeout=120)
         if not res.ok:
-            raise WireError(f"could not read the target: {res.error_text(300)}")
+            raise _unreadable("the target", res)
         data = res.json() or {}
         spec = gcprun.pod_spec(data, self._gcp_resource())
         cur = {e.get("name"): e["value"] if "value" in e else "[secret reference]"
@@ -213,7 +226,7 @@ class Wire(OpenShiftWire):
     def _containerapp(self, env):
         res = self.sh.run([*self._ca(), "show", *self._az_target(), "-o", "json"], timeout=120)
         if not res.ok:
-            raise WireError(f"could not read the target: {res.error_text(300)}")
+            raise _unreadable("the target", res)
         shown = res.json() or {}
         props = shown.get("properties") or {}
         container = _dig(props, "template", "containers", 0) or {}
@@ -239,7 +252,7 @@ class Wire(OpenShiftWire):
                if isinstance(s, dict) and s.get("name") in env}
         app = self.sh.run(["az", "functionapp", "show", *self._az_target(), "-o", "json"], timeout=120)
         if not app.ok:
-            raise WireError(f"could not read the target: {app.error_text(300)}")
+            raise _unreadable("the target", app)
         app = app.json() or {}
 
         diff = [_entry("env", k, cur.get(k), v) for k, v in env.items()]

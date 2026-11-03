@@ -312,6 +312,28 @@ class WireWorkspaceTests(unittest.TestCase):
         with self.assertRaises(deliver.DeliveryError):
             deliver.wire_workspace(self.ws, Shell(mode="replay"), {}, wire_cls=Bad)
 
+    def test_a_target_that_no_longer_exists_is_skipped_and_the_rest_are_wired(self):
+        for n in ("gone", "orders"):
+            (self.ws / "configs" / f"{n}.json").write_text(json.dumps(gcp_cfg(n)))
+        from console.steps.wire import TargetMissing, WireError
+
+        class Partly:
+            def __init__(self, cfg, sh, outputs):
+                self.name = cfg["name"]
+
+            def plan(self):
+                if self.name == "gone":
+                    raise TargetMissing("could not read the target: Cannot find service [gone]")
+                return {"noop": False, "sha256": "x", "diff": [], "target": self.name}
+
+            def apply(self, plan, approval):
+                return {"verified": True}
+        logs = []
+        res = deliver.wire_workspace(self.ws, Shell(mode="replay"), {}, wire_cls=Partly, log=logs.append)
+        self.assertEqual({r["name"]: r["status"] for r in res}, {"gone": "skipped: not found", "orders": "wired"})
+        self.assertTrue(any("gone" in l and "not found" in l for l in logs))
+        self.assertTrue(issubclass(TargetMissing, WireError))   # other read failures still fail the run
+
 
 class TfgenModulesTests(unittest.TestCase):
     def test_default_sources_stay_absolute(self):
