@@ -42,6 +42,8 @@ Accounts (the run used test accounts; any you control work):
 
 JFrog must already have: a Docker remote repository (`docker-remote`, Docker Hub), a PyPI remote
 (`pypi-remote`) and a group workloads and pipelines read with (`serverless-readers`). Nothing else.
+`gcp-jfrog-trust` creates the Google Cloud pipelines' own Docker repo (`gcp-images-local`): build-deploy
+pushes each Cloud Run image there first, then the same image to Artifact Registry, which Cloud Run pulls from.
 
 Tools on your machine (versions used in the run):
 

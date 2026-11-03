@@ -2,7 +2,8 @@
 # gcp-foundation creates only cloud and ADO resources (service connections, identities, state);
 # everything about JFrog lives here: the integration ado-<org>-gcp, its build and setup
 # mappings, and the pipelines' JFrog variable group jfrog-oidc-gcp-<env>-jfrog.
-#   build -> reader group (read + remote cache), setup -> admin (workload onboarding)
+#   build -> reader group (read + remote cache) and publisher group (push to this cloud's
+#            Docker repo, where build-deploy publishes each workload image), setup -> admin
 
 locals {
   issuer = "https://login.microsoftonline.com/${var.ado_tenant_id}/v2.0"
@@ -35,7 +36,7 @@ resource "platform_oidc_identity_mapping" "build" {
   priority      = 1
   claims_json   = jsonencode({ sub = data.azuredevops_serviceendpoint_azurerm.ado["build"].workload_identity_federation_subject, aud = var.ado_token_audience })
   token_spec = {
-    scope      = "applied-permissions/groups:\"${var.jfrog_reader_group}\""
+    scope      = "applied-permissions/groups:\"${var.jfrog_reader_group}\",\"${platform_group.publishers.name}\""
     audience   = "jfrt@*"
     expires_in = 3600
   }
@@ -55,6 +56,30 @@ resource "platform_oidc_identity_mapping" "setup" {
   }
 }
 
+# This cloud's own Docker repository: build-deploy pushes every workload image here first (the
+# registry of record), then copies it to the stack's Artifact Registry repo for Cloud Run to pull.
+resource "artifactory_local_docker_v2_repository" "images" {
+  key             = var.docker_local_repo
+  description     = "Workload images built by the Google Cloud ADO build-deploy pipelines"
+  tag_retention   = 1
+  max_unique_tags = 50
+}
+
+resource "platform_group" "publishers" {
+  name        = "ado-${var.ado_org}-gcp-publishers"
+  description = "ADO Google Cloud build pipelines (ado-build mapping): push images to ${var.docker_local_repo}"
+}
+
+resource "platform_permission" "publish" {
+  name = "ado-${var.ado_org}-gcp-publish"
+  artifact = {
+    actions = {
+      groups = [{ name = platform_group.publishers.name, permissions = ["READ", "ANNOTATE", "WRITE"] }]
+    }
+    targets = [{ name = artifactory_local_docker_v2_repository.images.key, include_patterns = ["**"] }]
+  }
+}
+
 # What the build-deploy and onboarding pipelines read about JFrog (- group: jfrog-oidc-gcp-<env>-jfrog).
 # The stack-setup (infrastructure) pipelines never reference it.
 resource "azuredevops_variable_group" "jfrog" {
@@ -70,5 +95,9 @@ resource "azuredevops_variable_group" "jfrog" {
   variable {
     name  = "JFROG_OIDC_PROVIDER"
     value = platform_oidc_configuration.ado.name
+  }
+  variable {
+    name  = "JFROG_DOCKER_LOCAL"
+    value = artifactory_local_docker_v2_repository.images.key
   }
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build and roll out ONE Cloud Run workload (its own stack in Setup). KIND picks how:
-#   job       build apps/$APP (base image through JFrog), push to Artifact Registry,
+#   job       build apps/$APP (base image through JFrog), push to JFrog (JFROG_DOCKER_LOCAL, the
+#             registry of record) and the same image to Artifact Registry (what Cloud Run pulls),
 #             update the job and run it to completion
 #   service   same image build, then update the service and check it is ready
 #   worker-pool  same image build, then update the worker pool (gcloud beta: no GA group yet)
@@ -18,15 +19,22 @@ loc=(--region "$GCP_REGION" --project "$GCP_PROJECT")
 
 build_image() {
   : "${IMAGE_REPOSITORY:?}" "${JFROG_DOCKER_REMOTE:?}" "${BASE_IMAGE:?}"
-  local jfrog_host=${JFROG_URL#https://} registry="${GCP_REGION}-docker.pkg.dev"
-  image="${registry}/${GCP_PROJECT}/${IMAGE_REPOSITORY}/${WORKLOAD}:${BUILD_SOURCEVERSION:0:12}"
+  # JFROG_DOCKER_LOCAL comes from gcp-jfrog-trust (variable group jfrog-oidc-gcp-<env>-jfrog).
+  : "${JFROG_DOCKER_LOCAL:?run the gcp-jfrog-trust stack (JFrog OIDC) first: it creates the Docker repo}"
+  local jfrog_host=${JFROG_URL#https://} registry="${GCP_REGION}-docker.pkg.dev" tag=${BUILD_SOURCEVERSION:0:12}
+  # JFrog is the registry of record; Cloud Run pulls the same image from Artifact Registry with its
+  # own identity (no JFrog password stored anywhere).
+  jfrog_image="${jfrog_host}/${JFROG_DOCKER_LOCAL}/${WORKLOAD}:${tag}"
+  image="${registry}/${GCP_PROJECT}/${IMAGE_REPOSITORY}/${WORKLOAD}:${tag}"
   python3 -m jfrog_oidc docker-login
   gcloud auth print-access-token | docker login --username oauth2accesstoken --password-stdin "https://${registry}"
   docker build --pull \
     --file "apps/${APP}/Dockerfile" \
     --build-arg BASE_IMAGE="${jfrog_host}/${JFROG_DOCKER_REMOTE}/${BASE_IMAGE}" \
     --label "org.opencontainers.image.revision=${BUILD_SOURCEVERSION}" \
-    --tag "$image" .
+    --tag "$jfrog_image" --tag "$image" .
+  docker push "$jfrog_image"
+  echo "published to JFrog: ${JFROG_DOCKER_LOCAL}/${WORKLOAD}:${tag}"
   docker push "$image"
 }
 

@@ -43,3 +43,9 @@ variable "gcp_project_id" {
   description = "Project the console operator's service account lives in (the foundation's project)."
   type        = string
 }
+
+variable "docker_local_repo" {
+  description = "JFrog local Docker repository this cloud's build-deploy pipelines push workload images to."
+  type        = string
+  default     = "gcp-images-local"
+}
