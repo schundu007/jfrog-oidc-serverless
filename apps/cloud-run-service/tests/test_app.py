@@ -132,6 +132,7 @@ class AppTests(unittest.TestCase):
     def test_liveness_needs_no_jfrog_and_readiness_does(self):
         self.jfrog.fail = Unavailable("down")
         self.assertEqual(self.client.get("/healthz").get_json()["version"], "abc123")
+        self.assertEqual(self.client.get("/health").get_json()["status"], "ok")
         self.assertEqual(self.client.get("/readyz").status_code, 503)
         self.jfrog.fail = None
         self.assertEqual(self.client.get("/readyz").get_json(), {"status": "ready"})

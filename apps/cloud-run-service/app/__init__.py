@@ -5,7 +5,7 @@ Pages        /                          identity, repositories, home folder
              /browse/<repo>/<path>      a folder's items or a file's details
              /download/<repo>/<path>    the file, streamed from JFrog
 API (JSON)   /api/v1/identity, /api/v1/repositories, /api/v1/items/<repo>/<path>
-Health       /healthz (process up), /readyz (JFrog sign-in works),
+Health       /healthz (process up; /health on run.app URLs, whose front end reserves /healthz), /readyz (JFrog sign-in works),
              /healthz/jfrog (claims, exchange and a read: what the console's Verify calls)
 
 Run: gunicorn --config gunicorn.conf.py "app:create_app()"
@@ -32,7 +32,7 @@ log = logging.getLogger("app")
 
 CSP = ("default-src 'none'; style-src 'self'; img-src 'self' data:; form-action 'self'; "
        "frame-ancestors 'none'; base-uri 'none'")
-QUIET = {"/healthz", "/readyz"}   # probes: not request-logged
+QUIET = {"/healthz", "/health", "/readyz"}   # probes: not request-logged
 
 
 def _human(size: Optional[int]) -> str:
@@ -61,7 +61,7 @@ def create_app(settings: Optional[Settings] = None, artifactory: Optional[Artifa
     app.extensions["jfrog"] = jfrog
 
     def wants_json() -> bool:
-        return request.path.startswith("/api/") or request.path.startswith("/healthz") or \
+        return request.path.startswith("/api/") or request.path.startswith("/health") or \
             request.accept_mimetypes.best_match(["text/html", "application/json"]) == "application/json"
 
     # -- request lifecycle ---------------------------------------------------------------------
@@ -119,6 +119,7 @@ def create_app(settings: Optional[Settings] = None, artifactory: Optional[Artifa
     # -- health ----------------------------------------------------------------------------------
 
     @app.get("/healthz")
+    @app.get("/health")
     def healthz():
         return jsonify(status="ok", version=settings.version, uptime_seconds=clock.uptime())
 
