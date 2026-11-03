@@ -35,6 +35,12 @@ variable "deploy_service" {
   default     = false
 }
 
+variable "public" {
+  description = "Let anyone call the service URL without a Google sign-in (roles/run.invoker for allUsers)."
+  type        = bool
+  default     = false
+}
+
 variable "service_image" {
   description = "Image the service is created with; later rollouts come from the build pipeline."
   type        = string

@@ -55,3 +55,12 @@ resource "google_cloud_run_v2_service" "workload" {
     }
   }
 }
+
+resource "google_cloud_run_v2_service_iam_member" "public" {
+  count    = var.deploy_service && var.public ? 1 : 0
+  project  = var.gcp_project_id
+  location = var.gcp_region
+  name     = google_cloud_run_v2_service.workload[0].name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}

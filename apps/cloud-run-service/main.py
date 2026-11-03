@@ -6,7 +6,7 @@ JFROG_OIDC_PROVIDER, JFROG_OIDC_AUDIENCE, JFROG_OIDC_SOURCE), set by the
 console's Wire step, plus optional JFROG_HEALTHCHECK_PATH.
 
 GET /healthz/jfrog       claims, exchange and read status (never the token)
-GET /?path=<repo/folder> files in that folder; &fetch=1 downloads the first one
+GET /?path=<repo/folder> files in that folder (default: the health-check file's); &fetch=1 downloads the first one
 Deploy without --allow-unauthenticated so Cloud Run IAM protects it.
 """
 
@@ -35,7 +35,9 @@ def handle(path: str, query: dict) -> tuple[int, dict]:
         result = selftest(os.environ.get("JFROG_HEALTHCHECK_PATH") or None, provider=jfrog(), fresh=query.get("fresh", [""])[0] == "1")
         log_result(result)   # the platform's log: what JFrog answered, never a token
         return (200 if result["ok"] else 503), result
-    folder = query.get("path", ["generic-local/models"])[0]
+    # Default folder: the one holding the health-check file, so / shows something real.
+    default = (os.environ.get("JFROG_HEALTHCHECK_PATH") or "generic-local/models/x").rsplit("/", 1)[0]
+    folder = query.get("path", [default])[0]
     listing = get_json(jfrog(), f"/artifactory/api/storage/{folder}")
     files = [c["uri"].lstrip("/") for c in listing.get("children", []) if not c.get("folder")]
     if query.get("fetch") and files:
