@@ -41,7 +41,7 @@
       "name": "cr-svc-jfrog",
       "runtime_enabled": true,
       "runtime_ttl": 3600,
-      "subject": "103973554486208671400"
+      "subject": "102629139638650167302"
     },
     "crwp-jfrog": {
       "dedicated_identity": null,

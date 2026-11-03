@@ -25,13 +25,6 @@
     "type": "gcs"
   },
   "target": {
-    "aws": {
-      "account": "",
-      "cluster": "",
-      "name": "",
-      "profile": "",
-      "region": ""
-    },
     "azure": {
       "identity_type": "user_assigned",
       "name": "",
@@ -39,15 +32,15 @@
       "subscription": ""
     },
     "discovered": {
-      "at": "2026-11-01T07:59:36Z",
-      "image": "us-central1-docker.pkg.dev/unioxe/platform/cr-svc-jfrog:36a331394a47",
+      "at": "2026-11-03T03:06:54Z",
+      "image": "us-central1-docker.pkg.dev/unioxe/platform/cr-svc-jfrog:91de40e3c761",
       "kind": "gcp_run_service",
-      "mapping_subject": "103973554486208671400",
+      "mapping_subject": "102629139638650167302",
       "name": "cr-svc-jfrog",
       "project": "unioxe",
       "region": "us-central1",
       "service_account": "cr-svc-jfrog@unioxe.iam.gserviceaccount.com",
-      "service_account_unique_id": "103973554486208671400",
+      "service_account_unique_id": "102629139638650167302",
       "url": "https://cr-svc-jfrog-kumuqdrzla-uc.a.run.app"
     },
     "gcp": {
