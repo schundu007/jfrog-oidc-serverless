@@ -100,6 +100,10 @@ CATALOGUE = (
      "about": "Its own resource group with the function's identity, host storage with its deployment "
               "container, a Flex Consumption plan and the function app.",
      "next": "Run this stack's build-deploy pipeline to deploy the code."},
+    {"id": "azure-web-app", "kind": "Serverless", "group": "Azure", "title": "Web App",
+     "about": "Its own resource group with the app's identity, an App Service plan (Linux or Windows) and "
+              "the web app for Python, Java or .NET code.",
+     "next": "Run this stack's build-deploy pipeline to deploy the code."},
     # JFrog OIDC: only after the infrastructure exists. Local state, run here with the operator's
     # JFrog admin token; each stands on its cloud's foundation (it reads the service connections).
     {"id": "gcp-jfrog-trust", "kind": "JFrog OIDC", "group": "Google Cloud", "title": "Pipelines' JFrog trust",

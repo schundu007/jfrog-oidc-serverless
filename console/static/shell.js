@@ -12,6 +12,7 @@
     gcp: '<svg class="mark cloud-logo" viewBox="0 0 24 19.3" aria-hidden="true"><path fill="#EA4335" d="M15.2 5.3h.7l2-2 .1-.9C14.2-.9 8.5-.5 5.2 3.3c-.9 1-1.6 2.3-2 3.6.2-.1.5-.1.7 0l4-.7s.2-.3.3-.3c1.8-2 4.8-2.2 6.9-.5h.1z"/><path fill="#4285F4" d="M20.8 6.9c-.5-1.7-1.4-3.2-2.7-4.4l-2.8 2.8c1.2 1 1.9 2.5 1.8 4v.5c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5h-5l-.5.5v3l.5.5h5c3.6 0 6.5-2.9 6.5-6.5 0-2.2-1.1-4.2-2.8-5.4z"/><path fill="#34A853" d="M7.1 19.3h5v-4h-5c-.4 0-.7-.1-1-.2l-.7.2-2 2-.2.7c1.1.8 2.5 1.3 3.9 1.3z"/><path fill="#FBBC05" d="M7.1 6.3C3.5 6.3.6 9.3.6 12.9c0 2 1 3.9 2.6 5.2l2.9-2.9c-1.3-.6-1.8-2.1-1.3-3.3.6-1.3 2.1-1.8 3.3-1.3.6.3 1 .7 1.3 1.3l2.9-2.9c-1.2-1.6-3.1-2.6-5.2-2.6z"/></svg>',
     azure: '<svg class="mark cloud-logo" viewBox="0 0 24 24" aria-hidden="true"><path fill="#0078D4" d="M5.483 21.3H24L14.025 4.013l-3.038 8.347 5.836 6.938L5.483 21.3zM13.23 2.7L6.105 8.677 0 19.253h5.505v.014L13.23 2.7z"/></svg>',
   };
+  ICON.web = "<svg class=\"mark\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><circle cx=\"9\" cy=\"9\" r=\"8\" fill=\"#0078d4\"/><path d=\"M9 1.2a7.8 7.8 0 0 1 6.9 4.2H2.1A7.8 7.8 0 0 1 9 1.2z\" fill=\"#5ea0ef\"/><g fill=\"none\" stroke=\"#fff\" stroke-width=\"1\" stroke-linecap=\"round\"><path d=\"M9 1.4c-2.4 2.2-2.4 13 0 15.2M9 1.4c2.4 2.2 2.4 13 0 15.2\"/><path d=\"M1.4 9h15.2M2.4 5.4h13.2M2.4 12.6h13.2\"/></g></svg>";   // App Service
   ICON.boot = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.4 3.1 8.2 7.5 9.5 4.4-1.3 7.5-5.1 7.5-9.5V6z"/><circle cx="12" cy="10.5" r="2.2"/><path d="M12 12.7V16.5M12 15h1.8"/></svg>';
   ICON.serverless = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2.5 5 13.5h6l-1 8 8-11h-6z"/></svg>';
   ICON.k8s = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8 20 6.6l2 8.6-5.5 6.9h-9L2 15.2l2-8.6z"/><circle cx="12" cy="12.5" r="2.4"/><path d="M12 6.5v3.6M12 14.9v3.6M6.6 9.9l3.2 1.5M14.2 13.6l3.2 1.5M17.4 9.9l-3.2 1.5M9.8 13.6l-3.2 1.5"/></svg>';
@@ -24,7 +25,7 @@
   const KINDS = [
     ["azure", "Azure", "Serverless", [["azure_container_app_job", "Container Apps job", "aca"], ["azure_container_app", "Container App", "aca"],
       ["azure_functions_aca", "Functions on Container Apps", "func"], ["azure_functions_premium", "Functions Premium", "func"],
-      ["azure_functions_flex", "Functions Flex Consumption", "func"]]],
+      ["azure_functions_flex", "Functions Flex Consumption", "func"], ["azure_web_app", "Web App", "web"]]],
     ["azure", "Azure", "Kubernetes", [["aks", "AKS cluster", "aks"]]],
     ["gcp", "Google Cloud", "Serverless", [["gcp_run_job", "Cloud Run job", "run"], ["gcp_run_service", "Cloud Run service", "run"],
       ["gcp_run_function", "Cloud Run function", "fn"], ["gcp_run_worker_pool", "Cloud Run worker pool", "run"]]],
@@ -40,7 +41,7 @@
   // [key, label, href, icon, [[label, href, icon, when(path, query) → current?]]]
   const q = (k, v) => (p, u) => u.get(k) === v;
   const SHORT = { azure_container_app_job: "Container Apps jobs", azure_container_app: "Container Apps",
-    azure_functions_aca: "Functions on ACA", azure_functions_premium: "Functions Premium", azure_functions_flex: "Functions Flex",
+    azure_functions_aca: "Functions on ACA", azure_functions_premium: "Functions Premium", azure_functions_flex: "Functions Flex", azure_web_app: "Web Apps",
     gcp_run_job: "Cloud Run jobs", gcp_run_service: "Cloud Run services", gcp_run_function: "Cloud Run functions",
     gcp_run_worker_pool: "Worker pools" };
   // Serverless opens by cloud, never mixed: Azure and its services, then Google Cloud and its services.

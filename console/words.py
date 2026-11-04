@@ -31,7 +31,9 @@ NOUNS = {("projects",): "project", ("services",): "enabled APIs", ("run", "servi
          ("containerapp", "secret"): "container app secret", ("containerapp", "registry"): "container app registry",
          ("containerapp", "identity"): "container app identity", ("containerapp", "job", "identity"): "container app job identity",
          ("functionapp",): "function app", ("functionapp", "identity"): "function app identity",
-         ("functionapp", "config", "appsettings"): "function app settings", ("keyvault", "secret"): "Key Vault secret",
+         ("functionapp", "config", "appsettings"): "function app settings",
+         ("webapp",): "web app", ("webapp", "identity"): "web app identity",
+         ("webapp", "config", "appsettings"): "web app settings", ("keyvault", "secret"): "Key Vault secret",
          ("identity",): "managed identity", ("account",): "account", ("group",): "resource group",
          ("acr",): "container registry", ("aks",): "AKS cluster", ("role", "assignment"): "role assignment",
          ("ad", "app"): "Entra app", ("ad", "sp"): "service principal", ("iam",): "IAM"}

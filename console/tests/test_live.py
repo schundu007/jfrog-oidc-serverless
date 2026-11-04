@@ -68,6 +68,15 @@ class AzureLive(unittest.TestCase):
         self.assertEqual({k: v["state"] for k, v in got.items()}, {"a": "wired", "f": "not_wired", "gone": "missing"})
         self.assertNotIn("secret", json.dumps(got))
 
+    def test_web_app(self):
+        sh = Shell(mode="replay", fixtures=[
+            fx(["az", "webapp", "list", "--subscription", "s", "-o", "json"], [{"name": "web", "resourceGroup": "rg"}]),
+            fx(["az", "webapp", "config", "appsettings", "list", "-g", "rg", "-n", "web", "--subscription", "s", "-o", "json"],
+               [{"name": "JFROG_OIDC_PROVIDER", "value": "p"}]),
+        ])
+        cfg = {"name": "w", "target": {"kind": "azure_web_app", "azure": {"subscription": "s", "resource_group": "rg", "name": "web"}}}
+        self.assertEqual(live.status("azure", [cfg], sh)["w"]["state"], "wired")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -19,6 +19,7 @@ In scope:
   - `azure_functions_aca` (Functions on Container Apps)
   - `azure_functions_premium` (Premium or Dedicated)
   - `azure_functions_flex`: Flex Consumption. OIDC only; the pipeline deploys the code package, which the platform reads from its deployment container with the app's managed identity.
+  - `azure_web_app`: App Service web app, Linux or Windows, Python/Java/.NET code. No registry: the pipeline resolves packages through JFrog and zip/jar-deploys. Wired through app settings; verified at `https://<host>/healthz/jfrog` (no key).
   - `openshift_knative_service` (OpenShift Serverless or any Knative cluster; runtime path only, §12)
 - For each target:
   1. Discover its identity.
@@ -143,7 +144,7 @@ Required tools: `terraform` ≥ 1.6, and `gcloud` and/or `az` depending on the t
 | azure_container_app / functions_aca | `az containerapp show -g RG -n NAME` | `identity.userAssignedIdentities{principalId,clientId}`, `kind`, `properties.configuration.registries` |
 | azure_functions_premium | `az functionapp show -g RG -n NAME` + `az functionapp plan show` | identity, `keyVaultReferenceIdentity`, plan SKU (EP*/P*/FC1) |
 
-Discovery can correct the user's chosen kind; the UI shows the correction. A Function App on an FC1 (Flex Consumption) plan is corrected to `azure_functions_flex`.
+Discovery can correct the user's chosen kind; the UI shows the correction. A Function App on an FC1 (Flex Consumption) plan is corrected to `azure_functions_flex`. A site that is not a Function App is corrected to `azure_web_app`, and a Web App lookup that finds a Function App is corrected back.
 
 GCP default compute service accounts make the mapping overly broad, because every workload in the project would share one identity. In that case, warn and offer to create a dedicated SA. The console doesn't swap the target's SA automatically.
 

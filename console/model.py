@@ -20,8 +20,18 @@ KINDS = {
     "azure_functions_aca": {"cloud": "azure", "label": "Functions on Container Apps"},
     "azure_functions_premium": {"cloud": "azure", "label": "Functions Premium/Dedicated"},
     "azure_functions_flex": {"cloud": "azure", "label": "Functions Flex Consumption"},
+    "azure_web_app": {"cloud": "azure", "label": "Web App"},
     "openshift_knative_service": {"cloud": "openshift", "label": "Knative service"},
 }
+
+# App Service sites (Microsoft.Web/sites): wired through app settings, reached on their default host name.
+SITE_KINDS = ("azure_functions_premium", "azure_functions_flex", "azure_web_app")
+
+
+def az_site(kind: str) -> str:
+    """The az command group for an App Service site: a web app or a function app."""
+    return "webapp" if kind == "azure_web_app" else "functionapp"
+
 
 # Where each cloud's target lives in the config, and the fields that identify it.
 TARGET_FIELDS = {

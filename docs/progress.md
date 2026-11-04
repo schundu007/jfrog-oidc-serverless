@@ -650,3 +650,9 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
 
 - All AWS code is gone: the UI (AWS page, form fields, Settings sign-in, EKS cluster platform), client `AwsStsSource` and `sigv4.py`, `console/steps/aws.py`, the AWS emulator, its scenarios and the `federation_disabled` fault, tfgen's `aws_<account>` workspace and the s3 backend, `terraform/modules/aws-identity`, the `aws` input of `jfrog-oidc`, `aws-workload-onboard`/`aws-build-deploy` and `apps/aws-lambda`. AWS notes earlier in this file are history.
 - Clouds now: GCP, Azure and Knative (runtime path only).
+
+## Web App (2026-11-04)
+
+- Kind `azure_web_app` (App Service, Linux or Windows; Python, Java or .NET). Stack `azure-web-app`, pipelines `pipelines/serverless/azure/azure-web-app/`, apps `apps/web-app/{java,dotnet}` (Python reuses `cloud-run-service`), JFrog remotes in `azure-jfrog-trust`.
+- Consoles: Infrastructure row (Web App, globe icon), sidebar Serverless > Web Apps. Discover (`az webapp show`; a functionapp site goes back to Functions; facts `os`, `runtime`), wire and prove by app settings (`model.az_site`), verify at `/healthz/jfrog` with no key, provenance, inventory and live. Scenario `happy-web-app` passes.
+- Not live-tested yet: `az webapp deploy` with basic auth off, .NET restore credentials, the Java port, the remote-cache permission.

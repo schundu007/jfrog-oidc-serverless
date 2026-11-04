@@ -91,8 +91,9 @@ def azure(cfgs: list, sh: Shell) -> dict:
             result[cfg["name"]] = {"state": "unknown", "detail": "no subscription, resource group or name"}
             continue
         rid = (model.get_path(cfg, "target.discovered.resource_id") or "").lower()
-        web = kind in ("azure_functions_premium", "azure_functions_flex") or "/microsoft.web/" in rid
-        found = listing(["az", "functionapp", "list"] if web else CONTAINER_LISTS[kind], sub)
+        web = kind in model.SITE_KINDS or "/microsoft.web/" in rid
+        site = model.az_site(kind)
+        found = listing(["az", site, "list"] if web else CONTAINER_LISTS[kind], sub)
         if isinstance(found, Exception):
             result[cfg["name"]] = {"state": "unknown", "detail": str(found)}
             continue
@@ -100,7 +101,7 @@ def azure(cfgs: list, sh: Shell) -> dict:
         if app is None:
             result[cfg["name"]] = {"state": "missing"}
         elif web:
-            res = sh.run(["az", "functionapp", "config", "appsettings", "list", "-g", rg, "-n", name,
+            res = sh.run(["az", site, "config", "appsettings", "list", "-g", rg, "-n", name,
                           "--subscription", sub, "-o", "json"], timeout=120, sensitive=True)
             result[cfg["name"]] = (_state(True, WIRED_KEY in _names(res.json())) if res.ok
                                    else {"state": "unknown", "detail": f"app settings: {res.error_text(160)}"})

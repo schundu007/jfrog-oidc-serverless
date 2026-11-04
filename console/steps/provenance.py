@@ -22,9 +22,9 @@ STACK = {"gcp_run_job": "gcp/gcp-cloud-run", "gcp_run_service": "gcp/gcp-cloud-r
          "gcp_run_function": "gcp/gcp-cloud-run-function", "gcp_run_worker_pool": "gcp/gcp-cloud-run-worker-pool",
          "azure_container_app_job": "azure/azure-container-apps", "azure_container_app": "azure/azure-container-app",
          "azure_functions_aca": "azure/azure-functions-aca", "azure_functions_premium": "azure/azure-functions-premium",
-         "azure_functions_flex": "azure/azure-functions-flex"}
+         "azure_functions_flex": "azure/azure-functions-flex", "azure_web_app": "azure/azure-web-app"}
 BASE_IMAGE = "library/python:3.12-slim"   # pipelines/templates/<cloud>-build-deploy.yml
-CODE_KINDS = {"azure_functions_flex", "azure_functions_premium", "gcp_run_function"}   # deployed from source
+CODE_KINDS = {"azure_functions_flex", "azure_functions_premium", "azure_web_app", "gcp_run_function"}   # deployed from source
 COMMIT_TAG = re.compile(r":([0-9a-f]{12})$")
 
 
@@ -45,7 +45,7 @@ def image_argv(cfg):
         return ["az", "containerapp", "job", "show", *loc]
     if kind in ("azure_container_app", "azure_functions_aca"):
         return ["az", "containerapp", "show", *loc]
-    return ["az", "functionapp", "config", "show", *loc]
+    return ["az", model.az_site(kind), "config", "show", *loc]
 
 
 def running_image(cfg, sh) -> str:
@@ -57,7 +57,7 @@ def running_image(cfg, sh) -> str:
     if kind.startswith("gcp_"):
         cs = gcprun.pod_spec(data, gcprun.RESOURCE.get(kind, "services")).get("containers") or []
         return (cs[0].get("image") or "") if cs else ""
-    if kind in ("azure_functions_premium", "azure_functions_flex"):
+    if kind in model.SITE_KINDS:
         fx = str(data.get("linuxFxVersion") or "")
         return fx.split("|", 1)[1] if fx.upper().startswith("DOCKER|") else ""
     cs = ((data.get("properties") or {}).get("template") or {}).get("containers") or []

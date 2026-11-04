@@ -35,7 +35,7 @@ from .runner import Runner as Gates
 
 COSTING = ("gcp-cloud-run", "gcp-cloud-run-service", "gcp-cloud-run-function", "gcp-cloud-run-worker-pool",
            "azure-container-apps", "azure-container-app", "azure-functions-aca", "azure-functions-premium",
-           "azure-functions-flex", "gke-cluster", "aks-cluster")
+           "azure-functions-flex", "azure-web-app", "gke-cluster", "aks-cluster")
 CLOUD = {"gcp": "Google Cloud", "azure": "Azure"}
 # The input that creates the workload once its first image or package exists.
 SWITCHES = {"gcp-cloud-run": "deploy_job", "gcp-cloud-run-service": "deploy_service",

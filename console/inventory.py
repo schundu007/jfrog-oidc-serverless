@@ -78,7 +78,7 @@ def _gcp_scopes(sh: Shell, errors: list) -> list:
 
 # Only projects / subscriptions with something to onboard are listed (the picked one always is).
 AZURE_WORKLOADS = ("[?type=='Microsoft.App/containerApps' || type=='Microsoft.App/jobs' || "
-                   "(type=='Microsoft.Web/sites' && contains(kind, 'functionapp'))] | length(@)")
+                   "type=='Microsoft.Web/sites'] | length(@)")
 
 
 def _gcp_has_workloads(sh: Shell, project: str) -> bool:
@@ -157,7 +157,8 @@ def azure(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, list
         return {"subscription": ""}, out
     lists = (("containerapp", ["az", "containerapp", "list"]),
              ("job", ["az", "containerapp", "job", "list"]),
-             ("functionapp", ["az", "functionapp", "list"]))
+             ("functionapp", ["az", "functionapp", "list"]),
+             ("webapp", ["az", "webapp", "list"]))
     for what, argv in lists:
         res = sh.run([*argv, "--subscription", sub, "-o", "json"], timeout=120)
         if not res.ok:
@@ -174,6 +175,10 @@ def azure(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, list
                 kind = "azure_container_app_job"
             elif what == "containerapp":
                 kind = "azure_functions_aca" if "functionapp" in str(d.get("kind") or "").lower() else "azure_container_app"
+            elif what == "webapp":
+                if "functionapp" in str(d.get("kind") or "").lower():
+                    continue   # listed by az functionapp list
+                kind = "azure_web_app"
             else:
                 kind = "azure_functions_flex" if "flex" in str(d.get("sku") or "").lower() else "azure_functions_premium"
             out.append({"kind": kind, "name": d.get("name", ""), "subscription": sub,

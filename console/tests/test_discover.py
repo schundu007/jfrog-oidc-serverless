@@ -89,8 +89,33 @@ class AllKindsTests(unittest.TestCase):
                          "aaaaaaaa-0000-0000-0000-000000000003")
         self.assertEqual(res["corrections"], [])
 
+    def test_azure_web_app_linux(self):
+        res = self.check(azure_cfg("azure_web_app", "web-py"), "azure_web_app", "azure_web_app",
+                         "aaaaaaaa-0000-0000-0000-000000000004")
+        self.assertEqual(res["corrections"], [])
+        self.assertEqual((res["facts"]["os"], res["facts"]["runtime"]), ("linux", "PYTHON|3.12"))
+        self.assertEqual(res["facts"]["identity_resource_id"], UAMI)
+
+    def test_azure_web_app_windows(self):
+        res = self.check(azure_cfg("azure_web_app", "web-net"), "azure_web_app_windows", "azure_web_app",
+                         "aaaaaaaa-0000-0000-0000-000000000004")
+        self.assertEqual((res["facts"]["os"], res["facts"]["runtime"]), ("windows", "DOTNET|v8.0"))
+
 
 class CorrectionTests(unittest.TestCase):
+    def test_web_app_that_is_a_function_app(self):
+        res, sh = run(azure_cfg("azure_web_app", "web-fn"), "azure_web_app_is_functionapp")
+        self.assertEqual(sh.misses, [])
+        self.assertEqual(res["errors"], [])
+        self.assertEqual(res["kind"], "azure_functions_premium")
+
+    def test_function_app_that_is_a_web_app(self):
+        res, sh = run(azure_cfg("azure_functions_premium", "web-py"), "azure_functionapp_is_web_app")
+        self.assertEqual(sh.misses, [])
+        self.assertEqual(res["errors"], [])
+        self.assertEqual(res["kind"], "azure_web_app")
+        self.assertEqual(res["facts"]["runtime"], "JAVA|21-java21")
+
     def test_fc1_plan_corrects_premium_to_flex(self):
         res, _ = run(azure_cfg("azure_functions_premium", "fn-flex"), "azure_premium_is_flex")
         self.assertEqual(res["kind"], "azure_functions_flex")

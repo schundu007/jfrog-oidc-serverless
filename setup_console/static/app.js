@@ -329,7 +329,7 @@ const SERVES = { "gcp-cloud-run": "gcp?type=gcp_run_job", "gcp-cloud-run-service
   "gcp-cloud-run-function": "gcp?type=gcp_run_function", "gcp-cloud-run-worker-pool": "gcp?type=gcp_run_worker_pool",
   "azure-container-apps": "azure?type=azure_container_app_job", "azure-container-app": "azure?type=azure_container_app",
   "azure-functions-aca": "azure?type=azure_functions_aca", "azure-functions-premium": "azure?type=azure_functions_premium",
-  "azure-functions-flex": "azure?type=azure_functions_flex" };
+  "azure-functions-flex": "azure?type=azure_functions_flex", "azure-web-app": "azure?type=azure_web_app" };
 const CLUSTERS = { "aks-cluster": "/k8s/clusters/aks", "gke-cluster": "/k8s/clusters/gke" };
 const runsArea = () => (OIDC ? "oidc" : "infrastructure");
 const runsHref = (s) => `/runs?area=${runsArea()}&cloud=${CLOUD_ID[s.group] || ""}&q=${encodeURIComponent(s.title)}`;
@@ -340,7 +340,7 @@ let byId = {};
 // Each stack's service icon (the sidebar's), and each cloud's logo: constant SVG from shell.js.
 const STACK_ICON = { "gcp-foundation": "boot", "azure-foundation": "boot", "gcp-cloud-run": "run", "gcp-cloud-run-service": "run", "gcp-cloud-run-worker-pool": "run",
   "gcp-cloud-run-function": "fn", "gke-cluster": "gke", "azure-container-apps": "aca", "azure-container-app": "aca",
-  "azure-functions-aca": "func", "azure-functions-premium": "func", "azure-functions-flex": "func", "aks-cluster": "aks", "aks-jfrog-trust": "aks",
+  "azure-functions-aca": "func", "azure-functions-premium": "func", "azure-functions-flex": "func", "azure-web-app": "web", "aks-cluster": "aks", "aks-jfrog-trust": "aks",
   "gcp-jfrog-trust": "boot", "azure-jfrog-trust": "boot" };
 const CLOUD_ID = { "Google Cloud": "gcp", Azure: "azure" };
 function iconEl(key, cls) {

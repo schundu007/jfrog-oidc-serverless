@@ -297,7 +297,9 @@ class StackTests(unittest.TestCase):
         types = {s["id"]: s for s in stacks.CATALOGUE if s["kind"] == "Serverless" and "foundation" not in s["id"]}
         self.assertEqual(sorted(t["title"] for t in types.values() if t["group"] == "Google Cloud"),
                          ["Cloud Run function", "Cloud Run job", "Cloud Run service", "Cloud Run worker pool"])
-        self.assertEqual(len([t for t in types.values() if t["group"] == "Azure"]), 5)
+        self.assertEqual(sorted(t["title"] for t in types.values() if t["group"] == "Azure"), [
+            "Container App", "Container Apps job", "Functions Flex Consumption", "Functions Premium / Dedicated",
+            "Functions on Container Apps", "Web App"])
         for sid, t in types.items():
             want = {"Google Cloud": "gcp-foundation", "Azure": "azure-foundation"}[t["group"]]
             self.assertEqual(stacks.depends_on(sid), want, sid)

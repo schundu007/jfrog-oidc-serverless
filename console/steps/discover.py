@@ -5,7 +5,8 @@ Returns {status, kind, corrections[], facts{}, warnings[], errors[], config_patc
 - corrections: the cloud's answer overrides the operator's kind choice
   (an FC1 plan is Flex; a Cloud Run service managed by Cloud Functions is a
   function; a Container App with kind=functionapp is Functions on ACA; a name
-  that only exists as the other resource type moves families).
+  that only exists as the other resource type moves families; an App Service
+  site of kind functionapp is a Function App, any other is a Web App).
 - facts become config.target.discovered; the mapping subject comes from here
   (GCP: the service account's uniqueId; Azure: the managed identity's
   principal/object ID).
@@ -23,6 +24,7 @@ from .. import gcprun, model
 from ..shell import Shell
 from .openshift import OpenShiftDiscover
 
+WHAT = {"functionapp": "a Function App", "webapp": "a Web App"}
 DEFAULT_COMPUTE_SA = re.compile(r"^\d+-compute@developer\.gserviceaccount\.com$")
 APPENGINE_SA = re.compile(r"^[a-z][a-z0-9-]*@appspot\.gserviceaccount\.com$")
 NOT_FOUND = re.compile(r"not.?found|could not be found|cannot find|does not exist|NOT_FOUND|ResourceNotFound", re.I)
@@ -292,14 +294,20 @@ class Discover(OpenShiftDiscover):
         if not (sub and rg and name):
             return self.error("missing_fields", "subscription, resource group and name are required")
         self.facts.update(subscription=sub, resource_group=rg, name=name)
-        container_family = self.kind in ("azure_container_app", "azure_container_app_job", "azure_functions_aca")
-        first, second = (self._containerapp, self._functionapp) if container_family else (self._functionapp, self._containerapp)
-        found = first(sub, rg, name)
+        if self.kind in ("azure_container_app", "azure_container_app_job", "azure_functions_aca"):
+            order = (self._containerapp, self._functionapp, self._webapp)
+        elif self.kind == "azure_web_app":
+            order = (self._webapp, self._containerapp)   # a function app is a site too: _webapp hands it on
+        else:
+            order = (self._functionapp, self._webapp, self._containerapp)
+        found = None
+        for look in order:
+            found = look(sub, rg, name)
+            if found is not None:
+                break
         if found is None:
-            found = second(sub, rg, name)
-            if found is None:
-                return self.error("not_found", f"no Container App or Function App '{name}' in resource group {rg}",
-                                  "Check the name, resource group and subscription.")
+            return self.error("not_found", f"no Container App, Function App or Web App '{name}' in resource group {rg}",
+                              "Check the name, resource group and subscription.")
         if found is False:
             return
         resource, data = found
@@ -318,7 +326,7 @@ class Discover(OpenShiftDiscover):
             # Nothing of that type can exist in a subscription that never
             # registered its provider; the caller tries the other family.
             self.warn("provider_not_registered", f"{m.group(1)} is not registered in this subscription, so '{name}' "
-                      f"cannot be a {'Function App' if what == 'functionapp' else 'Container App'}",
+                      f"cannot be {WHAT.get(what, 'a Container App')}",
                       f"az provider register -n {m.group(1)} --subscription {sub} --wait")
             return None
         self.error("lookup_failed", f"az {what} show failed", res.error_text(300))
@@ -349,6 +357,23 @@ class Discover(OpenShiftDiscover):
         self.facts["environment_id"] = _prop(d, "environmentId") or _prop(d, "managedEnvironmentId")
         self.facts["image"] = _dig(_prop(d, "template", {}), "containers", 0, "image")
         return ("containerapp", d)
+
+    def _webapp(self, sub, rg, name):
+        d = self._show("webapp", sub, rg, name)
+        if not d:
+            return d
+        kind = str(d.get("kind") or "").lower()
+        if "functionapp" in kind:
+            return self._functionapp(sub, rg, name)
+        self.correct("azure_web_app", f"Azure reports this site as a web app (kind={kind or 'app'})")
+        cfg = d.get("siteConfig") or {}
+        linux = "linux" in kind
+        runtime = cfg.get("linuxFxVersion") if linux else (
+            f"JAVA|{cfg['javaVersion']}" if cfg.get("javaVersion") else
+            f"DOTNET|{cfg['netFrameworkVersion']}" if cfg.get("netFrameworkVersion") else None)
+        self.facts.update(app_kind=kind, os="linux" if linux else "windows", runtime=runtime or None,
+                          key_vault_reference_identity=_prop(d, "keyVaultReferenceIdentity"))
+        return ("webapp", d)
 
     def _functionapp(self, sub, rg, name):
         d = self._show("functionapp", sub, rg, name)
@@ -393,7 +418,7 @@ class Discover(OpenShiftDiscover):
         self.facts["user_assigned_identities"] = sorted(uas)
 
         hints = [model.get_path(self.cfg, "target.azure.identity_resource_id") or ""]
-        if resource == "functionapp":
+        if resource in ("functionapp", "webapp"):
             hints.append(self.facts.get("key_vault_reference_identity") or "")
         hints += [r.get("identity") or "" for r in self.facts.get("registries") or []]
         lower = {k.lower(): k for k in uas}

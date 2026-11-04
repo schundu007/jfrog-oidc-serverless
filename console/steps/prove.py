@@ -58,7 +58,7 @@ def settings_argv(cfg):
         return ["az", "containerapp", "job", "show", *loc, "-o", "json", "--only-show-errors"]
     if kind in ("azure_container_app", "azure_functions_aca"):
         return ["az", "containerapp", "show", *loc, "-o", "json", "--only-show-errors"]
-    return ["az", "functionapp", "config", "appsettings", "list", *loc, "-o", "json", "--only-show-errors"]
+    return ["az", model.az_site(kind), "config", "appsettings", "list", *loc, "-o", "json", "--only-show-errors"]
 
 
 def gcp_execute_argv(cfg):
@@ -75,7 +75,7 @@ def read_settings(cfg, sh) -> dict:
     """{names, values (KEEP only), registry_passwords}. App settings print values: that call is sensitive and
     everything but the names and KEEP is dropped unread."""
     kind = model.get_path(cfg, "target.kind")
-    webapp = kind in ("azure_functions_premium", "azure_functions_flex")
+    webapp = kind in model.SITE_KINDS
     r = sh.run(settings_argv(cfg), timeout=120, sensitive=webapp)
     data = r.json(None) if r.ok else None
     if data is None:

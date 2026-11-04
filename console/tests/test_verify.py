@@ -96,6 +96,20 @@ class HealthEndpointTests(unittest.TestCase):
             self.assertEqual((sh.misses, res["status"]), ([], "pass"), kind)
             self.assertNotIn(SECRET, blob)
 
+    def test_web_app_needs_no_key(self):   # no misses: no key was listed
+        cfg = azure("azure_web_app", "web-x")
+        res, sh, _ = go(cfg, [
+            cmd(verify.site_host_argv(cfg), "web-x.azurewebsites.net\n"),
+            {"http": "GET https://web-x.azurewebsites.net/healthz/jfrog", "status": 200, "body": json.dumps(SELFTEST_OK)},
+        ])
+        self.assertEqual((sh.misses, res["status"]), ([], "pass"))
+
+    def test_web_app_not_deployed(self):
+        cfg = azure("azure_web_app", "web-x")
+        res, _, _ = go(cfg, [cmd(verify.site_host_argv(cfg), "", rc=3, stderr="(ResourceNotFound) not found")])
+        self.assertEqual(res["status"], "fail")
+        self.assertIn("web app", res["reason"])
+
     def test_functions_on_aca_key_api_failure_is_a_clear_fail(self):
         cfg = azure("azure_functions_aca", "func-aca")
         res, _, blob = go(cfg, [

@@ -57,6 +57,7 @@ AZURE_PROVIDERS_BY_KIND = {
     "azure_functions_aca": ["Microsoft.App", "Microsoft.Web"],
     "azure_functions_premium": ["Microsoft.Web"],
     "azure_functions_flex": ["Microsoft.Web"],
+    "azure_web_app": ["Microsoft.Web"],
 }
 # The workspace creates user-assigned identities and Wire attaches them: Contributor is enough.
 AZURE_WRITE_ROLES = {"Owner", "Contributor"}

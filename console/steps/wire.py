@@ -241,27 +241,28 @@ class Wire(OpenShiftWire):
                              container.get("name") or self.cfg["name"], "--set-env-vars", *changed, "-o", "none"])
         return diff, commands, notes
 
-    # -- Azure App Service (Premium / legacy Functions on ACA) -----------------------------------
+    # -- Azure App Service (Web Apps, Functions Premium/Flex, legacy Functions on ACA) -------------
 
     def _webapp(self, env):
-        res = self.sh.run(["az", "functionapp", "config", "appsettings", "list", *self._az_target(), "-o", "json"],
+        site = ["az", model.az_site(self.kind)]
+        res = self.sh.run([*site, "config", "appsettings", "list", *self._az_target(), "-o", "json"],
                           timeout=120, sensitive=True)
         if not res.ok:
             raise WireError(f"could not read the app settings: {res.error_text(300)}")
         cur = {s["name"]: s.get("value") for s in res.json() or []   # only the managed keys; the rest is dropped unread
                if isinstance(s, dict) and s.get("name") in env}
-        app = self.sh.run(["az", "functionapp", "show", *self._az_target(), "-o", "json"], timeout=120)
+        app = self.sh.run([*site, "show", *self._az_target(), "-o", "json"], timeout=120)
         if not app.ok:
             raise _unreadable("the target", app)
         app = app.json() or {}
 
         diff = [_entry("env", k, cur.get(k), v) for k, v in env.items()]
         settings = [f"{d['setting']}={d['desired']}" for d in diff if d["action"] != "same"]
-        first = self._assign_identity(app, diff, ["az", "functionapp", "identity", "assign", *self._az_target(), "--identities"])
+        first = self._assign_identity(app, diff, [*site, "identity", "assign", *self._az_target(), "--identities"])
         notes = []
         commands = first
         if settings:
-            commands = first + [["az", "functionapp", "config", "appsettings", "set", *self._az_target(),
+            commands = first + [[*site, "config", "appsettings", "set", *self._az_target(),
                                  "--settings", *settings, "-o", "none"]]
         return diff, commands, notes
 

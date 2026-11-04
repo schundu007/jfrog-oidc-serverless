@@ -41,6 +41,10 @@ OUT = {
     ("az", "functionapp", "list"): json.dumps([
         {"name": "flex", "resourceGroup": "rg-f", "location": "eastus", "sku": "FlexConsumption"},
         {"name": "prem", "resourceGroup": "rg-p", "location": "eastus", "sku": "ElasticPremium"}]),
+    # az webapp list returns every site, function apps too: only the web apps are new.
+    ("az", "webapp", "list"): json.dumps([
+        {"name": "web", "resourceGroup": "rg-w", "location": "eastus", "kind": "app,linux"},
+        {"name": "prem", "resourceGroup": "rg-p", "location": "eastus", "kind": "functionapp,linux"}]),
 }
 
 
@@ -93,7 +97,8 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(kinds, {
             "api": ("azure_container_app", True, "rg-api"), "fn": ("azure_functions_aca", True, "rg-fn"),
             "flex": ("azure_functions_flex", True, "rg-f"), "prem": ("azure_functions_premium", True, "rg-p"),
-            "caj-x": ("azure_container_app_job", True, "rg-x")})
+            "caj-x": ("azure_container_app_job", True, "rg-x"), "web": ("azure_web_app", True, "rg-w")})
+        self.assertEqual([w["name"] for w in res["workloads"]].count("prem"), 1)
 
     def test_list_failure_is_reported_not_raised(self):
         res = inventory.run("gcp", Fake(fail={("gcloud", "run", "jobs", "list")}), self.repo)

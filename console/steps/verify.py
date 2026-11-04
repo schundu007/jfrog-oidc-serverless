@@ -260,6 +260,15 @@ def _function_app(cfg, sh, kind, opts):
         del key, k
 
 
+def _web_app(cfg, sh, kind, opts):
+    # Same endpoints as the Cloud Run service; no function key in front of it.
+    r = sh.run(site_host_argv(cfg), timeout=90)
+    host = r.stdout.strip()
+    if not r.ok or not host:
+        return _fail(kind, "health endpoint", f"no host name for the web app: {r.error_text() or 'not deployed'}")
+    return _get(sh, kind, f"https://{host}/healthz/jfrog", fresh=opts.get("fresh"))
+
+
 def _worker_pool(cfg, sh, kind, opts):
     # With opts["since"], wait for a check logged after that time (the worker checks every minute).
     since, waited = opts.get("since"), 0
@@ -354,6 +363,7 @@ METHODS = {
     "azure_functions_aca": _functions_aca,
     "azure_functions_premium": _function_app,
     "azure_functions_flex": _function_app,
+    "azure_web_app": _web_app,
 }
 
 

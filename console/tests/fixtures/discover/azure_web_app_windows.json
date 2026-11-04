@@ -1,0 +1,20 @@
+[
+ {
+  "argv": [
+   "az",
+   "webapp",
+   "show",
+   "-g",
+   "rg-apps",
+   "-n",
+   "web-net",
+   "--subscription",
+   "11111111-2222-3333-4444-555555555555",
+   "-o",
+   "json"
+  ],
+  "rc": 0,
+  "stdout": "{\"id\": \"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.Web/sites/web-net\", \"name\": \"web-net\", \"location\": \"eastus\", \"kind\": \"app\", \"serverFarmId\": \"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.Web/serverfarms/plan-web-net\", \"identity\": {\"type\": \"UserAssigned\", \"userAssignedIdentities\": {\"/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-apps/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-orders\": {\"principalId\": \"aaaaaaaa-0000-0000-0000-000000000004\", \"clientId\": \"cccccccc-0000-0000-0000-000000000004\"}}}, \"siteConfig\": {\"linuxFxVersion\": \"\", \"netFrameworkVersion\": \"v8.0\"}}",
+  "stderr": ""
+ }
+]

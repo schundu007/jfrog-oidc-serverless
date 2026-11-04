@@ -227,6 +227,22 @@ class DedicatedIdentityTests(unittest.TestCase):
         self.assertEqual(plan["commands"][1][:5], ["az", "functionapp", "config", "appsettings", "set"])
         self.assertIn("AZURE_CLIENT_ID=c", plan["commands"][1])
 
+    def test_web_app_uses_the_webapp_commands(self):
+        cfg = azure_cfg("azure_web_app", "web")
+        cfg["target"]["discovered"].update(dedicated_identity="id-web-jfrog", identity_resource_id=None, client_id=None)
+        made = {"id": f"{RG_ID}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-web-jfrog", "client_id": "c"}
+        loc = ["-g", "rg-apps", "-n", "web", "--subscription", SUB, "-o", "json"]
+        sh = Shell(mode="replay", fixtures=[
+            {"argv": ["az", "webapp", "config", "appsettings", "list", *loc],
+             "stdout": json.dumps([{"name": "SCM_DO_BUILD_DURING_DEPLOYMENT", "value": "false"}])},
+            {"argv": ["az", "webapp", "show", *loc], "stdout": json.dumps({"kind": "app,linux"})}])
+        plan = wire.Wire(cfg, sh, {**AZ_OUT, "dedicated_identities": {"web": made}}).plan()
+        self.assertEqual(sh.misses, [])
+        self.assertEqual(plan["commands"][0][:4], ["az", "webapp", "identity", "assign"])
+        self.assertEqual(plan["commands"][1][:5], ["az", "webapp", "config", "appsettings", "set"])
+        self.assertIn("JFROG_HEALTHCHECK_PATH", {d["setting"] for d in plan["diff"]})
+        self.assertNotIn("SCM_DO_BUILD_DURING_DEPLOYMENT", json.dumps(plan))
+
 
 class AzureTests(unittest.TestCase):
     def test_container_app(self):

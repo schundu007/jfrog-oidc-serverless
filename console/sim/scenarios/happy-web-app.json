@@ -1,0 +1,14 @@
+{
+  "name": "happy-web-app",
+  "description": "App Service Web App (Linux or Windows; Python, Java or .NET), runtime path only, no faults, 24 h.",
+  "target_kind": "azure_web_app",
+  "duration": "24h",
+  "clock_start": "2026-01-01T00:00:00Z",
+  "seed": 1,
+  "config_overrides": {},
+  "load": {},
+  "faults": [],
+  "expect": {
+    "verdict": "pass"
+  }
+}
