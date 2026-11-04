@@ -11,7 +11,8 @@ locals {
   version = coalesce(var.runtime_version, { python = "3.12", java = "21", dotnet = "8.0" }[var.runtime])
   # The platform's start command; Java and .NET start their own entry point. gunicorn comes
   # from the bundled packages (PYTHONPATH), so it runs as a module.
-  startup = { python = "python -m gunicorn --config gunicorn.conf.py 'app:create_app()'", java = "", dotnet = "" }[var.runtime]
+  # App Service evals this in a shell: no quotes or parentheses (the app comes from wsgi_app in gunicorn.conf.py).
+  startup = { python = "python -m gunicorn --config gunicorn.conf.py", java = "", dotnet = "" }[var.runtime]
   # The build pipeline reads these to pick its build (pip, Maven or dotnet).
   tags = merge(var.tags, { "jfrog-oidc-os" = var.os, "jfrog-oidc-runtime" = var.runtime, "jfrog-oidc-version" = local.version })
   settings = {

@@ -4,6 +4,7 @@ request timeout), and a graceful stop inside the platform's 10 s SIGTERM window.
 
 import os
 
+wsgi_app = "app:create_app()"   # App Service starts gunicorn with no app argument (its shell eval breaks on quotes)
 bind = f"0.0.0.0:{os.environ.get('PORT', '8000')}"
 workers = int(os.environ.get("WEB_CONCURRENCY", "1"))
 worker_class = "gthread"
