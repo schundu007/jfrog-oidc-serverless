@@ -35,7 +35,7 @@
     },
     "discovered": {
       "app_kind": "app,linux",
-      "at": "2026-11-04T19:18:23Z",
+      "at": "2026-11-04T19:26:49Z",
       "client_id": "2113caee-fa96-429c-9b37-fe2b0066e479",
       "identity_resource_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourcegroups/rg-web-jfrog-cdoazure/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-web-jfrog-cdoazure",
       "identity_type": "user_assigned",
@@ -69,7 +69,7 @@
     }
   },
   "verify": {
-    "artifact_path": "generic-local/healthcheck/ping.txt",
+    "artifact_path": "azure-generic-local/hello.txt",
     "probe_image_runtime": ""
   }
 }
