@@ -1,0 +1,75 @@
+{
+  "jfrog": {
+    "adopt_integration": false,
+    "docker_host": "",
+    "docker_repo": "docker-virtual",
+    "integration_names": {
+      "azure": "azure-entra",
+      "gcp": "gcp-cloudrun",
+      "openshift": "openshift-knative"
+    },
+    "project_key": null,
+    "reader_group": "serverless-readers",
+    "url": "https://trial9hnw59.jfrog.io"
+  },
+  "name": "web-jfrog-cdoazure",
+  "runtime": {
+    "enabled": true,
+    "ttl_seconds": 3600,
+    "username": "svc-azure-web-app"
+  },
+  "state_backend": {
+    "container_name": "tfstate",
+    "key": "workspaces/azure_0e56d318-75b3-43ef-a41b-6a1a3c95b458.tfstate",
+    "resource_group_name": "ado-cicd-rg",
+    "storage_account_name": "stcdoazuretfstate",
+    "type": "azurerm"
+  },
+  "target": {
+    "azure": {
+      "identity_resource_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourcegroups/rg-web-jfrog-cdoazure/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-web-jfrog-cdoazure",
+      "identity_type": "user_assigned",
+      "name": "web-jfrog-cdoazure",
+      "resource_group": "rg-web-jfrog-cdoazure",
+      "subscription": "0e56d318-75b3-43ef-a41b-6a1a3c95b458"
+    },
+    "discovered": {
+      "app_kind": "app,linux",
+      "at": "2026-11-04T19:01:26Z",
+      "client_id": "2113caee-fa96-429c-9b37-fe2b0066e479",
+      "identity_resource_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourcegroups/rg-web-jfrog-cdoazure/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-web-jfrog-cdoazure",
+      "identity_type": "user_assigned",
+      "identity_types": "UserAssigned",
+      "key_vault_reference_identity": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourceGroups/rg-web-jfrog-cdoazure/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-web-jfrog-cdoazure",
+      "kind": "azure_web_app",
+      "location": "West US 2",
+      "mapping_subject": "cd21daea-cc25-45a2-8e22-cf7a2a6eca10",
+      "name": "web-jfrog-cdoazure",
+      "os": "linux",
+      "principal_id": "cd21daea-cc25-45a2-8e22-cf7a2a6eca10",
+      "resource_group": "rg-web-jfrog-cdoazure",
+      "resource_id": "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourceGroups/rg-web-jfrog-cdoazure/providers/Microsoft.Web/sites/web-jfrog-cdoazure",
+      "runtime": "PYTHON|3.12",
+      "subscription": "0e56d318-75b3-43ef-a41b-6a1a3c95b458",
+      "user_assigned_identities": [
+        "/subscriptions/0e56d318-75b3-43ef-a41b-6a1a3c95b458/resourcegroups/rg-web-jfrog-cdoazure/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-web-jfrog-cdoazure"
+      ]
+    },
+    "gcp": {
+      "name": "",
+      "project": "",
+      "region": ""
+    },
+    "kind": "azure_web_app",
+    "openshift": {
+      "cluster": "",
+      "context": "",
+      "name": "",
+      "namespace": ""
+    }
+  },
+  "verify": {
+    "artifact_path": "generic-local/healthcheck/ping.txt",
+    "probe_image_runtime": ""
+  }
+}
