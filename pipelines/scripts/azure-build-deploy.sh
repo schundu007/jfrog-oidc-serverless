@@ -177,8 +177,25 @@ case "$KIND" in
       *) echo "web app ${WORKLOAD}: unknown runtime '${runtime}' (python, java or dotnet)" >&2; exit 1 ;;
     esac
     # Basic-auth publishing is off on the app: az deploys with the service connection's Entra token.
-    az webapp deploy --name "$WORKLOAD" --resource-group "$rg" --src-path "$pkg" --type "$type" \
-      --restart true --only-show-errors >/dev/null
+    started=$(date -u +%Y-%m-%dT%H:%M:%S)
+    if ! az webapp deploy --name "$WORKLOAD" --resource-group "$rg" --src-path "$pkg" --type "$type" \
+      --restart true --only-show-errors >/dev/null; then
+      # az's status poll can fail (Kudu 502 while the site restarts) after the deploy itself
+      # succeeded: Kudu's own record of the newest deployment decides (status 4 = success).
+      deployed=""
+      for _ in $(seq 1 40); do
+        last=$(az webapp log deployment list --name "$WORKLOAD" --resource-group "$rg" \
+          --query "[0].[received_time, to_string(complete), to_string(status)]" -o tsv 2>/dev/null | tr '\n' ' ' || true)
+        read -r at done status <<<"$last"
+        if [[ -n "$at" && "$at" > "$started" && "$done" == "true" ]]; then
+          [[ "$status" == "4" ]] && deployed=1
+          break
+        fi
+        sleep 15
+      done
+      [ -n "$deployed" ] || { echo "web app ${WORKLOAD}: deployment failed" >&2; exit 1; }
+      echo "the deploy call failed, but the newest deployment on ${WORKLOAD} completed successfully"
+    fi
     echo "deployed ${BUILD_SOURCEVERSION:0:12} (${runtime} ${version}) to ${WORKLOAD}"
     ;;
   *) echo "unknown KIND: $KIND (job, app, functions-aca, functions-premium, functions-flex or webapp)" >&2; exit 2 ;;
