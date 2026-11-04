@@ -80,6 +80,18 @@
       "runtime_enabled": true,
       "runtime_ttl": 3600,
       "subject": "3cefb38a-eb34-47f4-9b92-821186a94814"
+    },
+    "web-jfrog-cdoazure": {
+      "dedicated_identity": null,
+      "identity_location": "West US 2",
+      "identity_resource_group": "rg-web-jfrog-cdoazure",
+      "identity_type": "user_assigned",
+      "kind": "azure_web_app",
+      "name": "web-jfrog-cdoazure",
+      "principal_id": "cd21daea-cc25-45a2-8e22-cf7a2a6eca10",
+      "runtime_enabled": true,
+      "runtime_ttl": 3600,
+      "subject": "cd21daea-cc25-45a2-8e22-cf7a2a6eca10"
     }
   }
 }
