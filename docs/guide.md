@@ -40,8 +40,11 @@ Accounts (the run used test accounts; any you control work):
 | Azure DevOps | org `cdoazure`, project `cloudifyDevops` | Project Administrator (creates service connections, variable groups, environments) |
 | JFrog platform | `https://trial9hnw59.jfrog.io` | An admin, once: to make a bootstrap admin token |
 
-JFrog must already have: a Docker remote repository (`docker-remote`, Docker Hub), a PyPI remote
+On Google Cloud, JFrog must already have: a Docker remote repository (`docker-remote`, Docker Hub), a PyPI remote
 (`pypi-remote`) and a group workloads and pipelines read with (`serverless-readers`). Nothing else.
+On Azure, `azure-jfrog-trust` creates its own: the remotes `azure-docker-remote`, `azure-pypi-remote`,
+`azure-maven-remote`, `azure-nuget-remote`, `azure-generic-local/hello.txt` (the self-test read), the reader
+group (`jfrog_reader_group`) and its read and remote-cache permissions.
 `gcp-jfrog-trust` creates the Google Cloud pipelines' own Docker repo (`gcp-images-local`): build-deploy
 pushes each Cloud Run image there first, then the same image to Artifact Registry, which Cloud Run pulls from.
 

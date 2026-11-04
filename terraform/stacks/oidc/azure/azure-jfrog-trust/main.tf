@@ -35,7 +35,7 @@ resource "platform_oidc_identity_mapping" "build" {
   priority      = 1
   claims_json   = jsonencode({ sub = data.azuredevops_serviceendpoint_azurerm.ado["build"].workload_identity_federation_subject, aud = var.ado_token_audience })
   token_spec = {
-    scope      = "applied-permissions/groups:\"${var.jfrog_reader_group}\""
+    scope      = "applied-permissions/groups:\"${platform_group.readers.name}\""
     audience   = "jfrt@*"
     expires_in = 3600
   }

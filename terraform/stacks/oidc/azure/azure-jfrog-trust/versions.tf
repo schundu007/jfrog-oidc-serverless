@@ -5,6 +5,10 @@ terraform {
       source  = "jfrog/platform"
       version = ">= 2.2.1"
     }
+    artifactory = {
+      source  = "jfrog/artifactory"
+      version = ">= 12.0"
+    }
     azuredevops = {
       source  = "microsoft/azuredevops"
       version = ">= 1.16"
@@ -14,6 +18,11 @@ terraform {
 
 # Admin token from JFROG_ACCESS_TOKEN (the operator's, for this local apply).
 provider "platform" {
+  url = var.jfrog_url
+}
+
+# Repositories and the test file, with the same token.
+provider "artifactory" {
   url = var.jfrog_url
 }
 
