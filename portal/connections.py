@@ -27,6 +27,7 @@ import re
 import shutil
 import threading
 import time
+import uuid
 from pathlib import Path
 
 from console import redact
@@ -63,6 +64,8 @@ class Connections:
         self._signin = {}               # tool -> {"session", "started", "error"}
         self._jfrog_token = ""          # in memory only
         self._jfrog_login = "machine"   # which token JFrog calls use: the entered one or the machine's
+        self.jfrog_session_id = lambda: str(uuid.uuid4())   # browser sign-in session (seam for tests)
+        self.jfrog_poll = 3.0
         self._machine = {k: self.environ.get(k) for k in ("CLOUDSDK_CONFIG", "GOOGLE_APPLICATION_CREDENTIALS",
                                                          "AZURE_CONFIG_DIR",
                                                          "JFROG_ACCESS_TOKEN")}
@@ -184,6 +187,10 @@ class Connections:
         p = self._signin.get(tool)
         if not p:
             return None
+        if tool == "jfrog":
+            sess = p["session"]
+            return {"state": ("failed" if sess.rc else "done") if sess.done else "waiting", "url": sess.url,
+                    "code": sess.code, "lines": [], "needs_code": False, **({"error": sess.error} if sess.rc else {})}
         sess, lines = p["session"], p["session"].lines
         text = "\n".join(lines)
         out = {"state": "done" if sess.done else "waiting", "lines": lines[-12:]}
@@ -258,7 +265,7 @@ class Connections:
         console = self._jfrog_login == "console" and bool(self._jfrog_token)
         out = {"url": url, "source": "console" if console else ("machine" if tok else ""), "logins": self.logins("jfrog"),
                "token_present": bool(tok), "operator": ident.get("JFROG_OIDC_SERVICE_ACCOUNT") or "",
-               "signed_in": False, "admin": None}
+               "signed_in": False, "admin": None, "pending": self._pending("jfrog")}
         if tok and url:
             out.update(self._check_jfrog(sh, url, tok))
         return out
@@ -366,6 +373,8 @@ class Connections:
         jf = dict(self.settings().get("jfrog") or {})
         jf["url"] = url
         self._update("jfrog", jf)
+        if body.get("browser"):
+            return self._jfrog_browser(url)
         if not tok:
             return {"saved": True}
         if len(tok) < 16 or len(tok) > 8192 or any(c.isspace() for c in tok):
@@ -376,6 +385,43 @@ class Connections:
         self._jfrog_token, self._jfrog_login = tok, "console"
         self.apply()
         return {"saved": True, "admin": check.get("admin")}
+
+    def _jfrog_browser(self, url: str) -> dict:
+        """JFrog's browser login (as `jf login` does): register a session, the operator signs in on the
+        page it names, and the token is fetched for that session. The token stays in memory only."""
+        with self._lock:
+            p = self._signin.pop("jfrog", None)
+        if p:
+            p["session"].cancel()
+        sid, sh = self.jfrog_session_id(), self.shell_factory()
+        base = f"{url}/access/api/v2/authentication/jfrog_client_login"
+        r = sh.http("POST", f"{base}/request", body=json.dumps({"session": sid}).encode(),
+                    headers={"Content-Type": "application/json"})
+        if not r.ok:
+            raise SettingsError(f"JFrog did not start a browser sign-in ({r.status or r.error})", 502)
+        sess = _JfrogLogin(f"{url}/ui/login?jfClientSession={sid}&jfClientName=JFrog-Console&jfClientCode=1", sid[-4:])
+        with self._lock:
+            self._signin["jfrog"] = {"session": sess, "started": self.clock()}
+
+        def poll():
+            deadline = time.monotonic() + PENDING_SECONDS
+            while not sess.cancelled and time.monotonic() < deadline:
+                res = sh.http("GET", f"{base}/token/{sid}", sensitive=True)
+                data = res.json() if res.ok else None
+                tok = data.get("access_token") if isinstance(data, dict) else None
+                if tok:
+                    check = self._check_jfrog(sh, url, tok)
+                    if check.get("signed_in"):
+                        self._jfrog_token, self._jfrog_login = tok, "console"
+                        self.apply()
+                        sess.finish(0)
+                    else:
+                        sess.finish(1, check.get("error") or "JFrog did not accept the token")
+                    return
+                time.sleep(self.jfrog_poll)
+            sess.finish(1, "cancelled" if sess.cancelled else "the browser sign-in was not completed in time")
+        threading.Thread(target=poll, daemon=True, name="signin-jfrog").start()
+        return {"started": True, "url": sess.url, "code": sess.code}
 
     # -- plain choices ------------------------------------------------------------------------
 
@@ -425,3 +471,20 @@ class Connections:
             return [{"id": p.get("projectId"), "name": p.get("name") or p.get("projectId")}
                     for p in (r.json([]) or []) if p.get("projectId")] if r.ok else []
         raise SettingsError(f"no choices for {tool}", 404)
+
+
+class _JfrogLogin:
+    """A pending JFrog browser sign-in, shaped like a shell Session for the sign-in plumbing."""
+
+    def __init__(self, url: str, code: str):
+        self.url, self.code, self.lines = url, code, []
+        self.done, self.rc, self.error, self.cancelled = False, None, "", False
+
+    def finish(self, rc: int, error: str = "") -> None:
+        self.rc, self.error, self.done = rc, error, True
+
+    def cancel(self) -> None:
+        self.cancelled = True
+
+    def wait(self):
+        return self.rc

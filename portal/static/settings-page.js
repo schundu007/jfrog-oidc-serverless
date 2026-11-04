@@ -206,11 +206,17 @@ const ALL_CONNECTORS = [
           field("jfrog", "url", "Platform URL", { type: "url", value: s.url, placeholder: "https://acme.jfrog.io" }),
           field("jfrog", "token", "Admin access token", { type: "password", placeholder: "Paste a token",
             tip: "Kept in this console's memory only: never saved, logged or shown. Enter it again after a restart." })),
+        pending("jfrog", s.pending),
         signInOut("jfrog", s, async () => {
           await post("jfrog", "signin", { url: val("jfrog", "url"), token: $("f-jfrog-token")?.value || "" });
           delete drafts["f-jfrog-url"];
         }, need(() => (/^https:\/\/[A-Za-z0-9.-]+(:\d+)?\/?$/.test(val("jfrog", "url")) ? "" : "Enter the platform URL (https://…)"),
-          () => ($("f-jfrog-token")?.value ? "" : "Paste an admin token")))),
+          () => ($("f-jfrog-token")?.value ? "" : "Paste an admin token"))),
+        s.logins?.console || s.pending?.state === "waiting" ? null : actions(button("Sign in with browser", async () => {
+          await post("jfrog", "signin", { url: val("jfrog", "url"), browser: true });
+          delete drafts["f-jfrog-url"];
+          await load();
+        }, "secondary", need(() => (/^https:\/\/[A-Za-z0-9.-]+(:\d+)?\/?$/.test(val("jfrog", "url")) ? "" : "Enter the platform URL (https://…)"))))),
     ] },
 ];
 

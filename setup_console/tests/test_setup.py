@@ -9,6 +9,10 @@ import unittest
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+# Per-cloud repos (jfrog-cp-azure) carry one cloud's stacks: tests that span both run where both are.
+BOTH_CLOUDS = unittest.skipUnless((Path(__file__).resolve().parents[2] / "terraform/stacks/serverless/gcp").is_dir(),
+                                  "this repo carries one cloud's stacks")
+
 from console.shell import Shell
 from setup_console import jobs as jobs_module
 from setup_console import stacks
@@ -212,6 +216,7 @@ class StackTests(unittest.TestCase):
             stacks.tf_args("azure-container-apps", "test", self.root.dir, self.root.state)
         self.assertIn("azure-foundation", str(e.exception))
 
+    @BOTH_CLOUDS
     def test_kubernetes_stacks_use_their_cloud_foundation_for_state_and_pipeline(self):
         # The real stacks: a cluster keeps remote state in its own cloud's foundation store and has
         # its own stack-setup pipeline. Only JFrog OIDC stands on it (aks-jfrog-trust: its issuer
@@ -242,6 +247,7 @@ class StackTests(unittest.TestCase):
             for f in stacks.stack_dir(s["id"]).glob("*.tf"):
                 self.assertIsNone(jfrog.search(f.read_text()), f"{s['id']}/{f.name}")
 
+    @BOTH_CLOUDS
     def test_jfrog_oidc_stacks_stand_on_their_own_cloud_foundation(self):
         for sid, dep in (("gcp-jfrog-trust", "gcp-foundation"), ("azure-jfrog-trust", "azure-foundation")):
             self.assertEqual(stacks.get(sid)["kind"], "JFrog OIDC")
@@ -250,6 +256,7 @@ class StackTests(unittest.TestCase):
             self.assertEqual(stacks.rel_dir(sid), f"oidc/{dep.split('-')[0]}/{sid}")
             self.assertIn('source  = "jfrog/platform"', (stacks.stack_dir(sid) / "versions.tf").read_text())
 
+    @BOTH_CLOUDS
     def test_jfrog_inputs_saved_on_a_foundation_move_to_its_clouds_trust(self):
         # Inputs saved before the split: JFrog values leave the infrastructure inputs (and its
         # prefill) for the cloud's own JFrog OIDC stack; never another cloud's, never overwriting.
@@ -272,6 +279,7 @@ class StackTests(unittest.TestCase):
         self.assertEqual(stacks.read_inputs("azure-jfrog-trust", "test", state), {"jfrog_url": "https://kept.jfrog.io"})
         self.assertEqual(json.loads((d / "shared-serverless-google-cloud.json").read_text()), {"gcp_project_id": "p1"})
 
+    @BOTH_CLOUDS
     def test_foundation_environments_cover_every_stack_setup_pipeline(self):
         # Each foundation makes the approval environment for exactly the stacks of its cloud that
         # have a stack-setup pipeline (pipelines/<kind>/<cloud>/<stack>/stack-setup.yml).
@@ -292,6 +300,7 @@ class StackTests(unittest.TestCase):
         self.assertEqual(listed, have)
         self.assertEqual([p for p in (stacks.REPO_ROOT / "pipelines" / "oidc").glob("gcp/*/stack-setup.yml")], [])
 
+    @BOTH_CLOUDS
     def test_each_serverless_type_is_its_own_stack(self):
         # The real stacks: one per workload type, each standing only on its cloud's foundation.
         types = {s["id"]: s for s in stacks.CATALOGUE if s["kind"] == "Serverless" and "foundation" not in s["id"]}

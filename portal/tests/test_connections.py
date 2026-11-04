@@ -127,6 +127,29 @@ class ConnectionsTests(unittest.TestCase):
         # A fresh process has no token: it was never written.
         self.assertFalse(self.conn().status()["jfrog"]["token_present"])
 
+    def test_jfrog_browser_sign_in_keeps_the_token_in_memory(self):
+        c = self.conn()
+        sid = "0b6f2a4e-1c3d-4e5f-8a9b-0c1d2e3f4a5b"
+        c.jfrog_session_id, c.jfrog_poll = (lambda: sid), 0.01
+        base = "https://acme.jfrog.io/access/api/v2/authentication/jfrog_client_login"
+        c.shell_factory = lambda: Shell(mode="replay", fixtures=[
+            {"http": f"POST {base}/request", "status": 200, "body": ""},
+            {"http": f"GET {base}/token/{sid}", "status": 400, "body": "", "consume": True},
+            {"http": f"GET {base}/token/{sid}", "status": 200, "body": json.dumps({"access_token": TOKEN, "expires_in": 3600})},
+            {"http": "GET https://acme.jfrog.io/access/api/v1/oidc", "status": 200, "body": "[]"}])
+        out = c.sign_in("jfrog", {"url": "https://acme.jfrog.io", "browser": True})
+        self.assertEqual(out["url"], f"https://acme.jfrog.io/ui/login?jfClientSession={sid}&jfClientName=JFrog-Console&jfClientCode=1")
+        self.assertEqual(out["code"], sid[-4:])
+        for _ in range(500):
+            if self.env.get("JFROG_ACCESS_TOKEN"):
+                break
+            time.sleep(0.01)
+        self.assertEqual(self.env.get("JFROG_ACCESS_TOKEN"), TOKEN)
+        self.assertNotIn(TOKEN, (self.root / "connections" / "settings.json").read_text())
+        st = c.status()["jfrog"]
+        self.assertNotIn(TOKEN, json.dumps(st))
+        self.assertEqual(st["pending"]["state"], "done")
+
     def test_jfrog_rejected_token_is_not_kept(self):
         c = self.conn()
         c.shell_factory = lambda: Shell(mode="replay", fixtures=[

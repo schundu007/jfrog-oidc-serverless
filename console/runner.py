@@ -181,7 +181,8 @@ class RunManager:
         # Prove starts; a seam for tests.
         self.order_check = order_check or self._order_check
         # Prove's JFrog calls: the console operator's own short-lived token (a seam for tests).
-        self.jfrog_operator_for = jfrog_operator_for or (lambda sh, host: jfrog_operator.Operator(sh, host))
+        # (shell, host, cloud) -> the operator of the workload's own cloud.
+        self.jfrog_operator_for = jfrog_operator_for or (lambda sh, host, cloud="gcp": jfrog_operator.Operator(sh, host, cloud=cloud))
         self.cloud_shell, self.tf_shell = cloud_shell, tf_shell
         self.env = os.environ if env is None else env
         self.simulate = simulate
@@ -496,7 +497,7 @@ class RunManager:
             # Where the running code came from: best effort, never fails the check.
             host = str((run.cfg.get("jfrog") or {}).get("url") or "").split("//", 1)[-1].strip("/")
             try:
-                jf = self.jfrog_operator_for(sh, host) if host else None
+                jf = self.jfrog_operator_for(sh, host, model.cloud_of(run.cfg["target"]["kind"])) if host else None
                 self._evidence(run, "verify", provenance=provenance.run(run.cfg, sh, self.delivery, self.repo_root or ".",
                                                                      jfrog=jf, env=(self.delivery or {}).get("environment") or "test"))
             except Exception as exc:   # noqa: BLE001
@@ -519,7 +520,8 @@ class RunManager:
             run.log(f"waiting for approval to remove {info['mapping']} for a moment")
             self._wait_approval(run, "prove", info, check)
 
-        res = prove.Prove(run.cfg, sh, lambda host: self.jfrog_operator_for(sh, host), approve, update,
+        cloud = model.cloud_of(run.cfg["target"]["kind"])
+        res = prove.Prove(run.cfg, sh, lambda host: self.jfrog_operator_for(sh, host, cloud), approve, update,
                           run.dir / "prove", log=run.log).run()
         self._evidence(run, "prove", result={k: res[k] for k in ("proved", "failed")}, facts=res["facts"])
         if not res["proved"]:

@@ -38,3 +38,9 @@ variable "pipeline_environment" {
   type        = string
   default     = "test"
 }
+
+variable "console_operators" {
+  description = "Emails of the people who may act as the console operator (members or guests of the tenant). Empty: no operator identity."
+  type        = list(string)
+  default     = []
+}

@@ -330,7 +330,7 @@ class ProveRunTests(Base):
         test_prove.MAPPING["name"] = "orders-runtime"
         self.addCleanup(test_prove.MAPPING.__setitem__, "name", "t-runtime")
         jf = self.FakeJfrog(by="gcp-cloudrun/orders-runtime")
-        self.mgr.jfrog_operator_for = lambda sh, host: jf
+        self.mgr.jfrog_operator_for = lambda sh, host, cloud=None: jf
         run = self.mgr.start(cfg(), ["prove"])
         snap = self.wait(run, "waiting_approval")
         info = self.step(snap, "prove")["approval"]

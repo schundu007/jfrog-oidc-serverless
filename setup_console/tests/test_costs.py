@@ -3,6 +3,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+# Per-cloud repos (jfrog-cp-azure) carry one cloud's stacks: tests that span both run where both are.
+BOTH_CLOUDS = unittest.skipUnless((Path(__file__).resolve().parents[2] / "terraform/stacks/serverless/gcp").is_dir(),
+                                  "this repo carries one cloud's stacks")
+
 from setup_console import costs, oidc, stacks
 
 
@@ -70,6 +74,7 @@ class CostsTest(unittest.TestCase):
     def runner(self, jobs, ado):
         return costs.Runner(jobs, ado, "test", state_root=self.tmp, sleep=lambda s: None, out=self.lines.append)
 
+    @BOTH_CLOUDS
     def test_only_costing_stacks_never_foundations_or_trust(self):
         for s in costs.select():
             self.assertNotIn(stacks.get(s)["kind"], ("JFrog OIDC",))
@@ -92,6 +97,7 @@ class CostsTest(unittest.TestCase):
         with self.assertRaises(JobError):
             self.runner(jobs, FakeAdo([])).job("azure-web-app", "status")
 
+    @BOTH_CLOUDS
     def test_down_approves_the_exact_plan_with_the_name_typed(self):
         jobs = FakeJobs(self.tmp, gone={"gke-cluster"}, down={"aks-jfrog-trust"})
         res = costs.run_all(self.runner(jobs, FakeAdo([])), "down", ["aks-cluster", "gke-cluster"])
@@ -102,6 +108,7 @@ class CostsTest(unittest.TestCase):
         self.assertFalse(any(c[:2] == ("gke-cluster", "apply") for c in jobs.calls))
         self.assertEqual([c[0] for c in jobs.calls if c[1] == "status"], ["azure-foundation", "gcp-foundation", "aks-jfrog-trust"])
 
+    @BOTH_CLOUDS
     def test_up_brings_back_a_foundation_deleted_outside_first_and_never_its_jfrog_trust(self):
         self.save("gke-cluster", {"node_count": 1})
         jobs = FakeJobs(self.tmp, down={"gcp-foundation"})
@@ -128,6 +135,7 @@ class CostsTest(unittest.TestCase):
         self.assertEqual(stacks.read_inputs(sid, "test", self.tmp)["app_image"], "aca-demo:abc123")
         self.assertEqual(ado.runs, [{"environment": "test", "workload": "aca-demo"}] * 2)
 
+    @BOTH_CLOUDS
     def test_up_restores_inputs_when_the_first_pass_fails(self):
         sid = "gcp-cloud-run-service"
         self.save(sid, {"workload": "svc", "deploy_service": True, "service_image": "img:1"})
@@ -174,6 +182,7 @@ class CostsTest(unittest.TestCase):
         self.assertIn("setup_console.oidc down", res["aks-cluster"])
         self.assertFalse(any(c[1] in ("plan-destroy", "apply") for c in jobs.calls))
 
+    @BOTH_CLOUDS
     def test_up_never_deploys_before_its_foundation_stands(self):
         self.save("gke-cluster", {"node_count": 1})
         jobs = FakeJobs(self.tmp, down={"gcp-foundation"})

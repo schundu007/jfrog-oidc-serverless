@@ -13,6 +13,14 @@ terraform {
       source  = "microsoft/azuredevops"
       version = ">= 1.16"
     }
+    azuread = {
+      source  = "hashicorp/azuread"
+      version = ">= 3.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = ">= 3.6"
+    }
   }
 }
 
@@ -30,4 +38,9 @@ provider "artifactory" {
 provider "azuredevops" {
   org_service_url = "https://dev.azure.com/${var.ado_org}"
   use_cli         = true
+}
+
+# The console operator's Entra application (console-operator.tf), with the operator's az login.
+provider "azuread" {
+  tenant_id = var.azure_tenant_id
 }
