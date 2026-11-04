@@ -28,7 +28,7 @@ import uuid
 from pathlib import Path
 
 from . import deliver, model, redact
-from . import jfrog_operator
+from . import jfrog_operator, order
 from .steps import discover, preflight, provenance, prove, tfgen, verify
 from .steps import terraform as tf
 from .steps import wire as wiremod
@@ -175,8 +175,11 @@ class Run:
 
 class RunManager:
     def __init__(self, root, cloud_shell, tf_shell, env=None, simulate=None, store=None, delivery=None, repo_root=None,
-                 jfrog_operator_for=None):
+                 jfrog_operator_for=None, order_check=None):
         self.root = Path(root)
+        # The step order (console/order.py), checked in Azure DevOps before Deliver, Verify or
+        # Prove starts; a seam for tests.
+        self.order_check = order_check or self._order_check
         # Prove's JFrog calls: the console operator's own short-lived token (a seam for tests).
         self.jfrog_operator_for = jfrog_operator_for or (lambda sh, host: jfrog_operator.Operator(sh, host))
         self.cloud_shell, self.tf_shell = cloud_shell, tf_shell
@@ -220,6 +223,10 @@ class RunManager:
         errors = model.validate(cfg)["errors"]
         if errors:
             raise RunError(400, "invalid_config", "; ".join(f"{e['path']}: {e['message']}" for e in errors))
+        try:
+            self.order_check(cfg, steps)
+        except order.OrderError as e:
+            raise RunError(409, "out_of_order", str(e))
         with self.lock:
             busy = [r for r in self.runs.values() if r.name == cfg.get("name") and r.status in ("running", "waiting_approval")]
             if busy:
@@ -233,6 +240,16 @@ class RunManager:
         self.threads.append(t)
         t.start()
         return run
+
+    def _order_check(self, cfg: dict, steps: list) -> None:
+        """Only with delivery: the pipelines it waits on live in Azure DevOps."""
+        if not self.delivery or not set(steps) & {"publish", "verify", "prove"}:
+            return
+        ado = self.delivery.get("ado") or {}
+        p = order.Pipelines(self.cloud_shell(lambda _l: None), ado.get("organization", ""), ado.get("project", ""))
+        cloud = model.cloud_of(cfg["target"]["kind"])
+        need_onboard = bool(set(steps) & {"verify", "prove"}) and "publish" not in steps
+        order.check(steps, cloud, p.active(), p.last_onboard(cloud) if need_onboard else None)
 
     def get(self, run_id: str) -> Run:
         with self.lock:

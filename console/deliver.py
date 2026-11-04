@@ -145,19 +145,43 @@ def _backend(settings: dict, cloud: str, ws_name: str) -> dict:
     return {"type": t, **{k: b[k] for k in STATE_FIELDS[t]}, "key": f"workspaces/{ws_name}.tfstate"}
 
 
-def _render(cfg: dict, wt) -> dict:
+GONE_MARKERS = ("does not exist", "ResourceNotFound", "Request_ResourceNotFound")
+
+
+def gone_targets(cfg: dict, wt, sh: Shell) -> list:
+    """The workspace's other Azure targets whose managed identity no longer exists in Entra:
+    their role assignments would fail the whole apply. Only a definite not-found counts;
+    any other error keeps the target."""
+    if model.cloud_of(cfg["target"]["kind"]) != "azure":
+        return []
+    state = tfgen.read_state(Path(wt) / "terraform", tfgen.workspace_key(cfg)) or {}
+    gone = []
+    for name, t in sorted((state.get("targets") or {}).items()):
+        pid = t.get("principal_id")
+        if name == cfg["name"] or not pid:
+            continue
+        res = sh.run(["az", "ad", "sp", "show", "--id", pid, "--query", "id", "-o", "tsv"], timeout=60.0,
+                     meaning={0: "identity exists", 3: "no such identity"})
+        if not res.ok and any(m in res.error_text() for m in GONE_MARKERS):
+            gone.append(name)
+    return gone
+
+
+def _render(cfg: dict, wt, drop=()) -> dict:
     """Render into the worktree; returns the workspace path relative to it and its files."""
-    rendered = tfgen.render(cfg, Path(wt) / "terraform", modules="../../modules")
+    rendered = tfgen.render(cfg, Path(wt) / "terraform", modules="../../modules", drop=drop)
     ws = Path(rendered["dir"])
     configs = ws / "configs"
     configs.mkdir(exist_ok=True)
+    for name in drop:
+        (configs / f"{name}.json").unlink(missing_ok=True)
     text = json.dumps(cfg, indent=2, sort_keys=True) + "\n"
     if redact.text(text) != text:
         raise DeliveryError("refusing to commit the config: a value looks like a secret")
     (configs / f"{cfg['name']}.json").write_text(text)
     rel = ws.relative_to(Path(wt)).as_posix()
     files = [f"{rel}/{n}" for n in WORKSPACE_FILES] + [f"{rel}/configs/{cfg['name']}.json"]
-    return {"workspace": rel, "files": files, "targets": rendered["targets"], "warnings": rendered["warnings"]}
+    return {"workspace": rel, "files": files, "dropped": [f"{rel}/configs/{n}.json" for n in drop], "targets": rendered["targets"], "warnings": rendered["warnings"]}
 
 
 def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=None) -> dict:
@@ -223,9 +247,14 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
     wt.parent.mkdir(parents=True, exist_ok=True)
     must(git("worktree", "add", "--quiet", "-b", branch, str(wt), f"refs/remotes/delivery/{base}"), "git worktree add")
     try:
-        out = _render(c, wt)
+        drop = gone_targets(c, wt, sh)
+        for name in drop:
+            log(f"{name} no longer exists (its identity is gone): taking it out of the workspace")
+        out = _render(c, wt, drop)
         for w in out["warnings"]:
             log(f"warning: {w}")
+        if out["dropped"]:
+            must(git("rm", "--quiet", "--cached", "--ignore-unmatch", "--", *out["dropped"], cwd=wt), "git rm")
         must(git("add", "--", *out["files"], cwd=wt), "git add")
         if git("diff", "--cached", "--quiet", cwd=wt, meaning={0: "no changes", 1: "changes found"}).rc == 0:
             log(f"{out['workspace']} already matches {base}: nothing to propose")

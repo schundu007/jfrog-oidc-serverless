@@ -108,12 +108,59 @@ class PublishTests(unittest.TestCase):
         push = next(c for c in sh.calls if c[0] == "git" and c[3] == "push")
         self.assertEqual(push[4:], ["--quiet", REPO_URL, "onboard/orders-01234567:refs/heads/onboard/orders-01234567"])
 
+    def test_a_target_whose_identity_is_gone_is_taken_out_of_the_workspace(self):
+        from console.tests.test_tfgen import azure_cfg
+        GONE, LIVE = "aaaaaaaa-0000-0000-0000-00000000dead", "aaaaaaaa-0000-0000-0000-00000000beef"
+        wt = self.repo / ".console" / "delivery" / "0123456789abcdef"
+        old = azure_cfg(name="old-app", principal=GONE)
+        old["jfrog"]["url"] = "https://acme.jfrog.io"
+        old["state_backend"] = deliver._backend(DELIVERY, "azure", "x")
+        first = deliver._render(old, wt)
+        cfg = azure_cfg(name="web", principal=LIVE)
+        cfg["jfrog"]["url"] = "https://acme.jfrog.io"
+
+        class Sp(FakeGit):
+            def _replay_cmd(self, argv):
+                if argv[:4] == ["az", "ad", "sp", "show"]:
+                    self.calls.append(list(argv))
+                    return Result(argv, 3, "", f"ERROR: Resource '{argv[5]}' does not exist or one of its queried "
+                                                "reference-property objects are not present.", 0.0)
+                return super()._replay_cmd(argv)
+        sh = Sp(self.lines.append)
+        res = deliver.publish(cfg, sh, self.repo, DELIVERY, "0123456789abcdef", log=self.lines.append)
+        self.assertEqual(sh.misses, [])
+        ws = wt / first["workspace"]
+        state = json.loads((ws / "console.json").read_text())
+        self.assertEqual(sorted(state["targets"]), ["web"])
+        self.assertEqual(state["shared"]["resource_group_name"], "rg-apps")
+        self.assertFalse((ws / "configs" / "old-app.json").exists())
+        rm = next(c for c in sh.calls if c[0] == "git" and c[3] == "rm")
+        self.assertEqual(rm[-1], f"{first['workspace']}/configs/old-app.json")
+        self.assertTrue(any("old-app no longer exists" in l for l in self.lines))
+        self.assertTrue(res["changed"])
+
+    def test_a_target_is_kept_when_the_identity_check_fails_otherwise(self):
+        from console.tests.test_tfgen import azure_cfg
+        wt = self.repo / ".console" / "delivery" / "x"
+        old = azure_cfg(name="old-app", principal="aaaaaaaa-0000-0000-0000-00000000dead")
+        old["jfrog"]["url"] = "https://acme.jfrog.io"
+        deliver._render(old, wt)
+        cfg = azure_cfg(name="web", principal="aaaaaaaa-0000-0000-0000-00000000beef")
+
+        class Down(Shell):
+            def __init__(self):
+                super().__init__(mode="replay")
+
+            def _replay_cmd(self, argv):
+                return Result(argv, 1, "", "ERROR: network unreachable", 0.0)
+        self.assertEqual(deliver.gone_targets(cfg, wt, Down()), [])
+
     def test_workspace_uses_relative_modules_and_remote_state(self):
         seen = {}
         orig = deliver._render
 
-        def spy(cfg, wt):
-            out = orig(cfg, wt)
+        def spy(cfg, wt, drop=()):
+            out = orig(cfg, wt, drop)
             ws = Path(wt) / out["workspace"]
             seen["main"] = json.loads((ws / "main.tf.json").read_text())
             seen["backend"] = json.loads((ws / "backend.tf.json").read_text())
@@ -353,7 +400,8 @@ class RunnerDeliveryTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.root, True)
         self.mgr = RunManager(self.root / ".console", cloud_shell=lambda log: FakeGit(log),
                               tf_shell=lambda log: Shell(mode="replay", log=log),
-                              env={"PATH": "/usr/bin:/bin"}, delivery=DELIVERY, repo_root=self.root)
+                              env={"PATH": "/usr/bin:/bin"}, delivery=DELIVERY, repo_root=self.root,
+                              order_check=lambda cfg, steps: None)
         self.addCleanup(self.mgr.shutdown)
 
     def wait(self, run):
@@ -370,6 +418,31 @@ class RunnerDeliveryTests(unittest.TestCase):
         self.assertEqual(steps["publish"]["evidence"]["result"]["pull_request"]["url"], f"{REPO_URL}/pullrequest/42")
         for s in ("plan", "apply", "wire"):
             self.assertTrue(steps[s]["planned"], s)
+
+    def test_a_step_out_of_order_is_refused_before_the_run_starts(self):
+        from console import order
+        from console.runner import RunError, RunManager
+
+        def busy(cfg, steps):
+            raise order.OrderError("waiting on step 4 (Build and deploy): Web App - Build and deploy run 224 is inProgress")
+        mgr = RunManager(self.root / ".console2", cloud_shell=lambda log: FakeGit(log),
+                         tf_shell=lambda log: Shell(mode="replay", log=log), env={}, delivery=DELIVERY,
+                         repo_root=self.root, order_check=busy)
+        self.addCleanup(mgr.shutdown)
+        with self.assertRaises(RunError) as ctx:
+            mgr.start(gcp_cfg(), steps=["publish"])
+        self.assertEqual((ctx.exception.status, ctx.exception.code), (409, "out_of_order"))
+        self.assertIn("step 4", str(ctx.exception))
+        self.assertEqual(mgr.list(), [])
+
+    def test_the_default_order_check_reads_ado_only_with_delivery(self):
+        from console.runner import RunManager
+        calls = []
+        local = RunManager(self.root / ".console3", cloud_shell=lambda log: calls.append(1),
+                           tf_shell=lambda log: None, env={})
+        self.addCleanup(local.shutdown)
+        local.order_check(gcp_cfg(), ["prove"])
+        self.assertEqual(calls, [])
 
     def test_local_steps_are_refused_in_delivery_mode(self):
         from console.runner import RunError

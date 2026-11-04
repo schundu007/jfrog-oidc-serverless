@@ -76,6 +76,20 @@ class AdoTests(unittest.TestCase):
         self.assertNotIn(TOKEN, url)
         self.assertFalse(any(TOKEN in l for l in sh.lines))
 
+    def test_queue_waits_while_the_same_cloud_has_a_run_in_flight(self):
+        defs = {"value": [
+            {"id": 30, "name": "Web App - Infrastructure", "process": {"yamlFilename": "pipelines/serverless/azure/azure-web-app/stack-setup.yml"}},
+            {"id": 31, "name": "Web App - Build and deploy", "process": {"yamlFilename": "pipelines/serverless/azure/azure-web-app/build-deploy.yml"}},
+            {"id": 27, "name": "Cloud Run job - Infrastructure", "process": {"yamlFilename": "pipelines/serverless/gcp/gcp-cloud-run/stack-setup.yml"}}]}
+        running = {"value": [{"id": 224, "status": "inProgress", "definition": {"id": 31, "name": "Web App - Build and deploy"}}]}
+        c, sh = self.client({("GET", "/build/definitions?"): (200, defs), ("GET", "/build/builds?"): (200, running),
+                             ("POST", "/runs"): (200, {"id": 300})})
+        c.pipeline("pipelines/serverless/azure/azure-web-app/stack-setup.yml")
+        with self.assertRaisesRegex(ado.AdoError, r"waiting on step 4 \(Build and deploy\).*224"):
+            c.queue(30, {"action": "apply"})
+        self.assertFalse(any(m == "POST" for m, *_ in sh.sent))
+        self.assertEqual(c.queue(27, {"action": "apply"}), 300)   # another cloud is not held up
+
     def test_plan_reads_the_changes_and_the_pending_approval(self):
         # ADO sends a log asked for as JSON as {"count", "value": [lines]}.
         c, _ = self.client({("GET", "/builds/101/timeline"): (200, timeline(apply=("pending", None), approval="ap-1")),

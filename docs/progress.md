@@ -656,3 +656,9 @@ Unverified: worker pools are only in `gcloud beta` (gcloud 555 has no GA group),
 - Kind `azure_web_app` (App Service, Linux or Windows; Python, Java or .NET). Stack `azure-web-app`, pipelines `pipelines/serverless/azure/azure-web-app/`, apps `apps/web-app/{java,dotnet}` (Python reuses `cloud-run-service`), JFrog remotes in `azure-jfrog-trust`.
 - Consoles: Infrastructure row (Web App, globe icon), sidebar Serverless > Web Apps. Discover (`az webapp show`; a functionapp site goes back to Functions; facts `os`, `runtime`), wire and prove by app settings (`model.az_site`), verify at `/healthz/jfrog` with no key, provenance, inventory and live. Scenario `happy-web-app` passes.
 - Not live-tested yet: `az webapp deploy` with basic auth off, .NET restore credentials, the Java port, the remote-cache permission.
+
+## Step order gates (2026-11-04)
+
+- `console/order.py`: steps 1 Foundation · 2 JFrog trust · 3 Infrastructure · 4 Build and deploy · 5 Onboard · 6 Prove/Verify, told apart by pipeline YAML path. Deliver, Verify and Prove are refused (409 `out_of_order`) while the cloud has a pipeline queued or running; Verify and Prove also need the cloud's last Onboard run to have succeeded.
+- `setup_console/ado.py` `queue`: refused while another pipeline of the same cloud is queued or running.
+- Deliver drops Azure targets whose managed identity no longer exists in Entra (definite not-found only), so stale targets no longer fail the onboard apply.

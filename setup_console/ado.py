@@ -15,7 +15,7 @@ import json
 import re
 import time
 
-from console import redact
+from console import order, redact
 
 ADO_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798"
 API = "api-version=7.1"
@@ -139,8 +139,28 @@ class Ado:
         self._defs = None   # registered since: look again next time
         raise AdoError(f"no Azure DevOps pipeline runs {want}: register it first")
 
+    def in_flight(self) -> list:
+        """Queued or running builds, each with its cloud and step (console/order.py)."""
+        if self._defs is None:
+            self._defs = self._call("GET", "/build/definitions?includeAllProperties=true").get("value") or []
+        yaml = {d["id"]: str((d.get("process") or {}).get("yamlFilename") or "") for d in self._defs}
+        out = []
+        for b in self._call("GET", "/build/builds?statusFilter=notStarted,inProgress,cancelling&$top=100").get("value") or []:
+            y = yaml.get((b.get("definition") or {}).get("id"), "")
+            out.append({"id": b.get("id"), "name": (b.get("definition") or {}).get("name"), "cloud": order.cloud_of(y),
+                        "step": order.step_of(y), "state": {"notStarted": "queued"}.get(b.get("status"), b.get("status"))})
+        return out
+
     def queue(self, pipeline_id: int, params: dict) -> int:
-        """Queue a run on the branch; object parameters go as JSON text (ADO parses them)."""
+        """Queue a run on the branch; object parameters go as JSON text (ADO parses them).
+        Refused while another pipeline of the same cloud is queued or running (the step order)."""
+        y = next((str((d.get("process") or {}).get("yamlFilename") or "") for d in self._defs or []
+                  if d.get("id") == pipeline_id), "")
+        cloud = order.cloud_of(y)
+        if cloud:
+            b = order.blocker(self.in_flight(), cloud)
+            if b:
+                raise AdoError(f"waiting on {order.describe(b)}; start this when it has finished")
         tp = {k: v if isinstance(v, str) else json.dumps(v) for k, v in params.items()}
         body = {"resources": {"repositories": {"self": {"refName": f"refs/heads/{self.branch}"}}}, "templateParameters": tp}
         return int(self._call("POST", f"/pipelines/{pipeline_id}/runs", body)["id"])

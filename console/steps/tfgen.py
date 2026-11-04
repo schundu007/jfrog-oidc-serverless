@@ -159,14 +159,15 @@ def terraform_lock(ws_dir: Path, timeout: float = 3600.0, on_wait=None) -> FileL
 # ---------------------------------------------------------------------- render
 
 
-def render(cfg: dict, root: Path, on_wait=None, modules: str | None = None) -> dict:
+def render(cfg: dict, root: Path, on_wait=None, modules: str | None = None, drop=()) -> dict:
     """Add or update this config's target in its shared workspace and rewrite the files.
 
     modules: where main.tf.json points its module sources. Default: this checkout's
     terraform/modules (absolute). Delivery passes "../../modules" for a workspace
     committed under terraform/workspaces/.
+    drop: other targets to take out of the workspace (their workload no longer exists).
     """
-    return _update(cfg, Path(root), on_wait, remove=False, modules=modules)
+    return _update(cfg, Path(root), on_wait, remove=False, modules=modules, drop=drop)
 
 
 def remove(cfg: dict, root: Path, on_wait=None) -> dict:
@@ -174,7 +175,7 @@ def remove(cfg: dict, root: Path, on_wait=None) -> dict:
     return _update(cfg, Path(root), on_wait, remove=True)
 
 
-def _update(cfg: dict, root: Path, on_wait, remove: bool, modules: str | None = None) -> dict:
+def _update(cfg: dict, root: Path, on_wait, remove: bool, modules: str | None = None, drop=()) -> dict:
     key = workspace_key(cfg)
     cloud = key.split(":", 1)[0]
     name = cfg.get("name")
@@ -194,6 +195,13 @@ def _update(cfg: dict, root: Path, on_wait, remove: bool, modules: str | None = 
     # files never change under a running terraform operation.
     with FileLock(root / "workspaces" / ".render.lock", on_wait=on_wait), terraform_lock(ws, on_wait=on_wait):
         state = _read_state(ws) or {"key": key, "cloud": cloud, "shared": {}, "targets": {}}
+        for gone in drop:
+            if gone != name:
+                state["targets"].pop(gone, None)
+        if not state["targets"] or set(state["targets"]) == {name}:
+            # The first target's resource group and location only stand while it does.
+            for k in ("resource_group_name", "location"):
+                state["shared"].pop(k, None)
         if remove:
             state["targets"].pop(name, None)
         else:
@@ -202,6 +210,11 @@ def _update(cfg: dict, root: Path, on_wait, remove: bool, modules: str | None = 
             _guards(root, key, state)
         _write_workspace(ws, state, modules)
     return {"key": key, "dir": str(ws), "targets": sorted(state["targets"]), "warnings": warnings}
+
+
+def read_state(root: Path, key: str):
+    """The workspace's console.json for this key, or None."""
+    return _read_state(workspace_dir(Path(root), key))
 
 
 def _read_state(ws: Path):
