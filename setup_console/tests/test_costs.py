@@ -77,6 +77,21 @@ class CostsTest(unittest.TestCase):
         self.assertEqual(costs.select("gcp", None)[-1], "gke-cluster")
         self.assertTrue(all(stacks.get(s)["group"] == "Azure" for s in costs.select("azure")))
 
+    def test_a_busy_stack_is_waited_for(self):
+        from setup_console.jobs import JobError
+        jobs = FakeJobs(self.tmp)
+        real, busy = jobs.start, [2]
+        def start(sid, action, approval=None):
+            if busy[0]:
+                busy[0] -= 1
+                raise JobError(409, f"{sid} is busy")
+            return real(sid, action, approval)
+        jobs.start = start
+        self.assertEqual(self.runner(jobs, FakeAdo([])).job("azure-web-app", "status")["deployed"], True)
+        jobs.start = lambda *a: (_ for _ in ()).throw(JobError(400, "bad"))
+        with self.assertRaises(JobError):
+            self.runner(jobs, FakeAdo([])).job("azure-web-app", "status")
+
     def test_down_approves_the_exact_plan_with_the_name_typed(self):
         jobs = FakeJobs(self.tmp, gone={"gke-cluster"}, down={"aks-jfrog-trust"})
         res = costs.run_all(self.runner(jobs, FakeAdo([])), "down", ["aks-cluster", "gke-cluster"])

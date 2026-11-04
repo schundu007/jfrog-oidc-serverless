@@ -12,6 +12,7 @@ from console import redact
 from . import stacks
 
 POLL = 5
+BUSY_WAIT = 10 * 60
 
 
 class RunError(RuntimeError):
@@ -34,7 +35,17 @@ class Runner:
     # -- Setup jobs ---------------------------------------------------------------------------
 
     def job(self, sid, action, approval=None) -> dict:
-        j = self.jobs.start(sid, action, approval)
+        # A stack just read as deployed starts state reads of the stacks on it: wait for one to end.
+        for _ in range(BUSY_WAIT // POLL):
+            try:
+                j = self.jobs.start(sid, action, approval)
+                break
+            except Exception as exc:   # JobError 409 "<stack> is busy"
+                if getattr(exc, "status", None) != 409 or "busy" not in str(exc):
+                    raise
+                self.sleep(POLL)
+        else:
+            raise self.error(f"{sid} stayed busy for {BUSY_WAIT // 60} minutes")
         while j["state"] == "running":
             self.sleep(POLL)
             j = self.jobs.get(j["id"])
