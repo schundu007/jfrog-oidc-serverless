@@ -29,6 +29,21 @@ from . import stacks
 from .ado import AdoError
 
 
+def _alive_elsewhere(pid) -> bool:
+    """Another live process on this machine (a costs/oidc command beside the portal) owns the record."""
+    if not isinstance(pid, int) or pid <= 0 or pid == os.getpid():
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
 MAX_LOG = 5000   # lines kept per job
 JOB_ID = re.compile(r"[0-9a-f]{12}")
 RETENTION_DAYS = 7   # runs of a stack that is gone stay in its archive this long, then are deleted
@@ -187,6 +202,8 @@ class Jobs:
                 rec["result"] = {"applied": True, "run": st.get("url")}
                 self._set_status(rec["stack"], {"deployed": True, "outputs": st.get("outputs") or {}})
         else:
+            if _alive_elsewhere(rec.get("pid")):
+                return rec   # a costs/oidc command (or another console) runs it: read again later
             line = "▶ Stopped: the console restarted while this ran. Plan again."
             rec.update(state="failed", finished=time.time(), error="the console restarted while this ran")
         rec["log"] = list(rec.get("log") or []) + [line]
@@ -214,6 +231,7 @@ class Jobs:
         if job["action"] == "status":
             return
         rec = {k: job.get(k) for k in ("id", "stack", "action", "state", "started", "finished", "error", "next", "ado_run")}
+        rec["pid"] = os.getpid()   # the process running it: another one sharing these records leaves it alone
         rec["error"] = redact.text(rec["error"]) if rec["error"] else None
         rec["log"] = [redact.text(x) for x in job.get("log", [])]
         rec["log_times"] = list(job.get("log_times", []))

@@ -498,6 +498,20 @@ class AdoJobTests(unittest.TestCase):
         self.assertEqual(j["state"], "failed")
         self.assertIn("restarted", j["error"])
 
+    def test_a_local_run_another_live_process_owns_is_left_running(self):
+        # A costs/oidc command and the portal share the job records: neither stops the other's run.
+        import subprocess, sys
+        other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        self.addCleanup(other.kill)
+        jobs = self.jobs([PLANNED])
+        d = Path(self.root.state) / "test" / "jobs"
+        d.mkdir(parents=True, exist_ok=True)
+        for jid, pid in (("0123456789aa", other.pid), ("0123456789ab", 2 ** 22 + 7)):
+            (d / f"{jid}.json").write_text(json.dumps({"id": jid, "stack": "azure-foundation", "action": "apply", "pid": pid,
+                                                       "state": "running", "started": 1, "log": [], "log_times": []}))
+        self.assertEqual(jobs.get("0123456789aa")["state"], "running")
+        self.assertEqual(jobs.get("0123456789ab")["state"], "failed")   # its process is gone
+
     def test_stacks_without_a_pipeline_still_run_here(self):
         jobs = self.jobs([PLANNED])
         (stacks.stack_dir("azure-container-apps", self.root.dir) / ".fake_plan.json").write_text("[]")
