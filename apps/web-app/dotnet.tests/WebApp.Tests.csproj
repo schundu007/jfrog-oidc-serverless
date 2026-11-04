@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tests for apps/web-app/dotnet: the real app against an emulated identity endpoint and JFrog.
+       The build pipeline restores these through JFrog (nuget-remote) and runs them before publishing. -->
+  <PropertyGroup>
+    <AppFramework Condition="'$(AppFramework)' == ''">net8.0</AppFramework>
+    <TargetFramework>$(AppFramework)</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.0.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../dotnet/WebApp.csproj" />
+  </ItemGroup>
+</Project>

@@ -136,18 +136,21 @@ case "$KIND" in
       echo "no web app ${WORKLOAD} in ${rg}" >&2; exit 1; }
     runtime=$(az webapp show --name "$WORKLOAD" --resource-group "$rg" --query 'tags."jfrog-oidc-runtime"' -o tsv --only-show-errors)
     version=$(az webapp show --name "$WORKLOAD" --resource-group "$rg" --query 'tags."jfrog-oidc-version"' -o tsv --only-show-errors)
-    src="apps/web-app/${runtime}"
+    # Python is the same JFrog browser as the Cloud Run / Container Apps service.
+    case "$runtime" in python) src=apps/cloud-run-service ;; *) src="apps/web-app/${runtime}" ;; esac
     [ -d "$src" ] || { echo "web app ${WORKLOAD} has runtime '${runtime}': no ${src}" >&2; exit 1; }
     out=$(mktemp -d)
     case "$runtime" in
       python)
         : "${JFROG_PYPI_REPO:?}"
-        cp -R "$src"/. "$out/"
+        cp -R "$src/app" "$src/gunicorn.conf.py" "$src/requirements.txt" "$out/"
         cp -R client/src/jfrog_oidc "$out/"
         # Linux App Service only: wheels for its python, installed into the package (PYTHONPATH).
         python3 -m jfrog_oidc pip --repo "$JFROG_PYPI_REPO" -- install --quiet --target "$out/.python_packages" \
           --only-binary=:all: --platform manylinux2014_x86_64 --python-version "${version:-3.12}" \
           --implementation cp -r "$src/requirements.txt"
+        # The app's tests, against the packages being shipped.
+        (cd "$src" && PYTHONPATH="$out/.python_packages:$out" APP_JSON_LOGS=0 python3 -m unittest discover -s tests -t . -q)
         (cd "$out" && find . -name __pycache__ -prune -o -type f -print | zip -q -@ ../package.zip)
         pkg="$out/../package.zip" type=zip
         ;;
@@ -157,14 +160,17 @@ case "$KIND" in
         export JAVA_HOME="${!jdk_var:-${JAVA_HOME:-}}"
         python3 -m jfrog_oidc mvn --repo "$JFROG_MAVEN_REPO" -- -B -q -f "$src/pom.xml" \
           -Dmaven.repo.local="$out/m2" -Dapp.version="${BUILD_SOURCEVERSION:0:12}" package
-        pkg=$(ls "$src"/target/*.jar | head -1) type=jar
+        pkg="$src/target/app.jar" type=jar
         ;;
       dotnet)
         : "${JFROG_NUGET_REPO:?}"
         export NUGET_PACKAGES="$out/nuget" DOTNET_CLI_TELEMETRY_OPTOUT=1
-        python3 -m jfrog_oidc dotnet --repo "$JFROG_NUGET_REPO" -- restore "$src"
+        fw="net${version:-8.0}"
+        # Restores the tests too (they reference the app); packages only from JFrog.
+        python3 -m jfrog_oidc dotnet --repo "$JFROG_NUGET_REPO" -- restore "$src.tests" -p:AppFramework="$fw"
+        dotnet test "$src.tests" --no-restore -p:AppFramework="$fw"
         dotnet publish "$src" --configuration Release --no-restore --output "$out/publish" \
-          -p:SourceRevisionId="${BUILD_SOURCEVERSION:0:12}"
+          -p:AppFramework="$fw" -p:SourceRevisionId="${BUILD_SOURCEVERSION:0:12}"
         (cd "$out/publish" && zip -q -r ../package.zip .)
         pkg="$out/package.zip" type=zip
         ;;

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- JFrog browser for App Service (.NET, Linux or Windows). No package references: the framework
+       only. The build pipeline restores through JFrog (nuget-remote) with its OIDC token and passes
+       -p:AppFramework=net<the app's dotnet version>. -->
+  <PropertyGroup>
+    <AppFramework Condition="'$(AppFramework)' == ''">net8.0</AppFramework>
+    <TargetFramework>$(AppFramework)</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>WebApp</AssemblyName>
+    <RootNamespace>JfrogOidc.WebApp</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>
