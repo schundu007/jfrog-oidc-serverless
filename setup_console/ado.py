@@ -105,6 +105,11 @@ class Ado:
             headers["Content-Type"] = "application/json"
             data = json.dumps(body).encode()
         res = self.sh.http(method, f"{self.base}{path}{sep}{API}", headers=headers, body=data, timeout=60)
+        if res.status == 401:
+            # az can return a cached token close to expiry: get a fresh one and try once more.
+            self._token = ""
+            headers.update(self._auth())
+            res = self.sh.http(method, f"{self.base}{path}{sep}{API}", headers=headers, body=data, timeout=60)
         if not res.ok:
             msg = (res.json({}) or {}).get("message") if res.body.startswith("{") else ""
             raise AdoError(f"Azure DevOps answered {res.status or res.error} to {method} {path.split('?')[0]}"

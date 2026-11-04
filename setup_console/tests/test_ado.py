@@ -57,6 +57,17 @@ class AdoTests(unittest.TestCase):
         sh = FakeAdo(routes)
         return ado.Ado(sh, "acme", "proj"), sh
 
+    def test_an_expired_token_is_fetched_again_and_the_call_retried_once(self):
+        # az may hand back a cached token minutes from expiry; ADO then answers 401 (anonymous user).
+        c, sh = self.client({})
+        answers = iter([HttpResult("PATCH", "u", 401, '{"message":"TF400813"}'), HttpResult("PATCH", "u", 200, "{}")])
+        sh.http = lambda *a, **k: next(answers)
+        cmds = []
+        orig = sh._replay_cmd
+        sh._replay_cmd = lambda argv: (cmds.append(argv), orig(argv))[1]
+        c.answer("ap-1", True, "ok")
+        self.assertEqual(len([a for a in cmds if a[:3] == ["az", "account", "get-access-token"]]), 2)
+
     def test_finds_a_pipeline_by_its_yaml_path(self):
         c, _ = self.client({("GET", "/build/definitions?"): (200, {"value": [
             {"id": 27, "name": "Cloud Run job - Infrastructure", "process": {"yamlFilename": "pipelines/serverless/gcp/gcp-cloud-run/stack-setup.yml"}},
