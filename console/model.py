@@ -156,7 +156,8 @@ def default_config(kind: str, name: str = "new-target") -> dict:
         },
         "runtime": {"enabled": True, "ttl_seconds": 3600, "username": f"svc-{cloud}-{short}"},
         "verify": {
-            "artifact_path": "generic-local/healthcheck/ping.txt",
+            # Azure reads the file its JFrog trust stack seeds (azure-jfrog-trust repositories.tf).
+            "artifact_path": "azure-generic-local/hello.txt" if cloud == "azure" else "generic-local/healthcheck/ping.txt",
             "probe_image_runtime": "",
         },
         "state_backend": {"type": "local"},

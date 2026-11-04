@@ -94,3 +94,11 @@ class ValidateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VerifyPathTests(unittest.TestCase):
+    def test_azure_reads_the_file_its_jfrog_trust_stack_seeds(self):
+        self.assertEqual(model.default_config("azure_web_app", name="w")["verify"]["artifact_path"],
+                         "azure-generic-local/hello.txt")
+        self.assertEqual(model.default_config("gcp_run_service", name="w")["verify"]["artifact_path"],
+                         "generic-local/healthcheck/ping.txt")

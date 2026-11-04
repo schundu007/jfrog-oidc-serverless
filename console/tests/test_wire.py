@@ -116,7 +116,7 @@ class GcpTests(unittest.TestCase):
         self.assertEqual(env["JFROG_ARTIFACT_PATH"], "generic-local/healthcheck/ping.txt")
         self.assertNotIn("JFROG_ARTIFACT_PATH", wire.Wire(gcp_cfg(), Shell(mode="replay"), GCP_OUT).desired_env())
         aca = wire.Wire(azure_cfg("azure_container_app_job", "nightly"), Shell(mode="replay"), AZ_OUT).desired_env()
-        self.assertEqual(aca["JFROG_ARTIFACT_PATH"], "generic-local/healthcheck/ping.txt")
+        self.assertEqual(aca["JFROG_ARTIFACT_PATH"], "azure-generic-local/hello.txt")
 
     def test_long_running_workloads_get_the_healthcheck_path(self):
         # Services, functions and worker pools read the same artifact in their self-test (Verify shows it).
