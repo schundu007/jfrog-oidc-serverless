@@ -81,3 +81,15 @@ run "windows_python_refused" {
   }
   expect_failures = [azurerm_service_plan.this]
 }
+
+run "tags_name_the_build" {
+  command = plan
+  variables {
+    os      = "windows"
+    runtime = "dotnet"
+  }
+  assert {
+    condition     = azurerm_windows_web_app.workload[0].tags["jfrog-oidc-runtime"] == "dotnet" && azurerm_windows_web_app.workload[0].tags["jfrog-oidc-version"] == "8.0"
+    error_message = "the web app must carry its runtime tags"
+  }
+}

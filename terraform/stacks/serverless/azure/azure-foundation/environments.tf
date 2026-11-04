@@ -7,7 +7,7 @@
 locals {
   pipeline_stack_kind = {
     "azure-container-apps"    = "serverless", "azure-container-app" = "serverless", "azure-functions-aca" = "serverless",
-    "azure-functions-premium" = "serverless", "azure-functions-flex" = "serverless",
+    "azure-functions-premium" = "serverless", "azure-functions-flex" = "serverless", "azure-web-app" = "serverless",
     "aks-cluster"             = "kubernetes",
   }
   pipeline_stacks = keys(local.pipeline_stack_kind)

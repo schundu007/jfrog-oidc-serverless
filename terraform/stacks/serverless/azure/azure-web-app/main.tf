@@ -9,13 +9,16 @@
 locals {
   linux   = var.os == "linux"
   version = coalesce(var.runtime_version, { python = "3.12", java = "21", dotnet = "8.0" }[var.runtime])
-  # The platform's start command; Java and .NET start their own entry point.
-  startup = { python = "gunicorn --bind=0.0.0.0:8000 --timeout 60 app:app", java = "", dotnet = "" }[var.runtime]
+  # The platform's start command; Java and .NET start their own entry point. gunicorn comes
+  # from the bundled packages (PYTHONPATH), so it runs as a module.
+  startup = { python = "python -m gunicorn --bind=0.0.0.0:8000 --timeout 60 app:app", java = "", dotnet = "" }[var.runtime]
+  # The build pipeline reads these to pick its build (pip, Maven or dotnet).
+  tags = merge(var.tags, { "jfrog-oidc-os" = var.os, "jfrog-oidc-runtime" = var.runtime, "jfrog-oidc-version" = local.version })
   settings = {
     AZURE_CLIENT_ID = module.base.identity.client_id
     # The pipeline ships a built package: dependencies already came through JFrog.
     SCM_DO_BUILD_DURING_DEPLOYMENT = "false"
-    WEBSITES_PORT                  = "8000"
+    WEBSITES_PORT                  = var.runtime == "python" ? "8000" : null
     # Vendored Python packages, installed by the pipeline from JFrog.
     PYTHONPATH = var.runtime == "python" ? "/home/site/wwwroot/.python_packages" : null
   }
@@ -57,7 +60,7 @@ resource "azurerm_linux_web_app" "workload" {
   webdeploy_publish_basic_authentication_enabled = false
   key_vault_reference_identity_id                = module.base.identity.id
   app_settings                                   = { for k, v in local.settings : k => v if v != null }
-  tags                                           = var.tags
+  tags                                           = local.tags
 
   identity {
     type         = "UserAssigned"
@@ -97,7 +100,7 @@ resource "azurerm_windows_web_app" "workload" {
   webdeploy_publish_basic_authentication_enabled = false
   key_vault_reference_identity_id                = module.base.identity.id
   app_settings                                   = { for k, v in local.settings : k => v if v != null }
-  tags                                           = var.tags
+  tags                                           = local.tags
 
   identity {
     type         = "UserAssigned"

@@ -7,6 +7,9 @@
 #   functions-premium  Premium / Dedicated function app: code package (azure-function), zip deploy
 #   functions-flex     Flex Consumption function app: code package (azure-function), zip deploy
 #                      (the platform keeps it in the app's own storage, read with its managed identity)
+#   webapp             App Service web app, Linux or Windows: code (apps/web-app/<runtime>) built
+#                      with pip, Maven or dotnet through JFrog only, then zip/jar deploy. The app's
+#                      jfrog-oidc-runtime/-version tags (set by the stack) pick the build.
 # Base images come through JFrog (OIDC token); every login comes from the service connection's
 # OIDC token, nothing is stored. Until the stack has created the workload, an image kind only
 # pushes and says what to set in Setup.
@@ -128,5 +131,49 @@ case "$KIND" in
     fi
     zip_deploy
     ;;
-  *) echo "unknown KIND: $KIND (job, app, functions-aca, functions-premium or functions-flex)" >&2; exit 2 ;;
+  webapp)
+    az webapp show --name "$WORKLOAD" --resource-group "$rg" --only-show-errors >/dev/null 2>&1 || {
+      echo "no web app ${WORKLOAD} in ${rg}" >&2; exit 1; }
+    runtime=$(az webapp show --name "$WORKLOAD" --resource-group "$rg" --query 'tags."jfrog-oidc-runtime"' -o tsv --only-show-errors)
+    version=$(az webapp show --name "$WORKLOAD" --resource-group "$rg" --query 'tags."jfrog-oidc-version"' -o tsv --only-show-errors)
+    src="apps/web-app/${runtime}"
+    [ -d "$src" ] || { echo "web app ${WORKLOAD} has runtime '${runtime}': no ${src}" >&2; exit 1; }
+    out=$(mktemp -d)
+    case "$runtime" in
+      python)
+        : "${JFROG_PYPI_REPO:?}"
+        cp -R "$src"/. "$out/"
+        cp -R client/src/jfrog_oidc "$out/"
+        # Linux App Service only: wheels for its python, installed into the package (PYTHONPATH).
+        python3 -m jfrog_oidc pip --repo "$JFROG_PYPI_REPO" -- install --quiet --target "$out/.python_packages" \
+          --only-binary=:all: --platform manylinux2014_x86_64 --python-version "${version:-3.12}" \
+          --implementation cp -r "$src/requirements.txt"
+        (cd "$out" && find . -name __pycache__ -prune -o -type f -print | zip -q -@ ../package.zip)
+        pkg="$out/../package.zip" type=zip
+        ;;
+      java)
+        : "${JFROG_MAVEN_REPO:?}"
+        jdk_var="JAVA_HOME_${version:-21}_X64"
+        export JAVA_HOME="${!jdk_var:-${JAVA_HOME:-}}"
+        python3 -m jfrog_oidc mvn --repo "$JFROG_MAVEN_REPO" -- -B -q -f "$src/pom.xml" \
+          -Dmaven.repo.local="$out/m2" -Dapp.version="${BUILD_SOURCEVERSION:0:12}" package
+        pkg=$(ls "$src"/target/*.jar | head -1) type=jar
+        ;;
+      dotnet)
+        : "${JFROG_NUGET_REPO:?}"
+        export NUGET_PACKAGES="$out/nuget" DOTNET_CLI_TELEMETRY_OPTOUT=1
+        python3 -m jfrog_oidc dotnet --repo "$JFROG_NUGET_REPO" -- restore "$src"
+        dotnet publish "$src" --configuration Release --no-restore --output "$out/publish" \
+          -p:SourceRevisionId="${BUILD_SOURCEVERSION:0:12}"
+        (cd "$out/publish" && zip -q -r ../package.zip .)
+        pkg="$out/package.zip" type=zip
+        ;;
+      *) echo "web app ${WORKLOAD}: unknown runtime '${runtime}' (python, java or dotnet)" >&2; exit 1 ;;
+    esac
+    # Basic-auth publishing is off on the app: az deploys with the service connection's Entra token.
+    az webapp deploy --name "$WORKLOAD" --resource-group "$rg" --src-path "$pkg" --type "$type" \
+      --restart true --only-show-errors >/dev/null
+    echo "deployed ${BUILD_SOURCEVERSION:0:12} (${runtime} ${version}) to ${WORKLOAD}"
+    ;;
+  *) echo "unknown KIND: $KIND (job, app, functions-aca, functions-premium, functions-flex or webapp)" >&2; exit 2 ;;
 esac

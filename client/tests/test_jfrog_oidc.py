@@ -413,5 +413,60 @@ class PipCommandTests(unittest.TestCase):
             self._run(["pip", "--repo", "pypi-remote"])
 
 
+class BuildToolCommandTests(PipCommandTests):
+    """mvn and dotnet: the config file names the JFrog repo; the token is only in the child env."""
+
+    def _run_reading(self, argv, cfg_flag):
+        seen = {}
+
+        def fake_run(cmd, env=None, **_):
+            path = cmd[cmd.index(cfg_flag) + 1]
+            with open(path, encoding="utf-8") as fh:
+                seen["config"] = fh.read()
+            seen["cmd"], seen["env"] = cmd, env
+            return mock.Mock(returncode=0)
+
+        from jfrog_oidc import __main__ as cli
+        tok = mock.Mock(username="svc", access_token="s3cr/et")
+        provider = mock.Mock(jfrog_url="https://acme.jfrog.io")
+        provider.token.return_value = tok
+        with mock.patch.object(cli.JFrogTokenProvider, "from_env", return_value=provider), \
+                mock.patch.object(cli.subprocess, "run", side_effect=fake_run):
+            rc = cli.main(argv)
+        self.assertEqual(rc, 0)
+        self.assertFalse(os.path.exists(seen["cmd"][seen["cmd"].index(cfg_flag) + 1]), "config file left behind")
+        self.assertNotIn("s3cr", " ".join(seen["cmd"]))
+        self.assertNotIn("s3cr", seen["config"])
+        return seen
+
+    def test_mvn_mirror_through_jfrog_token_in_env(self):
+        seen = self._run_reading(["mvn", "--repo", "maven-remote", "--", "-q", "package"], "-s")
+        self.assertEqual(seen["cmd"][0], "mvn")
+        self.assertEqual(seen["cmd"][-2:], ["-q", "package"])
+        self.assertIn("<url>https://acme.jfrog.io/artifactory/maven-remote</url>", seen["config"])
+        self.assertIn("<mirrorOf>*</mirrorOf>", seen["config"])
+        self.assertIn("${env.JFROG_OIDC_TOKEN}", seen["config"])
+        self.assertEqual(seen["env"]["JFROG_OIDC_TOKEN"], "s3cr/et")
+        self.assertEqual(seen["env"]["JFROG_OIDC_USER"], "svc")
+
+    def test_dotnet_restore_through_jfrog_token_in_env(self):
+        seen = self._run_reading(["dotnet", "--repo", "nuget-remote", "--", "restore", "app"], "--configfile")
+        self.assertEqual(seen["cmd"][:3], ["dotnet", "restore", "app"])
+        self.assertIn('value="https://acme.jfrog.io/artifactory/api/nuget/v3/nuget-remote/index.json"',
+                      seen["config"])
+        self.assertIn("<clear />", seen["config"])
+        self.assertEqual(seen["env"]["NuGetPackageSourceCredentials_jfrog"], "Username=svc;Password=s3cr/et")
+
+    def test_dotnet_only_restore(self):
+        with self.assertRaises(SystemExit):
+            self._run(["dotnet", "--repo", "nuget-remote", "--", "publish", "app"])
+
+    def test_repo_defaults_per_tool(self):
+        env = {"JFROG_MAVEN_REPO": "mvn-r", "JFROG_PYPI_REPO": "py-r"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            seen = self._run_reading(["mvn", "--", "package"], "-s")
+        self.assertIn("/artifactory/mvn-r</url>", seen["config"])
+
+
 if __name__ == "__main__":
     unittest.main()

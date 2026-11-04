@@ -3,3 +3,5 @@
 variables:
   JFROG_DOCKER_REMOTE: docker-remote
   JFROG_PYPI_REPO: pypi-remote
+  JFROG_MAVEN_REPO: maven-remote
+  JFROG_NUGET_REPO: nuget-remote
