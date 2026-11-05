@@ -39,6 +39,7 @@ class FakeGit(Shell):
                  helper_error="", helper_push_ok=True, onboard_def=True):
         super().__init__(mode="replay", log=log)
         self.calls, self.commit_rc, self.pr_status, self.onboard_def, self.bodies = [], commit_rc, pr_status, onboard_def, []
+        self.headers = []
         self.helper, self.token_ok, self.helper_ok, self.envs = helper, token_ok, helper_ok, []
         self.helper_error, self.helper_push_ok = helper_error, helper_push_ok
 
@@ -68,10 +69,11 @@ class FakeGit(Shell):
         self.misses.append(" ".join(argv))
         return Result(argv, 127, "", "no fixture", 0.0)
 
-    def http(self, method, url, *a, body=None, **kw):
+    def http(self, method, url, *a, body=None, headers=None, **kw):
+        self.headers.append(dict(headers or {}))
         if body:
             self.bodies.append(json.loads(body))
-        return super().http(method, url, *a, body=body, **kw)
+        return super().http(method, url, *a, body=body, headers=headers, **kw)
 
     def _replay_http(self, method, url):
         from console.shell import HttpResult
@@ -236,6 +238,14 @@ class PublishTests(unittest.TestCase):
         self.assertEqual(post, [["POST", f"{ORG}/platform/_apis/pipelines/12/runs?api-version=7.1"]])
         self.assertEqual(sh.bodies[-1]["templateParameters"], {"workspace": Path(res["workspace"]).name})
         self.assertTrue(any("queued" in line and "77" in line for line in self.lines), self.lines)
+
+    def test_ado_calls_send_only_the_bearer_token(self):
+        # With X-VSS-ForceMsaPassThrough ADO answers 302/401 to a valid token (live, jfrog-cp-azure).
+        for rc in (0, 1):   # pull request; onboard run
+            _, sh = self.publish(gcp_cfg(), commit_rc=rc)
+            self.assertTrue(sh.headers)
+            for hd in sh.headers:
+                self.assertNotIn("X-VSS-ForceMsaPassThrough", hd)
 
     def test_no_change_without_an_onboard_pipeline_says_what_to_do(self):
         with self.assertRaisesRegex(deliver.DeliveryError, r"gcp-workload-onboard.*register"):

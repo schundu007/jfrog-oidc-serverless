@@ -279,8 +279,7 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
                                 f"Merging runs {onboard_pipeline(cloud)}: terraform plan and apply, then wire the target.")}
         pr = sh.http("POST", f"{org_url}/{ado['project']}/_apis/git/repositories/{ado['repository']}/pullrequests"
                              "?api-version=7.1",
-                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
-                              "X-VSS-ForceMsaPassThrough": "true"},
+                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                      body=json.dumps(body).encode())
         if pr.status not in (200, 201):
             raise DeliveryError(f"creating the pull request failed: HTTP {pr.status or pr.error}")
@@ -299,7 +298,8 @@ def queue_onboard(sh: Shell, org_url: str, project: str, token: str, cloud: str,
     what = f"{cloud}-workload-onboard.yml"
     if not token:
         raise DeliveryError(f"running {what} needs an Azure DevOps token: run `az login` to the ADO tenant")
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "X-VSS-ForceMsaPassThrough": "true"}
+    # The bearer header alone: with X-VSS-ForceMsaPassThrough ADO refuses a valid token (302/401).
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     api = f"{org_url}/{project}/_apis"
     res = sh.http("GET", f"{api}/build/definitions?includeAllProperties=true&api-version=7.1", headers=headers, timeout=60)
     if not res.ok:
