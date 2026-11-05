@@ -1,0 +1,20 @@
+# Functions on Container Apps: build and roll out this one workload (stack azure-functions-aca). Nothing else is touched.
+trigger: none
+pr: none
+
+parameters:
+  - name: environment
+    type: string
+    default: test
+    values: [test]
+  - name: workload
+    displayName: Workload name (the stack's workload input)
+    type: string
+    default: func-aca-jfrog-demo
+
+extends:
+  template: /pipelines/templates/azure-build-deploy.yml
+  parameters:
+    kind: functions-aca
+    workload: ${{ parameters.workload }}
+    environment: ${{ parameters.environment }}

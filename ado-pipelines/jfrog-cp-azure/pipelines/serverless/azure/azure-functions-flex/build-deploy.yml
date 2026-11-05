@@ -1,0 +1,20 @@
+# Functions Flex Consumption: build and roll out this one workload (stack azure-functions-flex). Nothing else is touched.
+trigger: none
+pr: none
+
+parameters:
+  - name: environment
+    type: string
+    default: test
+    values: [test]
+  - name: workload
+    displayName: Workload name (the stack's workload input)
+    type: string
+    default: func-flex-jfrog-demo
+
+extends:
+  template: /pipelines/templates/azure-build-deploy.yml
+  parameters:
+    kind: functions-flex
+    workload: ${{ parameters.workload }}
+    environment: ${{ parameters.environment }}

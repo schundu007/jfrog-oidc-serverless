@@ -1,0 +1,97 @@
+# Template: plan -> apply (or destroy) for ONE Azure infrastructure stack (a serverless workload or the
+# test cluster). Used only by pipelines/{serverless,kubernetes}/azure/<stack>/stack-setup.yml, one pipeline
+# per stack. Infrastructure only: no JFrog token, provider, variable group or repository name (JFrog OIDC
+# stacks have their own template, azure-oidc-stack-setup.yml). The setup service connection's OIDC token
+# gives the connection's Azure login. The apply stage targets the ADO environment "<stack>-<environment>"
+# (approval) and applies exactly the reviewed plan file; action=destroy plans `terraform plan -destroy`
+# and applies that the same way.
+
+parameters:
+  - name: stack
+    type: string
+  - name: action
+    type: string
+  - name: environment
+    type: string
+  - name: inputs
+    type: object
+  - name: state
+    type: object
+
+variables:
+  - template: /pipelines/vars/azure-${{ parameters.environment }}.yml
+  - group: jfrog-oidc-azure-${{ parameters.environment }}
+  - name: PLAN_FILE
+    value: $(Pipeline.Workspace)/plan/tfplan
+  - name: PLAN_ACTION
+    ${{ if eq(parameters.action, 'destroy') }}:
+      value: plan-destroy
+    ${{ else }}:
+      value: plan
+
+stages:
+  - stage: plan
+    displayName: Plan ${{ parameters.action }} ${{ parameters.stack }}
+    jobs:
+      - job: plan
+        pool:
+          vmImage: ubuntu-24.04
+        timeoutInMinutes: 30
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - bash: pipelines/scripts/install-terraform.sh
+            displayName: Install Terraform $(TERRAFORM_VERSION)
+          - bash: mkdir -p "$(Pipeline.Workspace)/plan"
+            displayName: Prepare
+          - task: AzureCLI@2
+            name: tf
+            displayName: terraform ${{ parameters.action }} plan (OIDC)
+            inputs:
+              azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
+              scriptType: bash
+              scriptLocation: scriptPath
+              scriptPath: pipelines/scripts/terraform-stack.sh
+              arguments: $(PLAN_ACTION) ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+              ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
+              STACK_INPUTS: ${{ convertToJson(parameters.inputs) }}
+              STACK_STATE: ${{ convertToJson(parameters.state) }}
+          - publish: $(Pipeline.Workspace)/plan
+            artifact: plan
+            condition: and(succeeded(), eq(variables['tf.hasChanges'], 'true'))
+
+  - stage: apply
+    displayName: Apply
+    dependsOn: plan
+    condition: and(succeeded(), eq(dependencies.plan.outputs['plan.tf.hasChanges'], 'true'))
+    jobs:
+      - deployment: apply
+        pool:
+          vmImage: ubuntu-24.04
+        environment: ${{ parameters.stack }}-${{ parameters.environment }}
+        timeoutInMinutes: 60
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  fetchDepth: 1
+                - download: current
+                  artifact: plan
+                - bash: pipelines/scripts/install-terraform.sh
+                  displayName: Install Terraform $(TERRAFORM_VERSION)
+                - task: AzureCLI@2
+                  displayName: terraform apply (OIDC)
+                  inputs:
+                    azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
+                    scriptType: bash
+                    scriptLocation: scriptPath
+                    scriptPath: pipelines/scripts/terraform-stack.sh
+                    arguments: apply ${{ parameters.stack }} ${{ parameters.environment }} $(PLAN_FILE)
+                  env:
+                    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+                    ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
+                    STACK_INPUTS: ${{ convertToJson(parameters.inputs) }}
+                    STACK_STATE: ${{ convertToJson(parameters.state) }}

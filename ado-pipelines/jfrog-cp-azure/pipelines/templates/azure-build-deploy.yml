@@ -1,0 +1,43 @@
+# Template: build and roll out ONE Azure serverless workload.
+# Used only by pipelines/serverless/azure/<stack>/build-deploy.yml, one pipeline per workload type.
+# Base images come through JFrog; every login comes from the service connection's OIDC token
+# (no stored secrets).
+
+parameters:
+  - name: kind
+    type: string
+  - name: workload
+    type: string
+  - name: environment
+    type: string
+
+variables:
+  - template: /pipelines/vars/azure-${{ parameters.environment }}.yml
+  - template: /pipelines/vars/azure-${{ parameters.environment }}-jfrog.yml
+  - group: jfrog-oidc-azure-${{ parameters.environment }}
+  # JFrog OIDC (written by azure-jfrog-trust, after the infrastructure): JFROG_URL, JFROG_OIDC_PROVIDER.
+  - group: jfrog-oidc-azure-${{ parameters.environment }}-jfrog
+  - name: KIND
+    value: ${{ parameters.kind }}
+  - name: WORKLOAD
+    value: ${{ parameters.workload }}
+
+jobs:
+  - job: build_deploy
+    pool:
+      vmImage: ubuntu-24.04
+    displayName: Roll out ${{ parameters.kind }} ${{ parameters.workload }}
+    timeoutInMinutes: 30
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - task: AzureCLI@2
+        displayName: Roll out ${{ parameters.kind }} ${{ parameters.workload }} (OIDC)
+        inputs:
+          azureSubscription: ${{ variables.BUILD_SERVICE_CONNECTION }}
+          scriptType: bash
+          scriptLocation: scriptPath
+          scriptPath: pipelines/scripts/azure-build-deploy.sh
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(BUILD_SERVICE_CONNECTION_ID)

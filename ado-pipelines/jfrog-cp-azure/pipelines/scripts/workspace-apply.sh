@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# workspace-apply.sh <gcp|azure|openshift> [workspace-dir...]
+#
+# Without workspace arguments, takes the terraform/workspaces/<cloud>_* directories
+# changed by the last commit. Each one: init (backend.tf.json), plan, apply, then
+# `python -m console.deliver wire` with the outputs. GCP workspaces log in to
+# GCP through WIF as the setup service account; Azure ones use the AzureCLI@2
+# login. The JFrog admin token comes from the setup connection's OIDC token.
+# WORKSPACE_DESTROY=true (the pipeline's destroy parameter) destroys the named
+# workspaces instead: plan -destroy, apply, no wiring.
+set -euo pipefail
+cd "$BUILD_SOURCESDIRECTORY"
+
+cloud=${1:?usage: workspace-apply.sh <gcp|azure|openshift> [workspace-dir...]}
+shift
+case "$cloud" in
+  gcp) export GCP_SERVICE_ACCOUNT="${GCP_SETUP_SERVICE_ACCOUNT:?}" ;;
+  azure) ;;
+  # Knative: the Kubernetes@1 login step wrote KUBECONFIG; the workspace's provider reads it.
+  # KUBE_CONTEXT (optional) names the cluster's context in that kubeconfig when it differs from the console's.
+  openshift)
+    export TF_VAR_kubeconfig_path="${KUBECONFIG:?run the Kubernetes@1 login step first}"
+    [ -z "${KUBE_CONTEXT:-}" ] || export TF_VAR_kube_context="$KUBE_CONTEXT" ;;
+  *) echo "unknown cloud: $cloud" >&2; exit 2 ;;
+esac
+
+if [ "$#" -gt 0 ]; then
+  workspaces=()
+  # A bare name (gcp_<scope>) means terraform/workspaces/<name>.
+  for ws in "$@"; do
+    [ -d "$ws" ] || [ ! -d "terraform/workspaces/$ws" ] || ws="terraform/workspaces/$ws"
+    workspaces+=("$ws")
+  done
+else
+  if git rev-parse -q --verify HEAD~1 >/dev/null; then
+    mapfile -t workspaces < <(git diff --name-only HEAD~1 HEAD -- "terraform/workspaces/${cloud}_*" \
+      | cut -d/ -f1-3 | sort -u)
+  else
+    # No parent commit (a new repo): every workspace of this cloud is new.
+    mapfile -t workspaces < <(ls -d terraform/workspaces/"${cloud}"_* 2>/dev/null)
+  fi
+fi
+# A workspace removed from git (its cloud resources cleaned up) has nothing left to apply.
+present=()
+for ws in "${workspaces[@]}"; do
+  if [ -d "$ws" ]; then present+=("$ws"); else echo "$ws was removed: skipped"; fi
+done
+workspaces=("${present[@]}")
+[ "${#workspaces[@]}" -gt 0 ] || { echo "no $cloud workspace changed"; exit 0; }
+for ws in "${workspaces[@]}"; do
+  case "$(basename "$ws")" in "${cloud}"_*) ;; *) echo "$ws is not a $cloud workspace" >&2; exit 2 ;; esac
+done
+
+# The login unsets SYSTEM_ACCESSTOKEN; keep it (not exported) for the git fetch below.
+job_token=${SYSTEM_ACCESSTOKEN:?map SYSTEM_ACCESSTOKEN: \$(System.AccessToken) on the step}
+# shellcheck source=pipelines/scripts/oidc-login.sh
+source pipelines/scripts/oidc-login.sh
+JFROG_ACCESS_TOKEN=$(python3 -m jfrog_oidc token)
+export JFROG_ACCESS_TOKEN
+printf 'Authorization: Bearer %s\n' "$JFROG_ACCESS_TOKEN" > "$OIDC_DIR/jfrog-auth"   # curl -H @file: not in argv
+export PYTHONPATH="$BUILD_SOURCESDIRECTORY/client/src:$BUILD_SOURCESDIRECTORY"
+
+# adopt_mappings <ws> <jfrog-url> <adopt>: a mapping the plan creates that already
+# exists in JFrog (a run that failed after creating it, or one made by hand) is
+# imported, then planned again, so the apply updates it instead of failing on CONFLICT.
+adopt_mappings() {
+  local ws=$1 url=$2 adopt=$3 imported=false addr name provider
+  while read -r addr name provider; do
+    [ -n "$addr" ] || continue
+    code=$(curl -s -o /dev/null -w '%{http_code}' -H @"$OIDC_DIR/jfrog-auth" \
+      "$url/access/api/v1/oidc/$provider/identity_mappings/$name")
+    [ "$code" = 200 ] || continue
+    echo "mapping $name: exists in JFrog, importing"
+    terraform -chdir="$ws" import -input=false -no-color -lock-timeout=5m \
+      -var "adopt_jfrog_integration=$adopt" "$addr" "$name:$provider" >/dev/null 2>>"$OIDC_DIR/plan.err" || return 1
+    imported=true
+  done < <(terraform -chdir="$ws" show -json tfplan | python3 -c '
+import json, sys
+for c in json.load(sys.stdin).get("resource_changes", []):
+    if c["type"] == "platform_oidc_identity_mapping" and c["change"]["actions"] == ["create"]:
+        a = c["change"]["after"]
+        print(c["address"], a["name"], a["provider_name"])')
+  [ "$imported" = false ] || terraform -chdir="$ws" plan -input=false -no-color -lock-timeout=5m -out=tfplan \
+    -var "adopt_jfrog_integration=$adopt" 2>>"$OIDC_DIR/plan.err"
+}
+
+if [ "$(echo "${WORKSPACE_DESTROY:-false}" | tr A-Z a-z)" = true ]; then
+  [ "$#" -gt 0 ] || { echo "destroy needs the workspace parameter" >&2; exit 2; }
+  for ws in "${workspaces[@]}"; do
+    echo "== destroy $ws"
+    terraform -chdir="$ws" init -input=false -no-color
+    # Whatever the workspace created (adopted or not) is in its state; destroy exactly that.
+    adopt=false
+    terraform -chdir="$ws" state list 2>/dev/null | grep -q '^module.jfrog_oidc.platform_oidc_configuration' || adopt=true
+    terraform -chdir="$ws" plan -destroy -input=false -no-color -lock-timeout=5m -out=tfplan -var "adopt_jfrog_integration=$adopt"
+    terraform -chdir="$ws" apply -input=false -no-color -lock-timeout=5m tfplan
+  done
+  exit 0
+fi
+
+for ws in "${workspaces[@]}"; do
+  [ -f "$ws/main.tf.json" ] || { echo "$ws: removed, skipping"; continue; }
+  echo "== $ws"
+  terraform -chdir="$ws" init -input=false -no-color
+  # An integration for the same issuer that already exists in JFrog (another
+  # workspace or a stack made it) is adopted, not created again.
+  adopt=false
+  read -r provider url < <(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["jfrog_provider_name"], d["jfrog_url"])' \
+    "$ws/terraform.tfvars.json")
+  if ! terraform -chdir="$ws" state list 2>/dev/null | grep -q '^module.jfrog_oidc.platform_oidc_configuration'; then
+    code=$(curl -s -o /dev/null -w '%{http_code}' -H @"$OIDC_DIR/jfrog-auth" "$url/access/api/v1/oidc/$provider")
+    [ "$code" = 200 ] && adopt=true
+  fi
+  echo "integration $provider: adopt=$adopt"
+  # Onboarding several apps starts one run each on the same workspace. The azurerm
+  # backend can fail at once on a lock another run holds, so wait and plan again.
+  for try in 1 2 3 4 5 6; do
+    # Runs can finish out of order: a run on an older commit would apply stale tfvars
+    # over a newer run's and drop its targets. Leave the workspace to the newer run.
+    # The job's own token: checkout does not keep its credentials.
+    GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraheader GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${job_token}" \
+      git fetch -q --depth=1 origin "$BUILD_SOURCEBRANCH"
+    if ! git diff --quiet HEAD FETCH_HEAD -- "$ws"; then
+      echo "$ws changed after this commit: the run on the newer commit applies it"
+      continue 2
+    fi
+    if terraform -chdir="$ws" plan -input=false -no-color -lock-timeout=5m -out=tfplan \
+        -var "adopt_jfrog_integration=$adopt" 2>"$OIDC_DIR/plan.err" \
+      && adopt_mappings "$ws" "$url" "$adopt" \
+      && terraform -chdir="$ws" apply -input=false -no-color -lock-timeout=5m tfplan 2>"$OIDC_DIR/plan.err"; then
+      break
+    fi
+    cat "$OIDC_DIR/plan.err" >&2
+    grep -q "state lock" "$OIDC_DIR/plan.err" && [ "$try" -lt 6 ] || exit 1
+    echo "state locked by another run: retry $try in 60s"
+    sleep 60
+  done
+  terraform -chdir="$ws" output -json > "$OIDC_DIR/outputs.json"
+  python3 -m console.deliver wire "$ws" "$OIDC_DIR/outputs.json"
+done

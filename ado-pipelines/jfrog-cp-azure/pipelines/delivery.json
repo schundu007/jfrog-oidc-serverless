@@ -1,0 +1,10 @@
+{
+  "ado": {
+    "organization": "cdoazure",
+    "project": "jfrog-cp-azure",
+    "repository": "jfrog-cp-azure",
+    "target_branch": "main"
+  },
+  "merge": "direct",
+  "environment": "test"
+}
