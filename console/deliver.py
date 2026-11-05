@@ -26,6 +26,9 @@ import copy
 import json
 import os
 import sys
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from . import model, redact
@@ -351,13 +354,86 @@ def wire_workspace(ws_dir, sh: Shell, outputs: dict, wire_cls=wiremod.Wire, log=
     return results
 
 
+HEALTH_KINDS = {"azure_web_app"}   # targets that serve /healthz/jfrog on a public host name
+
+
+def _fetch(url: str, timeout: int):
+    """GET a health URL: (HTTP status, JSON body or {}). The body carries no token."""
+    req = urllib.request.Request(url, headers={"User-Agent": "jfrog-oidc-onboard"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:   # noqa: S310 - https URL built from az output
+            status, raw = r.status, r.read(65536)
+    except urllib.error.HTTPError as e:
+        status, raw = e.code, e.read(65536)
+    except (urllib.error.URLError, OSError) as e:
+        return 0, {"error": str(getattr(e, "reason", e))}
+    try:
+        body = json.loads(raw or b"{}")
+    except ValueError:
+        body = {}
+    return status, body if isinstance(body, dict) else {}
+
+
+def check_workspace(ws_dir, sh: Shell, fetch=_fetch, tries: int = 20, wait: int = 30, sleep=time.sleep,
+                    log=None, env=None) -> list:
+    """Post-deployment check: /healthz/jfrog?fresh=1 (claims, a new exchange and a JFrog read) on
+    production and every deployment slot of each web app in the workspace, retried while the app
+    restarts after its settings changed. Any slot that never answers 200 fails the run."""
+    log = log or (lambda _l: None)
+    results, failed = [], []
+    for p in sorted((Path(ws_dir) / "configs").glob("*.json")):
+        cfg = pipeline_target(json.loads(p.read_text()), env or {})
+        if model.get_path(cfg, "target.kind") not in HEALTH_KINDS:
+            continue
+        a = model.get_path(cfg, "target.azure")
+        target = ["-g", a["resource_group"], "-n", a["name"], "--subscription", a["subscription"]]
+        site = sh.run(["az", "webapp", "show", *target, "-o", "json"], timeout=120)
+        slots = sh.run(["az", "webapp", "deployment", "slot", "list", *target, "-o", "json"], timeout=120)
+        if not (site.ok and slots.ok):
+            raise DeliveryError(f"{cfg['name']}: could not read its host names")
+        hosts = [("production", (site.json() or {}).get("defaultHostName"))]
+        hosts += sorted((s.get("name", "").split("/")[-1], s.get("defaultHostName"))
+                        for s in slots.json() or [] if isinstance(s, dict))
+        for slot, host in hosts:
+            if not host:
+                continue
+            url = f"https://{host}/healthz/jfrog?fresh=1"
+            for n in range(1, tries + 1):
+                status, body = fetch(url, 60)
+                if status == 200:
+                    break
+                log(f"{cfg['name']} {slot}: HTTP {status} {redact.text(str(body.get('error') or body.get('reason') or ''))[:300]}")
+                if n < tries:
+                    sleep(wait)
+            results.append({"name": cfg["name"], "slot": slot, "status": status})
+            log(f"{cfg['name']} {slot}: {'ok' if status == 200 else 'failed'}"
+                + (f" as {body['username']}" if status == 200 and body.get("username") else ""))
+            if status != 200:
+                failed.append(f"{cfg['name']} {slot}")
+    if failed:
+        raise DeliveryError(f"post-deployment check failed: {', '.join(failed)}")
+    return results
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m console.deliver")
     sub = ap.add_subparsers(dest="cmd", required=True)
     w = sub.add_parser("wire", help="wire every target of a workspace after terraform apply")
     w.add_argument("workspace")
     w.add_argument("outputs", help="terraform output -json")
+    c = sub.add_parser("check", help="post-deployment check: /healthz/jfrog on every web app and slot of a workspace")
+    c.add_argument("workspace")
     args = ap.parse_args(argv)
+    if args.cmd == "check":
+        def log(line):
+            print(redact.text(line), flush=True)
+        try:
+            res = check_workspace(args.workspace, Shell(mode="live", log=log), log=log, env=os.environ)
+        except DeliveryError as exc:
+            log(f"##vso[task.logissue type=error]{exc}")
+            return 1
+        log(json.dumps(res))
+        return 0
     raw = json.loads(Path(args.outputs).read_text())
     outputs = {k: v.get("value") if isinstance(v, dict) and "value" in v else v for k, v in raw.items()}
 

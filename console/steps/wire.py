@@ -244,29 +244,45 @@ class Wire(OpenShiftWire):
     # -- Azure App Service (Web Apps, Functions Premium/Flex, legacy Functions on ACA) -------------
 
     def _webapp(self, env):
+        diff, commands = self._site(env)
+        if self.kind == "azure_web_app":
+            # Every deployment slot gets the same identity and JFROG_* settings: a swap moves code
+            # between slots, so the exchange must work in each one before and after it.
+            site = ["az", model.az_site(self.kind)]
+            res = self.sh.run([*site, "deployment", "slot", "list", *self._az_target(), "-o", "json"], timeout=120)
+            if not res.ok:
+                raise _unreadable("the deployment slots", res)
+            for slot in sorted(s.get("name", "").split("/")[-1] for s in res.json() or [] if isinstance(s, dict)):
+                if slot:
+                    d, c = self._site(env, slot)
+                    diff += d
+                    commands += c
+        return diff, commands, []
+
+    def _site(self, env, slot=None):
         site = ["az", model.az_site(self.kind)]
-        res = self.sh.run([*site, "config", "appsettings", "list", *self._az_target(), "-o", "json"],
+        target = [*self._az_target(), *(["--slot", slot] if slot else [])]
+        scope = f"slot {slot}" if slot else "env"
+        res = self.sh.run([*site, "config", "appsettings", "list", *target, "-o", "json"],
                           timeout=120, sensitive=True)
         if not res.ok:
-            raise WireError(f"could not read the app settings: {res.error_text(300)}")
+            raise WireError(f"could not read the app settings{f' of slot {slot}' if slot else ''}: {res.error_text(300)}")
         cur = {s["name"]: s.get("value") for s in res.json() or []   # only the managed keys; the rest is dropped unread
                if isinstance(s, dict) and s.get("name") in env}
-        app = self.sh.run([*site, "show", *self._az_target(), "-o", "json"], timeout=120)
+        app = self.sh.run([*site, "show", *target, "-o", "json"], timeout=120)
         if not app.ok:
-            raise _unreadable("the target", app)
+            raise _unreadable(f"slot {slot}" if slot else "the target", app)
         app = app.json() or {}
 
-        diff = [_entry("env", k, cur.get(k), v) for k, v in env.items()]
+        diff = [_entry(scope, k, cur.get(k), v) for k, v in env.items()]
         settings = [f"{d['setting']}={d['desired']}" for d in diff if d["action"] != "same"]
-        first = self._assign_identity(app, diff, [*site, "identity", "assign", *self._az_target(), "--identities"])
-        notes = []
-        commands = first
+        commands = self._assign_identity(app, diff, [*site, "identity", "assign", *target, "--identities"],
+                                         f"slot {slot}" if slot else "identity")
         if settings:
-            commands = first + [[*site, "config", "appsettings", "set", *self._az_target(),
-                                 "--settings", *settings, "-o", "none"]]
-        return diff, commands, notes
+            commands = commands + [[*site, "config", "appsettings", "set", *target, "--settings", *settings, "-o", "none"]]
+        return diff, commands
 
-    def _assign_identity(self, shown: dict, diff: list, assign: list) -> list:
+    def _assign_identity(self, shown: dict, diff: list, assign: list, scope: str = "identity") -> list:
         """Attach the dedicated identity (additive: identities the app already has stay)."""
         if not self.dedicated:
             return []
@@ -277,10 +293,10 @@ class Wire(OpenShiftWire):
         if attached is not None and want and isinstance(attached, dict) and attached.get("clientId") not in (None, want):
             # Re-created under the same resource ID: the app still holds the deleted identity, so
             # detach and attach again to pick up the new one.
-            diff.insert(0, _entry("identity", "user-assigned identity", f"{rid} (client {attached['clientId']}, deleted)", rid))
+            diff.insert(0, _entry(scope, "user-assigned identity", f"{rid} (client {attached['clientId']}, deleted)", rid))
             remove = [a if a != "assign" else "remove" for a in assign]
             return [[*remove, rid, "-o", "none"], [*assign, rid, "-o", "none"]]
-        e = _entry("identity", "user-assigned identity", rid if attached is not None else None, rid)
+        e = _entry(scope, "user-assigned identity", rid if attached is not None else None, rid)
         diff.insert(0, e)
         return [] if e["action"] == "same" else [[*assign, rid, "-o", "none"]]
 

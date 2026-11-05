@@ -461,6 +461,111 @@ class BuildToolCommandTests(PipCommandTests):
         with self.assertRaises(SystemExit):
             self._run(["dotnet", "--repo", "nuget-remote", "--", "publish", "app"])
 
+    def test_npm_registry_through_jfrog_token_in_env(self):
+        seen = self._run_reading(["npm", "--repo", "npm-remote", "--", "ci"], "--userconfig")
+        self.assertEqual(seen["cmd"][0], "npm")
+        self.assertEqual(seen["cmd"][-1:], ["ci"])
+        self.assertEqual(seen["cmd"][1], "--userconfig")
+        self.assertIn("registry=https://acme.jfrog.io/artifactory/api/npm/npm-remote/", seen["config"])
+        self.assertIn("//acme.jfrog.io/artifactory/api/npm/npm-remote/:_authToken=${JFROG_OIDC_TOKEN}", seen["config"])
+        self.assertEqual(seen["env"]["JFROG_OIDC_TOKEN"], "s3cr/et")
+
+    def test_composer_through_jfrog_token_in_env(self):
+        seen = {}
+
+        def fake_run(cmd, env=None, **_):
+            with open(os.path.join(env["COMPOSER_HOME"], "config.json"), encoding="utf-8") as fh:
+                seen["config"] = json.load(fh)
+            seen["cmd"], seen["env"] = cmd, env
+            return mock.Mock(returncode=0)
+
+        from jfrog_oidc import __main__ as cli
+        tok = mock.Mock(username="svc", access_token="s3cr/et")
+        provider = mock.Mock(jfrog_url="https://acme.jfrog.io")
+        provider.token.return_value = tok
+        with mock.patch.object(cli.JFrogTokenProvider, "from_env", return_value=provider), \
+                mock.patch.object(cli.subprocess, "run", side_effect=fake_run):
+            rc = cli.main(["composer", "--repo", "php-remote", "--", "install", "--no-dev"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(seen["cmd"], ["composer", "install", "--no-dev"])
+        repos = seen["config"]["repositories"]
+        self.assertIn({"type": "composer", "url": "https://acme.jfrog.io/artifactory/api/composer/php-remote"}, repos)
+        self.assertIn({"packagist.org": False}, repos)
+        self.assertNotIn("s3cr", json.dumps(seen["config"]))
+        self.assertEqual(json.loads(seen["env"]["COMPOSER_AUTH"]),
+                         {"bearer": {"acme.jfrog.io": "s3cr/et"}})
+        self.assertFalse(os.path.exists(seen["env"]["COMPOSER_HOME"]), "composer home left behind")
+
+    def _cli_calls(self, argv, reader=None):
+        """Run the CLI with subprocess.run faked; return every call (cmd, env, input, files read)."""
+        calls = []
+
+        def fake_run(cmd, env=None, input=None, **_):
+            calls.append({"cmd": cmd, "env": env, "input": input, "read": reader(cmd, env) if reader else None})
+            return mock.Mock(returncode=0)
+
+        from jfrog_oidc import __main__ as cli
+        tok = mock.Mock(username="svc", access_token="s3cr/et")
+        provider = mock.Mock(jfrog_url="https://acme.jfrog.io/")
+        provider.token.return_value = tok
+        with mock.patch.object(cli.JFrogTokenProvider, "from_env", return_value=provider), \
+                mock.patch.object(cli.subprocess, "run", side_effect=fake_run):
+            rc = cli.main(argv)
+        self.assertEqual(rc, 0)
+        for c in calls:
+            self.assertNotIn("s3cr", " ".join(c["cmd"]), "token in argv")
+        return calls
+
+    def test_gradle_through_jfrog_init_script_token_in_env(self):
+        def read(cmd, env):
+            with open(cmd[cmd.index("--init-script") + 1], encoding="utf-8") as fh:
+                return fh.read()
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(os, "getcwd", return_value=d):
+            calls = self._cli_calls(["gradle", "--repo", "maven-remote", "--", "build"], read)
+        (c,) = calls
+        self.assertEqual(c["cmd"][0], "gradle")
+        self.assertEqual(c["cmd"][-1], "build")
+        script = c["read"]
+        self.assertIn("'https://acme.jfrog.io/artifactory/maven-remote'", script)
+        self.assertIn("System.getenv('JFROG_OIDC_TOKEN')", script)
+        self.assertIn("pluginManagement", script)
+        self.assertIn("handler.remove(repo)", script)
+        self.assertNotIn("s3cr", script)
+        self.assertEqual((c["env"]["JFROG_OIDC_USER"], c["env"]["JFROG_OIDC_TOKEN"]), ("svc", "s3cr/et"))
+
+    def test_gradle_uses_the_wrapper_when_present(self):
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, "gradlew"), "w").close()
+            with mock.patch.object(os, "getcwd", return_value=d):
+                (c,) = self._cli_calls(["gradle", "--repo", "m", "--", "build"])
+        self.assertEqual(c["cmd"][0], os.path.join(d, "gradlew"))
+
+    def test_helm_logs_in_with_stdin_into_a_temporary_config(self):
+        calls = self._cli_calls(["helm", "--repo", "helm-remote", "--", "pull", "jfrog/nginx"])
+        login, add, run = calls
+        self.assertEqual(login["cmd"], ["helm", "registry", "login", "acme.jfrog.io", "--username", "svc", "--password-stdin"])
+        self.assertEqual(login["input"], b"s3cr/et")
+        self.assertEqual(add["cmd"], ["helm", "repo", "add", "jfrog", "https://acme.jfrog.io/artifactory/api/helm/helm-remote",
+                                      "--username", "svc", "--password-stdin"])
+        self.assertEqual(add["input"], b"s3cr/et")
+        self.assertEqual(run["cmd"], ["helm", "pull", "jfrog/nginx"])
+        self.assertIsNone(run["input"])
+        for c in calls:
+            for k in ("HELM_REGISTRY_CONFIG", "HELM_REPOSITORY_CONFIG", "HELM_REPOSITORY_CACHE"):
+                self.assertTrue(c["env"][k].startswith(tempfile.gettempdir()) or "jfrog-oidc-" in c["env"][k])
+                self.assertFalse(os.path.exists(c["env"][k]), "helm config left behind")
+
+    def test_jf_cli_config_from_stdin_in_a_temporary_home(self):
+        add, run = self._cli_calls(["jf", "--", "rt", "ping"])
+        self.assertEqual(add["cmd"], ["jf", "config", "add", "jfrog", "--url", "https://acme.jfrog.io",
+                                      "--access-token-stdin", "--interactive=false"])
+        self.assertEqual(add["input"], b"s3cr/et")
+        self.assertEqual(run["cmd"], ["jf", "rt", "ping"])
+        self.assertNotIn("s3cr/et", run["env"].values())
+        for c in (add, run):
+            self.assertIn("jfrog-oidc-", c["env"]["JFROG_CLI_HOME_DIR"])
+            self.assertFalse(os.path.exists(c["env"]["JFROG_CLI_HOME_DIR"]), "jf home left behind")
+
     def test_repo_defaults_per_tool(self):
         env = {"JFROG_MAVEN_REPO": "mvn-r", "JFROG_PYPI_REPO": "py-r"}
         with mock.patch.dict(os.environ, env, clear=True):

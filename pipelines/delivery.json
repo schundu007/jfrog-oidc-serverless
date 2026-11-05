@@ -1,7 +1,7 @@
 {
   "ado": {
-    "organization": "cdoazure",
-    "project": "cloudifyDevops",
+    "organization": "your-ado-org",
+    "project": "your-ado-project",
     "repository": "jfrog-oidc-serverless",
     "target_branch": "main"
   },

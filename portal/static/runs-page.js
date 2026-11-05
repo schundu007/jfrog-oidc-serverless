@@ -2,6 +2,7 @@
 // selected, Clear finished), Essentials, tabs by area (All, Serverless, Kubernetes, Infrastructure), then
 // one filter bar ("Filter for any field…", Cloud, Type, Status) over one table grouped by cloud. Filters
 // live in the address. Each row opens its run. Data: data.js.
+import { refreshing } from "/serverless/static/core.js";
 import { CLOUD_NAMES, LIVE_STATES, h, markEl, when, runPill, loadAll, removeRun } from "./data.js";
 
 const $ = (id) => document.getElementById(id);
@@ -191,7 +192,7 @@ $("ess-h").addEventListener("click", () => {
   $("ess-h").setAttribute("aria-expanded", String(open));
   $("ess-body").hidden = !open;
 });
-$("runs-refresh").addEventListener("click", load);
+refreshing($("runs-refresh"), load);
 $("runs-all").addEventListener("change", (e) => {
   picked.clear();
   if (e.target.checked) for (const r of finished(shown)) picked.add(r.api);

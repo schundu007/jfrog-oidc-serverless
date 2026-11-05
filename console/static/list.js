@@ -3,7 +3,7 @@
 // Cloud, Type and Status pills, then the table. /<cloud> and /<cloud>?type=<kind> open it pre-filtered.
 // A row opens its workload when onboarded, else New workload on its type.
 
-import { $, api, h, fill, BASE, CLOUD, TYPE, template, help, status as setStatus } from "./core.js";
+import { $, api, h, fill, BASE, CLOUD, TYPE, template, help, status as setStatus, refreshing } from "./core.js";
 
 const LIVE = ["azure", "gcp"];   // the clouds read live (OpenShift is runtime path only)
 const NAMES = { azure: "Azure", gcp: "Google Cloud" };
@@ -85,12 +85,19 @@ function rows() {
 }
 
 // + Create: every service type, by cloud. Creating a workload is infrastructure, its own step: each tile
-// opens the Infrastructure page on that cloud's Serverless stacks. Onboarding OIDC is the row's link.
+// opens the Create flow on the Infrastructure page: Name → Settings → Plan → Deploy, Back on each step.
+// Onboarding OIDC is the row's link.
+const STACK_OF = {
+  gcp_run_service: "gcp-cloud-run-service", gcp_run_job: "gcp-cloud-run", gcp_run_function: "gcp-cloud-run-function",
+  gcp_run_worker_pool: "gcp-cloud-run-worker-pool", azure_container_app: "azure-container-app",
+  azure_container_app_job: "azure-container-apps", azure_functions_aca: "azure-functions-aca",
+  azure_functions_premium: "azure-functions-premium", azure_functions_flex: "azure-functions-flex", azure_web_app: "azure-web-app",
+};
 function createPanel() {
   const kinds = Object.keys(ls.schema?.kinds || {}).filter((k) => LIVE.includes(cloudOf(k)));
   return LIVE.filter((c) => !F.cloud || c === F.cloud).map((c) => h("section", { class: "ov-group" }, h("h2", { class: "ov-group-title" }, iconEl(c, "blade-ico"), NAMES[c]),
     h("div", { class: "ov-tiles" }, kinds.filter((k) => cloudOf(k) === c).map((k) =>
-      h("a", { class: "ov-tile", href: `/setup?${new URLSearchParams({ cloud: c, kind: "Serverless" })}` }, iconEl(iconOf(k), "ov-tile-icon"), h("span", { text: kindLabel(k) }))))));
+      h("a", { class: "ov-tile", href: `/setup?${new URLSearchParams(STACK_OF[k] ? { create: STACK_OF[k] } : { cloud: c, kind: "Serverless" })}` }, iconEl(iconOf(k), "ov-tile-icon"), h("span", { text: kindLabel(k) }))))));
 }
 
 // What exists in each cloud now (the same read-only listing the New workload picker uses), and the
@@ -135,7 +142,7 @@ export async function mountList(page, { schema }) {
     if (!p.hidden && !p.childElementCount) fill(p, createPanel());
     if (!p.hidden) p.scrollIntoView({ block: "nearest" });
   });
-  $("wl-refresh").addEventListener("click", () => load(true).catch((e) => setStatus($("list-status"), e.message, "error")));
+  refreshing($("wl-refresh"), () => load(true).catch((e) => { setStatus($("list-status"), e.message, "error"); throw e; }));
   // The type tiles stay folded until + Create opens them, above the list, as in the Azure portal.
   saveQuery();
   render();

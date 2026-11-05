@@ -37,6 +37,7 @@ OPTION_COMMANDS = {
                     "[].{userPrincipalName:userPrincipalName,mail:mail,displayName:displayName}", "-o", "json"],
 }
 PROJECT_ID = re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
+SUBSCRIPTION = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 
 class HttpError(Exception):
@@ -94,6 +95,41 @@ class SetupServer:
         if not self.mine(j.get("stack") or ""):
             raise HttpError(404, "no such job")
         return j
+
+    # Stacks whose workload is an App Service site: its name is global (<name>.azurewebsites.net).
+    SITE_STACKS = ("azure-web-app", "azure-functions-premium", "azure-functions-flex")
+
+    def name_check(self, stack_id: str, name) -> dict:
+        """Is `name` free for a new deployment of this stack? The console's own deployments first, then
+        (Azure, read-only) the resource group rg-<name> in the subscription and, for an App Service site,
+        Azure's global name check. {"ok": True|False|None, "why": text}; None when the cloud could not say."""
+        try:
+            name = stacks.check_name(stack_id, name, self.env_name, self.state_root)
+        except stacks.StackError as exc:
+            return {"ok": False, "why": str(exc)}
+        meta = stacks.get(stack_id)
+        if meta["group"] != "Azure":
+            return {"ok": True, "why": ""}
+        sub = stacks.read_inputs(stack_id, self.env_name, self.state_root).get("azure_subscription_id") \
+            or stacks.read_inputs("azure-foundation", self.env_name, self.state_root).get("azure_subscription_id")
+        if not sub or not SUBSCRIPTION.fullmatch(str(sub)):
+            return {"ok": None, "why": "no subscription saved yet: Azure was not asked"}
+        sh = self.jobs.shell_factory(lambda line: None)
+        res = sh.run(["az", "group", "exists", "--name", f"rg-{name}", "--subscription", sub, "-o", "tsv"], timeout=60)
+        if not res.ok:
+            return {"ok": None, "why": "Azure could not be asked (sign-in?)"}
+        if res.stdout.strip().lower() == "true":
+            return {"ok": False, "why": f"resource group rg-{name} already exists in the subscription"}
+        if meta.get("base", stack_id) in self.SITE_STACKS:
+            res = sh.run(["az", "rest", "--method", "post", "--url",
+                          f"https://management.azure.com/subscriptions/{sub}/providers/Microsoft.Web/checknameavailability?api-version=2023-12-01",
+                          "--body", json.dumps({"name": name, "type": "Microsoft.Web/sites"}), "-o", "json"], timeout=60)
+            if not res.ok:
+                return {"ok": None, "why": "Azure could not be asked (sign-in?)"}
+            ans = res.json() or {}
+            if not ans.get("nameAvailable"):
+                return {"ok": False, "why": f"{name}.azurewebsites.net is taken in Azure"}
+        return {"ok": True, "why": ""}
 
     def options(self, source: str, scope: str | None = None) -> list:
         """Live choices for a picker (read-only listings): [{id, name}]. People are listed by email:
@@ -229,9 +265,26 @@ def make_handler(console: SetupServer):
             m = (method, parts[0] if parts else "", len(parts))
             if m == ("GET", "stacks", 1):
                 return self._json(200, console.stack_list())
+            if m == ("POST", "refresh", 1):   # Refresh: every stack of this page read again from its state
+                ids = [s["id"] for s in console.jobs.stacks() if console.mine(s["id"])]
+                return self._json(202, {"jobs": console.jobs.refresh(ids)})
             if parts[:1] == ["stacks"] and len(parts) == 3:
                 sid, what = parts[1], parts[2]
                 console.check(sid)
+                if what == "name-check" and method == "GET":
+                    q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                    return self._json(200, console.name_check(sid, q.get("name", [""])[0]))
+                if what == "instances" and method == "POST":   # another deployment of this stack
+                    name = self._body().get("name")
+                    chk = console.name_check(sid, name)
+                    if chk["ok"] is False:
+                        raise HttpError(409, chk["why"])
+                    new = stacks.new_instance(sid, name, console.env_name, console.root, console.state_root)
+                    console.jobs.audit(new, "create", self.headers.get("User-Agent"))
+                    return self._json(201, {"id": new, "title": stacks.get(new)["title"]})
+                if what == "instances" and method == "DELETE":   # forget a never-deployed or destroyed one
+                    console.jobs.remove_instance(sid)
+                    return self._json(200, {"removed": True})
                 if what == "inputs" and method == "GET":
                     return self._json(200, stacks.form(sid, console.env_name, console.root, console.state_root))
                 if what == "inputs" and method == "PUT":

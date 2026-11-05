@@ -117,7 +117,7 @@ function view() {
     head(),
     h("div", { class: "blade-cmds", role: "toolbar", "aria-label": "Kubernetes" },
       n ? h("button", { class: "blade-cmd", "aria-expanded": String(adding), onclick: () => { adding = !adding; render(); } }, plus(), "Add a cluster") : null,
-      h("button", { class: "blade-cmd", disabled: fleetLoading, onclick: () => { fleet = null; render(); } }, refreshIcon(), "Refresh")),
+      h("button", { class: "blade-cmd", disabled: fleetLoading, onclick: () => { fleet = null; render(); } }, refreshIcon(), fleetLoading ? "Refreshing…" : "Refresh")),
     d.error ? h("div", { class: "callout fail" }, brief(d.error)) : null,
     open ? (k ? [k] : built).map((p) => addPanel(state.configs || [], p)) : null,
     fleet && n ? stats(d.clusters.filter((r) => !k || (r.cloud || "aks") === k)) : null,

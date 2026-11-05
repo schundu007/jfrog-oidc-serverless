@@ -56,7 +56,7 @@ WORKLOADS_TYPE = ("map(object({cloud = string, subject = string, username = opti
 SHARED_PATHS = {
     "jfrog_url": "jfrog.url", "reader_group": "jfrog.reader_group", "project_key": "jfrog.project_key",
     "integration_name": "jfrog.integration_names", "name_prefix": "name_prefix",
-    "state_backend": "state_backend",
+    "state_backend": "state_backend", "azure_audience": "jfrog.azure_audience",
 }
 class TfgenError(ValueError):
     pass
@@ -316,7 +316,8 @@ def _azure_entry(cfg: dict):
     a = model.get_path(cfg, "target.azure") or {}
     if not d.get("location"):
         raise TfgenError("the target's location is unknown: run Discover again")
-    shared.update(resource_group_name=a.get("resource_group"), location=d["location"])
+    shared.update(resource_group_name=a.get("resource_group"), location=d["location"],
+                  azure_audience=model.get_path(cfg, "jfrog.azure_audience") or "app_registration")
     target.update(
         principal_id=d.get("principal_id") or str(d.get("mapping_subject") or ""),
         identity_resource_group=a.get("resource_group"), identity_location=d["location"],
@@ -439,6 +440,7 @@ def _azure_tfvars(state: dict) -> dict:
         "azure_subscription_id": state["key"].split(":", 1)[1],
         "location": s["location"],
         "resource_group_name": s["resource_group_name"],
+        "azure_audience": s.get("azure_audience") or "app_registration",
         "audience_assignees": {n: t["principal_id"] for n, t in sorted(targets.items()) if t["runtime_enabled"]},
         "dedicated_identities": {n: {"name": t["dedicated_identity"], "resource_group_name": t["identity_resource_group"],
                                      "location": t["identity_location"]}
@@ -572,6 +574,8 @@ def _azure_main(modules: str | None = None) -> dict:
             "location": _var("string"),
             "resource_group_name": _var("string"),
             "audience_assignees": _var("map(string)", {}),
+            "azure_audience": _var("string", "app_registration",
+                                   "app_registration (api://<app-id>) or token_exchange (api://AzureADTokenExchange)"),
             "dedicated_identities": _var("map(object({name = string, resource_group_name = string, location = string}))", {},
                                          "Existing apps with no managed identity: <config> => new user-assigned identity"),
         },
@@ -600,6 +604,7 @@ def _azure_main(modules: str | None = None) -> dict:
                 "source": f"{mod}/azure-identity",
                 "name_prefix": "${var.name_prefix}",
                 "audience_assignees": "${local.audience_assignees}",
+                "audience": "${var.azure_audience}",
             },
             "jfrog_oidc": {
                 "source": f"{mod}/jfrog-oidc",

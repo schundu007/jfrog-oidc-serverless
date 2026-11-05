@@ -20,8 +20,7 @@ own state store.
 Infrastructure never touches JFrog: no foundation, workload or cluster stack has a JFrog provider,
 input or setting, and none registers anything for JFrog OIDC (its pipelines, environments and approvals
 are made by the OIDC stacks themselves). The UI serves them apart (server.py scopes: /setup infra,
-/oidc JFrog OIDC), as do the pipelines (terraform-stack.sh vs oidc-stack.sh) and the commands
-(costs vs oidc). JFrog is OIDC configuration, made only once the infrastructure exists: the
+/oidc JFrog OIDC), as do the pipelines (terraform-stack.sh vs oidc-stack.sh). JFrog is OIDC configuration, made only once the infrastructure exists: the
 "JFrog OIDC" stacks (terraform/stacks/oidc/<cloud>/<cloud>-jfrog-trust: the pipelines' JFrog
 integration, mappings and JFrog variable group; on GCP also the console operator; aks-jfrog-trust: the
 AKS cluster's issuer, mapping and credential provider, in its own ADO pipeline) and, per workload,
@@ -102,7 +101,7 @@ CATALOGUE = (
      "next": "Run this stack's build-deploy pipeline to deploy the code."},
     {"id": "azure-web-app", "kind": "Serverless", "group": "Azure", "title": "Web App",
      "about": "Its own resource group with the app's identity, an App Service plan (Linux or Windows) and "
-              "the web app for Python, Java or .NET code.",
+              "the web app for Python, Java, .NET, Node.js or PHP code.",
      "next": "Run this stack's build-deploy pipeline to deploy the code."},
     # JFrog OIDC: only after the infrastructure exists. Local state, run here with the operator's
     # JFrog admin token; each stands on its cloud's foundation (it reads the service connections).
@@ -155,11 +154,87 @@ class StackError(ValueError):
     pass
 
 
-def get(stack_id: str) -> dict:
+def _base(stack_id: str) -> dict:
     for s in CATALOGUE:
         if s["id"] == stack_id:
             return s
     raise StackError(f"unknown stack {stack_id!r}")
+
+
+# More than one deployment of a Serverless workload stack: <stack>@<workload>, e.g. a second Web App
+# on another OS or language. Same Terraform folder and pipelines; its own inputs file, its own state
+# (key <stack>/<env>/<workload>), its own runs, plans and status. It shares nothing with the first one.
+INSTANCE_NAME = re.compile(r"[a-z][a-z0-9-]{1,38}[a-z0-9]")
+
+
+def multi(stack_id: str) -> bool:
+    """A stack that can stand more than once: a Serverless workload (not a foundation)."""
+    meta = _base(stack_id)
+    return meta["kind"] == "Serverless" and not stack_id.endswith("-foundation")
+
+
+def split(stack_id: str) -> tuple:
+    base, _, inst = stack_id.partition("@")
+    return base, inst or None
+
+
+def get(stack_id: str) -> dict:
+    base, inst = split(stack_id)
+    meta = _base(base)
+    if inst is None:
+        return meta
+    if not multi(base) or not INSTANCE_NAME.fullmatch(inst):
+        raise StackError(f"unknown stack {stack_id!r}")
+    return dict(meta, id=stack_id, base=base, instance=inst, title=f"{meta['title']} {inst}")
+
+
+def instances(env: str, state_root=None) -> tuple:
+    """The extra deployments with saved inputs, as <stack>@<workload>, in catalogue order."""
+    d = Path(STATE_ROOT if state_root is None else state_root) / env
+    found = sorted(p.name[:-len(".tfvars.json")] for p in d.glob("*@*.tfvars.json")) if d.is_dir() else []
+    out = []
+    for sid in found:
+        try:
+            get(sid)
+        except StackError:
+            continue
+        out.append(sid)
+    return tuple(sorted(out, key=lambda x: (IDS.index(split(x)[0]), x)))
+
+
+def all_ids(env: str, state_root=None) -> tuple:
+    """Every stack and every extra deployment, each right after its stack."""
+    extra = instances(env, state_root)
+    return tuple(x for sid in IDS for x in (sid, *(i for i in extra if split(i)[0] == sid)))
+
+
+def check_name(stack_id: str, workload, env: str, state_root=None) -> str:
+    """A new deployment's name, refused when malformed or already used by any deployment of any
+    workload stack here (the console's own record; the cloud is asked separately)."""
+    state_root = STATE_ROOT if state_root is None else state_root
+    workload = str(workload or "").strip().lower()
+    if not INSTANCE_NAME.fullmatch(workload):
+        raise StackError("3 to 40 lowercase letters, digits or hyphens, starting with a letter")
+    for x in all_ids(env, state_root):
+        if not multi(split(x)[0]):
+            continue
+        if workload in (split(x)[1], str(read_inputs(x, env, state_root).get("workload") or "")):
+            raise StackError(f"{workload} is already used by {get(x)['title']}: pick another name")
+    return workload
+
+
+def new_instance(stack_id: str, workload: str, env: str, root=None, state_root=None) -> str:
+    """Start another deployment of a workload stack, named by its workload: its inputs start from the
+    stack's own saved inputs with the new name. Refuses a name any deployment of it already uses."""
+    root = STACKS_DIR if root is None else root
+    state_root = STATE_ROOT if state_root is None else state_root
+    if "@" in stack_id or not multi(stack_id):
+        raise StackError(f"{stack_id} cannot be deployed more than once")
+    workload = check_name(stack_id, workload, env, state_root)
+    sid = f"{stack_id}@{workload}"
+    start = {k: v for k, v in read_inputs(stack_id, env, state_root).items() if k != "slot"}
+    _write(inputs_file(sid, env, state_root), dict(start, workload=workload))
+    return sid
 
 
 CLOUD_DIR = {"Google Cloud": "gcp", "Azure": "azure"}
@@ -170,7 +245,7 @@ def rel_dir(stack_id: str) -> str:
     """Where a stack lives under terraform/stacks: <kind>/<cloud>/<id>. Serverless and Kubernetes,
     and each cloud, have their own tree; the id (state key, ADO environment) never changes."""
     meta = get(stack_id)
-    return f"{KIND_DIR[meta['kind']]}/{CLOUD_DIR[meta['group']]}/{stack_id}"
+    return f"{KIND_DIR[meta['kind']]}/{CLOUD_DIR[meta['group']]}/{meta.get('base', stack_id)}"
 
 
 def stack_dir(stack_id: str, root: Path = STACKS_DIR) -> Path:
@@ -236,6 +311,18 @@ def _attrs(body: str) -> dict:
     return out
 
 
+def _choices(name: str, body: str) -> list | None:
+    """The allowed values of a `contains([...], var.<name>)` validation: the form offers them as a picker."""
+    m = re.search(r"contains\(\s*(\[[^\]]*\])\s*,\s*var\." + re.escape(name) + r"\s*\)", body)
+    if not m:
+        return None
+    try:
+        vals = json.loads(m.group(1))
+    except ValueError:
+        return None
+    return vals if vals and all(isinstance(x, str) for x in vals) else None
+
+
 def _literal(expr: str):
     """(ok, value) for a default the form can prefill: strings, numbers, bools, null, JSON-shaped {} / []."""
     e = expr.strip()
@@ -287,6 +374,9 @@ def variables(stack_id: str, root: Path = STACKS_DIR) -> list:
                     v["default"] = val
             if name in OPTION_SOURCES:
                 v["options"] = OPTION_SOURCES[name]
+            choices = _choices(name, body)
+            if choices:
+                v["choices"] = choices
             out.append(v)
     return out
 
@@ -333,7 +423,15 @@ def ancestors(stack_id: str, root: Path = STACKS_DIR) -> tuple:
 def descendants(stack_id: str, root: Path = STACKS_DIR) -> tuple:
     """Everything that stands on a stack, directly or through another stack, in destroy (reverse
     catalogue) order. None of it may still stand when the stack is destroyed."""
-    return tuple(x for x in reversed(IDS) if stack_id in ancestors(x, root))
+    return tuple(x for x in reversed(all_ids(_ENV[0], _ENV[1])) if stack_id in ancestors(x, root))
+
+
+# The environment and state root whose extra deployments descendants() sees (set by the console).
+_ENV = ["test", None]
+
+
+def use_env(env: str, state_root=None) -> None:
+    _ENV[0], _ENV[1] = env, state_root
 
 
 # A workload's build-deploy pipeline reads its cloud's JFrog variable group (JFROG_URL,
@@ -393,6 +491,8 @@ def form(stack_id: str, env: str, root: Path = STACKS_DIR, state_root: Path = ST
             f["current"], f["source"] = shared[v["name"]], "shared"
         elif "default" in v:
             f["current"], f["source"] = v["default"], "default"
+        if name_locked := (v["name"] == "workload" and get(stack_id).get("instance")):
+            f["current"], f["locked"] = get(stack_id)["instance"], name_locked
         fields.append(f)
     return {"fields": fields, "saved": bool(saved), "missing": missing(stack_id, env, root, state_root)}
 
@@ -465,9 +565,13 @@ def write_inputs(stack_id: str, env: str, values: dict, root: Path = STACKS_DIR,
         if raw is None or (isinstance(raw, str) and not raw.strip()):
             continue
         out[name] = _coerce(v, raw)
-    _write(inputs_file(stack_id, env, state_root), out)
+        if v.get("choices") and out[name] not in v["choices"]:
+            raise StackError(f"{name} must be one of: {', '.join(v['choices'])}")
     meta = get(stack_id)
-    others = {x["name"] for s in CATALOGUE if s["id"] != stack_id and (s["kind"], s["group"]) == (meta["kind"], meta["group"])
+    if meta.get("instance"):   # a deployment's name is fixed: another name is another deployment
+        out["workload"] = meta["instance"]
+    _write(inputs_file(stack_id, env, state_root), out)
+    others = {x["name"] for s in CATALOGUE if s["id"] != meta.get("base", stack_id) and (s["kind"], s["group"]) == (meta["kind"], meta["group"])
               for x in variables(s["id"], root)}
     shared = _load(_shared_file(env, state_root, stack_id))
     shared.update({k: val for k, val in out.items() if k in others and k in SHARED_INPUTS})
@@ -526,7 +630,13 @@ def foundation(kind: str, env: str, state_root: Path = STATE_ROOT) -> dict:
 
 
 def backend_config(kind: str, stack_id: str, env: str, found: dict) -> tuple:
-    """-backend-config pairs for a gcs or azurerm backend, matching the stores ADO trust creates."""
+    """-backend-config pairs for a gcs or azurerm backend, matching the stores ADO trust creates. An
+    extra deployment (<stack>@<workload>, or `instance` in `found` from a pipeline) keeps its own state."""
+    base, inst = split(stack_id)
+    inst = inst or found.get("instance") or None
+    if inst and (not multi(base) or not INSTANCE_NAME.fullmatch(str(inst))):
+        raise StackError(f"{stack_id}: {inst!r} is not a deployment name")
+    stack_id, where = base, f"{base}/{env}/{inst}" if inst else f"{base}/{env}"
     need = {"gcs": ("gcp_project_id",), "azurerm": ("azure_subscription_id", "ado_org", "state_resource_group")}.get(kind)
     if need is None:
         raise StackError(f"{stack_id}: backend {kind!r} is not supported")
@@ -534,11 +644,11 @@ def backend_config(kind: str, stack_id: str, env: str, found: dict) -> tuple:
     if gaps:
         raise StackError(f"save the {FOUNDATION[kind]} inputs first ({', '.join(gaps)}): its state store holds this stack's state")
     if kind == "gcs":
-        pairs = {"bucket": f"{found['gcp_project_id']}-tfstate", "prefix": f"{stack_id}/{env}"}
+        pairs = {"bucket": f"{found['gcp_project_id']}-tfstate", "prefix": where}
     else:
         pairs = {"subscription_id": found["azure_subscription_id"], "resource_group_name": found["state_resource_group"],
                  "storage_account_name": ("st" + found["ado_org"].replace("-", "") + "tfstate")[:24],
-                 "container_name": "tfstate", "key": f"{stack_id}/{env}.tfstate", "use_azuread_auth": "true"}
+                 "container_name": "tfstate", "key": f"{where}.tfstate", "use_azuread_auth": "true"}
     return tuple(f"-backend-config={k}={v}" for k, v in pairs.items())
 
 

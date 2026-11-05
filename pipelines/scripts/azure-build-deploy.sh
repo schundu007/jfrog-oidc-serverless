@@ -147,7 +147,7 @@ case "$KIND" in
         cp -R client/src/jfrog_oidc "$out/"
         # Linux App Service only: wheels for its python, installed into the package (PYTHONPATH).
         python3 -m jfrog_oidc pip --repo "$JFROG_PYPI_REPO" -- install --quiet --target "$out/.python_packages" \
-          --only-binary=:all: --platform manylinux2014_x86_64 --python-version "${version:-3.12}" \
+          --only-binary=:all: --platform manylinux2014_x86_64 --python-version "${version:-3.13}" \
           --implementation cp -r "$src/requirements.txt"
         # The app's tests, against the packages being shipped.
         (cd "$src" && PYTHONPATH="$out/.python_packages:$out" APP_JSON_LOGS=0 python3 -m unittest discover -s tests -t . -q)
@@ -165,7 +165,8 @@ case "$KIND" in
       dotnet)
         : "${JFROG_NUGET_REPO:?}"
         export NUGET_PACKAGES="$out/nuget" DOTNET_CLI_TELEMETRY_OPTOUT=1
-        fw="net${version:-8.0}"
+        fw="net${version:-10.0}"
+        dotnet --list-sdks | grep -q "^${fw#net}\." || { echo "the agent has no .NET ${fw#net} SDK ($(dotnet --list-sdks | cut -d' ' -f1 | tr '\n' ' '))" >&2; exit 1; }
         # Restores the tests too (they reference the app); packages only from JFrog.
         python3 -m jfrog_oidc dotnet --repo "$JFROG_NUGET_REPO" -- restore "$src.tests" -p:AppFramework="$fw"
         dotnet test "$src.tests" --no-restore -p:AppFramework="$fw"
@@ -174,17 +175,46 @@ case "$KIND" in
         (cd "$out/publish" && zip -q -r ../package.zip .)
         pkg="$out/package.zip" type=zip
         ;;
-      *) echo "web app ${WORKLOAD}: unknown runtime '${runtime}' (python, java or dotnet)" >&2; exit 1 ;;
+      node)
+        cp "$src/package.json" "$src/jfrog.js" "$src/server.js" "$src/web.config" "$out/"
+        [ -f "$src/package-lock.json" ] && cp "$src/package-lock.json" "$out/"
+        # Dependencies, if the app has any, come only from JFrog.
+        if node -e 'process.exit(Object.keys(require(process.argv[1]).dependencies||{}).length?0:1)' "$PWD/$src/package.json"; then
+          : "${JFROG_NPM_REPO:?}"
+          (cd "$out" && python3 -m jfrog_oidc npm --repo "$JFROG_NPM_REPO" -- ci --omit=dev --no-audit --no-fund)
+        fi
+        (cd "$src" && node --test)
+        (cd "$out" && zip -q -r ../package.zip .)
+        pkg="$out/../package.zip" type=zip
+        ;;
+      php)
+        cp -R "$src/index.php" "$src/src" "$src/nginx.conf" "$src/startup.sh" "$out/"
+        if [ -f "$src/composer.json" ]; then
+          : "${JFROG_COMPOSER_REPO:?}"
+          cp "$src/composer.json" "$src/composer.lock" "$out/"
+          (cd "$out" && python3 -m jfrog_oidc composer --repo "$JFROG_COMPOSER_REPO" -- install --no-dev --no-interaction --no-progress)
+        fi
+        (cd "$src" && php tests/run.php)
+        (cd "$out" && zip -q -r ../package.zip .)
+        pkg="$out/../package.zip" type=zip
+        ;;
+      *) echo "web app ${WORKLOAD}: unknown runtime '${runtime}' (python, java, dotnet, node or php)" >&2; exit 1 ;;
     esac
+    slot_args=() where="$WORKLOAD"
+    if [ -n "${SLOT:-}" ]; then
+      az webapp deployment slot list --name "$WORKLOAD" --resource-group "$rg" --query "[].name" -o tsv --only-show-errors \
+        | grep -qx "$SLOT" || { echo "web app ${WORKLOAD} has no slot ${SLOT}" >&2; exit 1; }
+      slot_args=(--slot "$SLOT") where="${WORKLOAD}/${SLOT}"
+    fi
     # Basic-auth publishing is off on the app: az deploys with the service connection's Entra token.
     started=$(date -u +%Y-%m-%dT%H:%M:%S)
-    if ! az webapp deploy --name "$WORKLOAD" --resource-group "$rg" --src-path "$pkg" --type "$type" \
+    if ! az webapp deploy --name "$WORKLOAD" --resource-group "$rg" "${slot_args[@]}" --src-path "$pkg" --type "$type" \
       --restart true --only-show-errors >/dev/null; then
       # az's status poll can fail (Kudu 502 while the site restarts) after the deploy itself
       # succeeded: Kudu's own record of the newest deployment decides (status 4 = success).
       deployed=""
       for _ in $(seq 1 40); do
-        last=$(az webapp log deployment list --name "$WORKLOAD" --resource-group "$rg" \
+        last=$(az webapp log deployment list --name "$WORKLOAD" --resource-group "$rg" "${slot_args[@]}" \
           --query "[0].[received_time, to_string(complete), to_string(status)]" -o tsv 2>/dev/null | tr '\n' ' ' || true)
         read -r at done status <<<"$last"
         if [[ -n "$at" && "$at" > "$started" && "$done" == "true" ]]; then
@@ -193,10 +223,39 @@ case "$KIND" in
         fi
         sleep 15
       done
-      [ -n "$deployed" ] || { echo "web app ${WORKLOAD}: deployment failed" >&2; exit 1; }
-      echo "the deploy call failed, but the newest deployment on ${WORKLOAD} completed successfully"
+      [ -n "$deployed" ] || { echo "web app ${where}: deployment failed" >&2; exit 1; }
+      echo "the deploy call failed, but the newest deployment on ${where} completed successfully"
     fi
-    echo "deployed ${BUILD_SOURCEVERSION:0:12} (${runtime} ${version}) to ${WORKLOAD}"
+    echo "deployed ${BUILD_SOURCEVERSION:0:12} (${runtime} ${version}) to ${where}"
+    if [ -n "${SLOT:-}" ] && [ "${SWAP:-False}" = "True" ]; then
+      host=$(az webapp show --name "$WORKLOAD" --resource-group "$rg" --slot "$SLOT" --query defaultHostName -o tsv --only-show-errors)
+      ok=""
+      for _ in $(seq 1 30); do
+        code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "https://${host}/health" || true)
+        [ "$code" = "200" ] && { ok=1; break; }
+        sleep 10
+      done
+      [ -n "$ok" ] || { echo "slot ${SLOT} does not answer /health: not swapping" >&2; exit 1; }
+      # slotSwapStatus is only in the ARM resource (az webapp show leaves it empty).
+      site_id=$(az webapp show --name "$WORKLOAD" --resource-group "$rg" --query id -o tsv --only-show-errors)
+      swap_status() { az rest --method get --uri "https://management.azure.com${site_id}?api-version=2024-04-01" \
+        --query "[properties.slotSwapStatus.timestampUtc, properties.slotSwapStatus.sourceSlotName]" -o tsv 2>/dev/null | tr '\n' ' ' || true; }
+      read -r before _ <<<"$(swap_status)"
+      if ! az webapp deployment slot swap --name "$WORKLOAD" --resource-group "$rg" --slot "$SLOT" \
+        --target-slot production --only-show-errors >/dev/null; then
+        # az's status poll can fail (409 "another operation is in progress": the swap itself) while the
+        # swap still runs: the site's own slotSwapStatus decides.
+        swapped=""
+        for _ in $(seq 1 40); do
+          read -r at from <<<"$(swap_status)"
+          [[ -n "$at" && "$at" != "${before:-}" && "$from" == "$SLOT" ]] && { swapped=1; break; }
+          sleep 15
+        done
+        [ -n "$swapped" ] || { echo "web app ${WORKLOAD}: swapping ${SLOT} into production failed" >&2; exit 1; }
+        echo "the swap call failed, but ${WORKLOAD} records the swap from ${SLOT}"
+      fi
+      echo "swapped ${SLOT} into production on ${WORKLOAD}"
+    fi
     ;;
   *) echo "unknown KIND: $KIND (job, app, functions-aca, functions-premium, functions-flex or webapp)" >&2; exit 2 ;;
 esac

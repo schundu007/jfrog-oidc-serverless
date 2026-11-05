@@ -1,7 +1,7 @@
 // Workload (/<cloud>/w/<name>), an Azure resource page: title, command bar (Run pipeline, Preflight,
 // Refresh, "⋯"), Essentials, an approval banner, and the tabs Runs · Configuration · Simulator (?tab=runs|config|sim).
 
-import { $, api, h, fill, nextBox, CLOUD, ofCloud, href, statusIcon, statusText, template, menu, armed, ago, dur, stamp,
+import { $, api, h, fill, nextBox, refreshing, CLOUD, ofCloud, href, statusIcon, statusText, template, menu, armed, ago, dur, stamp,
   runDuration, LIVE, closeFlyout, sectionOf, status as setStatus } from "./core.js";
 import { mountConfig, validateNow, runPreflight, currentConfig, isDirty, isBusy, identityOf, kindLabel, SCOPE_FIELDS,
   status as cfgStatus } from "./configure.js";
@@ -38,7 +38,7 @@ function renderFacts(cfg) {
   }[CLOUD] || [];
   const url = cfg.jfrog?.url || "";
   fill($("wl-ess-left"),
-    ...pair("Status", h("span", { class: `blade-state ${tone}`, text: last ? `Last run ${statusText(last.status)}` : "No runs yet" })),
+    ...pair("Status", h("span", { class: `blade-state ${tone}`, text: last ? `Last run ${statusText(last.status)}` : "No pipeline runs yet" })),
     ...where.flatMap(([k, v]) => pair(k, v)));
   fill($("wl-ess-right"),
     ...pair("Verified", ver ? h("a", { class: `blade-state ${verifyTone(ver.verify.status)}`, href: href.run(ws.name, ver.id),
@@ -49,6 +49,8 @@ function renderFacts(cfg) {
     ...(d.client_id && d.client_id !== idn.text ? pair("Client ID", d.client_id) : []),
     ...pair("JFrog platform", /^https:\/\//.test(url) ? h("a", { href: url, target: "_blank", rel: "noopener", text: url.replace(/^https:\/\//, "") }) : url),
     ...pair("Reader group", cfg.jfrog?.reader_group),
+    ...(cfg.target?.kind?.startsWith("azure_") ? pair("Token audience", cfg.jfrog?.azure_audience === "token_exchange"
+      ? "api://AzureADTokenExchange" : "App registration") : []),
     ...(last ? pair("Runs", h("a", { href: "?tab=runs", text: `${ws.runs.length} · last ${ago(last.created)}` })) : []));
   $("wl-sub").textContent = `${CLOUD_NAME[CLOUD] || CLOUD} · ${kindLabel(ws.schema, cfg.target.kind)}`;
   $("wl-logo").innerHTML = window.consoleNav?.icon(window.consoleNav?.section(cfg.target.kind)?.icon || CLOUD) || "";  // constant SVG only
@@ -239,6 +241,21 @@ async function removeWorkload() {
 
 // ----------------------------------------------------------------- mount
 
+// Refresh: the saved config (discovered facts) and every run read again; unsaved edits stay.
+async function refreshAll() {
+  cfgStatus("Refreshing…", "busy");
+  try {
+    const [{ config }] = await Promise.all([
+      isDirty() ? Promise.resolve({ config: null }) : api(`/api/configs/${encodeURIComponent(ws.name)}`),
+      (ws.snaps.clear(), loadRuns())]);
+    if (config) renderFacts(config);
+    cfgStatus(`Refreshed ${stamp(new Date().toISOString())}`, "ok");
+  } catch (e) {
+    cfgStatus(`Refresh failed: ${e.message}`, "error");
+    throw e;
+  }
+}
+
 export async function mountWorkload(page, { name, schema }) {
   Object.assign(ws, { name, schema });
   page.replaceChildren(template("tpl-workload"));
@@ -270,9 +287,9 @@ export async function mountWorkload(page, { name, schema }) {
   $("wl-run").addEventListener("click", runPipeline);
   $("wl-verify").addEventListener("click", verifyNow);
   $("wl-prove").addEventListener("click", proveNow);
-  $("runs-refresh").addEventListener("click", () => loadRuns().then(() => runsNote("", "")).catch((e) => runsNote(e.message, "error")));
+  refreshing($("runs-refresh"), () => loadRuns().then(() => runsNote("", "")).catch((e) => { runsNote(e.message, "error"); throw e; }));
   $("runs-clear").addEventListener("click", clearFinished);
-  $("wl-refresh").addEventListener("click", () => loadRuns().catch((e) => runsNote(e.message, "error")));
+  refreshing($("wl-refresh"), refreshAll);
   $("wl-ess-h").addEventListener("click", () => {
     const open = $("wl-ess-h").getAttribute("aria-expanded") !== "true";
     $("wl-ess-h").setAttribute("aria-expanded", String(open));

@@ -73,6 +73,7 @@ function writeForm() {
   for (const el of fields()) {
     const v = getPath(st.cfg, el.dataset.path);
     if (el.type === "checkbox") el.checked = !!v;
+    else if (el.tagName === "SELECT" && (v === null || v === undefined)) continue;   // keep the first option (the default)
     else el.value = v === null || v === undefined ? "" : String(v);
   }
   applyKindVisibility();
@@ -406,6 +407,7 @@ const HELP = {
   "#step-jfrog > h2": "The JFrog instance that trusts the workload's identity and issues its short-lived tokens.",
   '[data-path="jfrog.url"]': "Your JFrog Platform address, for example yourcompany.jfrog.io.",
   '[data-path="jfrog.reader_group"]': "The JFrog group the issued tokens belong to. It decides what the workload can read.",
+  '[data-path="jfrog.azure_audience"]': "The audience the managed identity requests. App registration: one is created in Entra for this workspace. AzureADTokenExchange: Microsoft's built-in audience, nothing created in Entra. Every workload in one workspace uses the same.",
   "#step-needs > h2": "How the workload gets JFrog tokens: the running code exchanges its cloud identity. Images come in at build time.",
   '[data-path="runtime.enabled"]': "The running code swaps its cloud identity for a JFrog token whenever it needs one, for example to download packages. Nothing is stored.",
 };

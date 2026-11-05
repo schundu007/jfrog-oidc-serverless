@@ -2,7 +2,7 @@
   <!-- Tests for apps/web-app/dotnet: the real app against an emulated identity endpoint and JFrog.
        The build pipeline restores these through JFrog (nuget-remote) and runs them before publishing. -->
   <PropertyGroup>
-    <AppFramework Condition="'$(AppFramework)' == ''">net8.0</AppFramework>
+    <AppFramework Condition="'$(AppFramework)' == ''">net10.0</AppFramework>
     <TargetFramework>$(AppFramework)</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

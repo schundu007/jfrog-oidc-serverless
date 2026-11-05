@@ -1,4 +1,4 @@
-# Azure: an App Service web app (Linux or Windows; Python, Java or .NET code) reads JFrog
+# Azure: an App Service web app (Linux or Windows; Python, Java, .NET, Node.js or PHP code) reads JFrog
 # artifacts with a short-lived OIDC token. Its own resource group, identity and plan: nothing is
 # shared with another workload. No registry: the build pipeline resolves packages through JFrog
 # with its OIDC token and zip-deploys code; at runtime the app exchanges its managed identity.
@@ -8,11 +8,18 @@
 
 locals {
   linux   = var.os == "linux"
-  version = coalesce(var.runtime_version, { python = "3.12", java = "21", dotnet = "8.0" }[var.runtime])
+  version = coalesce(var.runtime_version, { python = "3.13", java = "21", dotnet = "10.0", node = local.linux ? "24-lts" : "~24", php = "8.4" }[var.runtime])
   # The platform's start command; Java and .NET start their own entry point. gunicorn comes
   # from the bundled packages (PYTHONPATH), so it runs as a module.
   # App Service evals this in a shell: no quotes or parentheses (the app comes from wsgi_app in gunicorn.conf.py).
-  startup = { python = "python -m gunicorn --config gunicorn.conf.py", java = "", dotnet = "" }[var.runtime]
+  # Node runs server.js; PHP swaps in its nginx site (every path to index.php) and reloads nginx.
+  startup = {
+    python = "python -m gunicorn --config gunicorn.conf.py", java = "", dotnet = "",
+    node   = "node server.js", php = "bash /home/site/wwwroot/startup.sh"
+  }[var.runtime]
+  linux_only = ["python", "php"]
+  # Slots need Standard or higher (not Free, Shared or Basic).
+  slots_allowed = !contains(["F1", "D1", "B1", "B2", "B3"], upper(var.sku))
   # The build pipeline reads these to pick its build (pip, Maven or dotnet).
   tags = merge(var.tags, { "jfrog-oidc-os" = var.os, "jfrog-oidc-runtime" = var.runtime, "jfrog-oidc-version" = local.version })
   settings = {
@@ -44,8 +51,12 @@ resource "azurerm_service_plan" "this" {
 
   lifecycle {
     precondition {
-      condition     = !(var.os == "windows" && var.runtime == "python")
-      error_message = "Python runs on Linux App Service only: use os = linux, or java/dotnet on Windows."
+      condition     = !(var.os == "windows" && contains(local.linux_only, var.runtime))
+      error_message = "Python and PHP run on Linux App Service only: use os = linux, or java/dotnet/node on Windows."
+    }
+    precondition {
+      condition     = var.slot == "" || local.slots_allowed
+      error_message = "Deployment slots need a Standard (S1) or higher plan: set sku = S1 or leave slot empty."
     }
   }
 }
@@ -81,6 +92,8 @@ resource "azurerm_linux_web_app" "workload" {
       java_server         = var.runtime == "java" ? "JAVA" : null
       java_server_version = var.runtime == "java" ? local.version : null
       dotnet_version      = var.runtime == "dotnet" ? local.version : null
+      node_version        = var.runtime == "node" ? local.version : null
+      php_version         = var.runtime == "php" ? local.version : null
     }
   }
 
@@ -119,6 +132,84 @@ resource "azurerm_windows_web_app" "workload" {
       dotnet_version               = var.runtime == "dotnet" ? "v${local.version}" : null
       java_version                 = var.runtime == "java" ? local.version : null
       java_embedded_server_enabled = var.runtime == "java" ? true : null
+      node_version                 = var.runtime == "node" ? local.version : null
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [app_settings]
+  }
+}
+
+# Optional deployment slot: same identity and settings, so the exchange works in it before and
+# after a swap. The console's wire step sets JFROG_* on production and on every slot.
+resource "azurerm_linux_web_app_slot" "slot" {
+  count                                          = local.linux && var.slot != "" ? 1 : 0
+  name                                           = var.slot
+  app_service_id                                 = azurerm_linux_web_app.workload[0].id
+  https_only                                     = true
+  ftp_publish_basic_authentication_enabled       = false
+  webdeploy_publish_basic_authentication_enabled = false
+  key_vault_reference_identity_id                = module.base.identity.id
+  app_settings                                   = { for k, v in local.settings : k => v if v != null }
+  tags                                           = local.tags
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [module.base.identity.id]
+  }
+
+  site_config {
+    always_on                         = true
+    ftps_state                        = "Disabled"
+    health_check_path                 = "/health"
+    health_check_eviction_time_in_min = 10
+    app_command_line                  = local.startup
+
+    application_stack {
+      python_version      = var.runtime == "python" ? local.version : null
+      java_version        = var.runtime == "java" ? local.version : null
+      java_server         = var.runtime == "java" ? "JAVA" : null
+      java_server_version = var.runtime == "java" ? local.version : null
+      dotnet_version      = var.runtime == "dotnet" ? local.version : null
+      node_version        = var.runtime == "node" ? local.version : null
+      php_version         = var.runtime == "php" ? local.version : null
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [app_settings]
+  }
+}
+
+resource "azurerm_windows_web_app_slot" "slot" {
+  count                                          = !local.linux && var.slot != "" ? 1 : 0
+  name                                           = var.slot
+  app_service_id                                 = azurerm_windows_web_app.workload[0].id
+  https_only                                     = true
+  ftp_publish_basic_authentication_enabled       = false
+  webdeploy_publish_basic_authentication_enabled = false
+  key_vault_reference_identity_id                = module.base.identity.id
+  app_settings                                   = { for k, v in local.settings : k => v if v != null }
+  tags                                           = local.tags
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [module.base.identity.id]
+  }
+
+  site_config {
+    always_on                         = true
+    ftps_state                        = "Disabled"
+    health_check_path                 = "/health"
+    health_check_eviction_time_in_min = 10
+
+    application_stack {
+      current_stack                = var.runtime
+      dotnet_version               = var.runtime == "dotnet" ? "v${local.version}" : null
+      java_version                 = var.runtime == "java" ? local.version : null
+      java_embedded_server_enabled = var.runtime == "java" ? true : null
+      node_version                 = var.runtime == "node" ? local.version : null
     }
   }
 

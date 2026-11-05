@@ -2,6 +2,7 @@ package jfrogoidc.webapp;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -63,9 +64,13 @@ final class Jfrog {
     }
 
     static Jfrog fromEnv() {
-        HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
+        return new Jfrog(System.getenv(), defaultHttp(), () -> Instant.now().getEpochSecond());
+    }
+
+    /** The JVM's proxy settings (https.proxyHost, http.nonProxyHosts) and trust store (javax.net.ssl.trustStore) apply. */
+    static HttpClient defaultHttp() {
+        return HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).proxy(ProxySelector.getDefault())
                 .followRedirects(HttpClient.Redirect.NORMAL).build();
-        return new Jfrog(System.getenv(), http, () -> Instant.now().getEpochSecond());
     }
 
     private void configured() throws Failure {

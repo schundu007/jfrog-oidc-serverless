@@ -11,8 +11,20 @@
                                         # run Maven with JFrog as the only mirror
     python -m jfrog_oidc dotnet --repo nuget-remote -- restore <project>
                                         # restore NuGet packages from JFrog only
-                                        # (mvn/dotnet: a temp config names the repo; the token is
-                                        # only in the tool's environment, never argv or a file)
+    python -m jfrog_oidc npm --repo npm-remote -- ci
+                                        # npm with JFrog as the only registry
+    python -m jfrog_oidc composer --repo php-remote -- install --no-dev
+                                        # Composer with JFrog as the only repository (packagist off)
+    python -m jfrog_oidc gradle --repo maven-remote -- build
+                                        # Gradle (./gradlew if present) with JFrog as the only Maven repo
+                                        # (mvn/dotnet/npm/composer/gradle: a temp config names the repo; the
+                                        # token is only in the tool's environment, never argv or a file)
+    python -m jfrog_oidc helm --repo helm-remote -- pull jfrog/<chart>
+                                        # helm with JFrog logged in (OCI registry and repo "jfrog") into a
+                                        # temporary helm config (token on stdin), deleted when helm exits
+    python -m jfrog_oidc jf -- rt upload ...
+                                        # JFrog CLI with a server config (token from stdin) in a
+                                        # temporary CLI home (no stored server config)
 """
 
 from __future__ import annotations
@@ -32,7 +44,9 @@ from .exchange import _jwt_claims
 
 
 # Build tools that resolve packages through JFrog, and the env var naming each one's default repo.
-TOOLS = {"pip": "JFROG_PYPI_REPO", "mvn": "JFROG_MAVEN_REPO", "dotnet": "JFROG_NUGET_REPO"}
+TOOLS = {"pip": "JFROG_PYPI_REPO", "mvn": "JFROG_MAVEN_REPO", "dotnet": "JFROG_NUGET_REPO",
+         "npm": "JFROG_NPM_REPO", "composer": "JFROG_COMPOSER_REPO", "gradle": "JFROG_MAVEN_REPO",
+         "helm": "JFROG_HELM_REPO"}
 
 _MAVEN_SETTINGS = """<settings>
   <mirrors><mirror><id>jfrog</id><mirrorOf>*</mirrorOf><url>{url}</url></mirror></mirrors>
@@ -40,6 +54,40 @@ _MAVEN_SETTINGS = """<settings>
     <username>${{env.JFROG_OIDC_USER}}</username><password>${{env.JFROG_OIDC_TOKEN}}</password>
   </server></servers>
 </settings>
+"""
+
+# Gradle's documented "enterprise repository" init script: JFrog first, every other Maven repo removed,
+# plugins resolved through JFrog too. Credentials come from the environment when Gradle runs.
+_GRADLE_INIT = """def jfrogUrl = '{url}'
+def jfrog = {{ handler ->
+    handler.maven {{
+        name = 'jfrog'
+        url = jfrogUrl
+        allowInsecureProtocol = jfrogUrl.startsWith('http://')  // only with JFROG_OIDC_ALLOW_HTTP (local tests)
+        credentials {{
+            username = System.getenv('JFROG_OIDC_USER')
+            password = System.getenv('JFROG_OIDC_TOKEN')
+        }}
+    }}
+}}
+def onlyJfrog = {{ handler ->
+    // Every URL repository, also those the build adds later, goes; Gradle's own plugin-portal
+    // entry is not a URL repository and cannot be removed.
+    handler.all {{ ArtifactRepository repo ->
+        if (repo.name != 'jfrog' && repo instanceof org.gradle.api.artifacts.repositories.UrlArtifactRepository) {{
+            handler.remove(repo)
+        }}
+    }}
+    jfrog(handler)
+}}
+settingsEvaluated {{ settings ->
+    onlyJfrog(settings.pluginManagement.repositories)
+    onlyJfrog(settings.dependencyResolutionManagement.repositories)
+}}
+allprojects {{
+    onlyJfrog(buildscript.repositories)
+    onlyJfrog(repositories)
+}}
 """
 
 _NUGET_CONFIG = """<?xml version="1.0" encoding="utf-8"?>
@@ -53,7 +101,7 @@ _NUGET_CONFIG = """<?xml version="1.0" encoding="utf-8"?>
 
 
 def _build_tool(tool, repo, tool_args, jfrog_url, tok) -> int:
-    """Run mvn or dotnet restore with JFrog as the only package source."""
+    """Run mvn, dotnet restore, npm, composer, gradle, helm or jf against JFrog with the OIDC token."""
     from xml.sax.saxutils import escape
     repo_q = urllib.parse.quote(repo, safe="")
     with tempfile.TemporaryDirectory(prefix="jfrog-oidc-") as tmp:
@@ -62,6 +110,55 @@ def _build_tool(tool, repo, tool_args, jfrog_url, tok) -> int:
             text = _MAVEN_SETTINGS.format(url=escape(f"{jfrog_url}/artifactory/{repo_q}"))
             cmd = ["mvn", "-s", cfg, *tool_args]
             env = dict(os.environ, JFROG_OIDC_USER=tok.username, JFROG_OIDC_TOKEN=tok.access_token)
+        elif tool == "npm":
+            cfg = os.path.join(tmp, ".npmrc")
+            reg = f"{jfrog_url}/artifactory/api/npm/{repo_q}/"
+            # npm expands ${VAR} in .npmrc: the file names the variable, the token stays in env.
+            text = f"registry={reg}\n//{reg.split('://', 1)[1]}:_authToken=${{JFROG_OIDC_TOKEN}}\nalways-auth=true\n"
+            cmd = ["npm", "--userconfig", cfg, *tool_args]  # before the command: nothing after "--" sees it
+            env = dict(os.environ, JFROG_OIDC_TOKEN=tok.access_token)
+        elif tool == "gradle":
+            url = f"{jfrog_url}/artifactory/{repo_q}"
+            if "'" in url or "\\" in url:
+                raise ValueError("JFROG_URL must not contain quotes or backslashes")
+            cfg = os.path.join(tmp, "jfrog.init.gradle")
+            text = _GRADLE_INIT.format(url=url)
+            wrapper = os.path.join(os.getcwd(), "gradlew")
+            cmd = [wrapper if os.path.exists(wrapper) else "gradle", "--init-script", cfg, *tool_args]
+            env = dict(os.environ, JFROG_OIDC_USER=tok.username, JFROG_OIDC_TOKEN=tok.access_token)
+        elif tool == "helm":
+            env = dict(os.environ, HELM_REGISTRY_CONFIG=os.path.join(tmp, "registry.json"),
+                       HELM_REPOSITORY_CONFIG=os.path.join(tmp, "repositories.yaml"),
+                       HELM_REPOSITORY_CACHE=os.path.join(tmp, "cache"))
+            secret = tok.access_token.encode()
+            host = urllib.parse.urlsplit(jfrog_url).netloc  # keeps a self-hosted port
+            plain = ["--plain-http"] if jfrog_url.startswith("http://") else []  # local tests only
+            logins = [["helm", "registry", "login", host, *plain, "--username", tok.username, "--password-stdin"],
+                      ["helm", "repo", "add", "jfrog", f"{jfrog_url}/artifactory/api/helm/{repo_q}",
+                       "--username", tok.username, "--password-stdin"]]
+            for login in logins:
+                rc = subprocess.run(login, env=env, input=secret).returncode
+                if rc:
+                    return rc
+            return subprocess.run(["helm", *tool_args], env=env).returncode
+        elif tool == "jf":
+            # A server config in a temporary home, the token read from stdin; removed on exit.
+            env = dict(os.environ, JFROG_CLI_HOME_DIR=tmp, CI="true")
+            add = ["jf", "config", "add", "jfrog", "--url", jfrog_url, "--access-token-stdin", "--interactive=false"]
+            rc = subprocess.run(add, env=env, input=tok.access_token.encode()).returncode
+            if rc:
+                return rc
+            return subprocess.run(["jf", *tool_args], env=env).returncode
+        elif tool == "composer":
+            home = os.path.join(tmp, "composer")
+            os.mkdir(home)
+            cfg = os.path.join(home, "config.json")
+            text = json.dumps({"repositories": [
+                {"type": "composer", "url": f"{jfrog_url}/artifactory/api/composer/{repo_q}"},
+                {"packagist.org": False}]})
+            cmd = ["composer", *tool_args]
+            host = urllib.parse.urlsplit(jfrog_url).netloc
+            env = dict(os.environ, COMPOSER_HOME=home, COMPOSER_AUTH=json.dumps({"bearer": {host: tok.access_token}}))
         else:
             cfg = os.path.join(tmp, "nuget.config")
             url = f"{jfrog_url}/artifactory/api/nuget/v3/{repo_q}/index.json"
@@ -76,11 +173,12 @@ def _build_tool(tool, repo, tool_args, jfrog_url, tok) -> int:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="jfrog_oidc")
-    parser.add_argument("command", choices=["claims", "check", "token", "docker-login", *TOOLS])
+    parser.add_argument("command", choices=["claims", "check", "token", "docker-login", *TOOLS, "jf"])
     parser.add_argument("--registry", help="registry host for docker-login (default: JFROG_URL host)")
     parser.add_argument("--repo", default="",
-                        help="JFrog repository key for pip/mvn/dotnet "
-                             "(default: JFROG_PYPI_REPO, JFROG_MAVEN_REPO, JFROG_NUGET_REPO)")
+                        help="JFrog repository key for pip/mvn/dotnet/npm/composer/gradle/helm (default: JFROG_PYPI_REPO, "
+                             "JFROG_MAVEN_REPO, JFROG_NUGET_REPO, JFROG_NPM_REPO, JFROG_COMPOSER_REPO, "
+                             "JFROG_HELM_REPO)")
     parser.add_argument("-v", "--verbose", action="store_true")
     argv = list(sys.argv[1:] if argv is None else argv)
     pip_args = argv[argv.index("--") + 1:] if "--" in argv else []
@@ -91,6 +189,9 @@ def main(argv=None) -> int:
             parser.error(f"{args.command} needs --repo (or {TOOLS[args.command]}) and arguments after --")
         if args.command == "dotnet" and pip_args[0] != "restore":
             parser.error("dotnet runs restore only; build and publish with --no-restore afterwards")
+    elif args.command == "jf":
+        if not pip_args:
+            parser.error("jf needs arguments after --")
     elif pip_args:
         parser.error(f"unexpected arguments: {' '.join(pip_args)}")
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING, stream=sys.stderr)
@@ -140,7 +241,7 @@ def main(argv=None) -> int:
                  f"/artifactory/api/pypi/{quote(args.repo)}/simple")
         env = dict(os.environ, PIP_INDEX_URL=index, PIP_EXTRA_INDEX_URL="", PIP_NO_INPUT="1")
         return subprocess.run([sys.executable, "-m", "pip", *pip_args], env=env).returncode
-    if args.command in ("mvn", "dotnet"):
+    if args.command in ("mvn", "dotnet", "npm", "composer", "gradle", "helm", "jf"):
         return _build_tool(args.command, args.repo, pip_args, provider.jfrog_url.rstrip("/"), tok)
 
     registry = args.registry or urllib.parse.urlsplit(provider.jfrog_url).hostname

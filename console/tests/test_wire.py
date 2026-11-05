@@ -235,13 +235,42 @@ class DedicatedIdentityTests(unittest.TestCase):
         sh = Shell(mode="replay", fixtures=[
             {"argv": ["az", "webapp", "config", "appsettings", "list", *loc],
              "stdout": json.dumps([{"name": "SCM_DO_BUILD_DURING_DEPLOYMENT", "value": "false"}])},
-            {"argv": ["az", "webapp", "show", *loc], "stdout": json.dumps({"kind": "app,linux"})}])
+            {"argv": ["az", "webapp", "show", *loc], "stdout": json.dumps({"kind": "app,linux"})},
+            {"argv": ["az", "webapp", "deployment", "slot", "list", *loc], "stdout": "[]"}])
         plan = wire.Wire(cfg, sh, {**AZ_OUT, "dedicated_identities": {"web": made}}).plan()
         self.assertEqual(sh.misses, [])
         self.assertEqual(plan["commands"][0][:4], ["az", "webapp", "identity", "assign"])
         self.assertEqual(plan["commands"][1][:5], ["az", "webapp", "config", "appsettings", "set"])
         self.assertIn("JFROG_HEALTHCHECK_PATH", {d["setting"] for d in plan["diff"]})
         self.assertNotIn("SCM_DO_BUILD_DURING_DEPLOYMENT", json.dumps(plan))
+
+    def test_web_app_slots_get_the_same_identity_and_settings(self):
+        cfg = azure_cfg("azure_web_app", "web")
+        cfg["target"]["discovered"].update(dedicated_identity="id-web-jfrog", identity_resource_id=None, client_id=None)
+        made = {"id": f"{RG_ID}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-web-jfrog", "client_id": "c"}
+        base = ["-g", "rg-apps", "-n", "web", "--subscription", SUB]
+        slot = [*base, "--slot", "staging"]
+        attached = {"identity": {"userAssignedIdentities": {made["id"]: {"clientId": "c"}}}}
+        sh = Shell(mode="replay", fixtures=[
+            {"argv": ["az", "webapp", "config", "appsettings", "list", *base, "-o", "json"], "stdout": "[]"},
+            {"argv": ["az", "webapp", "show", *base, "-o", "json"], "stdout": json.dumps(attached)},
+            {"argv": ["az", "webapp", "deployment", "slot", "list", *base, "-o", "json"],
+             "stdout": json.dumps([{"name": "web/staging"}])},
+            {"argv": ["az", "webapp", "config", "appsettings", "list", *slot, "-o", "json"],
+             "stdout": json.dumps([{"name": "AZURE_CLIENT_ID", "value": "c"}, {"name": "OTHER", "value": "secret-ish"}])},
+            {"argv": ["az", "webapp", "show", *slot, "-o", "json"], "stdout": "{}"}])
+        plan = wire.Wire(cfg, sh, {**AZ_OUT, "dedicated_identities": {"web": made}}).plan()
+        self.assertEqual(sh.misses, [])
+        cmds = plan["commands"]
+        self.assertEqual(cmds[0][:5], ["az", "webapp", "config", "appsettings", "set"])   # production: identity already there
+        self.assertEqual(cmds[1], ["az", "webapp", "identity", "assign", *slot, "--identities", made["id"], "-o", "none"])
+        self.assertEqual(cmds[2][:5 + len(slot)], ["az", "webapp", "config", "appsettings", "set", *slot])
+        self.assertNotIn("AZURE_CLIENT_ID=c", cmds[2], "unchanged on the slot")
+        slot_rows = {d["setting"]: d["action"] for d in plan["diff"] if d["scope"] == "slot staging"}
+        self.assertEqual(slot_rows["AZURE_CLIENT_ID"], "same")
+        self.assertEqual(slot_rows["user-assigned identity"], "add")
+        self.assertIn("JFROG_OIDC_AUDIENCE", slot_rows)
+        self.assertNotIn("secret-ish", json.dumps(plan))
 
 
 class AzureTests(unittest.TestCase):

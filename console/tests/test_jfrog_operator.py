@@ -35,7 +35,7 @@ class FakeSh(Shell):
         return HttpResult(method, url, 200, json.dumps({"access_token": JF, "expires_in": 900}))
 
 
-AZ_ENV = {"JFROG_OIDC_PROVIDER": "console-operator-entra", "JFROG_OIDC_AUDIENCE": "api://jfrog-console-cdoazure",
+AZ_ENV = {"JFROG_OIDC_PROVIDER": "console-operator-entra", "JFROG_OIDC_AUDIENCE": "api://jfrog-console-contoso",
           "JFROG_OIDC_SOURCE": "azure"}
 
 
@@ -47,13 +47,24 @@ class AzureOperatorTests(unittest.TestCase):
             self.assertTrue(op.configured)
             self.assertEqual(op._token(), JF)
             self.assertEqual(sh.cmds[0][:3], ["az", "account", "get-access-token"])
-            self.assertIn("api://jfrog-console-cdoazure/.default", sh.cmds[0])
+            self.assertIn("api://jfrog-console-contoso/.default", sh.cmds[0])
             url, body = sh.posts[0]
             self.assertEqual(url, "https://acme.jfrog.io/access/api/v1/oidc/token")
             self.assertEqual((body["provider_name"], body["subject_token"]), ("console-operator-entra", ENTRA))
             self.assertEqual(op._token(), JF)          # cached
             self.assertEqual(len(sh.cmds), 1)
             self.assertFalse(any(ENTRA in l or JF in l for l in sh.lines))
+
+    def test_tokens_pick_the_clouds_operator_and_cache_per_cloud_and_host(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sh = FakeSh()
+            files = {"azure": state(tmp, AZ_ENV), "gcp": Path(tmp) / "none"}
+            toks = jfrog_operator.Tokens(state_file_for=files.get)
+            self.assertEqual(toks.get(sh, "acme.jfrog.io", "azure"), JF)
+            self.assertEqual(toks.get(FakeSh(), "acme.jfrog.io", "azure"), JF)
+            self.assertEqual(len(sh.cmds), 1)                      # cached across shells
+            with self.assertRaisesRegex(jfrog_operator.OperatorError, "gcp-jfrog-trust"):
+                toks.get(sh, "acme.jfrog.io", "gcp")
 
     def test_azure_reads_its_own_trust_stack_never_gcps(self):
         self.assertIn("oidc/azure/azure-jfrog-trust", str(jfrog_operator.state_file("azure")))

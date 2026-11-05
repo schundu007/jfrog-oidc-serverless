@@ -133,6 +133,11 @@ def cloud_of(kind: str) -> str:
     return KINDS[kind]["cloud"]
 
 
+# Token audience on Azure: an Entra app registration (api://<app-id>), or Microsoft's
+# api://AzureADTokenExchange with nothing created in Entra.
+AZURE_AUDIENCES = ("app_registration", "token_exchange")
+
+
 def default_config(kind: str, name: str = "new-target") -> dict:
     cloud = cloud_of(kind)
     short = kind.split("_", 1)[1].replace("_", "-")
@@ -148,6 +153,7 @@ def default_config(kind: str, name: str = "new-target") -> dict:
             "integration_names": dict(DEFAULT_INTEGRATIONS),
             # Set by preflight when the integration already exists for the same issuer.
             "adopt_integration": False,
+            **({"azure_audience": "app_registration"} if cloud == "azure" else {}),
         },
         "target": {
             "kind": kind,
@@ -228,6 +234,8 @@ def validate(cfg: dict) -> dict:
             err(f"target.{cloud}.{f}", "required", f"{f} is required for {KINDS[kind]['label']}")
     if not get_path(cfg, f"jfrog.integration_names.{cloud}"):
         err(f"jfrog.integration_names.{cloud}", "required", "integration name is required")
+    if cloud == "azure" and (get_path(cfg, "jfrog.azure_audience") or "app_registration") not in AZURE_AUDIENCES:
+        err("jfrog.azure_audience", "azure_audience", f"one of {', '.join(AZURE_AUDIENCES)}")
     if cloud == "openshift":
         cl = str(get_path(cfg, "target.openshift.cluster") or "")
         if cl and not CLUSTER_RE.match(cl):

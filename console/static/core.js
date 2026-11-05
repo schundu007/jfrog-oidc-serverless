@@ -249,7 +249,7 @@ export function menu(label, items) {
   const btn = h("button", { type: "button", class: "icon-btn", "aria-label": label, title: label, "aria-haspopup": "menu", "aria-expanded": "false" },
     svgIcon(["M3.5 8h.01M8 8h.01M12.5 8h.01"], "dots"));
   const wrap = h("span", { class: "menu-wrap" }, btn, pop);
-  for (const it of items) {
+  for (const it of items.filter(Boolean)) {
     const item = h("button", { type: "button", role: "menuitem", class: `menu-item${it.danger ? " danger" : ""}`, text: it.text,
       disabled: it.disabled || null, title: it.title || null });
     item.addEventListener("click", async (e) => {
@@ -421,4 +421,30 @@ export function mapEditor(values = {}, { keyLabel = "name", valueLabel = "value"
   el.value = () => Object.fromEntries([...rows.children]
     .map((r) => [r.querySelector(".kv-key").value.trim(), r.querySelector(".kv-val").value.trim()]).filter(([k]) => k));
   return el;
+}
+
+// Every Refresh button: disabled with "Refreshing…" while fn runs, then "Refreshed" for a moment (or
+// the error in its tooltip), so a click is always seen to do something.
+export function refreshing(btn, fn) {
+  const label = [...btn.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
+  const say = (t) => { if (label) label.textContent = t; };
+  btn.addEventListener("click", async (e) => {
+    e.preventDefault();
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.classList.add("is-busy");
+    say("Refreshing…");
+    try {
+      await fn();
+      say("Refreshed");
+      btn.title = `Refreshed ${new Date().toLocaleTimeString()}`;
+    } catch (err) {
+      say("Refresh failed");
+      btn.title = err?.message || String(err);
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove("is-busy");
+      setTimeout(() => say("Refresh"), 2000);
+    }
+  });
 }

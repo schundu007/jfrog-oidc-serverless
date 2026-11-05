@@ -1,5 +1,5 @@
 # Web App: build and deploy this one workload's code (stack azure-web-app). Its runtime tags
-# (Python, Java or .NET) pick the build; packages come only through JFrog. Nothing else is touched.
+# (Python, Java, .NET, Node.js or PHP) pick the build; packages come only through JFrog. Nothing else is touched.
 trigger: none
 pr: none
 
@@ -12,6 +12,14 @@ parameters:
     displayName: Workload name (the stack's workload input)
     type: string
     default: app-jfrog-demo
+  - name: slot
+    displayName: Deployment slot (empty = production)
+    type: string
+    default: " "
+  - name: swap
+    displayName: Swap the slot into production after it answers /health
+    type: boolean
+    default: false
 
 extends:
   template: /pipelines/templates/azure-build-deploy.yml
@@ -19,3 +27,5 @@ extends:
     kind: webapp
     workload: ${{ parameters.workload }}
     environment: ${{ parameters.environment }}
+    slot: ${{ trim(parameters.slot) }}
+    swap: ${{ parameters.swap }}

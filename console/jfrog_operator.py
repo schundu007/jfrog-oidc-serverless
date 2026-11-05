@@ -41,6 +41,25 @@ def identity(state_file=STATE, keys=IDENTITY_KEYS) -> dict:
     return {k: str(out.get(k) or "") for k in keys}
 
 
+class Tokens:
+    """token_source for the Setup runs: get(shell, host, cloud) -> the cloud's own operator token. One Operator
+    per (cloud, host, identity), so a redeployed trust stack drops the cached token."""
+
+    def __init__(self, clock=time.time, state_file_for=None):
+        self.clock, self.state_file_for = clock, state_file_for
+        self._ops = {}
+        self._lock = threading.Lock()
+
+    def get(self, shell, host: str, cloud: str = "gcp") -> str:
+        cloud = "azure" if cloud == "azure" else "gcp"
+        op = Operator(shell, host, clock=self.clock, cloud=cloud,
+                      state_file=self.state_file_for(cloud) if self.state_file_for else None)
+        with self._lock:
+            op = self._ops.setdefault((cloud, host, tuple(op.ident.values())), op)
+        op.sh = shell
+        return op._token()
+
+
 class Operator:
     """JFrog REST calls as the console operator: call(method, path, body) -> (status, json or None)."""
 

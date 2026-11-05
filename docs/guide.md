@@ -37,8 +37,8 @@ Accounts (the run used test accounts; any you control work):
 |---|---|---|
 | Google Cloud project | `unioxe` | Owner on the project (your `gcloud` login) |
 | Azure subscription | `cra-ac-sub` | Owner on the subscription (your `az` login): the foundation assigns roles |
-| Azure DevOps | org `cdoazure`, project `cloudifyDevops` | Project Administrator (creates service connections, variable groups, environments) |
-| JFrog platform | `https://trial9hnw59.jfrog.io` | An admin, once: to make a bootstrap admin token |
+| Azure DevOps | org `contoso`, project `jfrog-oidc` | Project Administrator (creates service connections, variable groups, environments) |
+| JFrog platform | `https://example.jfrog.io` | An admin, once: to make a bootstrap admin token |
 
 On Google Cloud, JFrog must already have: a Docker remote repository (`docker-remote`, Docker Hub), a PyPI remote
 (`pypi-remote`) and a group workloads and pipelines read with (`serverless-readers`). Nothing else.
@@ -109,7 +109,7 @@ Inputs used in the run:
 | `gcp_project_id` | `unioxe` | Project everything goes into |
 | `gcp_region` | `us-central1` | Region (default) |
 | `gcp_image_repository` | `platform` | Artifact Registry repository for images (default) |
-| `ado_org` / `ado_project` | `cdoazure` / `cloudifyDevops` | Azure DevOps organization and project |
+| `ado_org` / `ado_project` | `contoso` / `jfrog-oidc` | Azure DevOps organization and project |
 | `ado_tenant_id` | the Entra tenant of the ADO org | Issuer of the pipelines' OIDC tokens |
 | `ado_token_audience` | the `aud` the run's ADO tokens carry | Default `api://AzureADTokenExchange`; check with `python -m jfrog_oidc claims` in a pipeline |
 | `pipeline_environment` | `test` | Names the variable group `jfrog-oidc-gcp-test` |
@@ -121,7 +121,7 @@ Result of the run: **47 added, 1 changed** (the existing ADO environment
 | Output | Value in the run |
 |---|---|
 | Pipeline service accounts | `ado-build@unioxe.iam.gserviceaccount.com`, `ado-setup@unioxe.iam.gserviceaccount.com` |
-| Workload identity provider | `projects/851540983072/locations/global/workloadIdentityPools/azure-devops-d968/providers/cdoazure` |
+| Workload identity provider | `projects/851540983072/locations/global/workloadIdentityPools/azure-devops-d968/providers/contoso` |
 | Terraform state bucket | `unioxe-tfstate` |
 
 It also creates, in Azure DevOps: service connections `jfrog-oidc-gcp-build` and
@@ -142,18 +142,18 @@ Inputs used in the run:
 |---|---|---|
 | `ado_org`, `ado_project`, `pipeline_environment`, `ado_approvers` | as in §2 | |
 | `azure_tenant_id` | the Entra tenant | Issuer of the service connections' tokens |
-| `azure_subscription_id` | `0e56d318-75b3-43ef-a41b-6a1a3c95b458` | Subscription everything goes into |
+| `azure_subscription_id` | `22222222-3333-4444-5555-666666666666` | Subscription everything goes into |
 | `azure_location` | `westus2` | Region (default) |
-| `azure_identity` | `{"name": "id-ado-cdoazure", "resource_group": "ado-cicd-rg"}` | Names of the build identity and the resource group; the stack creates both |
+| `azure_identity` | `{"name": "id-ado-contoso", "resource_group": "ado-cicd-rg"}` | Names of the build identity and the resource group; the stack creates both |
 | `azure_console_operators` | your email (picked from the tenant's users) | May read and write the Azure Terraform state from the console |
 
 Result of the run: **31 added, 1 changed** (environment `azure-container-apps-test` imported). Outputs:
 
 | Output | Value in the run |
 |---|---|
-| Resource group | `ado-cicd-rg` (build identity `id-ado-cdoazure`, setup identity `id-ado-cdoazure-setup`) |
+| Resource group | `ado-cicd-rg` (build identity `id-ado-contoso`, setup identity `id-ado-contoso-setup`) |
 | Setup identity client ID | `81b613bd-daba-4df0-b618-d79f0b75d04d` |
-| Terraform state | storage account `stcdoazuretfstate`, container `tfstate` |
+| Terraform state | storage account `stcontosotfstate`, container `tfstate` |
 
 In Azure DevOps: service connections `jfrog-oidc-azure-build` / `jfrog-oidc-azure-setup`,
 variable group `jfrog-oidc-azure-test`, and an environment with an approval check per Azure
@@ -247,4 +247,4 @@ DevOps no service connection and no variable group. The saved inputs
 | A stack pipeline failed: `"deploy_job": "False"` is not a bool | ADO passes object parameters' scalars as text | The pipeline converts inputs back to the stack's declared types |
 | GCP foundation destroy would fail on the state bucket | The bucket still holds the destroyed stacks' (empty) state files | Teardown step 5 empties it first |
 | A new GCP foundation cannot reuse the pool id `azure-devops` after a destroy | GCP keeps a deleted workload identity pool for 30 days and refuses its id | The pool id now gets a random suffix (`azure-devops-<4 hex>`) on each deploy |
-| The Azure foundation left `ado-cicd-rg` and `id-ado-cdoazure` behind | They were created by hand before the first deploy and only read by the foundation | The foundation now creates the resource group and the build identity itself (names from the `azure_identity` input) |
+| The Azure foundation left `ado-cicd-rg` and `id-ado-contoso` behind | They were created by hand before the first deploy and only read by the foundation | The foundation now creates the resource group and the build identity itself (names from the `azure_identity` input) |

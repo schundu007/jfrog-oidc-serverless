@@ -9,7 +9,7 @@ import unittest
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-# Per-cloud repos (jfrog-cp-azure) carry one cloud's stacks: tests that span both run where both are.
+# Per-cloud repos (jfrog-oidc-azure) carry one cloud's stacks: tests that span both run where both are.
 BOTH_CLOUDS = unittest.skipUnless((Path(__file__).resolve().parents[2] / "terraform/stacks/serverless/gcp").is_dir(),
                                   "this repo carries one cloud's stacks")
 
@@ -88,6 +88,7 @@ variable "spot" {
 ''',
 }
 VARS["gcp-jfrog-trust"] = 'variable "jfrog_url" { type = string }\nvariable "ado_org" { type = string }\n'
+VARS["azure-jfrog-trust"] = VARS["gcp-jfrog-trust"]
 BACKENDS = {"gcp-cloud-run": "gcs", "azure-container-apps": "azurerm"}   # clusters keep local state
 GCP_FOUNDATION = {"jfrog_url": "https://acme.jfrog.io", "ado_org": "my-org", "gcp_project_id": "proj-1"}
 AZURE_FOUNDATION = {"ado_org": "my-org", "azure_subscription_id": "sub-1", "azure_identity": {"name": "id", "resource_group": "rg-ci"}}
@@ -147,6 +148,18 @@ class StackTests(unittest.TestCase):
         g = {v["name"]: v for v in stacks.variables("gcp-cloud-run", self.root.dir)}
         self.assertEqual((g["node_count"]["kind"], g["node_count"]["default"]), ("number", 1))
         self.assertTrue(g["api_token"]["sensitive"])
+
+    def test_validation_lists_become_choices(self):
+        # A `contains([...], var.x)` validation is a picker: the form offers exactly those values.
+        w = {v["name"]: v for v in stacks.variables("azure-web-app")}
+        self.assertEqual(w["os"]["choices"], ["linux", "windows"])
+        self.assertEqual(w["runtime"]["choices"], ["python", "java", "dotnet", "node", "php"])
+        self.assertNotIn("choices", w["workload"])
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(stacks.StackError):
+                stacks.write_inputs("azure-web-app", "test", {"runtime": "ruby"}, stacks.STACKS_DIR, Path(d))
+            self.assertEqual(stacks.write_inputs("azure-web-app", "test", {"runtime": "node", "os": "windows"},
+                                                 stacks.STACKS_DIR, Path(d)), {"runtime": "node", "os": "windows"})
 
     def test_form_prefills_saved_then_shared_then_default(self):
         self.root.save("gcp-foundation", GCP_FOUNDATION)
@@ -368,9 +381,52 @@ class FakeAdo:
     def answer(self, approval, ok, comment):
         self.answers.append((approval, ok))
 
+    build_result = {"state": "completed", "result": "succeeded", "errors": [], "warnings": []}
+
+    def build(self, run):
+        return dict(self.build_result)
+
+    def run_for(self, path, commit):
+        self.looked_up = (path, commit)
+        return 303
+
 
 PLANNED = {"phase": "waiting_approval", "approval": "ap-1", "sha256": "a" * 64, "summary": {"create": 2},
            "changes": [{"action": "create", "address": "google_service_account.workload"}], "destructive": []}
+
+
+class InstanceTests(unittest.TestCase):
+    """A workload stack can stand more than once (<stack>@<workload>): each its own inputs, state, runs."""
+
+    def test_another_deployment_has_its_own_name_inputs_and_state(self):
+        with tempfile.TemporaryDirectory() as d:
+            st = Path(d)
+            stacks.write_inputs("azure-web-app", "test", {"workload": "web-a", "os": "linux", "runtime": "node", "slot": "staging"},
+                                stacks.STACKS_DIR, st)
+            sid = stacks.new_instance("azure-web-app", "web-b", "test", stacks.STACKS_DIR, st)
+            self.assertEqual(sid, "azure-web-app@web-b")
+            self.assertEqual(stacks.rel_dir(sid), "serverless/azure/azure-web-app")
+            saved = stacks.read_inputs(sid, "test", st)
+            self.assertEqual((saved["workload"], saved["runtime"]), ("web-b", "node"))
+            self.assertNotIn("slot", saved)
+            # Its name is fixed: saving another workload keeps it.
+            stacks.write_inputs(sid, "test", {"workload": "web-a", "os": "windows", "runtime": "dotnet"}, stacks.STACKS_DIR, st)
+            self.assertEqual(stacks.read_inputs(sid, "test", st)["workload"], "web-b")
+            for bad in ("web-a", "web-b", "Web B", "x"):
+                with self.assertRaises(stacks.StackError):
+                    stacks.new_instance("azure-web-app", bad, "test", stacks.STACKS_DIR, st)
+            with self.assertRaises(stacks.StackError):
+                stacks.new_instance("azure-foundation", "web-c", "test", stacks.STACKS_DIR, st)
+            self.assertEqual(stacks.all_ids("test", st)[stacks.all_ids("test", st).index("azure-web-app") + 1], sid)
+            found = {"azure_subscription_id": "s", "ado_org": "o", "state_resource_group": "rg"}
+            key = lambda args: next(a for a in args if "key=" in a)
+            self.assertEqual(key(stacks.backend_config("azurerm", "azure-web-app", "test", found)), "-backend-config=key=azure-web-app/test.tfstate")
+            self.assertEqual(key(stacks.backend_config("azurerm", sid, "test", found)), "-backend-config=key=azure-web-app/test/web-b.tfstate")
+            # The pipeline names the stack and passes the deployment in its state JSON.
+            self.assertEqual(key(stacks.backend_config("azurerm", "azure-web-app", "test", dict(found, instance="web-b"))),
+                             "-backend-config=key=azure-web-app/test/web-b.tfstate")
+            with self.assertRaises(stacks.StackError):
+                stacks.backend_config("azurerm", "azure-web-app", "test", dict(found, instance="../x"))
 
 
 class AdoJobTests(unittest.TestCase):
@@ -392,6 +448,132 @@ class AdoJobTests(unittest.TestCase):
         for f in ("gcp-foundation", "azure-foundation"):
             j._set_status(f, {"deployed": True, "outputs": {}})
         return j
+
+    def test_an_added_deployment_runs_on_its_own(self):
+        sid = stacks.new_instance("gcp-cloud-run", "job-two", "test", self.root.dir, self.root.state)
+        jobs = self.jobs([{"phase": "planning"}, PLANNED])
+        busy = jobs.start("gcp-cloud-run", "plan-apply")
+        j = wait(jobs, jobs.start(sid, "plan-apply"))     # not blocked by the first one's run
+        wait(jobs, busy)
+        self.assertEqual(j["state"], "done", j)
+        params = [p for _, p in self.ado.queued if p["inputs"].get("workload") == "job-two"][0]
+        self.assertEqual(params["state"]["instance"], "job-two")
+        self.assertIn(sid, [s["id"] for s in jobs.stacks()])
+        with self.assertRaises(JobError):   # its plan still waits on Approve
+            jobs.remove_instance(sid)
+        jobs.discard(sid)
+        jobs._set_status(sid, {"deployed": True, "outputs": {}})
+        with self.assertRaises(JobError):   # deployed: Destroy first
+            jobs.remove_instance(sid)
+        jobs._set_status(sid, {"deployed": False, "outputs": {}})
+        jobs.remove_instance(sid)
+        self.assertNotIn(sid, [s["id"] for s in jobs.stacks()])
+
+    def _chain(self, trust=True, onboard=None):
+        (self.repo / "pipelines" / stacks.rel_dir("gcp-cloud-run") / "build-deploy.yml").write_text("trigger: none\n")
+        inputs = stacks.inputs_file("gcp-cloud-run", "test", self.root.state)
+        inputs.write_text(json.dumps(dict(json.loads(inputs.read_text()), workload="job-a")))
+        jobs = self.jobs([{"phase": "planning"}, PLANNED, {"phase": "applying"},
+                          {"phase": "done", "outputs": {"job_name": "job-a"}}])
+        if trust:
+            jobs._set_status("gcp-jfrog-trust", {"deployed": True, "outputs": {}})
+        if onboard:
+            jobs.onboard = onboard
+        plan = wait(jobs, jobs.start("gcp-cloud-run", "plan-apply"))["result"]
+        return jobs, wait(jobs, jobs.start("gcp-cloud-run", "apply", {"plan_sha256": plan["sha256"]}))
+
+    def _workspace(self, workload="job-a", cloud="gcp"):
+        (self.repo / "pipelines" / f"{cloud}-workload-onboard.yml").write_text("trigger: none\n")
+        ws = self.repo / "terraform" / "workspaces" / f"{cloud}_proj-1" / "configs"
+        ws.mkdir(parents=True, exist_ok=True)
+        (ws / f"{workload}.json").write_text("{}")
+
+    def test_deploy_goes_on_to_build_deploy_and_onboarding_pipeline(self):
+        self._workspace()
+        jobs, j = self._chain()
+        self.assertEqual(j["state"], "done", j)
+        builds = [p for _, p in self.ado.queued if "inputs" not in p]
+        self.assertEqual(builds, [{"environment": "test", "workload": "job-a"},   # build-deploy of that workload
+                                  {"workspace": "terraform/workspaces/gcp_proj-1"}])   # then its onboarding workspace
+        self.assertEqual(j["result"]["build"]["state"], "done")
+        self.assertEqual(j["result"]["onboard"]["state"], "done")
+
+    def test_a_slot_in_the_inputs_deploys_to_it_and_swaps(self):
+        self._workspace()
+        inputs = stacks.inputs_file("gcp-cloud-run", "test", self.root.state)
+        inputs.parent.mkdir(parents=True, exist_ok=True)
+        base = json.loads(inputs.read_text()) if inputs.is_file() else {}
+        inputs.write_text(json.dumps(dict(base, slot="staging")))
+        jobs, j = self._chain()
+        self.assertEqual(j["state"], "done", j)
+        self.assertIn({"environment": "test", "workload": "job-a", "slot": "staging", "swap": True},
+                      [p for _, p in self.ado.queued])
+
+    def test_without_a_workspace_onboarding_is_left_to_the_workload_page(self):
+        jobs, j = self._chain()
+        self.assertEqual(j["state"], "done", j)
+        self.assertEqual(j["result"]["onboard"]["state"], "needs_input")
+        self.assertEqual(len([p for _, p in self.ado.queued if "inputs" not in p]), 1)   # build-deploy only
+
+    def test_without_a_workspace_the_portal_starts_onboarding(self):
+        jobs = self.jobs([{"phase": "planning"}])
+        seen = []
+        Jobs.onboard = lambda self, sid, w, i, o: seen.append(w) or {"state": "started", "text": "Onboarding started"}
+        self.addCleanup(setattr, Jobs, "onboard", None)
+        jobs, j = self._chain()
+        self.assertEqual((seen, j["result"]["onboard"]["state"]), (["job-a"], "started"))
+
+    def test_a_failed_onboarding_fails_the_deploy(self):
+        self._workspace()
+        results = iter([{"state": "completed", "result": "succeeded", "errors": [], "warnings": []},
+                        {"state": "completed", "result": "failed", "errors": ["post-deployment check failed: web-a staging"], "warnings": []}])
+        jobs = None
+        orig = FakeAdo.build
+        FakeAdo.build = lambda self, run: next(results)
+        self.addCleanup(setattr, FakeAdo, "build", orig)
+        jobs, j = self._chain()
+        self.assertEqual(j["state"], "failed")
+        self.assertIn("post-deployment check failed", j["error"])
+
+    def test_onboarding_pushed_to_the_branch_is_followed_to_its_ci_run(self):
+        (self.repo / "pipelines" / "gcp-workload-onboard.yml").write_text("trigger: none\n")
+        jobs, j = self._chain(onboard=lambda *a: {"state": "published", "commit": "abc123", "link": "/x"})
+        self.assertEqual(j["state"], "done", j)
+        self.assertEqual(self.ado.looked_up, ("pipelines/gcp-workload-onboard.yml", "abc123"))
+        self.assertEqual(j["result"]["onboard"]["state"], "done")
+        self.assertIn("303", j["result"]["onboard"]["run"])
+
+    def test_a_new_deployment_whose_plan_replaces_anything_is_refused_and_its_run_rejected(self):
+        # Run 259: an old pipeline ignored the instance's state key; the plan replaced the other Web App's group.
+        bad = dict(PLANNED, summary={"replace": 1}, changes=[{"action": "replace", "address": "module.base.azurerm_resource_group.this"}])
+        jobs = self.jobs([{"phase": "planning"}, bad])
+        j = wait(jobs, jobs.start("gcp-cloud-run", "plan-apply"))
+        self.assertEqual(j["state"], "failed")
+        self.assertIn("Refused", j["error"])
+        self.assertIn(("ap-1", False), self.ado.answers)
+        self.assertIsNone([s for s in jobs.stacks() if s["id"] == "gcp-cloud-run"][0]["plan"])
+
+    def test_a_deployed_stack_may_replace_a_resource_but_never_its_resource_group(self):
+        jobs = self.jobs([{"phase": "planning"}, dict(PLANNED, changes=[{"action": "replace", "address": "azurerm_service_plan.this"}])])
+        jobs._set_status("gcp-cloud-run", {"deployed": True, "outputs": {}})
+        self.assertEqual(wait(jobs, jobs.start("gcp-cloud-run", "plan-apply"))["state"], "done")
+        jobs = self.jobs([{"phase": "planning"}, dict(PLANNED, changes=[{"action": "delete", "address": "module.base.azurerm_resource_group.this"}])])
+        jobs._set_status("gcp-cloud-run", {"deployed": True, "outputs": {}})
+        self.assertEqual(wait(jobs, jobs.start("gcp-cloud-run", "plan-apply"))["state"], "failed")
+
+    def test_a_failed_build_deploy_fails_the_deploy_but_keeps_it_deployed(self):
+        FakeAdo.build_result = {"state": "completed", "result": "failed", "errors": ["npm ci failed"], "warnings": []}
+        self.addCleanup(setattr, FakeAdo, "build_result", {"state": "completed", "result": "succeeded", "errors": [], "warnings": []})
+        jobs, j = self._chain()
+        self.assertEqual(j["state"], "failed")
+        self.assertIn("npm ci failed", j["error"])
+        self.assertTrue([s for s in jobs.stacks() if s["id"] == "gcp-cloud-run"][0]["status"]["deployed"])
+
+    def test_build_deploy_waits_for_the_jfrog_trust(self):
+        jobs, j = self._chain(trust=False)
+        self.assertEqual(j["state"], "done", j)
+        self.assertEqual(j["result"]["build"]["state"], "blocked")
+        self.assertEqual(len(self.ado.queued), 1)   # only the stack-setup run
 
     def test_deploy_queues_the_pipeline_and_approves_the_shown_plan(self):
         jobs = self.jobs([{"phase": "planning"}, PLANNED])
@@ -508,7 +690,7 @@ class AdoJobTests(unittest.TestCase):
         self.assertIn("restarted", j["error"])
 
     def test_a_local_run_another_live_process_owns_is_left_running(self):
-        # A costs/oidc command and the portal share the job records: neither stops the other's run.
+        # Two console processes share the job records: neither stops the other's run.
         import subprocess, sys
         other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
         self.addCleanup(other.kill)
@@ -533,10 +715,10 @@ class JobTests(unittest.TestCase):
     def setUp(self):
         self.root = Root()
         self.addCleanup(shutil.rmtree, self.root.dir)
-        self.minted = []
+        self.minted, self.clouds = [], []
         self.root.ready()
         self.jobs = Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state,
-                         token_source=lambda sh, host: self.minted.append(host) or "minted-token-value")
+                         token_source=lambda sh, host, cloud: self.minted.append(host) or self.clouds.append(cloud) or "minted-token-value")
         for f in ("gcp-foundation", "azure-foundation"):   # the stacks below stand on them
             self.jobs._set_status(f, {"deployed": True, "outputs": {}})
 
@@ -559,6 +741,45 @@ class JobTests(unittest.TestCase):
         self.assertIn(["apply", "-input=false", "-lock-timeout=60s", "-no-color", "plan.bin"], self.root.calls("gcp-cloud-run"))
         self.assertTrue([s for s in self.jobs.stacks() if s["id"] == "gcp-cloud-run"][0]["status"]["deployed"])
         self.assertEqual(self.minted, [])   # infrastructure: no JFrog token, even with a jfrog_url input
+
+    def test_refresh_reads_state_again_but_keeps_a_pending_plan(self):
+        self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        self.jobs._set_status("gcp-cloud-run-service", {"deployed": True, "outputs": {}})
+        self.jobs._set_status("gcp-cloud-run", {"deployed": False, "outputs": {}})
+        started = self.jobs.refresh(["gcp-cloud-run", "gcp-cloud-run-service"])
+        read = {self.jobs.get(j)["stack"] for j in started}
+        self.assertIn("gcp-cloud-run-service", read)       # known state read again
+        self.assertNotIn("gcp-cloud-run", read)            # a pending plan is not disturbed
+        for j in started:
+            wait(self.jobs, {"id": j})
+
+    def test_each_terraform_stage_has_its_own_status(self):
+        stage = lambda j: [(x["name"], x["state"]) for x in j["stages"]]
+        j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        self.assertEqual(j["op"], "apply")
+        self.assertEqual(stage(j), [("terraform init", "succeeded"), ("terraform plan", "succeeded"),
+                                    ("Approval", "waiting"), ("terraform apply", "pending")])
+        a = wait(self.jobs, self.jobs.start("gcp-cloud-run", "apply", {"plan_sha256": j["result"]["sha256"]}))
+        self.assertEqual(stage(a), [("terraform init", "succeeded"), ("terraform plan", "succeeded"),
+                                    ("Approval", "succeeded"), ("terraform apply", "succeeded")])
+
+    def test_a_destroy_says_destroy_not_apply(self):
+        j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["delete"]}}], "plan-destroy")
+        self.assertEqual((j["op"], j["stages"][-1]["name"]), ("destroy", "terraform destroy"))
+        a = self.jobs.start("gcp-cloud-run", "apply", {"plan_sha256": j["result"]["sha256"], "typed_confirmation": "gcp-cloud-run"})
+        self.assertEqual(a["op"], "destroy")
+        a = wait(self.jobs, a)
+        self.assertEqual(a["stages"][-1]["state"], "succeeded")
+
+    def test_no_changes_skips_approval_and_apply(self):
+        j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["no-op"]}}])
+        self.assertEqual([x["state"] for x in j["stages"]], ["succeeded", "succeeded", "skipped", "skipped"])
+
+    def test_a_failure_marks_the_running_stage_failed(self):
+        job = {"stages": self.jobs._planned_stages("gcp-cloud-run", "plan-apply", "apply", None)}
+        self.jobs._stage(job, "terraform init", "running")
+        self.jobs._stage_failed(job)
+        self.assertEqual([x["state"] for x in job["stages"]], ["failed", "pending", "pending", "pending"])
 
     def test_a_plan_with_no_changes_leaves_nothing_to_approve(self):
         first = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
@@ -640,11 +861,12 @@ class JobTests(unittest.TestCase):
         job = self.jobs.start("gcp-cloud-run", "status")
         row = lambda: [s for s in self.jobs.stacks() if s["id"] == "gcp-cloud-run"][0]
         try:
-            self.assertEqual(row()["job"], {"id": job["id"], "action": "status"})
+            # A state read is not a run: Checking, never Running/Progress, and not listed for it.
+            self.assertEqual((row()["job"], row()["busy"], row()["checking"]), (None, False, True))
         finally:
             gate.set()
         wait(self.jobs, job)
-        self.assertIsNone(row()["job"])
+        self.assertFalse(row()["checking"])
 
     def test_destroy_needs_the_stack_name(self):
         j = self._plan("gcp-cloud-run", [{"address": "google_container_cluster.cluster", "type": "x", "change": {"actions": ["delete"]}}],
@@ -671,6 +893,15 @@ class JobTests(unittest.TestCase):
         self.assertEqual(self.minted, ["acme.jfrog.io"])
         self._plan("gcp-jfrog-trust", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
         self.assertEqual(len(self.minted), 2)
+
+    def test_each_clouds_trust_stack_gets_its_own_clouds_operator_token(self):
+        self.root.save("azure-jfrog-trust", {"jfrog_url": "https://acme.jfrog.io", "ado_org": "my-org"})
+        self.jobs._set_status("azure-foundation", {"deployed": True, "outputs": {}})
+        for sid in ("gcp-jfrog-trust", "azure-jfrog-trust"):
+            state = stacks.stack_dir(sid, self.root.dir) / "terraform.tfstate"
+            state.write_text(json.dumps({"resources": [{"type": "platform_oidc_configuration"}]}))
+            self._plan(sid, [{"address": "a.b", "type": "x", "change": {"actions": ["update"]}}])
+        self.assertEqual(self.clouds, ["gcp", "azure"])
 
     def test_infrastructure_terraform_never_sees_a_jfrog_token(self):
         self.jobs.environ = {"JFROG_ACCESS_TOKEN": "operator-admin-token", "JFROG_URL": "https://acme.jfrog.io"}
@@ -817,7 +1048,11 @@ class JobTests(unittest.TestCase):
         self.jobs._set_status("gcp-cloud-run", {"deployed": False, "outputs": {}, "error": "bucket doesn't exist"})
         j = self._plan("gcp-foundation", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
         wait(self.jobs, self.jobs.start("gcp-foundation", "apply", {"plan_sha256": j["result"]["sha256"]}))
-        reread = [x for x in self.jobs._jobs.values() if x["stack"] == "gcp-cloud-run" and x["action"] == "status"]
+        for _ in range(200):   # the re-read starts just after the apply job finishes
+            reread = [x for x in self.jobs._jobs.values() if x["stack"] == "gcp-cloud-run" and x["action"] == "status"]
+            if reread:
+                break
+            time.sleep(0.01)
         self.assertTrue(reread)
         wait(self.jobs, reread[0])
         self.assertNotIn("error", [s for s in self.jobs.stacks() if s["id"] == "gcp-cloud-run"][0]["status"])
@@ -1060,6 +1295,22 @@ class ServerTests(unittest.TestCase):
         self.assertIn("Content-Security-Policy", hdrs)
         self.assertEqual(self.req("GET", "/api/stacks/gcp-jfrog-trust/inputs")[0], 404)   # JFrog OIDC: not served here
         self.assertEqual(self.req("POST", "/api/stacks/aks-jfrog-trust/jobs", {"action": "plan-apply"})[0], 404)
+
+    def test_create_another_deployment_refuses_a_used_name(self):
+        self.root.save("gcp-cloud-run", {"gcp_project_id": "proj-1"})
+        chk = lambda n: json.loads(self.req("GET", f"/api/stacks/gcp-cloud-run/name-check?name={n}")[1])
+        self.assertEqual(chk("Bad_Name")["ok"], False)
+        self.assertEqual(chk("job-two"), {"ok": True, "why": ""})
+        st, body, _ = self.req("POST", "/api/stacks/gcp-cloud-run/instances", {"name": "job-two"})
+        self.assertEqual((st, json.loads(body)["id"]), (201, "gcp-cloud-run@job-two"))
+        self.assertEqual(self.req("POST", "/api/stacks/gcp-cloud-run/instances", {"name": "job-two"})[0], 409)
+        self.assertEqual(self.req("POST", "/api/stacks/gcp-cloud-run-service/instances", {"name": "job-two"})[0], 409)  # any workload stack
+        self.assertEqual(self.req("GET", "/api/stacks/gcp-cloud-run@job-two/inputs")[0], 200)
+        self.assertEqual(self.req("POST", "/api/stacks/gcp-foundation/instances", {"name": "x-two"})[0], 400)
+        self.assertEqual(self.req("DELETE", "/api/stacks/gcp-cloud-run@job-two/instances")[0], 200)
+        self.assertEqual(chk("job-two")["ok"], True)
+        # Azure without a saved subscription: the cloud is not asked, and that is said.
+        self.assertIsNone(json.loads(self.req("GET", "/api/stacks/azure-web-app/name-check?name=web-two")[1])["ok"])
 
     def test_oidc_scope_serves_only_jfrog_oidc_stacks(self):
         o = SetupServer(token=TOKEN, root=self.root.dir, state_root=self.root.state, log=open("/dev/null", "w"),

@@ -4,7 +4,7 @@
 // CONNECTORS (its row facts and its panel). Google Cloud shows Google's link and takes the code back;
 // Azure shows a device code; the JFrog token is kept in server memory only and never shown.
 // API: /api/settings (portal/server.py, portal/connections.py).
-import { api, h, help } from "/serverless/static/core.js";
+import { api, h, help, refreshing } from "/serverless/static/core.js";
 
 const LOGO = {"gcp": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 19.3\" aria-hidden=\"true\"><path fill=\"#EA4335\" d=\"M15.2 5.3h.7l2-2 .1-.9C14.2-.9 8.5-.5 5.2 3.3c-.9 1-1.6 2.3-2 3.6.2-.1.5-.1.7 0l4-.7s.2-.3.3-.3c1.8-2 4.8-2.2 6.9-.5h.1z\"/><path fill=\"#4285F4\" d=\"M20.8 6.9c-.5-1.7-1.4-3.2-2.7-4.4l-2.8 2.8c1.2 1 1.9 2.5 1.8 4v.5c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5h-5l-.5.5v3l.5.5h5c3.6 0 6.5-2.9 6.5-6.5 0-2.2-1.1-4.2-2.8-5.4z\"/><path fill=\"#34A853\" d=\"M7.1 19.3h5v-4h-5c-.4 0-.7-.1-1-.2l-.7.2-2 2-.2.7c1.1.8 2.5 1.3 3.9 1.3z\"/><path fill=\"#FBBC05\" d=\"M7.1 6.3C3.5 6.3.6 9.3.6 12.9c0 2 1 3.9 2.6 5.2l2.9-2.9c-1.3-.6-1.8-2.1-1.3-3.3.6-1.3 2.1-1.8 3.3-1.3.6.3 1 .7 1.3 1.3l2.9-2.9c-1.2-1.6-3.1-2.6-5.2-2.6z\"/></svg>","azure": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"#0078D4\" d=\"M5.483 21.3H24L14.025 4.013l-3.038 8.347 5.836 6.938L5.483 21.3zM13.23 2.7L6.105 8.677 0 19.253h5.505v.014L13.23 2.7z\"/></svg>","ado": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path fill=\"#0078D4\" d=\"M17 4v9.74l-4 3.28-6.2-2.26V17l-3.51-4.59 10.23.8V4.44zm-3.41.49L7.85 1v2.29L2.58 4.84 1 6.87v4.61l2.26 1V6.57z\"/></svg>","jfrog": "<svg class=\"mark cloud-logo\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect width=\"24\" height=\"24\" rx=\"5\" fill=\"#40BE46\"/><circle cx=\"8\" cy=\"9\" r=\"2.2\" fill=\"#fff\"/><circle cx=\"16\" cy=\"9\" r=\"2.2\" fill=\"#fff\"/><path d=\"M6 14.5c1.6 2.2 3.7 3.2 6 3.2s4.4-1 6-3.2\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\"/></svg>",};   // constant SVG only   // constant SVG only
 const $ = (id) => document.getElementById(id);
@@ -348,7 +348,7 @@ async function load() {
 }
 
 open = CONNECTORS.some((c) => c.id === u0.get("open")) ? u0.get("open") : null;
-$("set-refresh").addEventListener("click", () => load());
+refreshing($("set-refresh"), load);
 $("flyout-close").addEventListener("click", closePanel);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && open && !document.querySelector(".blade-pop")) closePanel(); });
 load();

@@ -201,7 +201,7 @@ class ProdNameTests(unittest.TestCase):
     def test_prod_heuristic(self):
         for name in ("trk-mt-prod-sub", "acme-prd", "Production", "live-payments"):
             self.assertTrue(preflight.PROD_NAME.search(name), name)
-        for name in ("trk-mt-nprd-sub", "demo-dev", "product-catalog", "csb-test-257615"):
+        for name in ("trk-mt-nprd-sub", "demo-dev", "product-catalog", "example-project-123"):
             self.assertFalse(preflight.PROD_NAME.search(name), name)
 
 

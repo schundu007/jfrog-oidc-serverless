@@ -21,3 +21,11 @@ output "os" {
 output "runtime" {
   value = var.runtime
 }
+
+output "slot" {
+  value = var.slot
+}
+
+output "slot_url" {
+  value = var.slot == "" ? "" : "https://${one(concat(azurerm_linux_web_app_slot.slot[*].default_hostname, azurerm_windows_web_app_slot.slot[*].default_hostname))}"
+}

@@ -1,3 +1,17 @@
+variable "audience" {
+  description = <<-EOT
+    Token audience the workloads request. "app_registration": an Entra app
+    registration made here (api://<app-id>). "token_exchange": Microsoft's
+    api://AzureADTokenExchange, nothing created in Entra.
+  EOT
+  type        = string
+  default     = "app_registration"
+  validation {
+    condition     = contains(["app_registration", "token_exchange"], var.audience)
+    error_message = "audience: app_registration or token_exchange."
+  }
+}
+
 variable "name_prefix" {
   type    = string
   default = "jfrog"

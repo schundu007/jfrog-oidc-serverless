@@ -137,4 +137,6 @@ for ws in "${workspaces[@]}"; do
   done
   terraform -chdir="$ws" output -json > "$OIDC_DIR/outputs.json"
   python3 -m console.deliver wire "$ws" "$OIDC_DIR/outputs.json"
+  echo "── post-deployment check: /healthz/jfrog on production and every slot"
+  python3 -m console.deliver check "$ws"
 done

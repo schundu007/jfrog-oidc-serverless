@@ -6,3 +6,5 @@ variables:
   JFROG_PYPI_REPO: azure-pypi-remote
   JFROG_MAVEN_REPO: azure-maven-remote
   JFROG_NUGET_REPO: azure-nuget-remote
+  JFROG_NPM_REPO: azure-npm-remote
+  JFROG_COMPOSER_REPO: azure-composer-remote

@@ -10,6 +10,13 @@ parameters:
     type: string
   - name: environment
     type: string
+  # Web App only: deploy into this deployment slot instead of production; swap it in afterwards.
+  - name: slot
+    type: string
+    default: ""
+  - name: swap
+    type: boolean
+    default: false
 
 variables:
   - template: /pipelines/vars/azure-${{ parameters.environment }}.yml
@@ -21,6 +28,10 @@ variables:
     value: ${{ parameters.kind }}
   - name: WORKLOAD
     value: ${{ parameters.workload }}
+  - name: SLOT
+    value: ${{ parameters.slot }}
+  - name: SWAP
+    value: ${{ parameters.swap }}
 
 jobs:
   - job: build_deploy

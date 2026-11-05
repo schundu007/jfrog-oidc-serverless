@@ -21,6 +21,8 @@ class AzureRepositoriesTests(unittest.TestCase):
             "JFROG_PYPI_REPO": self.remotes["pypi"],
             "JFROG_MAVEN_REPO": self.remotes["maven"],
             "JFROG_NUGET_REPO": self.remotes["nuget"],
+        "JFROG_NPM_REPO": self.remotes["npm"],
+        "JFROG_COMPOSER_REPO": self.remotes["composer"],
         })
 
     def test_every_key_is_this_clouds_own(self):

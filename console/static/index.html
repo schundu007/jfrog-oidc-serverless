@@ -209,6 +209,10 @@
         <div class="grid2">
           <label class="field"><span>Platform URL</span><input data-path="jfrog.url" type="url" spellcheck="false" placeholder="https://yourcompany.jfrog.io"></label>
           <label class="field"><span>Reader group</span><input data-path="jfrog.reader_group" type="text" spellcheck="false"></label>
+          <label class="field" data-cloud="azure"><span>Token audience</span><select data-path="jfrog.azure_audience">
+            <option value="app_registration">App registration (api://&lt;app-id&gt;)</option>
+            <option value="token_exchange">api://AzureADTokenExchange</option>
+          </select></label>
         </div>
         </div>
       </li>

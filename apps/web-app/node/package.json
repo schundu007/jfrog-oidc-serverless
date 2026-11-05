@@ -1,0 +1,10 @@
+{
+  "name": "jfrog-oidc-web-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "JFrog browser for Azure App Service (Node.js): managed identity exchanged for a short-lived JFrog token",
+  "main": "server.js",
+  "engines": { "node": ">=22" },
+  "scripts": { "start": "node server.js", "test": "node --test" },
+  "dependencies": {}
+}

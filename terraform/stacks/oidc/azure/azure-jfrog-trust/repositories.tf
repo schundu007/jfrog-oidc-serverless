@@ -5,10 +5,12 @@
 
 locals {
   remotes = {
-    docker = "azure-docker-remote"
-    pypi   = "azure-pypi-remote"
-    maven  = "azure-maven-remote"
-    nuget  = "azure-nuget-remote"
+    docker   = "azure-docker-remote"
+    pypi     = "azure-pypi-remote"
+    maven    = "azure-maven-remote"
+    nuget    = "azure-nuget-remote"
+    npm      = "azure-npm-remote"
+    composer = "azure-composer-remote"
   }
   generic_local = "azure-generic-local"
 }
@@ -41,6 +43,20 @@ resource "artifactory_remote_nuget_repository" "nuget" {
   description = "nuget.org, for this cloud's .NET builds"
   url         = "https://www.nuget.org/"
   v3_feed_url = "https://api.nuget.org/v3/index.json"
+}
+
+resource "artifactory_remote_npm_repository" "npm" {
+  key         = local.remotes.npm
+  description = "npmjs.org, for this cloud's Node.js builds"
+  url         = "https://registry.npmjs.org"
+}
+
+resource "artifactory_remote_composer_repository" "composer" {
+  key                   = local.remotes.composer
+  description           = "Packagist, for this cloud's PHP builds"
+  url                   = "https://github.com/"
+  composer_registry_url = "https://packagist.org"
+  vcs_git_provider      = "GITHUB"
 }
 
 # What workloads read in their self-test (JFROG_HEALTHCHECK_PATH = azure-generic-local/hello.txt).
@@ -82,6 +98,8 @@ resource "platform_permission" "cache" {
       { name = artifactory_remote_pypi_repository.pypi.key, include_patterns = ["**"] },
       { name = artifactory_remote_maven_repository.maven.key, include_patterns = ["**"] },
       { name = artifactory_remote_nuget_repository.nuget.key, include_patterns = ["**"] },
+      { name = artifactory_remote_npm_repository.npm.key, include_patterns = ["**"] },
+      { name = artifactory_remote_composer_repository.composer.key, include_patterns = ["**"] },
     ]
   }
 }

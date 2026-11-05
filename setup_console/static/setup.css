@@ -141,3 +141,14 @@
 #groups .stack-table .help { width: 14px; height: 14px; font-size: 9px; vertical-align: 0; }
 
 /* Archived: stacks with nothing standing, below the live tables, set apart by a thin rule. */
+
+/* Create flow: where you are, one line of numbered steps. */
+.wiz-steps { display: flex; gap: 0; list-style: none; margin: 0 0 16px; padding: 0; border-bottom: 1px solid var(--line, #d0d7de); }
+.wiz-steps li { padding: 8px 14px 8px 0; margin-right: 14px; color: var(--muted, #6b7280); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.wiz-steps li.done { color: var(--ok, #2f7d32); }
+.wiz-steps li.current { color: inherit; font-weight: 600; border-bottom-color: currentColor; }
+.wiz-check { margin: 4px 0 0; min-height: 1.2em; }
+.wiz-error { color: var(--bad, #b42318); }
+.setup-stages { margin-bottom: var(--s-3); }
+.setup-stages .stage-name { font-family: var(--mono, monospace); white-space: nowrap; }
+.setup-stages tr[data-state="pending"] td, .setup-stages tr[data-state="skipped"] td { color: var(--fg-3); }

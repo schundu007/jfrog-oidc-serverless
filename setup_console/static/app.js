@@ -1,8 +1,9 @@
 // Setup: deploy and destroy test infrastructure. Check reads the stack's outputs; Deploy and Destroy
 // plan first, show the plan, and run it only after Approve (destroy also needs the stack name typed).
-import { $, api, h, hasToken, setToken, statusPill, flyout, closeFlyout, help, menu, listEditor, mapEditor, markKnown } from "/serverless/static/core.js";
+import { $, api, h, hasToken, setToken, statusPill, flyout, closeFlyout, help, menu, listEditor, mapEditor, markKnown, refreshing } from "/serverless/static/core.js";
 import { logBox as tableLog } from "/serverless/static/logview.js";
 import { counts, lastFailure, partlyDeleted, standing, stateOf } from "./listing.js";
+import { clock, dur } from "/serverless/static/time.js";
 
 const POLL_MS = 1000;
 const fill = (el, ...kids) => { el.replaceChildren(...kids.flat().filter(Boolean)); return el; };
@@ -32,14 +33,48 @@ function logBox(job, open = true) {
   return box;
 }
 
-const RUNNING = { status: "Reading the stack's Terraform state…", "plan-apply": "Planning the deploy…",
-  "plan-destroy": "Planning the destroy…", apply: "Applying the approved plan…" };
+// What a run is, named by what it does: a plan, or the approved apply or destroy.
+const jobTitle = (j) => ({ status: "Check state", "plan-apply": "Plan deploy", "plan-destroy": "Plan destroy", forget: "Forget state" }[j?.action]
+  || (j?.op === "destroy" ? "Destroy" : "Deploy"));
+
+// The run's stages, one row each: terraform init, terraform plan, Approval, terraform apply or destroy,
+// then a workload's build-deploy and onboarding. Updated live while the run goes on.
+const STAGE_TEXT = { succeeded: "Succeeded", failed: "Failed", running: "Running", waiting: "Waiting", pending: "Not started", skipped: "Skipped" };
+const STAGE_TONE = { succeeded: "ok", failed: "fail", running: "warn", waiting: "warn" };
+const at = (sec) => (sec ? clock(new Date(sec * 1000).toISOString()) : "—");
+function stagesView(job) {
+  const tbody = h("tbody");
+  const box = h("div", { class: "table-wrap setup-stages" }, h("table", {},
+    h("thead", {}, h("tr", {}, ["Stage", "Status", "Started", "Duration", "Run"].map((t) => h("th", { text: t })))), tbody));
+  box.update = (j) => {
+    box.hidden = !j.stages?.length;
+    fill(tbody, (j.stages || []).map((st) => h("tr", { "data-state": st.state },
+      h("td", { class: "stage-name", text: st.name }),
+      h("td", {}, st.state === "running" ? statusPill("running", "Running")
+        : dot(STAGE_TONE[st.state] || "", st.state === "waiting" && st.name === "Approval" ? "Waiting for approval" : STAGE_TEXT[st.state] || st.state)),
+      h("td", { text: at(st.started) }),
+      h("td", { text: st.started ? dur(((st.finished || Date.now() / 1000) - st.started) * 1000) : "—" }),
+      h("td", {}, st.url ? h("a", { href: st.url, target: "_blank", rel: "noopener", text: "ADO run" }) : "—"))));
+  };
+  box.update(job);
+  return box;
+}
+
+// The row's status while a run goes on: the stage it is in, in words.
+function busyText(j) {
+  const plan = j?.op === "destroy" ? "Planning destroy" : "Planning deploy";
+  return { "terraform init": j?.action === "status" ? "Checking…" : plan, "terraform plan": plan, Approval: "Waiting for approval",
+    "terraform apply": "Applying", "terraform destroy": "Destroying", "terraform output": "Checking…",
+    "Build and deploy": "Building and deploying", "Onboarding and post-deployment check": "Onboarding" }[j?.stage]
+    || (j?.op === "destroy" ? "Destroying" : "Deploying");
+}
 
 // Status as on Home: a coloured dot and plain words (green deployed, amber needs you or running, grey idle).
 const dot = (tone, text) => h("span", { class: `blade-state ${tone}`, text });
 function stackStatus(s) {
   if (s.missing?.length) return dot("warn", "Inputs needed");
-  if (s.busy) return dot("warn", "Running");
+  if (s.busy) return h("span", { title: s.job?.stage || "" }, dot("warn", busyText(s.job)));
+  if (s.checking) return dot("", "Checking…");
   if (s.plan) return dot("warn", s.plan.action === "destroy" ? "Destroy planned" : "Deploy planned");
   // Waiting on the stacks it stands on (all of them, upstream first): say which.
   if (s.needs?.length && !s.status?.deployed) return dot("", `Needs ${s.needs.map(titleOf).join(", ")}`);
@@ -80,6 +115,7 @@ function outputsTable(outputs) {
 // What a Check or an apply found, in words: the state, what the stack is, its values, what to do next.
 function resultView(stack, result) {
   if (result?.destroyed) return h("p", {}, h("b", { text: "Destroyed" }), help("Nothing of this stack is left in its Terraform state."));
+  if (result?.applied && result?.build) return null;   // the steps table says it
   if (!result?.deployed && !result?.applied) {
     return h("p", {}, h("b", { text: "Not deployed" }), help(`No Terraform state yet. Deploy creates: ${stack.about}`));
   }
@@ -87,7 +123,23 @@ function resultView(stack, result) {
     outputsTable(result.outputs)];
 }
 
-function planView(stack, plan, panel) {
+// A Deploy goes all the way: Infrastructure, Build and deploy, Onboard. One row per step.
+function chainView(result) {
+  if (!result?.build && !result?.onboard) return null;
+  const word = { done: "Done", started: "Running", blocked: "Waiting", needs_input: "Needs you", failed: "Failed" };
+  const pill = { done: "succeeded", started: "running", blocked: "waiting_approval", needs_input: "waiting_approval", failed: "failed" };
+  const step = (name, st, link, text) => h("tr", {},
+    h("td", { text: name }), h("td", {}, statusPill(pill[st] || "running", word[st] || st), text ? help(text) : null),
+    h("td", {}, link ? h("a", { href: link, target: link.startsWith("http") ? "_blank" : null, rel: "noopener", text: "Open" }) : ""));
+  return h("div", { class: "table-wrap" }, h("table", { class: "chain" },
+    h("thead", {}, h("tr", {}, h("th", { text: "Step" }), h("th", { text: "Status" }), h("th", { text: "" }))),
+    h("tbody", {},
+      step("Infrastructure", "done", result.run),
+      result.build ? step("Build and deploy", result.build.state, result.build.run, result.build.text || (result.build.again ? "First image in: Deploy again to start it." : "")) : null,
+      result.onboard ? step("Onboard", result.onboard.state, result.onboard.link, result.onboard.text) : null)));
+}
+
+function planView(stack, plan, panel, wiz) {
   const counts = Object.entries(plan.summary || {}).filter(([k, n]) => n && k !== "no-op" && k !== "read").map(([k, n]) => `${n} ${k}`);
   const typed = plan.destructive?.length ? h("input", { type: "text", placeholder: plan.confirmation_phrase, "aria-label": "Type the stack name", spellcheck: "false" }) : null;
   const approve = h("button", { type: "button", class: "primary", text: plan.action === "destroy" ? "Approve and destroy" : "Approve and deploy" });
@@ -103,10 +155,16 @@ function planView(stack, plan, panel) {
     try {
       const job = await api(`/api/stacks/${stack.id}/jobs`, { method: "POST",
         body: { action: "apply", approval: { plan_sha256: plan.sha256, typed_confirmation: typed ? typed.value : undefined } } });
-      await follow(stack, job, panel);
+      if (wiz) panel = wizPanel(wiz, "Deploy");
+      await follow(stack, job, panel, wiz);
     } catch (e) { approve.disabled = typed ? typed.value.trim() !== plan.confirmation_phrase : false; fill(panel.status, statusPill("failed", e.message)); }
   };
-  discard.onclick = async () => { await api(`/api/stacks/${stack.id}/plan`, { method: "DELETE" }); closeFlyout(); load(); };
+  if (wiz) discard.textContent = "Back to settings";
+  discard.onclick = async () => {
+    await api(`/api/stacks/${stack.id}/plan`, { method: "DELETE" });
+    if (wiz) return editInputs(stack, wiz);
+    closeFlyout(); load();
+  };
   const changes = plan.changes?.length
     ? h("div", { class: "table-wrap" }, h("table", {}, h("tbody", {}, plan.changes.map((c) => h("tr", {}, h("td", { text: c.action }), h("td", { text: c.address }))))))
     : h("p", { text: "No changes" });
@@ -114,30 +172,135 @@ function planView(stack, plan, panel) {
     h("div", { class: "actions setup-actions" }, typed, plan.changes?.length ? approve : null, discard)];
 }
 
-async function follow(stack, job, panel) {
+async function follow(stack, job, panel, wiz) {
   const box = logBox(job);
-  fill(panel.body, h("p", { class: "muted", text: RUNNING[job.action] || "Running…" }), box);
+  const stages = stagesView(job);
+  $("flyout-title").textContent = `${stack.group} · ${stack.title}: ${jobTitle(job)}`;
+  fill(panel.body, stages, box);
   fill(panel.status, statusPill("running", "Running"));
-  const done = await waitJob(job.id, (j) => box.update(j));
+  const done = await waitJob(job.id, (j) => { box.update(j); stages.update(j); });
   load();
   if (done.state === "failed") {
     fill(panel.status, statusPill("failed", "Failed"));
-    return fill(panel.body, nextView(stack, done.next), h("pre", { class: "pf-log" }, done.error || ""), logBox(done));
+    return fill(panel.body, stagesView(done), nextView(stack, done.next), h("pre", { class: "pf-log" }, done.error || ""),
+      wiz ? wizNav(wiz, stack, "plan") : null, logBox(done));
   }
   if (done.result?.forgotten) return fill(panel.body, h("p", {}, h("b", { text: "State forgotten" }),
     help("The stack shows as not deployed; the old state file is kept aside. Deploy builds it again from nothing.")), logBox(done, false));
   fill(panel.status, statusPill("succeeded", "Done"));
   // Validated as deleted outside the console: nothing to plan or approve.
   if (done.result?.already_deleted) return fill(panel.body, h("p", {}, h("b", { text: done.result.message })), logBox(done, false));
-  if (done.action.startsWith("plan-")) return fill(panel.body, planView(stack, done.result, panel), logBox(done, false));
-  fill(panel.body, resultView(stack, done.result), logBox(done, false));
+  const chain = chainView(done.result);
+  const onboard = done.result?.onboard;
+  const after = chain ? h("div", { class: "actions setup-actions" },
+    onboard?.link && onboard.state !== "done" ? h("a", { class: "button primary", href: onboard.link, text: onboard.state === "failed" ? "Onboarding log" : "Open onboarding" }) : null,
+    h("button", { type: "button", class: "secondary", text: "Close", onclick: () => { closeFlyout(); load(); } })) : null;
+  if (done.action.startsWith("plan-")) {
+    if (done.result?.no_changes && chain) return fill(panel.body, stagesView(done), h("p", {}, h("b", { text: "No infrastructure changes" })), chain, after, logBox(done, false));
+    return fill(panel.body, stagesView(done), planView(stack, done.result, panel, wiz), logBox(done, false));
+  }
+  fill(panel.body, stagesView(done), resultView(stack, done.result), chain, after, logBox(done, false));
 }
 
-async function run(stack, action, approval) {
+async function run(stack, action, approval, wiz) {
   const verb = { status: "Check", "plan-apply": "Deploy", "plan-destroy": "Destroy", forget: "Forget state" }[action];
-  const panel = flyout(`${stack.group} · ${stack.title}: ${verb}`);
-  try { await follow(stack, await api(`/api/stacks/${stack.id}/jobs`, { method: "POST", body: { action, approval } }), panel); }
-  catch (e) { fill(panel.status, statusPill("failed", e.message)); }
+  const panel = wiz ? wizPanel(wiz, "Plan") : flyout(`${stack.group} · ${stack.title}: ${verb}`);
+  try { await follow(stack, await api(`/api/stacks/${stack.id}/jobs`, { method: "POST", body: { action, approval } }), panel, wiz); }
+  catch (e) {
+    fill(panel.status, statusPill("failed", "Failed"));
+    if (wiz) fill(panel.body, h("p", { class: "wiz-error", text: e.message }), wizNav(wiz, stack, "plan"));
+    else fill(panel.status, statusPill("failed", e.message));
+  }
+}
+
+// ---- Create: another deployment of a workload stack, one step at a time --------------------------
+// Name (checked here and in Azure) → Settings → Plan → Deploy. Every step has Back; a failure says
+// why and offers Try again and Back to settings; nothing is left half made (Back from Settings
+// forgets a deployment that was never deployed).
+const WIZ_STEPS = ["Name", "Settings", "Plan", "Deploy"];
+const WHERE_FIRST = ["azure_subscription_id", "gcp_project_id", "azure_location", "gcp_region", "workload"];
+function wizPanel(wiz, step) {
+  const steps = wiz.added ? WIZ_STEPS : WIZ_STEPS.slice(1);
+  const panel = flyout(`Create ${wiz.base.title}${wiz.name ? ` · ${wiz.name}` : ""}`);
+  const at = steps.indexOf(step);
+  panel.steps = h("ol", { class: "wiz-steps" }, steps.map((t, i) =>
+    h("li", { class: i < at ? "done" : i === at ? "current" : "", text: `${i + 1}. ${t}` })));
+  const body = panel.body;
+  const inner = h("div", { class: "wiz-body" });
+  fill(body, panel.steps, inner);
+  return { status: panel.status, body: inner };
+}
+function wizNav(wiz, stack, where) {
+  const b = (text, cls, onclick) => h("button", { type: "button", class: cls, text, onclick });
+  return h("div", { class: "actions setup-actions" },
+    where === "plan" ? b("Try again", "primary", () => run(stack, "plan-apply", undefined, wiz)) : null,
+    b("Back to settings", "secondary", () => editInputs(stack, wiz)),
+    b("Close", "secondary", () => { closeFlyout(); load(); }));
+}
+
+async function createFlow(baseId) {
+  await (lastData ? Promise.resolve() : load());
+  const base = byId[baseId];
+  if (!base) return;
+  const family = lastData.stacks.filter((s) => s.id === baseId || s.id.startsWith(`${baseId}@`));
+  // The stack's own deployment first: while it stands nowhere, Create fills it in; after that, a new name.
+  const wiz = { base, added: Boolean(base.status?.deployed || base.busy || base.plan) };
+  if (base.needs?.length) {
+    const panel = flyout(`Create ${base.title}`);
+    return fill(panel.body, h("p", { class: "wiz-error", text: `Needs ${base.needs.map(titleOf).join(", ")} deployed first.` }),
+      h("div", { class: "actions setup-actions" }, h("button", { type: "button", class: "secondary", text: "Close", onclick: closeFlyout })));
+  }
+  if (!wiz.added) return editInputs(base, wiz);
+  return nameStep(wiz, family);
+}
+
+function nameStep(wiz, family, value = "") {
+  wiz.name = "";
+  const panel = wizPanel(wiz, "Name");
+  const name = h("input", { id: "wiz-name", type: "text", value, spellcheck: "false", autocomplete: "off", "aria-label": "Name" });
+  const said = h("p", { class: "small wiz-check" });
+  const next = h("button", { type: "submit", class: "primary", text: "Next", disabled: true });
+  const cancel = h("button", { type: "button", class: "secondary", text: "Cancel", onclick: closeFlyout });
+  let seq = 0, verdict = null;
+  const check = async () => {
+    const v = name.value.trim().toLowerCase(), mine = ++seq;
+    verdict = null;
+    next.disabled = true;
+    name.classList.remove("is-known", "is-unknown");
+    if (!v) return fill(said);
+    fill(said, "Checking…");
+    try {
+      const r = await api(`/api/stacks/${wiz.base.id}/name-check?name=${encodeURIComponent(v)}`);
+      if (mine !== seq) return;
+      verdict = r;
+      name.classList.toggle("is-known", r.ok === true);
+      name.classList.toggle("is-unknown", r.ok === false);
+      fill(said, r.ok === true ? "Free" : r.ok === false ? r.why : `Not checked in the cloud: ${r.why}`);
+      next.disabled = r.ok === false;
+    } catch (e) { if (mine === seq) fill(said, e.message); }
+  };
+  let timer;
+  name.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(check, 350); });
+  const form = h("form", { class: "setup-form", autocomplete: "off" },
+    h("label", { class: "field" }, h("span", {}, h("span", { class: "field-label", text: "Name" }),
+      help(`The new ${wiz.base.title}'s name; also its resource names. Must be new here and, for Azure, free in Azure. `
+        + `In use: ${family.map((s) => s.id.split("@")[1] || s.status?.outputs?.app_name || s.status?.outputs?.job_name || s.title).join(", ")}.`)), name, said),
+    h("div", { class: "actions setup-actions" }, next, cancel));
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    if (verdict?.ok === false || !name.value.trim()) return;
+    next.disabled = true;
+    try {
+      const made = await api(`/api/stacks/${wiz.base.id}/instances`, { method: "POST", body: { name: name.value.trim().toLowerCase() } });
+      wiz.name = made.id.split("@")[1];
+      wiz.made = made.id;
+      await load();
+      editInputs(byId[made.id], wiz);
+    } catch (e) { fill(said, e.message); name.classList.add("is-unknown"); next.disabled = false; }
+  };
+  fill(panel.body, form);
+  name.focus();
+  if (value) check();
 }
 
 // What a failed run suggests: the likely cause in words, then the actions that fix it (first = most
@@ -174,6 +337,8 @@ async function options(source, scope = "") {
 // Google Cloud members are listed for the project typed in the same form.
 const scopeOf = (source) => (source === "gcp_members" ? $("in-gcp_project_id")?.value.trim() || "" : "");
 
+const LINUX_ONLY = ["python", "php"];
+
 function input(f) {
   const id = `in-${f.name}`;
   if (f.kind === "bool") return h("input", { id, type: "checkbox", checked: f.current === true });
@@ -191,8 +356,15 @@ function input(f) {
     };
     return el;
   }
+  if (f.choices) {
+    // A validated list of values (e.g. os, runtime): pick one, nothing to type.
+    const cur = f.current ?? "";
+    return h("select", { id, required: f.required },
+      (f.required || cur ? [] : [h("option", { value: "", text: "" })]).concat(
+        f.choices.map((c) => h("option", { value: c, text: c, selected: c === cur }))));
+  }
   const el = h("input", { id, type: f.kind === "number" ? "number" : "text", spellcheck: "false",
-    value: f.current ?? "", required: f.required });
+    value: f.current ?? "", required: f.required, readonly: Boolean(f.locked) });
   if (f.options) {
     const list = h("datalist", { id: `${id}-list` });
     el.setAttribute("list", list.id);
@@ -217,29 +389,68 @@ function readField(f) {
   return el.value;
 }
 
-async function editInputs(stack) {
-  const panel = flyout(`${stack.group} · ${stack.title}: Inputs`);
+async function editInputs(stack, wiz) {
+  const panel = wiz ? wizPanel(wiz, "Settings") : flyout(`${stack.group} · ${stack.title}: Inputs`);
   const draw = (form) => {
     // A list, map or object is a group of inputs: a div, so its rows' buttons are not the label's target.
-    const fields = form.fields.filter((f) => f.kind !== "json").map((f) => h(["list", "map", "object"].includes(f.kind) ? "div" : "label", { class: "field" },
+    const row = (f0) => { const f = wiz && WHERE_FIRST.includes(f0.name) ? { ...f0, required: true } : f0; return h(["list", "map", "object"].includes(f.kind) ? "div" : "label", { class: "field" },
       h("span", {}, h("span", { class: "field-label", text: f.name }), f.required ? h("span", { class: "small", text: "required" }) : null,
         f.description ? help(f.description) : null),
-      input(f)));
-    const save = h("button", { type: "submit", class: "primary", text: "Save" });
-    const el = h("form", { class: "setup-form", autocomplete: "off" }, fields, h("div", { class: "actions setup-actions" }, save));
+      input(f)); };
+    // Where it goes first: subscription or project, its new resource group, location or region, name.
+    const shown = form.fields.filter((f) => f.kind !== "json");
+    const rank = (f) => { const i = WHERE_FIRST.indexOf(f.name); return i < 0 ? WHERE_FIRST.length : i; };
+    const fields = [...shown].sort((x, y) => rank(x) - rank(y)).flatMap((f) => {
+      if (f.name !== "azure_subscription_id") return [row(f)];
+      const wl = shown.find((x) => x.name === "workload")?.current || stack.instance || "";
+      const rg = h("input", { id: "in-resource-group", type: "text", value: wl ? `rg-${wl}` : "", readonly: true, required: true });
+      return [row(f), h("label", { class: "field" }, h("span", {}, h("span", { class: "field-label", text: "resource_group" }),
+        h("span", { class: "small", text: "required" }),
+        help("A new resource group, rg-<workload>, made by this deployment and holding only its resources. Never an existing one.")), rg)];
+    });
+    const save = h("button", { type: "submit", class: "secondary", text: "Save", hidden: Boolean(wiz) });
+    const deploy = h("button", { type: "submit", class: "primary", text: wiz ? "Next: plan" : "Save and deploy", disabled: stack.busy });
+    // Back from Settings: an added deployment never deployed is forgotten, so its name is free again.
+    const back = wiz ? h("button", { type: "button", class: "secondary", text: "Back", onclick: async () => {
+      if (wiz.made && !byId[wiz.made]?.status?.deployed) {
+        try { await api(`/api/stacks/${wiz.made}/instances`, { method: "DELETE" }); } catch { /* kept: shown in the list */ }
+        const name = wiz.name;
+        wiz.made = null;
+        await load();
+        return nameStep(wiz, lastData.stacks.filter((s) => s.id === wiz.base.id || s.id.startsWith(`${wiz.base.id}@`)), name);
+      }
+      closeFlyout();
+    } }) : null;
+    let andDeploy = false;
+    save.onclick = () => { andDeploy = false; };
+    deploy.onclick = () => { andDeploy = true; };
+    const el = h("form", { class: "setup-form", autocomplete: "off" }, fields, h("div", { class: "actions setup-actions" }, deploy, save, back));
+    const wlIn = el.querySelector("#in-workload"), rgIn = el.querySelector("#in-resource-group");
+    if (wlIn && rgIn) wlIn.addEventListener("input", () => { rgIn.value = wlIn.value.trim() ? `rg-${wlIn.value.trim().toLowerCase()}` : ""; });
+    // Web App: Python and PHP run on Linux only (the stack's precondition), so Windows greys them out.
+    const os = el.querySelector("#in-os"), rt = el.querySelector("#in-runtime");
+    if (os?.tagName === "SELECT" && rt?.tagName === "SELECT") {
+      const sync = () => {
+        for (const o of rt.options) o.disabled = os.value === "windows" && LINUX_ONLY.includes(o.value);
+        if (rt.selectedOptions[0]?.disabled) rt.value = [...rt.options].find((o) => !o.disabled)?.value ?? "";
+      };
+      os.addEventListener("change", sync);
+      sync();
+    }
     el.onsubmit = async (e) => {
       e.preventDefault();
-      save.disabled = true;
+      save.disabled = deploy.disabled = true;
       try {
         const values = Object.fromEntries(form.fields.filter((f) => f.kind !== "json").map((f) => [f.name, readField(f)]));
         const next = await api(`/api/stacks/${stack.id}/inputs`, { method: "PUT", body: { values } });
         load();
-        // Complete: close. Still missing a required input: stay open on it.
-        if (!next.missing.length) return closeFlyout();
+        // Complete: close, or go on to the deploy plan. Still missing a required input: stay open on it.
+        if (!next.missing.length) return andDeploy ? run(stack, "plan-apply", undefined, wiz) : closeFlyout();
         fill(panel.status, statusPill("waiting_approval", `Missing: ${next.missing.join(", ")}`));
         document.getElementById(`in-${next.missing[0]}`)?.focus();
       } catch (err) { fill(panel.status, statusPill("failed", err.message)); }
       save.disabled = false;
+      deploy.disabled = !!stack.busy;
     };
     fill(panel.body, el);
   };
@@ -249,7 +460,6 @@ async function editInputs(stack) {
 
 // A JFrog OIDC row names the infrastructure it stands on, which this page does not list: its title only.
 const titleOf = (id) => byId[id] ? byId[id].title : lastData?.titles?.[id] || id;
-const ACTION_NAME = { status: "State read", "plan-apply": "Deploy plan", "plan-destroy": "Destroy plan", apply: "Apply", forget: "Forget state" };
 
 // Terraform's error, cut to its point: no "terraform x failed (exit 1): Error:" prefix, one short line.
 function brief(text, max = 140) {
@@ -271,7 +481,7 @@ function warnings(s) {
   if (s.dependents?.length) out.push(`Destroy ${s.dependents.map(titleOf).join(", ")} first.`);
   else if (s.unchecked?.length) out.push(`Destroy waits until ${s.unchecked.map(titleOf).join(", ")} ${s.unchecked.length > 1 ? "are" : "is"} checked.`);
   const failed = lastFailure(s);
-  if (failed) out.push(`${ACTION_NAME[failed.action] || "Last run"} failed: ${brief(failed.error) || "see the log"}`);
+  if (failed) out.push(`${jobTitle(failed)} failed: ${brief(failed.error) || "see the log"}`);
   return out;
 }
 
@@ -284,20 +494,19 @@ function row(s, section) {
   // A running job keeps going when its drawer is closed or the page reloads: this reopens its live log.
   const progress = s.job ? h("button", { type: "button", class: "primary", text: "Progress" }) : null;
   if (progress) {
-    const verb = { status: "Check", "plan-apply": "Deploy", "plan-destroy": "Destroy", apply: "Apply" }[s.job.action];
-    progress.onclick = () => follow(s, s.job, flyout(`${s.group} · ${s.title}: ${verb}`));
+    progress.onclick = () => follow(s, s.job, flyout(`${s.group} · ${s.title}: ${jobTitle(s.job)}`));
   }
   const blockedDeploy = s.needs?.length ? `Deploy ${s.needs.map(titleOf).join(", ")} first` : "";
   const notes = warnings(s);
   // A failed run keeps its log one click away; what to do next is in that log's drawer.
   const failed = lastFailure(s);
   const log = failed ? h("button", { type: "button", class: "secondary", text: "Log",
-    onclick: () => follow(s, failed, flyout(`${s.group} · ${s.title}: ${ACTION_NAME[failed.action] || failed.action}`)) }) : null;
+    onclick: () => follow(s, failed, flyout(`${s.group} · ${s.title}: ${jobTitle(failed)}`)) }) : null;
   // The row's state tones its status (green deployed, dark needs you, grey idle); a row waiting on another stack says which.
   const state = s.busy || s.plan ? "busy" : s.status?.deployed ? "ok" : partlyDeleted(s) || lastFailure(s) || s.needs?.length || s.missing?.length ? "attention" : "idle";
   return h("tr", { id: `stack-${s.id}`, "data-state": state, class: s.needs?.length ? "blocked" : null },
     h("td", { title: s.dir }, h("div", { class: "stack-name" }, iconEl(STACK_ICON[s.id], "stack-icon"),
-      link(nameHref(s), h("b", { text: s.title })), s.about ? help(s.about) : null)),
+      link(nameHref(s), h("b", { text: s.title }), nameHref(s).startsWith("http")), s.about ? help(s.about) : null)),
     h("td", {}, h("div", { class: "stack-status" }, stackStatus(s), notes.length ? help(notes.join(" ")) : null)),
     // The section heading above the rows names the type, so no Type column.
     // On JFrog OIDC the columns are Type and Location, as for workloads and clusters: the trust is a JFrog
@@ -305,16 +514,20 @@ function row(s, section) {
     OIDC ? h("td", { class: "stack-id", title: s.id }, link(s.links?.source, "JFrog OIDC trust", true))
       : h("td", { class: "stack-id" }, link(s.links?.source, s.id, true)),
     OIDC ? null : h("td", {}, link(runsIn(s) === "ADO pipeline" ? s.links?.pipeline : runsHref(s), runsIn(s), runsIn(s) === "ADO pipeline")),
-    OIDC ? h("td", { text: "Global" }) : h("td", {}, checkedAt(s) ? link(runsHref(s), shortWhen(checkedAt(s))) : "—"),
-    h("td", {}, h("div", { class: "setup-row-actions" },
+    OIDC ? h("td", { text: "Global" }) : h("td", {}, checkedAt(s) ? (s.check_job ? link(`?job=${s.check_job}`, shortWhen(checkedAt(s))) : shortWhen(checkedAt(s))) : "—"),
+    h("td", {}, h("div", { class: "setup-row-actions nowrap" },
       progress,
       plan,
       log,
       // Inputs, Deploy and Destroy behind "⋯"; Destroy asks once more before it plans.
       menu(`Actions for ${s.title}`, [
         { text: "Inputs", onSelect: () => editInputs(s) },
-        { text: "Deploy", disabled: s.busy || !!blockedDeploy, title: blockedDeploy || null, onSelect: () => run(s, "plan-apply") },
-        { text: "Destroy", danger: true, confirm: "Plan destroy?", disabled: s.busy || !!blockedDestroy, title: blockedDestroy || null,
+        // An added deployment that stands nowhere can be removed (its saved inputs forgotten).
+        s.id.includes("@") ? { text: "Remove", danger: true, confirm: "Remove this deployment?", disabled: s.busy || !!s.plan || !!s.status?.deployed,
+          title: s.status?.deployed ? "Destroy it first" : null,
+          onSelect: async () => { await api(`/api/stacks/${s.id}/instances`, { method: "DELETE" }); load(); } } : null,
+        { text: "Deploy", disabled: s.busy || s.checking || !!blockedDeploy, title: blockedDeploy || null, onSelect: () => run(s, "plan-apply") },
+        { text: "Destroy", danger: true, confirm: "Plan destroy?", disabled: s.busy || s.checking || !!blockedDestroy, title: blockedDestroy || null,
           onSelect: () => run(s, "plan-destroy") },
       ]))));
 }
@@ -333,7 +546,9 @@ const SERVES = { "gcp-cloud-run": "gcp?type=gcp_run_job", "gcp-cloud-run-service
 const CLUSTERS = { "aks-cluster": "/k8s/clusters/aks", "gke-cluster": "/k8s/clusters/gke" };
 const runsArea = () => (OIDC ? "oidc" : "infrastructure");
 const runsHref = (s) => `/runs?area=${runsArea()}&cloud=${CLOUD_ID[s.group] || ""}&q=${encodeURIComponent(s.title)}`;
-const nameHref = (s) => (SERVES[s.id] ? `/serverless/${SERVES[s.id]}` : CLUSTERS[s.id] || runsHref(s));
+// A foundation is the cloud's ADO trust: its name opens the project's service connections.
+const adoSettings = (s) => s.links?.source?.replace(/\/_git\/.*$/, "/_settings/adminservices");
+const nameHref = (s) => (SERVES[s.id] ? `/serverless/${SERVES[s.id]}` : CLUSTERS[s.id] || (s.id.endsWith("-foundation") && adoSettings(s)) || runsHref(s));
 
 let byId = {};
 
@@ -357,9 +572,13 @@ const OIDC = BASE === "/oidc";
 const STATES = OIDC ? [["on", "Onboarded"], ["off", "Not onboarded"]]
   : [["deployed", "Deployed"], ["not", "Not deployed"], ["attention", "Needs attention"]];
 const F = { q: "", cloud: "", kind: "", state: "", view: "" };
+// ?stack=<id> (a Create tile): that one stack, deployed or not, its Inputs open once.
+let OPEN_STACK = null, CREATE_STACK = null;
 {
   const u = new URLSearchParams(location.search);
   for (const k of ["q", "cloud", "kind", "state", "view"]) if (u.get(k)) F[k] = u.get(k);
+  OPEN_STACK = u.get("stack");
+  CREATE_STACK = u.get("create");
 }
 // The live page lists only what stands; ?view=archived lists the rest (never deployed, destroyed, gone).
 const ARCHIVED = () => F.view === "archived";
@@ -383,10 +602,18 @@ function drawFilters(kinds) {
 async function load() {
   lastData = await api("/api/stacks");
   draw();
+  if (OPEN_STACK && !load.opened && byId[OPEN_STACK]) {
+    load.opened = true;
+    editInputs(byId[OPEN_STACK]);
+  }
+  if (CREATE_STACK && !load.opened && byId[CREATE_STACK]) {
+    load.opened = true;
+    createFlow(CREATE_STACK);
+  }
   if (OIDC && !live.started) loadLive().catch(() => {});
   // While a job runs, keep the rows current so Running turns into its result without a reload.
   clearTimeout(load.timer);
-  if (lastData.stacks.some((s) => s.busy)) load.timer = setTimeout(() => load().catch(() => {}), POLL_MS * 2);
+  if (lastData.stacks.some((s) => s.busy || s.checking)) load.timer = setTimeout(() => load().catch(() => {}), POLL_MS * 2);
 }
 
 function draw(withFilters = true) {
@@ -445,7 +672,7 @@ function draw(withFilters = true) {
     return h("section", { class: "cloud-block" }, groups.length > 1 ? head(g, inCloud) : null, table(bodies));
   }));
   };
-  const list = shown.filter((s) => standing(s) !== ARCHIVED());
+  const list = shown.filter((s) => standing(s) !== ARCHIVED() || (OPEN_STACK && s.id === OPEN_STACK && !ARCHIVED()));
   viewChrome(all.filter((s) => !standing(s)).length);
   $("count").textContent = `Showing ${list.length} of ${all.filter((s) => standing(s) !== ARCHIVED()).length} records.`;
   $("none").hidden = list.length > 0;
@@ -629,7 +856,15 @@ function essentials(data, all) {
     OIDC ? null : pair("Last checked", shortWhen(last)));
 }
 
-$("refresh").onclick = () => load().catch(() => {});
+// Refresh: every stack's state read again (not the last known one), done when the reads finish.
+refreshing($("refresh"), async () => {
+  await api("/api/refresh", { method: "POST" });
+  for (let i = 0; i < 90; i++) {
+    await load();
+    if (!lastData.stacks.some((s) => s.checking)) return;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+});
 document.querySelector('a.blade-cmd[href^="/runs"]')?.setAttribute("href", `/runs?area=${runsArea()}`);
 $("ess-h").onclick = () => {
   const open = $("ess-h").getAttribute("aria-expanded") !== "true";
@@ -648,11 +883,11 @@ async function openRun(id) {
   const job = await api(`/api/jobs/${encodeURIComponent(id)}`);
   const stack = byId[job.stack];
   if (!stack) return;
-  const panel = flyout(`${stack.group} · ${stack.title}: ${ACTION_NAME[job.action] || job.action}`);
+  const panel = flyout(`${stack.group} · ${stack.title}: ${jobTitle(job)}`);
   if (job.state === "running") return follow(stack, job, panel);
   fill(panel.status, job.state === "failed" ? statusPill("failed", "Failed") : statusPill("succeeded", "Done"));
-  fill(panel.body, job.state === "failed" ? h("pre", { class: "pf-log" }, job.error || "") : null,
-    job.started ? h("p", { class: "muted", text: `Started ${new Date(job.started * 1000).toLocaleString()}` }) : null, logBox(job));
+  fill(panel.body, stagesView(job), job.state === "failed" ? h("pre", { class: "pf-log" }, job.error || "") : null,
+    logBox(job));
 }
 const RUN_ID = new URLSearchParams(location.search).get("job");
 

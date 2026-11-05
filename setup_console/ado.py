@@ -73,7 +73,12 @@ def outputs(lines: list) -> dict:
     return out
 
 
+BEAT_SECONDS = 30
+
+
 class Ado:
+    clock = staticmethod(time.monotonic)
+
     def __init__(self, sh, organization: str, project: str, branch: str = "main", repo: str = ""):
         self.sh = sh
         self.retarget(organization, project, branch, repo)
@@ -213,12 +218,24 @@ class Ado:
         """The run's step output written since the last call, each step under its name once.
         `seen` (kept by the caller across calls: log id -> lines read, -1 once a step is read to its end)
         makes every call return only what is new. Lines are redacted; commands and scripts are left out."""
-        steps = [r for r in self._timeline(run_id) if r.get("type") == "Task" and (r.get("log") or {}).get("id")
+        # ADO attaches a step's log only when the step ends: a running step is named when it starts and
+        # gets a "still running" line every BEAT_SECONDS, so the log never sits silent.
+        steps = [r for r in self._timeline(run_id) if r.get("type") == "Task"
                  and r.get("state") in ("inProgress", "completed") and r.get("result") != "skipped"
                  and not _CHORES.match(r.get("name") or "")]
         steps.sort(key=lambda r: (r.get("startTime") or "9", r.get("order") or 0))
-        out = []
+        out, now = [], self.clock()
         for r in steps:
+            key = "st:" + str(r.get("id") or r.get("name"))
+            if key not in seen:
+                seen[key] = now
+                out.append(f"── {r.get('name') or 'step'}")
+            if not (r.get("log") or {}).get("id"):
+                if r.get("state") == "inProgress" and now - seen[key] >= BEAT_SECONDS * (seen.get("b:" + key, 0) + 1):
+                    seen["b:" + key] = seen.get("b:" + key, 0) + 1
+                    secs = int(now - seen[key])
+                    out.append(f"   still running ({secs // 60}m {secs % 60:02d}s)" if secs >= 60 else f"   still running ({secs}s)")
+                continue
             lid = str(r["log"]["id"])
             n = seen.get(lid, 0)
             if n < 0:
@@ -239,13 +256,19 @@ class Ado:
                 at = next((i for i, l in enumerate(shown) if _TF_START.match(l)), None)
                 shown = [] if at is None else shown[at:]
                 seen["tf:" + lid] = at is not None
-            if n == 0 and any(l.strip() for l in shown):
-                out.append(f"── {r.get('name') or 'step'}")
             for l in shown:   # blank lines: at most one in a row, none right under a step name
                 if l.strip() or (out and out[-1].strip() and not out[-1].startswith("── ")):
                     out.append(redact.text(l))
             seen[lid] = -1 if r.get("state") == "completed" else n + len(raw)
         return out
+
+    def run_for(self, yaml_path: str, commit: str) -> int | None:
+        """The run of that pipeline its CI trigger started for a commit (a push to the branch), or None yet."""
+        pid, _ = self.pipeline(yaml_path)
+        for b in self._call("GET", f"/build/builds?definitions={pid}&$top=20&queryOrder=queueTimeDescending").get("value") or []:
+            if str(b.get("sourceVersion") or "") == commit:
+                return int(b["id"])
+        return None
 
     def warnings(self, run_id: int) -> list:
         return [i["message"] for r in self._timeline(run_id) for i in (r.get("issues") or []) if i.get("type") == "warning"]

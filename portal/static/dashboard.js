@@ -1,7 +1,7 @@
 // Home, in the Azure portal's resource style: title and command bar, Essentials (label : value, two
 // columns), then tabs: Serverless workloads, Kubernetes clusters (runs have their own page). Each tab is one filter
 // bar ("Filter for any field…" and pills) over one table. Read-only. Data: data.js.
-import { nextBox } from "/serverless/static/core.js";
+import { nextBox, refreshing } from "/serverless/static/core.js";
 import { CLOUD_NAMES, LIVE_STATES, h, markEl, when, runPill, loadAll, startProve } from "./data.js";
 
 const $ = (id) => document.getElementById(id);
@@ -177,7 +177,7 @@ $("ess-h").addEventListener("click", () => {
   $("ess-h").setAttribute("aria-expanded", String(open));
   $("ess-body").hidden = !open;
 });
-$("dash-refresh").addEventListener("click", () => load());
+refreshing($("dash-refresh"), load);
 saveQuery();
 draw();
 load();

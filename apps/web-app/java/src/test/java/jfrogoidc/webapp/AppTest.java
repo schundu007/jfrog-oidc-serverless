@@ -171,6 +171,13 @@ class AppTest {
     }
 
     @Test
+    void defaultClientUsesTheJvmProxySettings() {
+        // -Dhttps.proxyHost/-Dhttps.proxyPort (JAVA_OPTS) for JFrog; HttpClient's own default is no proxy at all.
+        assertTrue(Jfrog.defaultHttp().proxy().isPresent());
+        assertEquals(HttpClient.Redirect.NORMAL, Jfrog.defaultHttp().followRedirects());
+    }
+
+    @Test
     void missingConfigSaysWhat() throws Exception {
         Jfrog bare = new Jfrog(Map.of(), HttpClient.newHttpClient(), () -> now);
         Map<String, Object> r = bare.selftest("", false);

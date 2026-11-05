@@ -56,6 +56,33 @@ class Base(unittest.TestCase):
         return {n: json.loads((d / n).read_text()) for n in ("main.tf.json", "terraform.tfvars.json", "backend.tf.json")}
 
 
+class AzureAudienceTests(Base):
+    """Option B: Microsoft's api://AzureADTokenExchange instead of an app registration."""
+
+    def test_default_is_the_app_registration(self):
+        f = self.files(self.render(azure_cfg()))
+        self.assertEqual(f["terraform.tfvars.json"]["azure_audience"], "app_registration")
+        self.assertEqual(f["main.tf.json"]["module"]["azure"]["audience"], "${var.azure_audience}")
+        self.assertEqual(f["main.tf.json"]["variable"]["azure_audience"]["default"], "app_registration")
+
+    def test_token_exchange_is_passed_to_the_module(self):
+        cfg = azure_cfg()
+        cfg["jfrog"]["azure_audience"] = "token_exchange"
+        self.assertEqual(self.files(self.render(cfg))["terraform.tfvars.json"]["azure_audience"], "token_exchange")
+
+    def test_configs_in_one_workspace_must_agree(self):
+        self.render(azure_cfg())
+        other = azure_cfg(name="billing", principal="aaaaaaaa-0000-0000-0000-000000000002")
+        other["jfrog"]["azure_audience"] = "token_exchange"
+        with self.assertRaisesRegex(tfgen.TfgenError, "jfrog.azure_audience"):
+            self.render(other)
+
+    def test_an_unknown_audience_is_refused(self):
+        cfg = azure_cfg()
+        cfg["jfrog"]["azure_audience"] = "api://something"
+        self.assertTrue(any(e["path"] == "jfrog.azure_audience" for e in model.validate(cfg)["errors"]))
+
+
 class AdoptIntegrationTests(Base):
     def test_adopted_integration_is_imported_not_created(self):
         cfg = gcp_cfg()

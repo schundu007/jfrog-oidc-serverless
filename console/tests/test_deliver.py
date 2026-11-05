@@ -240,7 +240,7 @@ class PublishTests(unittest.TestCase):
         self.assertTrue(any("queued" in line and "77" in line for line in self.lines), self.lines)
 
     def test_ado_calls_send_only_the_bearer_token(self):
-        # With X-VSS-ForceMsaPassThrough ADO answers 302/401 to a valid token (live, jfrog-cp-azure).
+        # With X-VSS-ForceMsaPassThrough ADO answers 302/401 to a valid token (live, jfrog-oidc-azure).
         for rc in (0, 1):   # pull request; onboard run
             _, sh = self.publish(gcp_cfg(), commit_rc=rc)
             self.assertTrue(sh.headers)
@@ -417,6 +417,51 @@ class WireWorkspaceTests(unittest.TestCase):
         self.assertEqual({r["name"]: r["status"] for r in res}, {"gone": "skipped: not found", "orders": "wired"})
         self.assertTrue(any("gone" in l and "not found" in l for l in logs))
         self.assertTrue(issubclass(TargetMissing, WireError))   # other read failures still fail the run
+
+
+class HealthCheckTests(unittest.TestCase):
+    """Post-deployment check in the onboarding pipeline: /healthz/jfrog on production and every slot."""
+
+    def setUp(self):
+        self.ws = Path(tempfile.mkdtemp(prefix="deliver-hc-"))
+        self.addCleanup(shutil.rmtree, self.ws, True)
+        (self.ws / "configs").mkdir()
+        cfg = {"name": "web-a", "target": {"kind": "azure_web_app", "azure": {
+            "name": "web-a", "resource_group": "rg-a", "subscription": "sub-1"}}}
+        (self.ws / "configs" / "web-a.json").write_text(json.dumps(cfg))
+        (self.ws / "configs" / "job-b.json").write_text(json.dumps(
+            {"name": "job-b", "target": {"kind": "azure_container_app_job", "azure": {"name": "job-b"}}}))
+
+    class Az(Shell):
+        def __init__(self):
+            super().__init__(mode="replay")
+            self.calls = []
+
+        def run(self, argv, *a, **kw):
+            self.calls.append(argv)
+            if "slot" in argv:
+                return Result(argv, 0, json.dumps([{"name": "web-a/staging", "defaultHostName": "web-a-staging.azurewebsites.net"}]))
+            return Result(argv, 0, json.dumps({"defaultHostName": "web-a.azurewebsites.net"}))
+
+    def test_checks_production_and_every_slot_until_ok(self):
+        got, answers = [], {"web-a.azurewebsites.net": [503, 200], "web-a-staging.azurewebsites.net": [200]}
+
+        def fetch(url, timeout):
+            host = url.split("/")[2]
+            got.append(url)
+            return answers[host].pop(0), {"ok": True, "username": "azure-entra/web-a"}
+        res = deliver.check_workspace(self.ws, self.Az(), fetch=fetch, sleep=lambda s: None)
+        self.assertEqual(res, [{"name": "web-a", "slot": "production", "status": 200},
+                               {"name": "web-a", "slot": "staging", "status": 200}])
+        self.assertTrue(all(u.endswith("/healthz/jfrog?fresh=1") and u.startswith("https://") for u in got))
+        self.assertEqual(len(got), 3)   # production retried once
+
+    def test_a_slot_that_never_gets_ok_fails_the_run(self):
+        fetch = lambda url, timeout: (503, {"ok": False, "error": "Invalid audience"}) if "staging" in url else (200, {"ok": True})
+        logs = []
+        with self.assertRaisesRegex(deliver.DeliveryError, "staging"):
+            deliver.check_workspace(self.ws, self.Az(), fetch=fetch, sleep=lambda s: None, tries=3, log=logs.append)
+        self.assertTrue(any("Invalid audience" in l for l in logs))
 
 
 class TfgenModulesTests(unittest.TestCase):

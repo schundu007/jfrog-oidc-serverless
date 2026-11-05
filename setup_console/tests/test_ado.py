@@ -136,6 +136,22 @@ class AdoTests(unittest.TestCase):
         self.assertEqual(c.stream(7, seen), ["Plan: 1 to add."])
         self.assertEqual(c.stream(7, seen), [])   # read to its end
 
+    def test_a_running_step_without_its_log_is_named_and_beats(self):
+        recs = [{"type": "Task", "id": "a", "name": "terraform apply plan (OIDC)", "state": "inProgress"}]
+        c, _ = self.client({("GET", "/builds/7/timeline"): (200, {"records": recs})})
+        t = [100.0]
+        c.clock = lambda: t[0]
+        seen = {}
+        self.assertEqual(c.stream(7, seen), ["── terraform apply plan (OIDC)"])
+        t[0] = 110
+        self.assertEqual(c.stream(7, seen), [])
+        t[0] = 131
+        self.assertEqual(c.stream(7, seen), ["   still running (31s)"])
+        t[0] = 135
+        self.assertEqual(c.stream(7, seen), [])
+        t[0] = 195
+        self.assertEqual(c.stream(7, seen), ["   still running (1m 35s)"])
+
     def test_an_unpermitted_environment_is_named(self):
         recs = json.loads(timeline(apply=("pending", None)))["records"] + [{"type": "Checkpoint.Authorization", "state": "inProgress"}]
         c, _ = self.client({("GET", "/builds/5/timeline"): (200, {"records": recs}),

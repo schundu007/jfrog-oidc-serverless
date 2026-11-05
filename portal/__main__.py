@@ -13,11 +13,10 @@ import threading
 import time
 import webbrowser
 
-from console import deliver
+from console import deliver, jfrog_operator
 from console.__main__ import EXPOSE_FLAG, REPO_ROOT, check_bind
 from console.server import ConsoleServer
 from console.store import Store
-from kcp_console.jfrog import OperatorToken
 from kcp_console.server import KcpServer
 from kcp_console.store import Store as KcpStore, replay_store
 
@@ -26,7 +25,7 @@ from setup_console.ado import Ado
 from setup_console.jobs import Jobs
 from setup_console.server import SetupServer
 
-from . import retention
+from . import chain, retention
 from .connections import Connections
 from .server import K8S, OIDC, SERVERLESS, SETUP, Portal
 
@@ -77,14 +76,13 @@ def main(argv=None) -> int:
         print(f"portal: cannot load fixtures: {exc}", file=sys.stderr)
         return 2
     env_name = (delivery or {}).get("environment") or "test"
-    operator = OperatorToken()
     # Stack changes run as ADO pipelines (the delivery repo's org and project); foundations and reads stay here.
     ado_client = None
     if delivery and not args.fixtures:
         ado_client = Ado(Shell(mode="live", log=lambda line: None), delivery["ado"]["organization"], delivery["ado"]["project"],
                          branch=delivery["ado"].get("target_branch") or "main", repo=delivery["ado"].get("repository") or "")
     setup = SetupServer(token=token, base=SETUP, env_name=env_name,
-                        jobs=Jobs(env_name=env_name, token_source=operator.get, ado=ado_client))
+                        jobs=Jobs(env_name=env_name, token_source=jfrog_operator.Tokens().get, ado=ado_client))
     if connections:
         def retarget(ado):
             # Azure DevOps changed on Settings: the running consoles use it from the next call.
@@ -94,6 +92,8 @@ def main(argv=None) -> int:
                 ado_client.retarget(ado["organization"], ado["project"], ado.get("target_branch") or "main",
                                     ado.get("repository") or "")
         connections.on_ado = retarget
+    if delivery and not args.fixtures:   # Deploy on Infrastructure: build and deploy, then onboard
+        setup.jobs.onboard = chain.onboarder(serverless)
     portal = Portal(serverless, k8s, host=args.host, port=args.port, setup_console=setup, connections=connections)
     try:
         portal.start()
