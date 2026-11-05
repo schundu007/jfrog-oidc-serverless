@@ -61,14 +61,15 @@ async function get(path) {
 }
 
 // Serverless Prove: starts a prove-only run of the saved configuration and answers its page.
-export async function startProve(cloud, name) {
+// A refusal carries what to do next ({text, action?, url?}) as err.next.
+export async function startProve(cloud, name, steps = ["prove"]) {
   const headers = { "X-Console-Token": TOKEN || "", "Content-Type": "application/json" };
   const n = encodeURIComponent(name);
   const c = await get(`/serverless/api/configs/${n}`);
   const r = await fetch("/serverless/api/runs", { method: "POST", headers, credentials: "omit", cache: "no-store",
-    body: JSON.stringify({ config: c.config || c, steps: ["prove"] }) });
+    body: JSON.stringify({ config: c.config || c, steps }) });
   const body = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
+  if (!r.ok) throw Object.assign(new Error(body.error || `HTTP ${r.status}`), { next: body.next || null });
   return `/serverless/${cloud}/w/${n}/runs/${encodeURIComponent(body.run_id)}`;
 }
 

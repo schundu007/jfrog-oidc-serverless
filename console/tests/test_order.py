@@ -45,6 +45,20 @@ class CheckTests(unittest.TestCase):
         with self.assertRaisesRegex(order.OrderError, "step 4"):
             order.check(["prove"], "azure", [onboard, ACTIVE_WEB], {"result": "succeeded"})
 
+    def test_every_refusal_says_what_to_do_next(self):
+        with self.assertRaises(order.OrderError) as ctx:
+            order.check(["prove"], "azure", [], None)
+        self.assertEqual(ctx.exception.next["action"], {"label": "Deliver now", "steps": order.DELIVER_STEPS})
+        self.assertIn("Deliver", ctx.exception.next["text"])
+        with self.assertRaises(order.OrderError) as ctx:
+            order.check(["verify"], "azure", [], {"id": 221, "result": "failed", "url": "https://x/221"})
+        self.assertEqual(ctx.exception.next["url"], "https://x/221")
+        self.assertEqual(ctx.exception.next["action"]["label"], "Deliver now")
+        with self.assertRaises(order.OrderError) as ctx:
+            order.check(["publish"], "azure", [dict(ACTIVE_WEB, url="https://x/224")], None)
+        self.assertEqual(ctx.exception.next["url"], "https://x/224")
+        self.assertIn("finish", ctx.exception.next["text"])
+
     def test_other_steps_are_not_checked(self):
         order.check(["discover"], "azure", [ACTIVE_WEB], None)
 
@@ -77,6 +91,7 @@ class PipelinesTests(unittest.TestCase):
         self.assertEqual([(r["id"], r["cloud"], r["step"]) for r in active], [(224, "azure", 4)])
         self.assertEqual(p.last_onboard("azure")["result"], "failed")
         self.assertIsNone(p.last_onboard("gcp"))
+        self.assertEqual(active[0]["url"], "https://dev.azure.com/cdoazure/cloudifyDevops/_build/results?buildId=224")
 
     def test_no_sign_in_is_a_refusal(self):
         with self.assertRaisesRegex(order.OrderError, "no Azure DevOps sign-in"):
@@ -91,3 +106,19 @@ class PipelinesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AfterFailureTests(unittest.TestCase):
+    def test_missing_app_settings_point_to_deliver(self):
+        n = order.after_failure("verify", "not verified: exchange failed: missing environment variables: JFROG_URL", True)
+        self.assertIn("settings", n["text"])
+        self.assertEqual(n["action"], {"label": "Deliver now", "steps": order.DELIVER_STEPS})
+
+    def test_a_missing_workload_points_to_infrastructure(self):
+        n = order.after_failure("discover", "discover failed: not found. Deploy the workload on the Infrastructure page first", True)
+        self.assertEqual(n["link"], {"label": "Open Infrastructure", "href": "/setup/"})
+
+    def test_every_failed_step_has_a_next_step(self):
+        for step in ("preflight", "discover", "simulate", "publish", "plan", "apply", "wire", "verify", "prove", "report"):
+            for delivery in (True, False):
+                self.assertTrue(order.after_failure(step, "boom", delivery)["text"], (step, delivery))

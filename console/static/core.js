@@ -70,7 +70,7 @@ export const hasToken = () => !!TOKEN;
 export const setToken = (t) => { TOKEN = rememberToken(t); };
 
 export class ApiError extends Error {
-  constructor(status, message, code) { super(code ? `${message} (${code})` : message); this.status = status; this.code = code; }
+  constructor(status, message, code, next) { super(message); this.status = status; this.code = code; this.next = next || null; }
 }
 
 // `abs`: a path of another portal section (/serverless/api/…, /k8s/api/…), not under this page's base.
@@ -82,7 +82,7 @@ export async function api(path, { method = "GET", body, abs = false } = {}) {
   const text = await resp.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = { error: text }; }
-  if (!resp.ok) throw new ApiError(resp.status, (data && data.error) || `HTTP ${resp.status}`, data && data.code);
+  if (!resp.ok) throw new ApiError(resp.status, (data && data.error) || `HTTP ${resp.status}`, data && data.code, data && data.next);
   return data;
 }
 
@@ -342,6 +342,24 @@ export function status(el, text, kind = "") {
   if (!el) return;
   el.textContent = text || "";
   el.className = `page-status small${kind ? ` status-${kind}` : ""}`;
+}
+
+// What to do after a refusal or a failed step: the server's {text, action?, url?, link?}.
+// `onAction(steps)` starts the offered run (Deliver now); a url opens the ADO run in a new tab.
+export function nextBox(next, onAction) {
+  if (!next || !next.text) return null;
+  const box = h("div", { class: "next-box" }, h("b", { text: "Next" }), h("span", { text: next.text }));
+  if (next.url) box.append(h("a", { href: next.url, target: "_blank", rel: "noopener noreferrer", text: "Open run" }));
+  if (next.link) box.append(h("a", { href: next.link.href, text: next.link.label }));
+  if (next.action && onAction) {
+    const b = h("button", { type: "button", class: "small-btn", text: next.action.label });
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      try { await onAction(next.action.steps); } catch (e) { b.disabled = false; b.title = e.message; }
+    });
+    box.append(b);
+  }
+  return box;
 }
 
 // Plain editors for lists and name/value pairs, so no form ever asks for JSON. Each returns an

@@ -309,6 +309,7 @@ class VerifyRunTests(Base):
         snap = self.wait(run, "succeeded", "failed")
         self.assertEqual(snap["status"], "failed")
         self.assertIn("not verified", self.step(snap, "verify")["error"])
+        self.assertTrue(self.step(snap, "verify")["next"]["text"])
 
 
 class ProveRunTests(Base):

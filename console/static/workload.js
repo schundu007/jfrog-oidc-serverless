@@ -1,7 +1,7 @@
 // Workload (/<cloud>/w/<name>), an Azure resource page: title, command bar (Run pipeline, Preflight,
 // Refresh, "⋯"), Essentials, an approval banner, and the tabs Runs · Configuration · Simulator (?tab=runs|config|sim).
 
-import { $, api, h, fill, CLOUD, ofCloud, href, statusIcon, statusText, template, menu, armed, ago, dur, stamp,
+import { $, api, h, fill, nextBox, CLOUD, ofCloud, href, statusIcon, statusText, template, menu, armed, ago, dur, stamp,
   runDuration, LIVE, closeFlyout, sectionOf, status as setStatus } from "./core.js";
 import { mountConfig, validateNow, runPreflight, currentConfig, isDirty, isBusy, identityOf, kindLabel, SCOPE_FIELDS,
   status as cfgStatus } from "./configure.js";
@@ -199,8 +199,18 @@ async function runPipeline() {
     closeFlyout();
     location.assign(href.run(ws.name, res.run_id));
   } catch (e) {
-    cfgStatus(e.message, "error");
+    failed(e);
   }
+}
+
+// A refusal or failure, and what to do next (with its one-click action) beside it.
+function failed(e) {
+  cfgStatus(e.message, "error");
+  const box = nextBox(e.next, async (steps) => {
+    const res = await api("/api/runs", { method: "POST", body: { config: currentConfig(), steps } });
+    location.assign(href.run(ws.name, res.run_id));
+  });
+  if (box) $("cfg-status").append(box);
 }
 
 // Verify: one read-only step against the live workload; the run page shows what it proved.
@@ -214,7 +224,7 @@ async function liveRun(step, busy) {
     const res = await api("/api/runs", { method: "POST", body: { config: currentConfig(), steps: [step] } });
     location.assign(href.run(ws.name, res.run_id));
   } catch (e) {
-    cfgStatus(e.message, "error");
+    failed(e);
   }
 }
 

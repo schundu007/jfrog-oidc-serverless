@@ -84,10 +84,11 @@ def sse_frame(kind: str, data) -> str:
 
 
 class HttpError(Exception):
-    def __init__(self, status: int, message: str, code: str | None = None):
+    def __init__(self, status: int, message: str, code: str | None = None, next: dict | None = None):
         super().__init__(message)
         self.status = status
         self.code = code
+        self.next = next
 
 
 # ---------------------------------------------------------------- simulations
@@ -531,7 +532,8 @@ def _make_handler(console: ConsoleServer):
                     raise HttpError(405, "method not allowed")
                 return self._static(path)
             except HttpError as exc:
-                self._json(exc.status, {"error": str(exc), **({"code": exc.code} if exc.code else {})})
+                self._json(exc.status, {"error": str(exc), **({"code": exc.code} if exc.code else {}),
+                                        **({"next": exc.next} if exc.next else {})})
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
@@ -775,7 +777,7 @@ def _make_handler(console: ConsoleServer):
                     return self._json(200, console.runs.cancel(run.id))
                 raise HttpError(404, "no such endpoint")
             except RunError as exc:
-                raise HttpError(exc.status, str(exc), exc.code) from None
+                raise HttpError(exc.status, str(exc), exc.code, exc.next) from None
 
         def _stream_run(self, run):
             self._headers(200, "text/event-stream; charset=utf-8", extra={"X-Accel-Buffering": "no"})

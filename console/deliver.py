@@ -258,7 +258,10 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
         must(git("add", "--", *out["files"], cwd=wt), "git add")
         if git("diff", "--cached", "--quiet", cwd=wt, meaning={0: "no changes", 1: "changes found"}).rc == 0:
             log(f"{out['workspace']} already matches {base}: nothing to propose")
-            return {"changed": False, "branch": None, "workspace": out["workspace"], "pull_request": None}
+            run = queue_onboard(sh, org_url, ado["project"], token, cloud, Path(out["workspace"]).name)
+            log(f"queued {onboard_pipeline(cloud)} run {run['run']} to apply and wire it")
+            return {"changed": False, "branch": None, "workspace": out["workspace"], "pull_request": None,
+                    "pipeline": dict(run, name=onboard_pipeline(cloud))}
         must(git("commit", "--quiet", "-m", f"Onboard {cfg['name']} ({cfg['target']['kind']}) via the console",
                  cwd=wt), "git commit")
         if direct:
@@ -289,6 +292,29 @@ def publish(cfg: dict, sh: Shell, repo_root, settings: dict, run_id: str, log=No
     finally:
         git("worktree", "remove", "--force", str(wt))
         git("branch", "-D", branch)
+
+
+def queue_onboard(sh: Shell, org_url: str, project: str, token: str, cloud: str, workspace: str) -> dict:
+    """Run <cloud>-workload-onboard for one workspace already on the branch: apply and wire it again."""
+    what = f"{cloud}-workload-onboard.yml"
+    if not token:
+        raise DeliveryError(f"running {what} needs an Azure DevOps token: run `az login` to the ADO tenant")
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "X-VSS-ForceMsaPassThrough": "true"}
+    api = f"{org_url}/{project}/_apis"
+    res = sh.http("GET", f"{api}/build/definitions?includeAllProperties=true&api-version=7.1", headers=headers, timeout=60)
+    if not res.ok:
+        raise DeliveryError(f"listing the pipelines of {project} failed: HTTP {res.status or res.error}")
+    ids = [d.get("id") for d in res.json({}).get("value") or []
+           if str((d.get("process") or {}).get("yamlFilename") or "").lstrip("/").split("/")[-1] == what]
+    if not ids:
+        raise DeliveryError(f"{project} has no pipeline on pipelines/{what}: register it (the foundation stack does), "
+                            "then Deliver again")
+    res = sh.http("POST", f"{api}/pipelines/{ids[0]}/runs?api-version=7.1", headers=headers, timeout=60,
+                  body=json.dumps({"templateParameters": {"workspace": workspace}}).encode())
+    if not res.ok:
+        raise DeliveryError(f"queuing pipelines/{what} failed: HTTP {res.status or res.error}")
+    run_id = res.json({}).get("id")
+    return {"run": run_id, "url": f"{org_url}/{project}/_build/results?buildId={run_id}"}
 
 
 def pipeline_target(cfg: dict, env) -> dict:

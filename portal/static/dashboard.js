@@ -1,6 +1,7 @@
 // Home, in the Azure portal's resource style: title and command bar, Essentials (label : value, two
 // columns), then tabs: Serverless workloads, Kubernetes clusters (runs have their own page). Each tab is one filter
 // bar ("Filter for any field…" and pills) over one table. Read-only. Data: data.js.
+import { nextBox } from "/serverless/static/core.js";
 import { CLOUD_NAMES, LIVE_STATES, h, markEl, when, runPill, loadAll, startProve } from "./data.js";
 
 const $ = (id) => document.getElementById(id);
@@ -31,7 +32,14 @@ function proveButton(it) {
     e.stopPropagation();
     if (it.kind === "cluster") { location.assign(`${it.href}?tab=proof`); return; }
     b.disabled = true;
-    try { location.assign(await startProve(it.cloud, it.name)); } catch (err) { b.disabled = false; b.title = err.message; b.lastChild.textContent = "Prove failed"; }
+    try { location.assign(await startProve(it.cloud, it.name)); } catch (err) {
+      b.disabled = false; b.title = err.message; b.lastChild.textContent = "Prove failed";
+      // The reason and what to do next, under the button (Deliver now starts that run).
+      const cell = b.closest("td");
+      cell.querySelector(".home-next")?.remove();
+      cell.append(h("div", { class: "home-next" }, h("p", { class: "error-box", text: err.message }),
+        nextBox(err.next, async (steps) => location.assign(await startProve(it.cloud, it.name, steps)))));
+    }
   });
   return b;
 }

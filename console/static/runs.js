@@ -2,7 +2,7 @@
 // detail (approval gates, evidence) and its log. Rendered with DOM APIs only (no innerHTML).
 // Everything shown has been redacted by the server; approvals send back only the hashes it showed.
 
-import { $, api, h, fill, streamEvents, statusIcon, statusPill, template, armed, href, ago, stamp, clock, dur,
+import { $, api, h, fill, nextBox, streamEvents, statusIcon, statusPill, template, armed, href, ago, stamp, clock, dur,
   runDuration, stepDuration, LIVE, help, status as setStatus } from "./core.js";
 import { dag } from "./dag.js";
 
@@ -470,6 +470,13 @@ function render() {
   if (before !== rs.selected) renderLog();
 }
 
+// The failed step's next action (Deliver now): a new run of the saved configuration.
+async function startNext(steps) {
+  const c = await api(`/api/configs/${encodeURIComponent(rs.name)}`);
+  const res = await api("/api/runs", { method: "POST", body: { config: c.config || c, steps } });
+  location.assign(href.run(rs.name, res.run_id));
+}
+
 function renderDetail(step) {
   if (!step) return fill($("run-detail"));
   const ev = step.evidence || {};
@@ -477,6 +484,7 @@ function renderDetail(step) {
   const parts = [h("div", { class: "detail-head" }, h("h2", { text: step.title }), statusPill(step.status),
     took ? h("span", { class: "muted small", text: took }) : null)];
   if (step.error) parts.push(h("p", { class: "error-box", text: step.error }));
+  if (step.status === "failed") parts.push(nextBox(step.next, startNext));
   if (step.note) parts.push(h("p", { class: "muted small", text: step.note }));
   const view = { preflight: viewPreflight, discover: viewDiscover, simulate: viewSimulate, publish: viewPublish,
     plan: viewPlan, apply: viewApply, wire: viewWire, verify: viewVerify, prove: viewProve }[step.name];

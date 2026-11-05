@@ -32,8 +32,13 @@ if [ "$#" -gt 0 ]; then
     workspaces+=("$ws")
   done
 else
-  mapfile -t workspaces < <(git diff --name-only HEAD~1 HEAD -- "terraform/workspaces/${cloud}_*" \
-    | cut -d/ -f1-3 | sort -u)
+  if git rev-parse -q --verify HEAD~1 >/dev/null; then
+    mapfile -t workspaces < <(git diff --name-only HEAD~1 HEAD -- "terraform/workspaces/${cloud}_*" \
+      | cut -d/ -f1-3 | sort -u)
+  else
+    # No parent commit (a new repo): every workspace of this cloud is new.
+    mapfile -t workspaces < <(ls -d terraform/workspaces/"${cloud}"_* 2>/dev/null)
+  fi
 fi
 # A workspace removed from git (its cloud resources cleaned up) has nothing left to apply.
 present=()
@@ -46,6 +51,8 @@ for ws in "${workspaces[@]}"; do
   case "$(basename "$ws")" in "${cloud}"_*) ;; *) echo "$ws is not a $cloud workspace" >&2; exit 2 ;; esac
 done
 
+# The login unsets SYSTEM_ACCESSTOKEN; keep it (not exported) for the git fetch below.
+job_token=${SYSTEM_ACCESSTOKEN:?map SYSTEM_ACCESSTOKEN: \$(System.AccessToken) on the step}
 # shellcheck source=pipelines/scripts/oidc-login.sh
 source pipelines/scripts/oidc-login.sh
 JFROG_ACCESS_TOKEN=$(python3 -m jfrog_oidc token)
@@ -110,7 +117,9 @@ for ws in "${workspaces[@]}"; do
   for try in 1 2 3 4 5 6; do
     # Runs can finish out of order: a run on an older commit would apply stale tfvars
     # over a newer run's and drop its targets. Leave the workspace to the newer run.
-    git fetch -q --depth=1 origin "$BUILD_SOURCEBRANCH"
+    # The job's own token: checkout does not keep its credentials.
+    GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraheader GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${job_token}" \
+      git fetch -q --depth=1 origin "$BUILD_SOURCEBRANCH"
     if ! git diff --quiet HEAD FETCH_HEAD -- "$ws"; then
       echo "$ws changed after this commit: the run on the newer commit applies it"
       continue 2

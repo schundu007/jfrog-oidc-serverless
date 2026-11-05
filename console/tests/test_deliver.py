@@ -36,9 +36,9 @@ class FakeGit(Shell):
     """Replay az/git/HTTP for publish. Temp paths vary, so commands are matched by their verb."""
 
     def __init__(self, log=None, commit_rc=0, pr_status=201, helper="", token_ok=True, helper_ok=True,
-                 helper_error="", helper_push_ok=True):
+                 helper_error="", helper_push_ok=True, onboard_def=True):
         super().__init__(mode="replay", log=log)
-        self.calls, self.commit_rc, self.pr_status = [], commit_rc, pr_status
+        self.calls, self.commit_rc, self.pr_status, self.onboard_def, self.bodies = [], commit_rc, pr_status, onboard_def, []
         self.helper, self.token_ok, self.helper_ok, self.envs = helper, token_ok, helper_ok, []
         self.helper_error, self.helper_push_ok = helper_error, helper_push_ok
 
@@ -68,11 +68,23 @@ class FakeGit(Shell):
         self.misses.append(" ".join(argv))
         return Result(argv, 127, "", "no fixture", 0.0)
 
+    def http(self, method, url, *a, body=None, **kw):
+        if body:
+            self.bodies.append(json.loads(body))
+        return super().http(method, url, *a, body=body, **kw)
+
     def _replay_http(self, method, url):
         from console.shell import HttpResult
         self.calls.append([method, url])
         if url == f"{ORG}/platform/_apis/git/repositories/serverless/pullrequests?api-version=7.1":
             return HttpResult(method, url, self.pr_status, json.dumps({"pullRequestId": 42}))
+        if url.startswith(f"{ORG}/platform/_apis/build/definitions?"):
+            defs = [{"id": 3, "process": {"yamlFilename": "pipelines/serverless/gcp/gcp-cloud-run/build-deploy.yml"}}]
+            if self.onboard_def:
+                defs.append({"id": 12, "process": {"yamlFilename": "/pipelines/gcp-workload-onboard.yml"}})
+            return HttpResult(method, url, 200, json.dumps({"value": defs}))
+        if url == f"{ORG}/platform/_apis/pipelines/12/runs?api-version=7.1":
+            return HttpResult(method, url, 200, json.dumps({"id": 77, "state": "inProgress"}))
         self.misses.append(f"{method} {url}")
         return HttpResult(method, url, 0, "", "no fixture")
 
@@ -213,6 +225,21 @@ class PublishTests(unittest.TestCase):
         self.assertIsNone(res["pull_request"])
         self.assertNotIn("push", self.verbs(sh))
         self.assertEqual(self.verbs(sh)[-2:], ["worktree", "branch"])
+
+    def test_no_change_still_runs_onboard_for_that_workspace(self):
+        # The workspace is already on main (an infra redeploy wiped the app's settings): Deliver
+        # queues the onboard pipeline for it, so the app is applied and wired again.
+        res, sh = self.publish(gcp_cfg(), commit_rc=1)
+        self.assertEqual(res["pipeline"]["run"], 77)
+        self.assertEqual(res["pipeline"]["url"], f"{ORG}/platform/_build/results?buildId=77")
+        post = [c for c in sh.calls if c[0] == "POST"]
+        self.assertEqual(post, [["POST", f"{ORG}/platform/_apis/pipelines/12/runs?api-version=7.1"]])
+        self.assertEqual(sh.bodies[-1]["templateParameters"], {"workspace": Path(res["workspace"]).name})
+        self.assertTrue(any("queued" in line and "77" in line for line in self.lines), self.lines)
+
+    def test_no_change_without_an_onboard_pipeline_says_what_to_do(self):
+        with self.assertRaisesRegex(deliver.DeliveryError, r"gcp-workload-onboard.*register"):
+            self.publish(gcp_cfg(), commit_rc=1, onboard_def=False)
 
     def test_pull_request_failure_is_an_error_and_cleans_up(self):
         sh = FakeGit(None, pr_status=403)
@@ -434,6 +461,20 @@ class RunnerDeliveryTests(unittest.TestCase):
         self.assertEqual((ctx.exception.status, ctx.exception.code), (409, "out_of_order"))
         self.assertIn("step 4", str(ctx.exception))
         self.assertEqual(mgr.list(), [])
+
+    def test_the_refusal_carries_its_next_step(self):
+        from console import order
+        from console.runner import RunError, RunManager
+
+        def not_onboarded(cfg, steps):
+            raise order.OrderError("waiting on step 5", next={"text": "Deliver first", "action": {"label": "Deliver now"}})
+        mgr = RunManager(self.root / ".console4", cloud_shell=lambda log: FakeGit(log),
+                         tf_shell=lambda log: Shell(mode="replay", log=log), env={}, delivery=DELIVERY,
+                         repo_root=self.root, order_check=not_onboarded)
+        self.addCleanup(mgr.shutdown)
+        with self.assertRaises(RunError) as ctx:
+            mgr.start(gcp_cfg(), steps=["prove"])
+        self.assertEqual(ctx.exception.next["action"]["label"], "Deliver now")
 
     def test_the_default_order_check_reads_ado_only_with_delivery(self):
         from console.runner import RunManager

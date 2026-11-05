@@ -287,3 +287,4 @@
 .conn-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 20px; font-weight: 700; letter-spacing: 2px; user-select: all; }
 .conn-msg { margin: 0; font-size: var(--t-sm); }
 .conn-msg.bad { color: var(--bad-fg, #a61b1b); }
+.home-next { white-space: normal; max-width: 34rem; margin-top: 8px; }

@@ -45,9 +45,9 @@ EXPECTED_ERRORS = (ValueError, RuntimeError, TimeoutError, PermissionError, OSEr
 
 
 class RunError(Exception):
-    def __init__(self, status: int, code: str, message: str):
+    def __init__(self, status: int, code: str, message: str, next: dict | None = None):
         super().__init__(message)
-        self.status, self.code = status, code
+        self.status, self.code, self.next = status, code, next
 
 
 class Cancelled(Exception):
@@ -147,7 +147,7 @@ class Run:
         with self.cond:
             self.steps[name].update(fields)
             st = dict(self.steps[name])
-        self.emit("step", name=name, status=st["status"], error=st["error"], note=st["note"])
+        self.emit("step", name=name, status=st["status"], error=st["error"], note=st["note"], next=st.get("next"))
 
     def snapshot(self) -> dict:
         with self.cond:
@@ -227,7 +227,7 @@ class RunManager:
         try:
             self.order_check(cfg, steps)
         except order.OrderError as e:
-            raise RunError(409, "out_of_order", str(e))
+            raise RunError(409, "out_of_order", str(e), e.next)
         with self.lock:
             busy = [r for r in self.runs.values() if r.name == cfg.get("name") and r.status in ("running", "waiting_approval")]
             if busy:
@@ -397,7 +397,8 @@ class RunManager:
                     raise
                 except Exception as exc:  # noqa: BLE001 - every failure ends the step with its message
                     msg = str(exc) if isinstance(exc, EXPECTED_ERRORS) else f"{type(exc).__name__}: {exc}"
-                    run.set_step(name, status="failed", finished=_now(), error=redact.text(msg))
+                    run.set_step(name, status="failed", finished=_now(), error=redact.text(msg),
+                                 next=order.after_failure(name, msg, bool(self.delivery)))
                     final = "failed"
                     break
                 if run.steps[name]["status"] == "running":

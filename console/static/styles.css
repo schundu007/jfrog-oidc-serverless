@@ -395,6 +395,9 @@ th .pill-onboarded { margin-left: 8px; height: 20px; }
 .empty { padding: var(--s-6) var(--card-pad-x); border: 1px dashed var(--border-strong); border-radius: var(--card-r); background: var(--surface-2); }
 .empty h2 { margin-bottom: var(--s-2); }
 .empty p { margin-bottom: var(--s-4); }
+.next-box { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); margin-top: var(--s-2);
+  padding: var(--s-2) var(--s-3); border: 1px solid var(--border-strong); background: var(--surface-2); font-size: var(--t-md); }
+.next-box > span { flex: 1 1 18rem; }
 .error-box { color: var(--bad-fg); background: var(--bad-bg); border: 1px solid var(--bad-line); border-radius: var(--r-md);
   padding: var(--s-2) var(--s-3); font-size: var(--t-md); white-space: pre-wrap; word-break: break-word; }
 
