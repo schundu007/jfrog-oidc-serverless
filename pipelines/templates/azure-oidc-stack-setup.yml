@@ -36,8 +36,13 @@ stages:
     displayName: Plan ${{ parameters.action }} ${{ parameters.stack }}
     jobs:
       - job: plan
-        pool:
-          vmImage: ubuntu-24.04
+        # AGENT_POOL in vars/<cloud>-<env>.yml: a self-hosted pool; empty: Microsoft-hosted ubuntu-24.04
+        ${{ if ne(variables.AGENT_POOL, '') }}:
+          pool:
+            name: ${{ variables.AGENT_POOL }}
+        ${{ else }}:
+          pool:
+            vmImage: ubuntu-24.04
         timeoutInMinutes: 30
         steps:
           - checkout: self
@@ -70,8 +75,13 @@ stages:
     condition: and(succeeded(), eq(dependencies.plan.outputs['plan.tf.hasChanges'], 'true'))
     jobs:
       - deployment: apply
-        pool:
-          vmImage: ubuntu-24.04
+        # AGENT_POOL in vars/<cloud>-<env>.yml: a self-hosted pool; empty: Microsoft-hosted ubuntu-24.04
+        ${{ if ne(variables.AGENT_POOL, '') }}:
+          pool:
+            name: ${{ variables.AGENT_POOL }}
+        ${{ else }}:
+          pool:
+            vmImage: ubuntu-24.04
         environment: ${{ parameters.stack }}-${{ parameters.environment }}
         timeoutInMinutes: 60
         strategy:

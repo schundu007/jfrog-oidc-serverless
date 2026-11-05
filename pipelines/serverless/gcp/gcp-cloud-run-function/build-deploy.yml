@@ -10,11 +10,11 @@ parameters:
   - name: workload
     displayName: Workload name (the stack's workload input)
     type: string
-    default: cr-fn-jfrog
+    default: " "
 
 extends:
   template: /pipelines/templates/gcp-build-deploy.yml
   parameters:
     kind: function
-    workload: ${{ parameters.workload }}
+    workload: ${{ trim(parameters.workload) }}
     environment: ${{ parameters.environment }}

@@ -140,6 +140,12 @@ class ServerArchiveTests(unittest.TestCase):
         # An archived run cannot be approved or cancelled.
         self.assertEqual(self.req("POST", f"/api/runs/{self.rid}/cancel", {})[0], 404)
 
+    def test_an_admin_deletes_an_archived_run(self):
+        self.console.sweep("gcp")
+        self.assertEqual(self.req("DELETE", f"/api/runs/{self.rid}")[0], 200)
+        self.assertEqual(self.req("GET", f"/api/runs/{self.rid}")[0], 404)
+        self.assertEqual(self.req("DELETE", f"/api/runs/{self.rid}")[0], 404)
+
     def test_back_when_it_exists_again(self):
         self.console.sweep("gcp")
         self.state["orders"] = "wired"

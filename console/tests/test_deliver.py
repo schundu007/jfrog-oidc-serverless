@@ -240,7 +240,7 @@ class PublishTests(unittest.TestCase):
         self.assertTrue(any("queued" in line and "77" in line for line in self.lines), self.lines)
 
     def test_ado_calls_send_only_the_bearer_token(self):
-        # With X-VSS-ForceMsaPassThrough ADO answers 302/401 to a valid token (live, jfrog-oidc-azure).
+        # With X-VSS-ForceMsaPassThrough ADO answers 302/401 to a valid token (live, jfrog-cp-azure).
         for rc in (0, 1):   # pull request; onboard run
             _, sh = self.publish(gcp_cfg(), commit_rc=rc)
             self.assertTrue(sh.headers)
@@ -315,17 +315,23 @@ class LoadTests(unittest.TestCase):
         self.assertIsNone(deliver.load_settings(d / "missing.json"))
         (d / "delivery.json").write_text(json.dumps(DELIVERY))
         self.assertEqual(deliver.load_settings(d / "delivery.json")["ado"]["project"], "platform")
+        # Shipped neutral (no organization or project): local mode until Settings has them.
+        (d / "neutral.json").write_text(json.dumps({"ado": {"repository": "r", "target_branch": "main"}}))
+        self.assertIsNone(deliver.load_settings(d / "neutral.json"))
+        settings = d / "settings.json"
+        settings.write_text(json.dumps({"ado": {"organization": "acme", "project": "p", "repository": "r"}}))
+        self.assertEqual(deliver.load_settings(d / "neutral.json", overrides=settings)["ado"]["organization"], "acme")
         (d / "bad.json").write_text(json.dumps({"ado": {"organization": "acme"}}))
         with self.assertRaises(deliver.DeliveryError):
             deliver.load_settings(d / "bad.json")
 
-    def test_identity_and_state_come_from_the_foundations(self):
+    def test_identity_and_state_come_from_the_pipeline_identity_stacks(self):
         d = Path(tempfile.mkdtemp(prefix="deliver-cfg-"))
         self.addCleanup(shutil.rmtree, d, True)
         (d / "delivery.json").write_text(json.dumps({"ado": DELIVERY["ado"]}))
         stacks = d / "stacks"
-        for name, outs in (("serverless/gcp/gcp-foundation", {"tfstate_bucket": "p-tfstate", "gcp_service_accounts": {"setup": "ado-setup@p.iam"}}),
-                           ("serverless/azure/azure-foundation", {"azure_setup_identity_principal_id": "pid",
+        for name, outs in (("serverless/gcp/gcp-pipeline-identity", {"tfstate_bucket": "p-tfstate", "gcp_service_accounts": {"setup": "ado-setup@p.iam"}}),
+                           ("serverless/azure/azure-pipeline-identity", {"azure_setup_identity_principal_id": "pid",
                                                  "azure_tfstate": {"resource_group": "rg", "storage_account": "st", "container": "tfstate"}})):
             (stacks / name).mkdir(parents=True)
             (stacks / name / "terraform.tfstate").write_text(json.dumps({"outputs": {k: {"value": v} for k, v in outs.items()}}))
@@ -333,17 +339,17 @@ class LoadTests(unittest.TestCase):
         self.assertEqual(s["pipeline_identity"], {"gcp": "ado-setup@p.iam", "azure": "pid"})
         self.assertEqual(s["state"]["gcp"], {"type": "gcs", "bucket": "p-tfstate"})
         self.assertEqual(s["state"]["azure"]["storage_account_name"], "st")
-        (stacks / "serverless/azure/azure-foundation" / "terraform.tfstate").unlink()    # not deployed: that cloud is left out
+        (stacks / "serverless/azure/azure-pipeline-identity" / "terraform.tfstate").unlink()    # not deployed: that cloud is left out
         self.assertNotIn("azure", deliver.load_settings(d / "delivery.json", stacks)["state"])
 
-    def test_refresh_reads_a_foundation_deployed_after_start(self):
+    def test_refresh_reads_a_pipeline_identity_deployed_after_start(self):
         d = Path(tempfile.mkdtemp(prefix="deliver-cfg-"))
         self.addCleanup(shutil.rmtree, d, True)
         (d / "delivery.json").write_text(json.dumps({"ado": DELIVERY["ado"]}))
         stacks = d / "stacks"
-        s = deliver.load_settings(d / "delivery.json", stacks)   # the console starts before the foundation
+        s = deliver.load_settings(d / "delivery.json", stacks)   # the console starts before the pipeline identity
         self.assertEqual(s["state"], {})
-        f = stacks / "serverless/gcp/gcp-foundation"
+        f = stacks / "serverless/gcp/gcp-pipeline-identity"
         f.mkdir(parents=True)
         (f / "terraform.tfstate").write_text(json.dumps({"outputs": {"tfstate_bucket": {"value": "p-tfstate"},
                                                                      "gcp_service_accounts": {"value": {"setup": "ado-setup@p.iam"}}}}))

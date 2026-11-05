@@ -13,13 +13,12 @@ variable "azure_subscription_id" {
 }
 
 variable "azure_location" {
-  description = "Region of the foundation's resource group, identities and state storage."
+  description = "Region of the pipeline identity's resource group, identities and state storage."
   type        = string
-  default     = "westus2"
 }
 
 variable "azure_identity" {
-  description = "Build identity behind the ADO service connections and the resource group it lives in; the foundation creates both."
+  description = "Build identity behind the ADO service connections and the resource group it lives in; the pipeline identity creates both."
   type = object({
     name           = string
     resource_group = string

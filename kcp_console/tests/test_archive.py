@@ -80,6 +80,12 @@ class ArchiveTest(unittest.TestCase):
         self.assertTrue(self.srv.archive.drop_run(RID))
         self.assertEqual(self.get(f"/api/runs/{RID}")[0], 404)
 
+    def test_an_admin_deletes_an_archived_run(self):
+        self.srv.sweep()
+        self.assertEqual(self.get(f"/api/runs/{RID}", "DELETE")[0], 200)
+        self.assertEqual(self.get(f"/api/runs/{RID}")[0], 404)
+        self.assertEqual(self.get(f"/api/runs/{RID}", "DELETE")[0], 404)
+
     def test_purged_after_seven_days(self):
         self.srv.sweep()
         self.srv.archive.clock = lambda: time.time() + 7 * DAY + 1

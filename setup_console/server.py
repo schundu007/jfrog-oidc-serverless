@@ -111,7 +111,7 @@ class SetupServer:
         if meta["group"] != "Azure":
             return {"ok": True, "why": ""}
         sub = stacks.read_inputs(stack_id, self.env_name, self.state_root).get("azure_subscription_id") \
-            or stacks.read_inputs("azure-foundation", self.env_name, self.state_root).get("azure_subscription_id")
+            or stacks.read_inputs("azure-pipeline-identity", self.env_name, self.state_root).get("azure_subscription_id")
         if not sub or not SUBSCRIPTION.fullmatch(str(sub)):
             return {"ok": None, "why": "no subscription saved yet: Azure was not asked"}
         sh = self.jobs.shell_factory(lambda line: None)
@@ -307,6 +307,11 @@ def make_handler(console: SetupServer):
                 return self._json(200, {"jobs": console.archived(), "retention_days": 7})
             if m == ("GET", "jobs", 2):
                 return self._json(200, console.job(parts[1]))
+            if m == ("DELETE", "jobs", 3) and parts[1] == "archive":   # an admin deletes an archived run early
+                if parts[2] not in {r["id"] for r in console.archived()} or not console.jobs.remove_archived(parts[2]):
+                    raise HttpError(404, "no such archived run")
+                console.jobs.audit(parts[2], "delete-archived-run", self.headers.get("User-Agent"))
+                return self._json(200, {"deleted": parts[2], "archived": True})
             if m == ("DELETE", "jobs", 2):
                 console.job(parts[1])
                 console.jobs.audit(parts[1], "delete-run", self.headers.get("User-Agent"))

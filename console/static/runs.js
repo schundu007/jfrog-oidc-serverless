@@ -429,7 +429,7 @@ function renderHead() {
     snap.archived ? h("span", { text: "Archived: the workload is gone; deleted 7 days after" }) : null,
     h("a", { href: href.workload(rs.name, "runs"), text: `Back to ${rs.name}` }));
   $("run-cancel").hidden = !live;
-  $("run-delete").hidden = live || Boolean(snap.archived);   // the archive deletes it after 7 days
+  $("run-delete").hidden = live;   // an archived run too: an admin deletes it before its 7 days
   // A live run's clock and step durations tick.
   if (live && !rs.tick) rs.tick = setInterval(() => rs.snap && (renderHead(), renderTree()), 1000);
   if (!live && rs.tick) { clearInterval(rs.tick); rs.tick = null; }
@@ -515,7 +515,7 @@ async function removeRun(ev) {
   } catch (e) {
     return note(e.message, "error");
   }
-  location.assign(href.workload(rs.name, "runs"));
+  location.assign(rs.snap?.archived ? "/runs?area=archived" : href.workload(rs.name, "runs"));
 }
 
 // Up and down move through the steps; Home and End jump to the ends.

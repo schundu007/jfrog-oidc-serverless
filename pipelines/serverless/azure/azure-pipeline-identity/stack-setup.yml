@@ -1,0 +1,39 @@
+# Pipeline identity and state (Azure): plan -> approve -> apply (or destroy) terraform/stacks/serverless/azure/azure-pipeline-identity.
+# The first pipeline run in a new environment: creates the service connections jfrog-oidc-azure-build/-setup,
+# the variable group jfrog-oidc-azure-<environment>, the ADO environments and the Terraform state store.
+# The apply waits on the ADO environment azure-pipeline-identity-<environment>.
+trigger: none
+pr: none
+
+parameters:
+  - name: action
+    type: string
+    default: apply
+    values: [apply, destroy]
+  - name: environment
+    type: string
+    default: test
+    values: [test]
+  # The service connection made by hand in this project (Azure Resource Manager, workload identity federation).
+  - name: bootstrap_connection
+    type: string
+    default: jfrog-oidc-azure-bootstrap
+  # The stack's variables (terraform/stacks/serverless/azure/azure-pipeline-identity/variables.tf). Left out:
+  # ado_org, ado_project, azure_tenant_id and azure_subscription_id come from this run.
+  - name: inputs
+    type: object
+    default:
+      azure_location: ""
+      azure_identity:
+        name: ""
+        resource_group: ""
+      azure_console_operators: []
+      ado_approvers: []
+
+extends:
+  template: /pipelines/templates/azure-identity-stack-setup.yml
+  parameters:
+    action: ${{ parameters.action }}
+    environment: ${{ parameters.environment }}
+    bootstrap_connection: ${{ parameters.bootstrap_connection }}
+    inputs: ${{ parameters.inputs }}

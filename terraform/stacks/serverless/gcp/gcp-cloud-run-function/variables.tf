@@ -3,14 +3,12 @@ variable "gcp_project_id" {
 }
 
 variable "gcp_region" {
-  type    = string
-  default = "us-central1"
+  type = string
 }
 
 variable "workload" {
   description = "Workload name: its service account and function are named after it."
   type        = string
-  default     = "cr-fn-jfrog"
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.workload))
     error_message = "workload must be 6-30 chars: lowercase letters, digits, hyphens."

@@ -1,5 +1,5 @@
 # Argo CD hub for the KCP fleet (gitops/argocd/values.yaml): no admin password, no Dex, no stored
-# credentials. Its repo-server signs in as Argo CD's account (created by azure-foundation, ADO Basic and
+# credentials. Its repo-server signs in as Argo CD's account (created by azure-pipeline-identity, ADO Basic and
 # project Readers) through Azure Workload Identity: this stack federates that identity to the new
 # cluster's OIDC issuer for the argocd-repo-server service account. Destroy removes only the federation.
 

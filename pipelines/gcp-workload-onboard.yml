@@ -11,6 +11,11 @@ trigger:
 pr: none
 
 parameters:
+  # Add vars/gcp-<env>.yml and vars/gcp-<env>-jfrog.yml for another environment.
+  - name: environment
+    type: string
+    default: test
+    values: [test]
   - name: workspace
     displayName: Workspace to re-apply (empty = those changed by the last commit)
     type: string
@@ -21,16 +26,20 @@ parameters:
     default: false
 
 variables:
-  - template: vars/gcp-test.yml
-  - template: vars/gcp-test-jfrog.yml
-  - group: jfrog-oidc-gcp-test
-  - group: jfrog-oidc-gcp-test-jfrog   # JFrog OIDC (gcp-jfrog-trust)
-
-pool:
-  vmImage: ubuntu-24.04
+  - template: vars/gcp-${{ parameters.environment }}.yml
+  - template: vars/gcp-${{ parameters.environment }}-jfrog.yml
+  - group: jfrog-oidc-gcp-${{ parameters.environment }}
+  - group: jfrog-oidc-gcp-${{ parameters.environment }}-jfrog   # JFrog OIDC (gcp-jfrog-trust)
 
 jobs:
   - job: onboard
+    # AGENT_POOL in vars/<cloud>-<env>.yml: a self-hosted pool; empty: Microsoft-hosted ubuntu-24.04
+    ${{ if ne(variables.AGENT_POOL, '') }}:
+      pool:
+        name: ${{ variables.AGENT_POOL }}
+    ${{ else }}:
+      pool:
+        vmImage: ubuntu-24.04
     timeoutInMinutes: 60
     steps:
       - checkout: self

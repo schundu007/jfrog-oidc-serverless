@@ -212,7 +212,7 @@ class InventoryTests(unittest.TestCase):
         self.assertFalse(any(w["onboarded"] for w in before["workloads"]))
         self.assertEqual([w["name"] for w in after["workloads"] if w["onboarded"]], ["nightly"])
         self.assertEqual(after["defaults"]["jfrog_url"], "https://acme.jfrog.io")
-        # Each cloud reads only its own foundation's inputs.
+        # Each cloud reads only its own pipeline identity's inputs.
         self.assertEqual(inventory.annotate("azure", inventory.fetch("azure", Fake(), ""), self.repo)["defaults"]["jfrog_url"],
                          "https://other.jfrog.io")
 

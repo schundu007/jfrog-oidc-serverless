@@ -1,13 +1,15 @@
 # Azure pipelines, test environment: ADO settings only, nothing shared with other clouds.
 # Not credentials: every job authenticates with its service connection's OIDC token.
 # Target values (project or subscription, identities) are not
-# here: terraform/stacks/serverless/azure/azure-foundation writes them (and the connection IDs) to the
+# here: terraform/stacks/serverless/azure/azure-pipeline-identity writes them (and the connection IDs) to the
 # variable group jfrog-oidc-azure-<env>. Connection names are read at compile time, so they stay here.
 # JFrog values (JFROG_URL, JFROG_OIDC_PROVIDER) come only from jfrog-oidc-azure-<env>-jfrog, written by
 # terraform/stacks/oidc/azure/azure-jfrog-trust, and only build-deploy and onboarding runs read it.
 # JFrog repository names are in azure-<env>-jfrog.yml, read by the same runs only.
 variables:
   ENVIRONMENT: test
-  BUILD_SERVICE_CONNECTION: jfrog-oidc-azure-build   # created by azure-foundation
-  SETUP_SERVICE_CONNECTION: jfrog-oidc-azure-setup   # created by azure-foundation
+  BUILD_SERVICE_CONNECTION: jfrog-oidc-azure-build   # created by azure-pipeline-identity
+  SETUP_SERVICE_CONNECTION: jfrog-oidc-azure-setup   # created by azure-pipeline-identity
   TERRAFORM_VERSION: 1.17.1
+  # Self-hosted agent pool name, for organizations without Microsoft-hosted agents. Empty: ubuntu-24.04.
+  AGENT_POOL: ""

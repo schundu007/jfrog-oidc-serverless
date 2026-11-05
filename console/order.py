@@ -1,6 +1,6 @@
 """The steps run in order, one at a time per cloud.
 
-    1 Foundation · 2 JFrog trust · 3 Infrastructure · 4 Build and deploy · 5 Onboard · 6 Prove / Verify
+    1 Pipeline identity · 2 JFrog trust · 3 Infrastructure · 4 Build and deploy · 5 Onboard · 6 Prove / Verify
 
 A step starts only when nothing for its cloud is still queued or running in Azure DevOps,
 and when the step it needs has succeeded: Prove and Verify need the cloud's last Onboard
@@ -17,7 +17,7 @@ from urllib.parse import quote
 ADO_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798"   # Azure DevOps
 API = "api-version=7.1"
 CLOUDS = ("azure", "gcp", "openshift")
-NAMES = {1: "Foundation", 2: "JFrog trust", 3: "Infrastructure", 4: "Build and deploy", 5: "Onboard", 6: "Prove / Verify"}
+NAMES = {1: "Pipeline identity", 2: "JFrog trust", 3: "Infrastructure", 4: "Build and deploy", 5: "Onboard", 6: "Prove / Verify"}
 
 
 # The steps of a Deliver run (runner.DELIVERY_STEPS): the next step the console offers when Onboard is missing.

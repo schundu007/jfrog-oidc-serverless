@@ -18,7 +18,7 @@ variable "ado_org" {
 }
 
 variable "ado_project" {
-  description = "Azure DevOps project that holds gcp-foundation's service connections."
+  description = "Azure DevOps project that holds gcp-pipeline-identity's service connections."
   type        = string
 }
 
@@ -40,7 +40,7 @@ variable "pipeline_environment" {
 }
 
 variable "gcp_project_id" {
-  description = "Project the console operator's service account lives in (the foundation's project)."
+  description = "Project the console operator's service account lives in (the pipeline identity stack's project)."
   type        = string
 }
 

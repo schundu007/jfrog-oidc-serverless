@@ -29,7 +29,7 @@ function row(r) {
   const [cls, text] = runPill(r.status);
   const live = LIVE_STATES.has(r.status);
   const box = h("input", { type: "checkbox", "aria-label": `Select run of ${r.name}`, disabled: live || !r.api || null,
-    title: live ? "In progress: cancel it first" : !r.api ? "Archived: deleted automatically" : null });
+    title: live ? "In progress: cancel it first" : null });
   box.checked = picked.has(r.api);
   box.addEventListener("change", () => { box.checked ? picked.add(r.api) : picked.delete(r.api); sync(); });
   const tr = h("tr", { class: r.href ? "row-link" : null },

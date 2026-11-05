@@ -1,0 +1,42 @@
+# Azure - Register pipelines: registers every Azure pipeline of this repo in this ADO project (skips those
+# already there). The one pipeline created by hand in a new environment (New pipeline > Azure Repos Git >
+# this repo > Existing YAML > /pipelines/azure-register-pipelines.yml); everything after it runs in ADO.
+# Signs in through the bootstrap service connection, whose identity is a Project Administrator here.
+trigger: none
+pr: none
+
+parameters:
+  - name: environment
+    type: string
+    default: test
+    values: [test]
+  - name: bootstrap_connection
+    type: string
+    default: jfrog-oidc-azure-bootstrap
+
+variables:
+  - template: /pipelines/vars/azure-${{ parameters.environment }}.yml
+
+jobs:
+  - job: register
+    # AGENT_POOL in vars/<cloud>-<env>.yml: a self-hosted pool; empty: Microsoft-hosted ubuntu-24.04
+    ${{ if ne(variables.AGENT_POOL, '') }}:
+      pool:
+        name: ${{ variables.AGENT_POOL }}
+    ${{ else }}:
+      pool:
+        vmImage: ubuntu-24.04
+    timeoutInMinutes: 20
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - task: AzureCLI@2
+        displayName: Register the Azure pipelines (bootstrap connection)
+        inputs:
+          azureSubscription: ${{ parameters.bootstrap_connection }}
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            set -euo pipefail
+            org=$(python3 -c 'import os, re; u = os.environ["SYSTEM_COLLECTIONURI"]; m = re.fullmatch(r"https://dev\.azure\.com/([^/]+)/?|https://([a-z0-9-]+)\.visualstudio\.com/?", u); print(m.group(1) or m.group(2))')
+            pipelines/scripts/register-azure-pipelines.sh "$org" "$(System.TeamProject)" "$(Build.Repository.Name)" "$(Build.SourceBranchName)"

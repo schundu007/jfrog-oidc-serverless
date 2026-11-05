@@ -63,7 +63,7 @@ variable "workloads" {
                 Azure: the managed identity's principal (object) ID (matches oid).
                 OpenShift/Knative: system:serviceaccount:<namespace>:<name> (matches sub).
     username    Optional. Only set it where a fixed JFrog user is needed (the
-                foundations' setup and console-operator mappings). JFrog adds
+                pipeline identity stacks' setup and console-operator mappings). JFrog adds
                 applied-permissions/user and that user's Auto Join groups to the
                 token when a username is set, so the named user must have no
                 permissions beyond read. Runtime mappings leave it null and get a

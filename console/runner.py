@@ -207,7 +207,7 @@ class RunManager:
         return list(DELIVERY_STEPS if self.delivery else DEFAULT_STEPS)
 
     def start(self, cfg: dict, steps=None) -> Run:
-        deliver.refresh(self.delivery)   # a foundation deployed since the console started counts now
+        deliver.refresh(self.delivery)   # a pipeline identity deployed since the console started counts now
         steps = list(steps or self.default_steps())
         bad = [s for s in steps if s not in STEPS]
         if bad:

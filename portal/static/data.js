@@ -216,7 +216,7 @@ function setupRuns(page, area, typeOf) {
 const infrastructure = setupRuns("/setup", "infrastructure", (j) => `${j.kind} infrastructure`);
 const jfrogOidc = setupRuns("/oidc", "oidc", () => "JFrog OIDC");
 
-// Archived: the runs of workloads, clusters and stacks whose resources are gone, kept 7 days and read only.
+// Archived: the runs of workloads, clusters and stacks whose resources are gone, kept 7 days; an admin deletes them sooner.
 const DAY = 86400000;
 const left = (ms) => { const d = Math.max(0, Math.ceil((ms - Date.now()) / DAY)); return d === 1 ? "deleted in 1 day" : `deleted in ${d} days`; };
 async function archived() {
@@ -227,18 +227,18 @@ async function archived() {
   for (const e of sv.entries || []) {
     const cloud = String(e.kind || "").split("_")[0] || null;
     for (const r of e.run_rows || []) rows.push({ cloud, section: sectionOfKind(e.kind), name: e.name, mark: markOfKind(e.kind),
-      type: `Serverless workload · ${left(e.expires_at * 1000)}`, status: r.status, created: r.created, id: r.id, area: "archived", api: null,
+      type: `Serverless workload · ${left(e.expires_at * 1000)}`, status: r.status, created: r.created, id: r.id, area: "archived", api: `/serverless/api/runs/${encodeURIComponent(r.id)}`,
       href: `/serverless/${cloud}/w/${encodeURIComponent(e.name)}/runs/${encodeURIComponent(r.id)}` });
   }
   for (const e of k8.entries || []) {
     const p = e.kind || "aks";
     for (const r of e.run_rows || []) rows.push({ cloud: SECTIONS[p]?.[0] || null, section: p, name: e.name, mark: p,
       type: `${SECTIONS[p]?.[1].replace(/s$/, "") || "Cluster"} · ${left(e.expires_at * 1000)}`, status: r.status, created: r.created,
-      id: r.id, area: "archived", api: null, href: `/k8s/clusters/${p}/${encodeURIComponent(e.name)}/runs/${encodeURIComponent(r.id)}` });
+      id: r.id, area: "archived", api: `/k8s/api/runs/${encodeURIComponent(r.id)}`, href: `/k8s/clusters/${p}/${encodeURIComponent(e.name)}/runs/${encodeURIComponent(r.id)}` });
   }
   for (const [page, res] of [["/setup", inf], ["/oidc", oi]]) for (const j of res.jobs || []) rows.push({ cloud: j.cloud, section: null,
     name: j.title, mark: j.cloud, type: `${page === "/oidc" ? "JFrog OIDC" : `${j.kind} infrastructure`} · ${left(j.expires_at * 1000)}`,
-    status: SETUP_STATE[j.state] || j.state, created: iso(j.started), id: j.id, area: "archived", api: null, href: `${page}?job=${encodeURIComponent(j.id)}` });
+    status: SETUP_STATE[j.state] || j.state, created: iso(j.started), id: j.id, area: "archived", api: `${page}/api/jobs/archive/${encodeURIComponent(j.id)}`, href: `${page}?job=${encodeURIComponent(j.id)}` });
   return { items: [], runs: rows };
 }
 

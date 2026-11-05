@@ -11,7 +11,7 @@ parameters:
   - name: workload
     displayName: Workload name (the stack's workload input)
     type: string
-    default: app-jfrog-demo
+    default: " "
   - name: slot
     displayName: Deployment slot (empty = production)
     type: string
@@ -25,7 +25,7 @@ extends:
   template: /pipelines/templates/azure-build-deploy.yml
   parameters:
     kind: webapp
-    workload: ${{ parameters.workload }}
+    workload: ${{ trim(parameters.workload) }}
     environment: ${{ parameters.environment }}
     slot: ${{ trim(parameters.slot) }}
     swap: ${{ parameters.swap }}

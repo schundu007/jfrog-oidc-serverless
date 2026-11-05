@@ -3,8 +3,7 @@ variable "azure_subscription_id" {
 }
 
 variable "azure_location" {
-  type    = string
-  default = "westus2"
+  type = string
 }
 
 variable "workload" {

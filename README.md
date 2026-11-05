@@ -55,11 +55,11 @@ Images are pulled from the JFrog Docker repo's **own host**, `<server>-<repo-key
 
 ## Deploy
 
-Starting from nothing on a new Azure account: [docs/fresh-start-azure.md](docs/fresh-start-azure.md).
+Starting from nothing in another Azure account, ADO organization or JFrog instance (portable package, what to enter, self-hosted agents): [docs/fresh-start-azure.md](docs/fresh-start-azure.md).
 
 
 1. **Publish the client** to your Artifactory PyPI repo (`python -m build client/`, then `jf rt upload`), or vendor `client/src/jfrog_oidc` into each app.
-2. **Deploy each workload type on its own.** On the Infrastructure page (Setup), deploy the cloud's foundation, then only the workload-type stacks you need, one at a time: Cloud Run job, service or function; Container Apps job, Container App, Functions on Container Apps, or Functions Premium / Dedicated. Each has its own identity and resources and never touches another. Roll each out with its cloud's build-deploy pipeline (one `kind` and `workload` per run).
+2. **Deploy each workload type on its own.** On the Infrastructure page (Setup), deploy the cloud's pipeline identity, then only the workload-type stacks you need, one at a time: Cloud Run job, service or function; Container Apps job, Container App, Functions on Container Apps, or Functions Premium / Dedicated. Each has its own identity and resources and never touches another. Roll each out with its cloud's build-deploy pipeline (one `kind` and `workload` per run).
 3. **Onboard each workload** in the Serverless console: it writes the JFrog side and the workload's JFROG_* settings, per workload.
 4. **Verify** from inside a workload (Cloud Run job shell, `az containerapp exec`):
    - `python -m jfrog_oidc claims` shows the platform token's claims; compare them with the mapping.

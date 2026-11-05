@@ -17,7 +17,7 @@ parameters:
   - name: inputs
     type: object
     default: {}
-  # Where state lives: this cloud's foundation inputs it derives from.
+  # Where state lives: this cloud's pipeline identity inputs it derives from.
   - name: state
     type: object
     default: {}

@@ -3,14 +3,12 @@ variable "azure_subscription_id" {
 }
 
 variable "azure_location" {
-  type    = string
-  default = "westus2"
+  type = string
 }
 
 variable "name" {
   description = "Cluster name; the resource group is rg-<name>."
   type        = string
-  default     = "aks-jfrog-test"
 }
 
 variable "node_count" {
@@ -41,7 +39,7 @@ variable "argocd_enabled" {
 }
 
 variable "argocd_identity" {
-  description = "Argo CD's account, from azure-foundation's argocd_identity output (its identity name and resource group)."
+  description = "Argo CD's account, from azure-pipeline-identity's argocd_identity output (its identity name and resource group)."
   type = object({
     name           = string
     resource_group = string

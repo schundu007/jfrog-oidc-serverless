@@ -86,12 +86,12 @@ class PipelinesTests(unittest.TestCase):
     def test_reads_active_runs_and_the_last_onboard(self):
         p = order.Pipelines(FakeAdo([{"id": 224, "status": "inProgress", "definition": {"id": 7, "name": "Web App - Build and deploy"}}],
                                     [{"id": 221, "status": "completed", "result": "failed", "definition": {"id": 9, "name": "Onboard"}}]),
-                            "contoso", "jfrog-oidc")
+                            "contoso", "platform")
         active = p.active()
         self.assertEqual([(r["id"], r["cloud"], r["step"]) for r in active], [(224, "azure", 4)])
         self.assertEqual(p.last_onboard("azure")["result"], "failed")
         self.assertIsNone(p.last_onboard("gcp"))
-        self.assertEqual(active[0]["url"], "https://dev.azure.com/contoso/jfrog-oidc/_build/results?buildId=224")
+        self.assertEqual(active[0]["url"], "https://dev.azure.com/contoso/platform/_build/results?buildId=224")
 
     def test_no_sign_in_is_a_refusal(self):
         with self.assertRaisesRegex(order.OrderError, "no Azure DevOps sign-in"):

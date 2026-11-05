@@ -8,7 +8,7 @@ Every log line goes through redaction; no token is ever logged or returned.
 A workload stack with a stack-setup pipeline (pipelines/<kind>/<cloud>/<stack>/stack-setup.yml) never
 runs Terraform here: Deploy and Destroy queue that pipeline in Azure DevOps, the plan shown is the
 one the run made, and Approve answers the run's environment approval, so ADO applies exactly that
-plan file. Foundations (they create the pipelines' trust) and reads of state still run here.
+plan file. Pipeline identity stacks (they create the pipelines' trust) and reads of state still run here.
 """
 
 from __future__ import annotations
@@ -69,10 +69,12 @@ class JobError(RuntimeError):
 
 class Jobs:
     def __init__(self, env_name: str = "test", root=stacks.STACKS_DIR, shell_factory=None, environ=None, token_source=None,
-                 state_root=stacks.STATE_ROOT, ado=None, repo_root=stacks.REPO_ROOT, sleep=time.sleep, probe=None):
+                 state_root=stacks.STATE_ROOT, ado=None, repo_root=stacks.REPO_ROOT, sleep=time.sleep, probe=None,
+                 probe_state=None):
         self.env_name, self.root, self.state_root = env_name, root, state_root
         stacks.use_env(env_name, state_root)   # descendants() sees this environment's extra deployments
         self.probe = probe or probe_store   # (kind, store) -> "missing" | "present" | "unknown"
+        self.probe_state = probe_state or probe_state_file   # (init_args) -> "missing" | "present" | "unknown"
         self.shell_factory = shell_factory or (lambda log: Shell(mode="live", log=log))
         self.environ = os.environ if environ is None else environ
         self.token_source = token_source   # callable(shell, host, cloud) -> JFrog token, for stacks with a JFrog provider
@@ -221,6 +223,8 @@ class Jobs:
     # -- reads -------------------------------------------------------------------
 
     def stacks(self) -> list:
+        # Stacks with runs listed on Runs: only those rows link there (a search that finds nothing is no link).
+        listed = {r["stack"] for r in self.history()}
         with self._lock:
             # The running job per stack, so a page that closed the drawer or reloaded can follow it again.
             running = {j["stack"]: {"id": j["id"], "action": j["action"], "op": j.get("op"),
@@ -244,7 +248,7 @@ class Jobs:
             for sid in stacks.all_ids(self.env_name, self.state_root):
                 s = stacks.get(sid)
                 needs, dependents, unchecked = self._needs(sid), self._dependents(sid), self._unchecked(sid)
-                out.append(dict(s, dir=f"terraform/stacks/{stacks.rel_dir(sid)}", status=self._status.get(sid), busy=sid in running, job=running.get(sid), checking=sid in checking, check_job=checks.get(sid),
+                out.append(dict(s, dir=f"terraform/stacks/{stacks.rel_dir(sid)}", status=self._status.get(sid), busy=sid in running, job=running.get(sid), checking=sid in checking, check_job=checks.get(sid), has_runs=sid in listed,
                                 plan=self._public_plan(self._plans.get(sid)), failed=failed.get(sid),
                                 depends_on=stacks.depends_on(sid, self.root), upstreams=list(stacks.ancestors(sid, self.root)),
                                 needs=needs, dependents=dependents, unchecked=unchecked,
@@ -724,7 +728,7 @@ class Jobs:
             if action == "forget":
                 self._finish(job, "done", result=self._forget(job, meta))
                 return
-            # A workload's whole state lives in its foundation's store: with the store confirmed gone, the
+            # A workload's whole state lives in its pipeline identity's store: with the store confirmed gone, the
             # deletion is validated and a read or a destroy passes, with no Terraform run and no ADO run.
             if action in ("status", "plan-destroy") and stacks.depends_on(sid, self.root):
                 gone = self._store_gone(sid)
@@ -756,6 +760,13 @@ class Jobs:
                     self._say(job, "Destroyed: nothing of this stack is left in its Terraform state.")
                 else:
                     self._say(job, "Deployed.")  # Terraform printed the outputs just above
+            elif action == "status" and self._no_state_file(sid):
+                # A read never writes: terraform init would create an empty state file in the store.
+                self._say(job, f"Checking {name}: it has no state file in its store, so nothing is deployed.")
+                self._stage(job, INIT, "skipped")
+                self._stage(job, OUTPUT, "skipped")
+                result = {"deployed": False, "outputs": {}}
+                self._set_status(sid, result)
             elif action == "status":
                 self._say(job, f"Checking {name}: reading its Terraform state.")
                 tf = self._terraform(job)
@@ -766,7 +777,7 @@ class Jobs:
                 outs = tf.outputs()
                 self._stage(job, OUTPUT, "succeeded")
                 result = {"deployed": bool(outs), "outputs": outs}
-                # A foundation's state is a local file: it can still list resources deleted outside the console.
+                # A pipeline identity's state is a local file: it can still list resources deleted outside the console.
                 gone = self._store_gone(sid) if outs and not stacks.depends_on(sid, self.root) else None
                 if gone:
                     result = {"deployed": False, "outputs": outs, "deleted": (
@@ -893,7 +904,7 @@ class Jobs:
         pid, pname = self.ado.pipeline(self.pipeline_path(sid))
         params = {"action": "destroy" if destroy else "apply", "environment": self.env_name,
                   "inputs": stacks.read_inputs(sid, self.env_name, self.state_root),
-                  "state": dict(stacks.foundation(stacks.backend_kind(sid, self.root), self.env_name, self.state_root),
+                  "state": dict(stacks.pipeline_identity(stacks.backend_kind(sid, self.root), self.env_name, self.state_root),
                                 **({"instance": stacks.split(sid)[1]} if stacks.split(sid)[1] else {}))}
         run = self.ado.queue(pid, params)
         job["ado_run"] = run
@@ -969,7 +980,7 @@ class Jobs:
 
     def refresh_all(self) -> list:
         """Read every stack's state in the background, so the list knows what is deployed without a
-        Check button. Foundations first: a stack is read only once its foundation reads as deployed
+        Check button. Pipeline identity stacks first: a stack is read only once its pipeline identity reads as deployed
         (that read starts it), so nothing is touched before what it stands on exists. Skips stacks with
         inputs still missing, a known status, or a running job."""
         started = []
@@ -997,15 +1008,25 @@ class Jobs:
 
     def _store_gone(self, sid) -> str | None:
         """Why this stack's state store is known to be gone (the cloud answered not-found), else None.
-        A foundation's store is the one it creates; a workload's is its foundation's."""
-        kind = stacks.backend_kind(sid, self.root) or {v: k for k, v in stacks.FOUNDATION.items()}.get(sid)
-        store = state_store(kind, stacks.foundation(kind, self.env_name, self.state_root)) if kind else None
+        A pipeline identity's store is the one it creates; a workload's is its pipeline identity's."""
+        kind = stacks.backend_kind(sid, self.root) or {v: k for k, v in stacks.PIPELINE_IDENTITY.items()}.get(sid)
+        store = state_store(kind, stacks.pipeline_identity(kind, self.env_name, self.state_root)) if kind else None
         if not store or self.probe(kind, store) != "missing":
             return None
         return f"its state store, {store['label']}, no longer exists"
 
+    def _no_state_file(self, sid) -> bool:
+        """A remote-state stack whose state file the store answers as not there (never on doubt)."""
+        if stacks.backend_kind(sid, self.root) is None:
+            return False
+        try:
+            init = stacks.tf_args(sid, self.env_name, self.root, self.state_root)[0]
+        except stacks.StackError:
+            return False
+        return self.probe_state(init) == "missing"
+
     def _local_state(self, sid) -> bool:
-        """The stack keeps its state in a local file (a foundation) and that file exists."""
+        """The stack keeps its state in a local file (a pipeline identity) and that file exists."""
         return stacks.backend_kind(sid, self.root) is None and (stacks.stack_dir(sid, self.root) / "terraform.tfstate").is_file()
 
     def _forget(self, job, meta) -> dict:
@@ -1055,12 +1076,12 @@ def _name(sid: str) -> str:
 
 
 def state_store(kind: str, found: dict) -> dict | None:
-    """Where the foundation of `kind` keeps state (stacks.backend_config's naming), for asking the cloud."""
+    """Where the pipeline identity of `kind` keeps state (stacks.backend_config's naming), for asking the cloud."""
     if kind == "gcs" and found.get("gcp_project_id"):
         bucket = f"{found['gcp_project_id']}-tfstate"
         return {"bucket": bucket, "label": f"Cloud Storage bucket {bucket}"}
     if kind == "azurerm" and found.get("azure_subscription_id") and found.get("ado_org") and found.get("state_resource_group"):
-        account = ("st" + found["ado_org"].replace("-", "") + "tfstate")[:24]
+        account = stacks.state_account(found["ado_org"], found["azure_subscription_id"])
         return {"account": account, "resource_group": found["state_resource_group"], "subscription": found["azure_subscription_id"],
                 "label": f"storage account {account} (resource group {found['state_resource_group']})"}
     return None
@@ -1081,6 +1102,28 @@ def probe_store(kind: str, store: dict) -> str:
     if r.returncode == 0:
         return "present"
     return "missing" if NOT_FOUND.search(r.stderr or "") else "unknown"
+
+
+def probe_state_file(init_args) -> str:
+    """Whether a stack's remote state file exists, from its -backend-config pairs: "missing" only when
+    the store answers that it is not there; any failure is "unknown"."""
+    cfg = dict(a.split("=", 2)[1:] for a in init_args if a.startswith("-backend-config=") and a.count("=") >= 2)
+    if cfg.get("bucket"):
+        argv = ["gcloud", "storage", "objects", "describe", f"gs://{cfg['bucket']}/{cfg.get('prefix', '')}/default.tfstate",
+                "--format=value(name)"]
+    elif cfg.get("storage_account_name") and cfg.get("key"):
+        argv = ["az", "storage", "blob", "exists", "--account-name", cfg["storage_account_name"], "--auth-mode", "login",
+                "-c", cfg.get("container_name", "tfstate"), "-n", cfg["key"], "--query", "exists", "-o", "tsv"]
+    else:
+        return "unknown"
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown"
+    if cfg.get("bucket"):
+        return "present" if r.returncode == 0 else ("missing" if NOT_FOUND.search(r.stderr or "") else "unknown")
+    out = (r.stdout or "").strip().lower()
+    return "present" if r.returncode == 0 and out == "true" else "missing" if r.returncode == 0 and out == "false" else "unknown"
 
 
 def _check_ado_approval(plan, approval) -> None:
@@ -1110,7 +1153,7 @@ def next_step(action: str, error: str, local_state: bool) -> dict:
                              "is touched and the file is kept.",
                     "actions": [{"action": "forget", "label": "Forget state", "confirm": True}, check, retry]}
         return {"cause": "Terraform cannot read resources its state lists: they, or the identity that reads them, were "
-                         "deleted outside the console, or the foundation's identity lost access. Check the foundation, "
+                         "deleted outside the console, or the pipeline identity lost access. Check the pipeline identity, "
                          "then try again.",
                 "actions": [check, retry]}
     return {"cause": "The run stopped on the error above. Fix what it names (inputs, sign-in, quota), then try again.",

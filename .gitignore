@@ -40,3 +40,6 @@ terraform/modules/**/.terraform.lock.hcl
 .claude/worktrees/
 # wheels pulled from JFrog by the build
 apps/cloud-run-service/wheels/
+
+# ADO runs of local-state stacks write this on the agent only (pipelines/scripts/run-state.sh)
+backend_override.tf.json

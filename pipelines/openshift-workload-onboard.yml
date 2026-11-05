@@ -29,11 +29,15 @@ parameters:
 variables:
   - template: vars/test.yml
 
-pool:
-  vmImage: ubuntu-24.04
-
 jobs:
   - job: onboard
+    # AGENT_POOL in vars/<cloud>-<env>.yml: a self-hosted pool; empty: Microsoft-hosted ubuntu-24.04
+    ${{ if ne(variables.AGENT_POOL, '') }}:
+      pool:
+        name: ${{ variables.AGENT_POOL }}
+    ${{ else }}:
+      pool:
+        vmImage: ubuntu-24.04
     timeoutInMinutes: 60
     steps:
       - checkout: self

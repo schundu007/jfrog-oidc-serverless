@@ -1,0 +1,5 @@
+# Left out of the portable package (pipelines/scripts/export.sh, or git archive): this environment's own
+# onboarding workspaces and its mirror of another ADO project. A new environment creates its own.
+terraform/workspaces/** export-ignore
+ado-pipelines/** export-ignore
+.claude/worktrees/** export-ignore

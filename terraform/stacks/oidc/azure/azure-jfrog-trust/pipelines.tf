@@ -1,4 +1,4 @@
-# The Azure JFrog OIDC stacks' own stack-setup pipelines, registered here and never by azure-foundation
+# The Azure JFrog OIDC stacks' own stack-setup pipelines, registered here and never by azure-pipeline-identity
 # (infrastructure knows nothing about them). aks-jfrog-trust runs after aks-cluster: the cluster's issuer
 # trusted in JFrog and its kubelet credential provider. Each applies only after approval on its ADO
 # environment <stack>-<pipeline_environment>.

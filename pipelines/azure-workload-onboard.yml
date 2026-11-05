@@ -11,6 +11,11 @@ trigger:
 pr: none
 
 parameters:
+  # Add vars/azure-<env>.yml and vars/azure-<env>-jfrog.yml for another environment.
+  - name: environment
+    type: string
+    default: test
+    values: [test]
   - name: workspace
     displayName: Workspace to re-apply (empty = those changed by the last commit)
     type: string
@@ -21,16 +26,20 @@ parameters:
     default: false
 
 variables:
-  - template: vars/azure-test.yml
-  - template: vars/azure-test-jfrog.yml
-  - group: jfrog-oidc-azure-test
-  - group: jfrog-oidc-azure-test-jfrog   # JFrog OIDC (azure-jfrog-trust)
-
-pool:
-  vmImage: ubuntu-24.04
+  - template: vars/azure-${{ parameters.environment }}.yml
+  - template: vars/azure-${{ parameters.environment }}-jfrog.yml
+  - group: jfrog-oidc-azure-${{ parameters.environment }}
+  - group: jfrog-oidc-azure-${{ parameters.environment }}-jfrog   # JFrog OIDC (azure-jfrog-trust)
 
 jobs:
   - job: onboard
+    # AGENT_POOL in vars/<cloud>-<env>.yml: a self-hosted pool; empty: Microsoft-hosted ubuntu-24.04
+    ${{ if ne(variables.AGENT_POOL, '') }}:
+      pool:
+        name: ${{ variables.AGENT_POOL }}
+    ${{ else }}:
+      pool:
+        vmImage: ubuntu-24.04
     timeoutInMinutes: 60
     steps:
       - checkout: self

@@ -1,7 +1,7 @@
 {
   "ado": {
-    "organization": "your-ado-org",
-    "project": "your-ado-project",
+    "organization": "",
+    "project": "",
     "repository": "jfrog-oidc-serverless",
     "target_branch": "main"
   },

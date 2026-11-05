@@ -10,9 +10,9 @@ from pathlib import Path
 LISTING = Path(__file__).resolve().parents[1] / "static" / "listing.js"
 NODE = shutil.which("node")
 
-PARTLY = {"id": "azure-foundation", "status": {"deployed": False, "deleted": "Partly deleted outside the console.",
+PARTLY = {"id": "azure-pipeline-identity", "status": {"deployed": False, "deleted": "Partly deleted outside the console.",
                                                "outputs": {"azure_tfstate": {"storage_account": "st"}}}}
-DEPLOYED = {"id": "gcp-foundation", "status": {"deployed": True, "outputs": {"x": 1}}}
+DEPLOYED = {"id": "gcp-pipeline-identity", "status": {"deployed": True, "outputs": {"x": 1}}}
 FAILED = {"id": "aks-cluster", "status": {}, "failed": {"action": "apply"}}
 NEVER = {"id": "gke-cluster", "status": {}}
 GONE = {"id": "gcp-cloud-run", "status": {"deployed": False, "deleted": "Deleted.", "outputs": {}}}
@@ -31,13 +31,13 @@ def run(stacks):
 class ListingTests(unittest.TestCase):
     def test_counts_match_the_rows(self):
         r = run([PARTLY, DEPLOYED, FAILED, NEVER, GONE, BUSY])
-        self.assertEqual(sorted(r["listed"]), ["aks-cluster", "azure-container-app", "azure-foundation", "gcp-foundation"])
+        self.assertEqual(sorted(r["listed"]), ["aks-cluster", "azure-container-app", "azure-pipeline-identity", "gcp-pipeline-identity"])
         self.assertEqual(r["counts"], {"listed": 4, "deployed": 1, "attention": 2, "busy": 1, "archived": 2})
 
     def test_residue_is_listed(self):
-        """The screen that said "Needs attention 1" over "Nothing deployed": a partly deleted foundation."""
+        """The screen that said "Needs attention 1" over "Nothing deployed": a partly deleted pipeline identity."""
         r = run([PARTLY, NEVER])
-        self.assertEqual(r["listed"], ["azure-foundation"])
+        self.assertEqual(r["listed"], ["azure-pipeline-identity"])
         self.assertEqual(r["counts"]["attention"], r["counts"]["listed"])
 
     def test_nothing_standing(self):

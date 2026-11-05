@@ -19,8 +19,7 @@ variable "gcp_project_id" {
 }
 
 variable "gcp_region" {
-  type    = string
-  default = "us-central1"
+  type = string
 }
 
 variable "gcp_image_repository" {

@@ -1,0 +1,122 @@
+# Template: plan -> apply (or destroy) for terraform/stacks/oidc/azure/azure-jfrog-trust from ADO, after
+# azure-pipeline-identity. Used only by pipelines/oidc/azure/azure-jfrog-trust/stack-setup.yml. Signs in to
+# Azure, Entra and ADO through the bootstrap service connection (the stack registers pipelines and writes a
+# variable group). JFrog: the first run uses JFROG_ADMIN_TOKEN, a secret variable set on this pipeline for
+# that run only; later runs exchange the setup connection's OIDC token through the ado-setup mapping it made.
+# State: the pipeline identity's store (TF_STATE_RESOURCE_GROUP in jfrog-oidc-azure-<environment>).
+# The apply waits on the ADO environment azure-jfrog-trust-<environment>.
+
+parameters:
+  - name: action
+    type: string
+  - name: environment
+    type: string
+  - name: inputs
+    type: object
+  - name: bootstrap_connection
+    type: string
+
+variables:
+  - template: /pipelines/vars/azure-${{ parameters.environment }}.yml
+  - group: jfrog-oidc-azure-${{ parameters.environment }}   # written by azure-pipeline-identity
+  - name: PLAN_FILE
+    value: $(Pipeline.Workspace)/plan/tfplan
+  - name: PLAN_ACTION
+    ${{ if eq(parameters.action, 'destroy') }}:
+      value: plan-destroy
+    ${{ else }}:
+      value: plan
+
+stages:
+  - stage: plan
+    displayName: Plan ${{ parameters.action }} azure-jfrog-trust
+    jobs:
+      - job: plan
+        # AGENT_POOL in vars/<cloud>-<env>.yml: a self-hosted pool; empty: Microsoft-hosted ubuntu-24.04
+        ${{ if ne(variables.AGENT_POOL, '') }}:
+          pool:
+            name: ${{ variables.AGENT_POOL }}
+        ${{ else }}:
+          pool:
+            vmImage: ubuntu-24.04
+        timeoutInMinutes: 30
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - bash: pipelines/scripts/install-terraform.sh
+            displayName: Install Terraform $(TERRAFORM_VERSION)
+          - bash: mkdir -p "$(Pipeline.Workspace)/plan"
+            displayName: Prepare
+          # Referenced only so the job may request the setup connection's OIDC token (JFrog sign-in).
+          - task: AzureCLI@2
+            displayName: Setup connection (OIDC token only)
+            condition: false
+            inputs:
+              azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: "true"
+          - task: AzureCLI@2
+            name: tf
+            displayName: terraform ${{ parameters.action }} plan
+            inputs:
+              azureSubscription: ${{ parameters.bootstrap_connection }}
+              scriptType: bash
+              scriptLocation: scriptPath
+              scriptPath: pipelines/scripts/oidc-stack.sh
+              arguments: $(PLAN_ACTION) azure-jfrog-trust ${{ parameters.environment }} $(PLAN_FILE)
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+              JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
+              JFROG_ADMIN_TOKEN: $(JFROG_ADMIN_TOKEN)
+              STACK_INPUTS: ${{ convertToJson(parameters.inputs) }}
+          - publish: $(Pipeline.Workspace)/plan
+            artifact: plan
+            condition: and(succeeded(), eq(variables['tf.hasChanges'], 'true'))
+
+  - stage: apply
+    displayName: Apply
+    dependsOn: plan
+    condition: and(succeeded(), eq(dependencies.plan.outputs['plan.tf.hasChanges'], 'true'))
+    jobs:
+      - deployment: apply
+        # AGENT_POOL in vars/<cloud>-<env>.yml: a self-hosted pool; empty: Microsoft-hosted ubuntu-24.04
+        ${{ if ne(variables.AGENT_POOL, '') }}:
+          pool:
+            name: ${{ variables.AGENT_POOL }}
+        ${{ else }}:
+          pool:
+            vmImage: ubuntu-24.04
+        environment: azure-jfrog-trust-${{ parameters.environment }}
+        timeoutInMinutes: 60
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  fetchDepth: 1
+                - download: current
+                  artifact: plan
+                - bash: pipelines/scripts/install-terraform.sh
+                  displayName: Install Terraform $(TERRAFORM_VERSION)
+                - task: AzureCLI@2
+                  displayName: Setup connection (OIDC token only)
+                  condition: false
+                  inputs:
+                    azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: "true"
+                - task: AzureCLI@2
+                  displayName: terraform apply
+                  inputs:
+                    azureSubscription: ${{ parameters.bootstrap_connection }}
+                    scriptType: bash
+                    scriptLocation: scriptPath
+                    scriptPath: pipelines/scripts/oidc-stack.sh
+                    arguments: apply azure-jfrog-trust ${{ parameters.environment }} $(PLAN_FILE)
+                  env:
+                    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+                    JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
+                    JFROG_ADMIN_TOKEN: $(JFROG_ADMIN_TOKEN)
+                    STACK_INPUTS: ${{ convertToJson(parameters.inputs) }}

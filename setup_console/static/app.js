@@ -467,12 +467,12 @@ function brief(text, max = 140) {
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;
 }
 
-// What stops or failed this stack, each with where to go: the foundation it needs, the stacks that
-// stand on it, the last run that failed. A failed state read is left out when the missing foundation
+// What stops or failed this stack, each with where to go: the pipeline identity it needs, the stacks that
+// stand on it, the last run that failed. A failed state read is left out when the missing pipeline identity
 // already explains it.
 
 // What stops or failed this stack, as plain sentences: shown only behind the circled "?" next to its
-// status, never as a banner. A failed state read is left out when the missing foundation explains it.
+// status, never as a banner. A failed state read is left out when the missing pipeline identity explains it.
 function warnings(s) {
   const out = [];
   if (s.status?.deleted && !s.busy && !s.plan) out.push(s.status.deleted);
@@ -513,7 +513,7 @@ function row(s, section) {
     // integration (its stack linked), and it has no region.
     OIDC ? h("td", { class: "stack-id", title: s.id }, link(s.links?.source, "JFrog OIDC trust", true))
       : h("td", { class: "stack-id" }, link(s.links?.source, s.id, true)),
-    OIDC ? null : h("td", {}, link(runsIn(s) === "ADO pipeline" ? s.links?.pipeline : runsHref(s), runsIn(s), runsIn(s) === "ADO pipeline")),
+    OIDC ? null : h("td", {}, link(runsIn(s) === "ADO pipeline" ? s.links?.pipeline : s.has_runs ? runsHref(s) : null, runsIn(s), runsIn(s) === "ADO pipeline")),
     OIDC ? h("td", { text: "Global" }) : h("td", {}, checkedAt(s) ? (s.check_job ? link(`?job=${s.check_job}`, shortWhen(checkedAt(s))) : shortWhen(checkedAt(s))) : "—"),
     h("td", {}, h("div", { class: "setup-row-actions nowrap" },
       progress,
@@ -536,7 +536,7 @@ function row(s, section) {
 const link = (href, content, external = false) => (href
   ? h("a", { href, ...(external ? { target: "_blank", rel: "noopener noreferrer" } : {}) }, content)
   : content);
-// A stack's name opens what it provisions in the console: its workloads or clusters; a CI/CD bootstrap
+// A stack's name opens what it provisions in the console: its workloads or clusters; a pipeline identity and state
 // or a JFrog trust stack opens its runs.
 const SERVES = { "gcp-cloud-run": "gcp?type=gcp_run_job", "gcp-cloud-run-service": "gcp?type=gcp_run_service",
   "gcp-cloud-run-function": "gcp?type=gcp_run_function", "gcp-cloud-run-worker-pool": "gcp?type=gcp_run_worker_pool",
@@ -546,14 +546,15 @@ const SERVES = { "gcp-cloud-run": "gcp?type=gcp_run_job", "gcp-cloud-run-service
 const CLUSTERS = { "aks-cluster": "/k8s/clusters/aks", "gke-cluster": "/k8s/clusters/gke" };
 const runsArea = () => (OIDC ? "oidc" : "infrastructure");
 const runsHref = (s) => `/runs?area=${runsArea()}&cloud=${CLOUD_ID[s.group] || ""}&q=${encodeURIComponent(s.title)}`;
-// A foundation is the cloud's ADO trust: its name opens the project's service connections.
+// A pipeline identity is the cloud's ADO trust: its name opens the project's service connections.
 const adoSettings = (s) => s.links?.source?.replace(/\/_git\/.*$/, "/_settings/adminservices");
-const nameHref = (s) => (SERVES[s.id] ? `/serverless/${SERVES[s.id]}` : CLUSTERS[s.id] || (s.id.endsWith("-foundation") && adoSettings(s)) || runsHref(s));
+const nameHref = (s) => (SERVES[s.id] ? `/serverless/${SERVES[s.id]}` : CLUSTERS[s.id] || (s.id.endsWith("-pipeline-identity") && adoSettings(s))
+  || (s.has_runs ? runsHref(s) : s.check_job ? `?job=${s.check_job}` : s.links?.source));
 
 let byId = {};
 
 // Each stack's service icon (the sidebar's), and each cloud's logo: constant SVG from shell.js.
-const STACK_ICON = { "gcp-foundation": "boot", "azure-foundation": "boot", "gcp-cloud-run": "run", "gcp-cloud-run-service": "run", "gcp-cloud-run-worker-pool": "run",
+const STACK_ICON = { "gcp-pipeline-identity": "boot", "azure-pipeline-identity": "boot", "gcp-cloud-run": "run", "gcp-cloud-run-service": "run", "gcp-cloud-run-worker-pool": "run",
   "gcp-cloud-run-function": "fn", "gke-cluster": "gke", "azure-container-apps": "aca", "azure-container-app": "aca",
   "azure-functions-aca": "func", "azure-functions-premium": "func", "azure-functions-flex": "func", "azure-web-app": "web", "aks-cluster": "aks", "aks-jfrog-trust": "aks",
   "gcp-jfrog-trust": "boot", "azure-jfrog-trust": "boot" };
@@ -622,12 +623,12 @@ function draw(withFilters = true) {
   if (OIDC) return drawOidc(data, withFilters);
   // The environment every stack here deploys to: it picks the saved inputs, the ADO environments
   // <stack>-<env> and the variable groups jfrog-oidc-<cloud>-<env>.
-  // Infrastructure (/setup): the cloud is the root, and under it Common (the CI/CD bootstrap, used by
+  // Infrastructure (/setup): the cloud is the root, and under it Common (the pipeline identity and state, used by
   // both kinds), Serverless and Kubernetes, each its own table. JFrog OIDC is not infrastructure: it
   // has its own section (/oidc), made only once that cloud's infrastructure exists.
   const ORDER = ["Common", "Serverless", "Kubernetes", "JFrog OIDC"];
   // On JFrog OIDC, a cluster's trust is its own Kubernetes section, never mixed with the pipelines' trust.
-  const sectionOf = (s) => (s.id.endsWith("-foundation") ? "Common" : (OIDC && s.section) || s.kind);
+  const sectionOf = (s) => (s.id.endsWith("-pipeline-identity") ? "Common" : (OIDC && s.section) || s.kind);
   $("page-title").textContent = OIDC ? "JFrog OIDC" : "Infrastructure";
   const all = data.stacks.filter((s) => (OIDC ? s.kind === "JFrog OIDC" : s.kind !== "JFrog OIDC"));
   if (withFilters) drawFilters(ORDER.filter((k) => all.some((s) => sectionOf(s) === k)));
@@ -824,9 +825,9 @@ function drawOidc(data, withFilters) {
   if (live.errors.length) $("count").append(" ", help(live.errors.join(" ")));
 }
 
-// Where a stack runs: foundations and JFrog trust from this page; workload and cluster stacks as
+// Where a stack runs: pipeline identity stacks and JFrog trust from this page; workload and cluster stacks as
 // their own stack-setup pipeline in ADO.
-const runsIn = (s) => (s.id.endsWith("-foundation") || s.kind === "JFrog OIDC" ? "This console" : "ADO pipeline");
+const runsIn = (s) => (s.id.endsWith("-pipeline-identity") || s.kind === "JFrog OIDC" ? "This console" : "ADO pipeline");
 const checkedAt = (s) => (s.status?.checked ? new Date(s.status.checked * 1000) : null);
 const shortWhen = (d) => d ? d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
 
@@ -837,11 +838,11 @@ function essentials(data, all) {
   const one = clouds.length === 1 ? clouds[0] : null;
   const { deployed, attention, busy } = counts(mine);
   const last = mine.map(checkedAt).filter(Boolean).sort((x, y) => y - x)[0];
-  const found = mine.find((s) => s.id.endsWith("-foundation"));
+  const found = mine.find((s) => s.id.endsWith("-pipeline-identity"));
   const store = (() => {
     const t = found?.status?.outputs?.azure_tfstate;
     if (t && typeof t === "object") return `${t.storage_account} / ${t.container}`;
-    return found?.status?.deployed ? "Foundation state store" : "—";
+    return found?.status?.deployed ? "Pipeline identity state store" : "—";
   })();
   fill($("page-logo"), one ? iconEl(CLOUD_ID[one], "") : null);
   if (!one) $("page-logo").innerHTML = OIDC ? (window.consoleNav?.icon("boot") || "") : '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>';

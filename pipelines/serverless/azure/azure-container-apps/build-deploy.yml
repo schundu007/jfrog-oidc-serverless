@@ -10,11 +10,11 @@ parameters:
   - name: workload
     displayName: Workload name (the stack's workload input)
     type: string
-    default: artifact-reader
+    default: " "
 
 extends:
   template: /pipelines/templates/azure-build-deploy.yml
   parameters:
     kind: job
-    workload: ${{ parameters.workload }}
+    workload: ${{ trim(parameters.workload) }}
     environment: ${{ parameters.environment }}

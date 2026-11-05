@@ -689,7 +689,13 @@ def make_handler(console: KcpServer):
                 if not RUN_ID_RE.match(rest[0]):
                     raise HttpError(404, "no such run")
                 if method == "DELETE" and len(rest) == 1:
-                    return self._json(200, console.runs.delete(rest[0]))
+                    try:
+                        return self._json(200, console.runs.delete(rest[0]))
+                    except RunError:
+                        # An archived run: an admin deletes it before its 7 days are up.
+                        if not console.archive.drop_run(rest[0]):
+                            raise
+                        return self._json(200, {"deleted": rest[0], "archived": True})
                 try:
                     run = console.runs.get(rest[0])
                 except RunError:

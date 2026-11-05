@@ -53,9 +53,9 @@ class DeliveryError(RuntimeError):
     pass
 
 
-def foundation_settings(stacks_dir) -> dict:
-    """Each cloud's pipeline identity and state backend, from its foundation stack's outputs
-    (terraform/stacks/serverless/<cloud>/<cloud>-foundation, local state). A cloud whose foundation isn't deployed
+def pipeline_identity_settings(stacks_dir) -> dict:
+    """Each cloud's pipeline identity and state backend, from its pipeline identity stack's outputs
+    (terraform/stacks/serverless/<cloud>/<cloud>-pipeline-identity, local state). A cloud whose pipeline identity isn't deployed
     is left out."""
     def outputs(stack):
         try:
@@ -65,11 +65,11 @@ def foundation_settings(stacks_dir) -> dict:
             return {}
 
     found = {"pipeline_identity": {}, "state": {}}
-    g = outputs("serverless/gcp/gcp-foundation")
+    g = outputs("serverless/gcp/gcp-pipeline-identity")
     if g.get("tfstate_bucket") and (g.get("gcp_service_accounts") or {}).get("setup"):
         found["pipeline_identity"]["gcp"] = g["gcp_service_accounts"]["setup"]
         found["state"]["gcp"] = {"type": "gcs", "bucket": g["tfstate_bucket"]}
-    a = outputs("serverless/azure/azure-foundation")
+    a = outputs("serverless/azure/azure-pipeline-identity")
     t = a.get("azure_tfstate") or {}
     if a.get("azure_setup_identity_principal_id") and t.get("storage_account"):
         found["pipeline_identity"]["azure"] = a["azure_setup_identity_principal_id"]
@@ -93,7 +93,7 @@ def ado_overrides(path) -> dict:
 
 def load_settings(path, stacks_dir=None, overrides=None) -> dict | None:
     """pipelines/delivery.json (the ADO repository and merge mode), or None when the console
-    applies locally. Pipeline identities and state backends come from the foundation stacks.
+    applies locally (no file, or no Azure DevOps organization and project in it or on Settings). Pipeline identities and state backends come from the pipeline identity stacks.
     overrides: the Settings file; its Azure DevOps values win over delivery.json's, and alone
     (no delivery.json) they are enough."""
     path = Path(path)
@@ -102,6 +102,8 @@ def load_settings(path, stacks_dir=None, overrides=None) -> dict | None:
         return None
     data = json.loads(path.read_text()) if path.is_file() else {"merge": "direct", "environment": "test"}
     data["ado"] = {**(data.get("ado") or {}), **over}
+    if not (data["ado"].get("organization") or data["ado"].get("project")):
+        return None   # a new environment: local mode until Azure DevOps is entered on Settings
     for section, keys in REQUIRED.items():
         missing = [k for k in keys if not (data.get(section) or {}).get(k)]
         if missing:
@@ -112,7 +114,7 @@ def load_settings(path, stacks_dir=None, overrides=None) -> dict | None:
 
 
 class Settings(dict):
-    """The delivery settings, plus where to re-read the foundations' outputs from (refresh)."""
+    """The delivery settings, plus where to re-read the pipeline identity stacks' outputs from (refresh)."""
 
     def __init__(self, data: dict, stacks_dir):
         super().__init__(data)
@@ -121,10 +123,10 @@ class Settings(dict):
 
 
 def refresh(settings):
-    """Re-read pipeline identities and state backends from the foundations, in place: a foundation
+    """Re-read pipeline identities and state backends from the pipeline identity stacks, in place: a pipeline identity
     deployed (or destroyed) while the console runs counts at once, without a restart."""
     if isinstance(settings, Settings):
-        found = foundation_settings(settings.stacks_dir)
+        found = pipeline_identity_settings(settings.stacks_dir)
         for key in ("pipeline_identity", "state"):
             settings[key] = {**settings.file_values[key], **found[key]}
     return settings
@@ -310,7 +312,7 @@ def queue_onboard(sh: Shell, org_url: str, project: str, token: str, cloud: str,
     ids = [d.get("id") for d in res.json({}).get("value") or []
            if str((d.get("process") or {}).get("yamlFilename") or "").lstrip("/").split("/")[-1] == what]
     if not ids:
-        raise DeliveryError(f"{project} has no pipeline on pipelines/{what}: register it (the foundation stack does), "
+        raise DeliveryError(f"{project} has no pipeline on pipelines/{what}: register it (the pipeline identity stack does), "
                             "then Deliver again")
     res = sh.http("POST", f"{api}/pipelines/{ids[0]}/runs?api-version=7.1", headers=headers, timeout=60,
                   body=json.dumps({"templateParameters": {"workspace": workspace}}).encode())

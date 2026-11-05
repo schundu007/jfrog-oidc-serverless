@@ -1,5 +1,5 @@
 # JFrog OIDC trust for this cloud's ADO pipelines, made after the infrastructure exists.
-# gcp-foundation creates only cloud and ADO resources (service connections, identities, state);
+# gcp-pipeline-identity creates only cloud and ADO resources (service connections, identities, state);
 # everything about JFrog lives here: the integration ado-<org>-gcp, its build and setup
 # mappings, and the pipelines' JFrog variable group jfrog-oidc-gcp-<env>-jfrog.
 #   build -> reader group (read + remote cache) and publisher group (push to this cloud's
@@ -13,7 +13,7 @@ data "azuredevops_project" "this" {
   name = var.ado_project
 }
 
-# The foundation's service connections, read by name: their subjects bind the mappings.
+# The pipeline identity's service connections, read by name: their subjects bind the mappings.
 data "azuredevops_serviceendpoint_azurerm" "ado" {
   for_each = toset(["build", "setup"])
 

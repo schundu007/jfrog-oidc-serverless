@@ -3,14 +3,12 @@ variable "gcp_project_id" {
 }
 
 variable "gcp_region" {
-  type    = string
-  default = "us-central1"
+  type = string
 }
 
 variable "workload" {
   description = "Workload name: its service account and Cloud Run worker pool are named after it."
   type        = string
-  default     = "crwp-jfrog"
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.workload))
     error_message = "workload must be 6-30 chars: lowercase letters, digits, hyphens."
@@ -24,7 +22,7 @@ variable "deployer_service_account" {
 }
 
 variable "image_repository" {
-  description = "Artifact Registry repository for workload images (created by the foundation)."
+  description = "Artifact Registry repository for workload images (created by the pipeline identity stack)."
   type        = string
   default     = "platform"
 }

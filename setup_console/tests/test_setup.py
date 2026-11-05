@@ -6,10 +6,11 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-# Per-cloud repos (jfrog-oidc-azure) carry one cloud's stacks: tests that span both run where both are.
+# Per-cloud repos (jfrog-cp-azure) carry one cloud's stacks: tests that span both run where both are.
 BOTH_CLOUDS = unittest.skipUnless((Path(__file__).resolve().parents[2] / "terraform/stacks/serverless/gcp").is_dir(),
                                   "this repo carries one cloud's stacks")
 
@@ -23,6 +24,8 @@ REFRESH_403 = 'Error: Error when reading or editing Resource "artifactregistry r
 FAKE_TF = Path(__file__).resolve().parents[2] / "console" / "tests" / "fixtures" / "fake_terraform"
 TOKEN = "tok-setup-test"
 jobs_module.probe_store = lambda kind, store: "unknown"   # tests never ask a real cloud about state stores
+REAL_PROBE_STATE = jobs_module.probe_state_file
+jobs_module.probe_state_file = lambda init: "unknown"
 
 
 def fake_shell(log):
@@ -30,7 +33,7 @@ def fake_shell(log):
 
 
 VARS = {
-    "gcp-foundation": '''variable "jfrog_url" {
+    "gcp-pipeline-identity": '''variable "jfrog_url" {
   description = "JFrog platform origin"
   type        = string
   validation {
@@ -48,7 +51,7 @@ variable "notes" {
   default = []
 }
 ''',
-    "azure-foundation": '''variable "ado_org" { type = string }
+    "azure-pipeline-identity": '''variable "ado_org" { type = string }
 variable "azure_subscription_id" { type = string }
 variable "azure_identity" {
   type = object({
@@ -90,8 +93,8 @@ variable "spot" {
 VARS["gcp-jfrog-trust"] = 'variable "jfrog_url" { type = string }\nvariable "ado_org" { type = string }\n'
 VARS["azure-jfrog-trust"] = VARS["gcp-jfrog-trust"]
 BACKENDS = {"gcp-cloud-run": "gcs", "azure-container-apps": "azurerm"}   # clusters keep local state
-GCP_FOUNDATION = {"jfrog_url": "https://acme.jfrog.io", "ado_org": "my-org", "gcp_project_id": "proj-1"}
-AZURE_FOUNDATION = {"ado_org": "my-org", "azure_subscription_id": "sub-1", "azure_identity": {"name": "id", "resource_group": "rg-ci"}}
+GCP_PIPELINE_IDENTITY = {"jfrog_url": "https://acme.jfrog.io", "ado_org": "my-org", "gcp_project_id": "proj-1"}
+AZURE_PIPELINE_IDENTITY = {"ado_org": "my-org", "azure_subscription_id": "sub-1", "azure_identity": {"name": "id", "resource_group": "rg-ci"}}
 
 
 class Root:
@@ -111,8 +114,8 @@ class Root:
         return stacks.write_inputs(sid, "test", values, self.dir, self.state)
 
     def ready(self):
-        self.save("gcp-foundation", GCP_FOUNDATION)
-        self.save("azure-foundation", AZURE_FOUNDATION)
+        self.save("gcp-pipeline-identity", GCP_PIPELINE_IDENTITY)
+        self.save("azure-pipeline-identity", AZURE_PIPELINE_IDENTITY)
         self.save("gcp-cloud-run", {"gcp_project_id": "proj-1", "jfrog_url": "https://acme.jfrog.io"})
         self.save("azure-container-apps", {"azure_subscription_id": "sub-1"})
         self.save("gcp-jfrog-trust", {"jfrog_url": "https://acme.jfrog.io", "ado_org": "my-org"})
@@ -137,12 +140,12 @@ class StackTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.root.dir)
 
     def test_inputs_come_from_variables_tf(self):
-        by = {v["name"]: v for v in stacks.variables("gcp-foundation", self.root.dir)}
+        by = {v["name"]: v for v in stacks.variables("gcp-pipeline-identity", self.root.dir)}
         self.assertEqual(list(by), ["jfrog_url", "ado_org", "gcp_project_id", "notes"])
         self.assertTrue(by["jfrog_url"]["required"])
         self.assertEqual(by["jfrog_url"]["description"], "JFrog platform origin")
         self.assertEqual((by["notes"]["kind"], by["notes"]["default"]), ("list", []))
-        ident = stacks.variables("azure-foundation", self.root.dir)[2]
+        ident = stacks.variables("azure-pipeline-identity", self.root.dir)[2]
         self.assertEqual((ident["kind"], ident["fields"]), ("object", ["name", "resource_group"]))
         self.assertEqual(by["gcp_project_id"]["options"], "gcp_projects")
         g = {v["name"]: v for v in stacks.variables("gcp-cloud-run", self.root.dir)}
@@ -162,7 +165,7 @@ class StackTests(unittest.TestCase):
                                                  stacks.STACKS_DIR, Path(d)), {"runtime": "node", "os": "windows"})
 
     def test_form_prefills_saved_then_shared_then_default(self):
-        self.root.save("gcp-foundation", GCP_FOUNDATION)
+        self.root.save("gcp-pipeline-identity", GCP_PIPELINE_IDENTITY)
         f = {x["name"]: x for x in stacks.form("gcp-cloud-run", "test", self.root.dir, self.root.state)["fields"]}
         self.assertEqual((f["gcp_project_id"]["current"], f["gcp_project_id"]["source"]), ("proj-1", "shared"))
         self.assertEqual((f["name"]["current"], f["name"]["source"]), ("gke-jfrog-test", "default"))
@@ -174,10 +177,10 @@ class StackTests(unittest.TestCase):
         self.assertEqual(f["node_count"]["current"], 3)
 
     def test_clouds_never_prefill_from_each_other(self):
-        self.root.save("gcp-foundation", GCP_FOUNDATION)      # ado_org saved on the GCP side
-        f = {x["name"]: x for x in stacks.form("azure-foundation", "test", self.root.dir, self.root.state)["fields"]}
+        self.root.save("gcp-pipeline-identity", GCP_PIPELINE_IDENTITY)      # ado_org saved on the GCP side
+        f = {x["name"]: x for x in stacks.form("azure-pipeline-identity", "test", self.root.dir, self.root.state)["fields"]}
         self.assertNotIn("current", f["ado_org"])
-        self.root.save("azure-foundation", AZURE_FOUNDATION)
+        self.root.save("azure-pipeline-identity", AZURE_PIPELINE_IDENTITY)
         f = {x["name"]: x for x in stacks.form("azure-container-apps", "test", self.root.dir, self.root.state)["fields"]}
         self.assertEqual((f["azure_subscription_id"]["current"], f["azure_subscription_id"]["source"]), ("sub-1", "shared"))
 
@@ -188,23 +191,72 @@ class StackTests(unittest.TestCase):
         for bad in ({"azure_identity": "{not json"}, {"azure_identity": {"name": "id"}},
                     {"azure_identity": {"name": "id", "resource_group": "rg", "x": "y"}}):
             with self.assertRaises(stacks.StackError, msg=bad):
-                self.root.save("azure-foundation", bad)
+                self.root.save("azure-pipeline-identity", bad)
         with self.assertRaises(stacks.StackError):
-            self.root.save("gcp-foundation", {"notes": "[\"a\"]"})    # lists come as lists, never JSON text
+            self.root.save("gcp-pipeline-identity", {"notes": "[\"a\"]"})    # lists come as lists, never JSON text
 
     def test_lists_and_objects_are_plain_values(self):
-        self.root.save("gcp-foundation", {"notes": [" a ", "", "b"]})
-        self.root.save("azure-foundation", {"azure_identity": {"name": " id ", "resource_group": "rg"}})
-        f = {x["name"]: x for x in stacks.form("gcp-foundation", "test", self.root.dir, self.root.state)["fields"]}
+        self.root.save("gcp-pipeline-identity", {"notes": [" a ", "", "b"]})
+        self.root.save("azure-pipeline-identity", {"azure_identity": {"name": " id ", "resource_group": "rg"}})
+        f = {x["name"]: x for x in stacks.form("gcp-pipeline-identity", "test", self.root.dir, self.root.state)["fields"]}
         self.assertEqual(f["notes"]["current"], ["a", "b"])
-        f = {x["name"]: x for x in stacks.form("azure-foundation", "test", self.root.dir, self.root.state)["fields"]}
+        f = {x["name"]: x for x in stacks.form("azure-pipeline-identity", "test", self.root.dir, self.root.state)["fields"]}
         self.assertEqual(f["azure_identity"]["current"], {"name": "id", "resource_group": "rg"})
         self.assertEqual(f["tags"]["kind"], "map")
-        self.root.save("azure-foundation", {"tags": {" owner ": " me ", "": "dropped"}})
-        f = {x["name"]: x for x in stacks.form("azure-foundation", "test", self.root.dir, self.root.state)["fields"]}
+        self.root.save("azure-pipeline-identity", {"tags": {" owner ": " me ", "": "dropped"}})
+        f = {x["name"]: x for x in stacks.form("azure-pipeline-identity", "test", self.root.dir, self.root.state)["fields"]}
         self.assertEqual(f["tags"]["current"], {"owner": "me"})
         with self.assertRaises(stacks.StackError):
-            self.root.save("azure-foundation", {"tags": {"owner": 5}})
+            self.root.save("azure-pipeline-identity", {"tags": {"owner": 5}})
+
+    def test_state_account_is_unique_per_org_and_subscription(self):
+        a = stacks.state_account("Contoso-Platform_Engineering", "12345678-0000-4000-8000-000000000000")
+        self.assertEqual(a, "stcontosoplatf12345678")
+        self.assertRegex(a, r"^[a-z0-9]{3,24}$")   # Azure storage account names
+        self.assertNotEqual(a, stacks.state_account("Contoso-Platform_Engineering", "11111111-0000-0000-0000-000000000000"))
+        tf = (stacks.STACKS_DIR / "serverless/azure/azure-pipeline-identity/main.tf").read_text()
+        self.assertIn('"st${substr(lower(replace(var.ado_org, "/[^a-zA-Z0-9]/", "")), 0, 12)}'
+                      '${substr(lower(replace(var.azure_subscription_id, "-", "")), 0, 8)}"', tf)   # same formula
+
+    def test_ado_run_fills_what_the_run_knows(self):
+        env = {"SYSTEM_COLLECTIONURI": "https://dev.azure.com/Contoso/", "SYSTEM_TEAMPROJECT": "Platform",
+               "BUILD_REPOSITORY_NAME": "jfrog-oidc", "AZ_TENANT": "t-1", "AZ_SUBSCRIPTION": "s-1"}
+        ctx = stacks.run_context(env, "test")
+        self.assertEqual(ctx, {"ado_org": "Contoso", "ado_project": "Platform", "ado_repository": "jfrog-oidc",
+                               "azure_tenant_id": "t-1", "azure_subscription_id": "s-1", "pipeline_environment": "test"})
+        self.assertEqual(stacks.run_context({**env, "SYSTEM_COLLECTIONURI": "https://contoso.visualstudio.com/"}, "test")["ado_org"], "Contoso".lower())
+        got = stacks.run_inputs("azure-pipeline-identity", {"azure_identity": {"name": "id", "resource_group": "rg"},
+                                                            "azure_location": "eastus", "ado_org": "given"}, ctx)
+        self.assertEqual(got["ado_org"], "given")                       # what the queue gave wins
+        self.assertEqual(got["azure_subscription_id"], "s-1")
+        self.assertNotIn("ado_repository", got)                          # not a variable of this stack
+        self.assertEqual(stacks.run_inputs("azure-jfrog-trust", {"jfrog_url": "https://x.jfrog.io", "jfrog_reader_group": "g"}, ctx)["ado_repository"], "jfrog-oidc")
+
+    def test_ado_run_requires_what_the_form_leaves_blank(self):
+        # Nothing has a hard-coded value: the run form ships blanks, and a blank stops the run naming the fields.
+        ctx = {"ado_org": "contoso", "ado_project": "p", "azure_tenant_id": "t", "azure_subscription_id": "s"}
+        with self.assertRaises(stacks.StackError) as e:
+            stacks.run_inputs("azure-pipeline-identity", {"azure_location": " ", "azure_identity": {"name": "", "resource_group": "rg"}}, ctx)
+        self.assertIn("azure_location", str(e.exception))
+        self.assertIn("azure_identity.name", str(e.exception))
+        ok = stacks.run_inputs("azure-pipeline-identity", {"azure_location": "eastus", "azure_identity": {"name": "id", "resource_group": "rg"}}, ctx)
+        self.assertEqual((ok["azure_location"], ok["ado_org"]), ("eastus", "contoso"))
+
+    def test_ado_run_state_lives_in_the_pipeline_identity_store(self):
+        ctx = {"ado_org": "Contoso", "azure_subscription_id": "12345678-0000"}
+        own = stacks.run_backend("azure-pipeline-identity", "test",
+                                 {"ado_org": "Contoso", "azure_subscription_id": "12345678-0000",
+                                  "azure_identity": {"name": "id", "resource_group": "rg-ado"}}, {}, ctx)
+        self.assertIn("-backend-config=storage_account_name=stcontoso12345678", own)
+        self.assertIn("-backend-config=resource_group_name=rg-ado", own)
+        self.assertIn("-backend-config=key=azure-pipeline-identity/test.tfstate", own)
+        trust = stacks.run_backend("azure-jfrog-trust", "test", {}, {"TF_STATE_RESOURCE_GROUP": "rg-ado"}, ctx)
+        self.assertIn("-backend-config=key=azure-jfrog-trust/test.tfstate", trust)
+        self.assertIn("-backend-config=storage_account_name=stcontoso12345678", trust)
+        with self.assertRaises(stacks.StackError):
+            stacks.run_backend("azure-jfrog-trust", "test", {}, {}, ctx)   # no state resource group yet
+        with self.assertRaises(stacks.StackError):
+            stacks.run_backend("azure-web-app", "test", {}, {}, ctx)       # has its own backend.tf
 
     def test_terraform_args_from_inputs(self):
         with self.assertRaises(stacks.StackError) as e:
@@ -216,25 +268,25 @@ class StackTests(unittest.TestCase):
         self.assertEqual(plan, (f"-var-file={self.root.state / 'test' / 'gcp-cloud-run.tfvars.json'}",))
         self.assertEqual(json.loads((self.root.state / "test" / "gcp-cloud-run.tfvars.json").read_text())["gcp_project_id"], "proj-1")
         init, _ = stacks.tf_args("azure-container-apps", "test", self.root.dir, self.root.state)
-        self.assertIn("-backend-config=storage_account_name=stmyorgtfstate", init)
+        self.assertIn("-backend-config=storage_account_name=stmyorgsub1", init)
         self.assertIn("-backend-config=resource_group_name=rg-ci", init)
-        self.assertEqual(stacks.tf_args("gcp-foundation", "test", self.root.dir, self.root.state)[0], ())
+        self.assertEqual(stacks.tf_args("gcp-pipeline-identity", "test", self.root.dir, self.root.state)[0], ())
 
-    def test_each_cloud_reads_only_its_own_foundation(self):
-        self.root.save("gcp-foundation", GCP_FOUNDATION)          # GCP foundation alone: GCP stacks work
+    def test_each_cloud_reads_only_its_own_pipeline_identity(self):
+        self.root.save("gcp-pipeline-identity", GCP_PIPELINE_IDENTITY)          # GCP pipeline identity alone: GCP stacks work
         self.root.save("gcp-cloud-run", {"gcp_project_id": "proj-1"})
         self.root.save("azure-container-apps", {"azure_subscription_id": "sub-1"})
         self.assertIn("-backend-config=bucket=proj-1-tfstate", stacks.tf_args("gcp-cloud-run", "test", self.root.dir, self.root.state)[0])
         with self.assertRaises(stacks.StackError) as e:           # ...and Azure ones don't borrow from it
             stacks.tf_args("azure-container-apps", "test", self.root.dir, self.root.state)
-        self.assertIn("azure-foundation", str(e.exception))
+        self.assertIn("azure-pipeline-identity", str(e.exception))
 
     @BOTH_CLOUDS
-    def test_kubernetes_stacks_use_their_cloud_foundation_for_state_and_pipeline(self):
-        # The real stacks: a cluster keeps remote state in its own cloud's foundation store and has
+    def test_kubernetes_stacks_use_their_cloud_pipeline_identity_for_state_and_pipeline(self):
+        # The real stacks: a cluster keeps remote state in its own cloud's pipeline identity store and has
         # its own stack-setup pipeline. Only JFrog OIDC stands on it (aks-jfrog-trust: its issuer
         # in JFrog), never another infrastructure stack.
-        for sid, backend, dep in (("gke-cluster", "gcs", "gcp-foundation"), ("aks-cluster", "azurerm", "azure-foundation")):
+        for sid, backend, dep in (("gke-cluster", "gcs", "gcp-pipeline-identity"), ("aks-cluster", "azurerm", "azure-pipeline-identity")):
             self.assertEqual(stacks.get(sid)["kind"], "Kubernetes")
             self.assertEqual(stacks.backend_kind(sid), backend)
             self.assertEqual(stacks.depends_on(sid), dep)
@@ -244,13 +296,13 @@ class StackTests(unittest.TestCase):
         self.assertEqual(stacks.backend_kind("aks-jfrog-trust"), "azurerm")
         self.assertEqual({s["kind"] for s in stacks.CATALOGUE}, {"Serverless", "Kubernetes", "JFrog OIDC"})
         # Prefill never crosses from Serverless to Kubernetes, even in the same cloud.
-        self.root.save("gcp-foundation", GCP_FOUNDATION)
+        self.root.save("gcp-pipeline-identity", GCP_PIPELINE_IDENTITY)
         self.root.save("gcp-cloud-run", {"gcp_project_id": "proj-9"})
         f = {x["name"]: x for x in stacks.form("gke-cluster", "test", self.root.dir, self.root.state)["fields"]}
         self.assertNotIn("current", f.get("gcp_project_id", {}))
 
     def test_infrastructure_never_touches_jfrog(self):
-        # Infrastructure (foundations, workload and cluster stacks) has no JFrog provider, resource,
+        # Infrastructure (pipeline identity stacks, workload and cluster stacks) has no JFrog provider, resource,
         # input or setting: JFrog is OIDC configuration, made only once the infrastructure exists.
         import re as _re
         jfrog = _re.compile(r'jfrog/platform|platform_oidc|variable "jfrog_|var\.jfrog_|name\s*=\s*"JFROG_')
@@ -261,8 +313,8 @@ class StackTests(unittest.TestCase):
                 self.assertIsNone(jfrog.search(f.read_text()), f"{s['id']}/{f.name}")
 
     @BOTH_CLOUDS
-    def test_jfrog_oidc_stacks_stand_on_their_own_cloud_foundation(self):
-        for sid, dep in (("gcp-jfrog-trust", "gcp-foundation"), ("azure-jfrog-trust", "azure-foundation")):
+    def test_jfrog_oidc_stacks_stand_on_their_own_cloud_pipeline_identity(self):
+        for sid, dep in (("gcp-jfrog-trust", "gcp-pipeline-identity"), ("azure-jfrog-trust", "azure-pipeline-identity")):
             self.assertEqual(stacks.get(sid)["kind"], "JFrog OIDC")
             self.assertEqual(stacks.depends_on(sid), dep)
             self.assertIsNone(stacks.backend_kind(sid))   # local state, run here with the operator's token
@@ -270,7 +322,7 @@ class StackTests(unittest.TestCase):
             self.assertIn('source  = "jfrog/platform"', (stacks.stack_dir(sid) / "versions.tf").read_text())
 
     @BOTH_CLOUDS
-    def test_jfrog_inputs_saved_on_a_foundation_move_to_its_clouds_trust(self):
+    def test_jfrog_inputs_saved_on_a_pipeline_identity_move_to_its_clouds_trust(self):
         # Inputs saved before the split: JFrog values leave the infrastructure inputs (and its
         # prefill) for the cloud's own JFrog OIDC stack; never another cloud's, never overwriting.
         import tempfile
@@ -278,56 +330,57 @@ class StackTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, state)
         d = state / "test"
         d.mkdir()
-        (d / "gcp-foundation.tfvars.json").write_text(json.dumps(
+        (d / "gcp-pipeline-identity.tfvars.json").write_text(json.dumps(
             {"gcp_project_id": "p1", "ado_org": "o", "jfrog_url": "https://a.jfrog.io", "jfrog_reader_group": "r",
              "console_operators": ["x@y.z"]}))
-        (d / "azure-foundation.tfvars.json").write_text(json.dumps({"ado_org": "o", "jfrog_url": "https://b.jfrog.io"}))
+        (d / "azure-pipeline-identity.tfvars.json").write_text(json.dumps({"ado_org": "o", "jfrog_url": "https://b.jfrog.io"}))
         (d / "azure-jfrog-trust.tfvars.json").write_text(json.dumps({"jfrog_url": "https://kept.jfrog.io"}))
         (d / "shared-serverless-google-cloud.json").write_text(json.dumps({"gcp_project_id": "p1", "jfrog_url": "https://a.jfrog.io"}))
         stacks.separate_jfrog_inputs("test", state_root=state)
-        self.assertEqual(stacks.read_inputs("gcp-foundation", "test", state), {"gcp_project_id": "p1", "ado_org": "o"})
+        self.assertEqual(stacks.read_inputs("gcp-pipeline-identity", "test", state), {"gcp_project_id": "p1", "ado_org": "o"})
         self.assertEqual(stacks.read_inputs("gcp-jfrog-trust", "test", state),
                          {"jfrog_url": "https://a.jfrog.io", "jfrog_reader_group": "r", "console_operators": ["x@y.z"]})
-        self.assertEqual(stacks.read_inputs("azure-foundation", "test", state), {"ado_org": "o"})
+        self.assertEqual(stacks.read_inputs("azure-pipeline-identity", "test", state), {"ado_org": "o"})
         self.assertEqual(stacks.read_inputs("azure-jfrog-trust", "test", state), {"jfrog_url": "https://kept.jfrog.io"})
         self.assertEqual(json.loads((d / "shared-serverless-google-cloud.json").read_text()), {"gcp_project_id": "p1"})
 
     @BOTH_CLOUDS
-    def test_foundation_environments_cover_every_stack_setup_pipeline(self):
-        # Each foundation makes the approval environment for exactly the stacks of its cloud that
+    def test_pipeline_identity_environments_cover_every_stack_setup_pipeline(self):
+        # Each pipeline identity makes the approval environment for exactly the stacks of its cloud that
         # have a stack-setup pipeline (pipelines/<kind>/<cloud>/<stack>/stack-setup.yml).
         import re as _re
         for cloud in ("gcp", "azure"):
-            tf = (stacks.STACKS_DIR / "serverless" / cloud / f"{cloud}-foundation" / "environments.tf").read_text()
+            tf = (stacks.STACKS_DIR / "serverless" / cloud / f"{cloud}-pipeline-identity" / "environments.tf").read_text()
             m = _re.search(r"pipeline_stacks = \[([^\]]*)\]", tf)
             listed = set(_re.findall(r'"([a-z0-9-]+)"', m.group(1)) if m else
                          _re.findall(r'"([a-z0-9-]+)"\s*=', _re.search(r"pipeline_stack_kind = \{([^}]*)\}", tf).group(1)))
             have = {p.parent.name for k in ("serverless", "kubernetes")
                     for p in (stacks.REPO_ROOT / "pipelines" / k).glob(f"{cloud}/*/stack-setup.yml")}
-            self.assertEqual(listed, have, cloud)
+            # Its own pipeline runs before it exists: ADO creates that environment on the first run.
+            self.assertEqual(listed, have - {f"{cloud}-pipeline-identity"}, cloud)
             self.assertNotIn("oidc", tf)   # infrastructure registers nothing for JFrog OIDC
         # The JFrog OIDC stacks' pipelines and environments belong to their cloud's trust stack.
         tf = (stacks.STACKS_DIR / "oidc" / "azure" / "azure-jfrog-trust" / "pipelines.tf").read_text()
         listed = set(_re.findall(r'"([a-z0-9-]+)"\s*=\s*\{', _re.search(r"oidc_pipelines = \{(.*?)\n  \}", tf, _re.S).group(1)))
         have = {p.parent.name for p in (stacks.REPO_ROOT / "pipelines" / "oidc").glob("azure/*/stack-setup.yml")}
-        self.assertEqual(listed, have)
+        self.assertEqual(listed, have - {"azure-jfrog-trust"})   # its own pipeline is registered with the others
         self.assertEqual([p for p in (stacks.REPO_ROOT / "pipelines" / "oidc").glob("gcp/*/stack-setup.yml")], [])
 
     @BOTH_CLOUDS
     def test_each_serverless_type_is_its_own_stack(self):
-        # The real stacks: one per workload type, each standing only on its cloud's foundation.
-        types = {s["id"]: s for s in stacks.CATALOGUE if s["kind"] == "Serverless" and "foundation" not in s["id"]}
+        # The real stacks: one per workload type, each standing only on its cloud's pipeline identity.
+        types = {s["id"]: s for s in stacks.CATALOGUE if s["kind"] == "Serverless" and "pipeline-identity" not in s["id"]}
         self.assertEqual(sorted(t["title"] for t in types.values() if t["group"] == "Google Cloud"),
                          ["Cloud Run function", "Cloud Run job", "Cloud Run service", "Cloud Run worker pool"])
         self.assertEqual(sorted(t["title"] for t in types.values() if t["group"] == "Azure"), [
             "Container App", "Container Apps job", "Functions Flex Consumption", "Functions Premium / Dedicated",
             "Functions on Container Apps", "Web App"])
         for sid, t in types.items():
-            want = {"Google Cloud": "gcp-foundation", "Azure": "azure-foundation"}[t["group"]]
+            want = {"Google Cloud": "gcp-pipeline-identity", "Azure": "azure-pipeline-identity"}[t["group"]]
             self.assertEqual(stacks.depends_on(sid), want, sid)
             self.assertTrue(any(v["name"] == "workload" for v in stacks.variables(sid)), sid)
         # A workload's own name never prefills another workload stack.
-        self.root.save("gcp-foundation", GCP_FOUNDATION)
+        self.root.save("gcp-pipeline-identity", GCP_PIPELINE_IDENTITY)
         stacks.write_inputs("gcp-cloud-run", "test", {"gcp_project_id": "proj-9"}, self.root.dir, self.root.state)
         shared = json.loads((self.root.state / "test" / "shared-serverless-google-cloud.json").read_text())
         self.assertTrue(set(shared) <= stacks.SHARED_INPUTS, shared)
@@ -416,7 +469,7 @@ class InstanceTests(unittest.TestCase):
                 with self.assertRaises(stacks.StackError):
                     stacks.new_instance("azure-web-app", bad, "test", stacks.STACKS_DIR, st)
             with self.assertRaises(stacks.StackError):
-                stacks.new_instance("azure-foundation", "web-c", "test", stacks.STACKS_DIR, st)
+                stacks.new_instance("azure-pipeline-identity", "web-c", "test", stacks.STACKS_DIR, st)
             self.assertEqual(stacks.all_ids("test", st)[stacks.all_ids("test", st).index("azure-web-app") + 1], sid)
             found = {"azure_subscription_id": "s", "ado_org": "o", "state_resource_group": "rg"}
             key = lambda args: next(a for a in args if "key=" in a)
@@ -445,7 +498,7 @@ class AdoJobTests(unittest.TestCase):
         self.ado = FakeAdo(phases)
         j = Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state,
                  ado=self.ado, repo_root=self.repo, sleep=lambda s: None)
-        for f in ("gcp-foundation", "azure-foundation"):
+        for f in ("gcp-pipeline-identity", "azure-pipeline-identity"):
             j._set_status(f, {"deployed": True, "outputs": {}})
         return j
 
@@ -637,11 +690,11 @@ class AdoJobTests(unittest.TestCase):
         self.ado = FakeAdo(phases)
         old = Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state,
                    ado=self.ado, repo_root=self.repo, sleep=lambda s: gate.wait())
-        for f in ("gcp-foundation", "azure-foundation"):
+        for f in ("gcp-pipeline-identity", "azure-pipeline-identity"):
             old._set_status(f, {"deployed": True, "outputs": {}})
         new = Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state,
                    ado=self.ado, repo_root=self.repo, sleep=lambda s: None)
-        for f in ("gcp-foundation", "azure-foundation"):   # the fresh console reads them again on load
+        for f in ("gcp-pipeline-identity", "azure-pipeline-identity"):   # the fresh console reads them again on load
             new._set_status(f, {"deployed": True, "outputs": {}})
         return old, new
 
@@ -683,7 +736,7 @@ class AdoJobTests(unittest.TestCase):
         jobs = self.jobs([PLANNED])
         d = Path(self.root.state) / "test" / "jobs"
         d.mkdir(parents=True, exist_ok=True)
-        (d / "0123456789ab.json").write_text(json.dumps({"id": "0123456789ab", "stack": "gcp-foundation", "action": "plan-apply",
+        (d / "0123456789ab.json").write_text(json.dumps({"id": "0123456789ab", "stack": "gcp-pipeline-identity", "action": "plan-apply",
                                                          "state": "running", "started": 1, "log": [], "log_times": []}))
         j = jobs.get("0123456789ab")
         self.assertEqual(j["state"], "failed")
@@ -698,7 +751,7 @@ class AdoJobTests(unittest.TestCase):
         d = Path(self.root.state) / "test" / "jobs"
         d.mkdir(parents=True, exist_ok=True)
         for jid, pid in (("0123456789aa", other.pid), ("0123456789ab", 2 ** 22 + 7)):
-            (d / f"{jid}.json").write_text(json.dumps({"id": jid, "stack": "azure-foundation", "action": "apply", "pid": pid,
+            (d / f"{jid}.json").write_text(json.dumps({"id": jid, "stack": "azure-pipeline-identity", "action": "apply", "pid": pid,
                                                        "state": "running", "started": 1, "log": [], "log_times": []}))
         self.assertEqual(jobs.get("0123456789aa")["state"], "running")
         self.assertEqual(jobs.get("0123456789ab")["state"], "failed")   # its process is gone
@@ -719,7 +772,7 @@ class JobTests(unittest.TestCase):
         self.root.ready()
         self.jobs = Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state,
                          token_source=lambda sh, host, cloud: self.minted.append(host) or self.clouds.append(cloud) or "minted-token-value")
-        for f in ("gcp-foundation", "azure-foundation"):   # the stacks below stand on them
+        for f in ("gcp-pipeline-identity", "azure-pipeline-identity"):   # the stacks below stand on them
             self.jobs._set_status(f, {"deployed": True, "outputs": {}})
 
     def _plan(self, sid, changes, action="plan-apply"):
@@ -774,6 +827,22 @@ class JobTests(unittest.TestCase):
     def test_no_changes_skips_approval_and_apply(self):
         j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["no-op"]}}])
         self.assertEqual([x["state"] for x in j["stages"]], ["succeeded", "succeeded", "skipped", "skipped"])
+
+    def test_inputs_saved_under_a_renamed_stack_move_to_its_new_id(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "test").mkdir()
+            (Path(d) / "test" / "azure-foundation.tfvars.json").write_text("{}")
+            stacks.use_env("test", Path(d))
+            self.assertTrue((Path(d) / "test" / "azure-pipeline-identity.tfvars.json").is_file())
+            self.assertFalse((Path(d) / "test" / "azure-foundation.tfvars.json").exists())
+
+    def test_a_row_links_to_runs_only_when_it_has_some(self):
+        rows = {r["id"]: r for r in self.jobs.stacks()}
+        self.assertFalse(rows["gcp-cloud-run"]["has_runs"])
+        self.jobs.history = lambda: [{"stack": "gcp-cloud-run"}]
+        rows = {r["id"]: r for r in self.jobs.stacks()}
+        self.assertTrue(rows["gcp-cloud-run"]["has_runs"])
+        self.assertIsNone(rows["gcp-cloud-run"]["check_job"])
 
     def test_a_failure_marks_the_running_stage_failed(self):
         job = {"stages": self.jobs._planned_stages("gcp-cloud-run", "plan-apply", "apply", None)}
@@ -896,7 +965,7 @@ class JobTests(unittest.TestCase):
 
     def test_each_clouds_trust_stack_gets_its_own_clouds_operator_token(self):
         self.root.save("azure-jfrog-trust", {"jfrog_url": "https://acme.jfrog.io", "ado_org": "my-org"})
-        self.jobs._set_status("azure-foundation", {"deployed": True, "outputs": {}})
+        self.jobs._set_status("azure-pipeline-identity", {"deployed": True, "outputs": {}})
         for sid in ("gcp-jfrog-trust", "azure-jfrog-trust"):
             state = stacks.stack_dir(sid, self.root.dir) / "terraform.tfstate"
             state.write_text(json.dumps({"resources": [{"type": "platform_oidc_configuration"}]}))
@@ -905,7 +974,7 @@ class JobTests(unittest.TestCase):
 
     def test_infrastructure_terraform_never_sees_a_jfrog_token(self):
         self.jobs.environ = {"JFROG_ACCESS_TOKEN": "operator-admin-token", "JFROG_URL": "https://acme.jfrog.io"}
-        for sid in ("gcp-foundation", "gcp-cloud-run"):
+        for sid in ("gcp-pipeline-identity", "gcp-cloud-run"):
             self._plan(sid, [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
             p = stacks.stack_dir(sid, self.root.dir) / ".fake_calls"
             self.assertFalse(any(json.loads(l)["jfrog_token_env"] for l in p.read_text().splitlines()), sid)
@@ -958,9 +1027,9 @@ class JobTests(unittest.TestCase):
         self.assertEqual(failed["next"], j["next"])
 
     def test_unreadable_resources_offer_forget_for_local_state(self):
-        # The foundation's resources were deleted outside the console: the destroy plan cannot read
+        # The pipeline identity's resources were deleted outside the console: the destroy plan cannot read
         # them (403). Next: Forget its local state (no cloud call), or Check status, or try again.
-        sid = "gcp-foundation"
+        sid = "gcp-pipeline-identity"
         for x in ("gcp-cloud-run", "gcp-jfrog-trust"):   # read: nothing stands on it
             self.jobs._set_status(x, {"deployed": False, "outputs": {}})
         d = stacks.stack_dir(sid, self.root.dir)
@@ -976,7 +1045,7 @@ class JobTests(unittest.TestCase):
         self.assertNotIn("forget", [a["action"] for a in w["next"]["actions"]])
 
     def test_forget_moves_local_state_aside_after_typed_name(self):
-        sid = "gcp-foundation"
+        sid = "gcp-pipeline-identity"
         d = stacks.stack_dir(sid, self.root.dir)
         (d / "terraform.tfstate").write_text('{"version": 4, "resources": [{"type": "x"}]}')
         (d / "terraform.tfstate.backup").write_text("{}")
@@ -1016,38 +1085,38 @@ class JobTests(unittest.TestCase):
         self.assertTrue(all(d["action"] == "status" for d in done))
         self.assertEqual(self.jobs.refresh_all(), [])   # known now: nothing started again
 
-    def test_refresh_all_leaves_stacks_alone_until_their_foundation_is_deployed(self):
+    def test_refresh_all_leaves_stacks_alone_until_their_pipeline_identity_is_deployed(self):
         self.jobs._status.clear()
-        (stacks.stack_dir("gcp-foundation", self.root.dir) / ".fake_fail_init").write_text("")   # not deployed: read fails
+        (stacks.stack_dir("gcp-pipeline-identity", self.root.dir) / ".fake_fail_init").write_text("")   # not deployed: read fails
         ids = self.jobs.refresh_all()
         done = [wait(self.jobs, {"id": i}) for i in ids]
         self.assertNotIn("gcp-cloud-run", {d["stack"] for d in done})
         rows = {s["id"]: s for s in self.jobs.stacks()}
         self.assertIsNone(rows["gcp-cloud-run"]["status"])
-        self.assertIsNone(rows["gcp-foundation"]["failed"])   # an automatic read never shows as a failed run
+        self.assertIsNone(rows["gcp-pipeline-identity"]["failed"])   # an automatic read never shows as a failed run
 
-    def test_deploy_refused_while_its_foundation_is_not_deployed(self):
-        self.jobs._set_status("gcp-foundation", {"deployed": False, "outputs": {}})
+    def test_deploy_refused_while_its_pipeline_identity_is_not_deployed(self):
+        self.jobs._set_status("gcp-pipeline-identity", {"deployed": False, "outputs": {}})
         row = [s for s in self.jobs.stacks() if s["id"] == "gcp-cloud-run"][0]
-        self.assertEqual(row["depends_on"], "gcp-foundation")
-        self.assertEqual(row["needs"], ["gcp-foundation"])
+        self.assertEqual(row["depends_on"], "gcp-pipeline-identity")
+        self.assertEqual(row["needs"], ["gcp-pipeline-identity"])
         with self.assertRaises(JobError) as e:
             self.jobs.start("gcp-cloud-run", "plan-apply")
         self.assertEqual(e.exception.status, 409)
-        self.assertIn("gcp-foundation", str(e.exception))
-        self.jobs._set_status("gcp-foundation", {"deployed": True, "outputs": {}})
+        self.assertIn("gcp-pipeline-identity", str(e.exception))
+        self.jobs._set_status("gcp-pipeline-identity", {"deployed": True, "outputs": {}})
         self.assertEqual(wait(self.jobs, self.jobs.start("gcp-cloud-run", "status"))["state"], "done")
 
-    def test_a_foundation_not_read_yet_does_not_satisfy_the_order(self):
-        self.jobs._status.pop("gcp-foundation")
-        self.assertEqual([s for s in self.jobs.stacks() if s["id"] == "gcp-cloud-run"][0]["needs"], ["gcp-foundation"])
+    def test_a_pipeline_identity_not_read_yet_does_not_satisfy_the_order(self):
+        self.jobs._status.pop("gcp-pipeline-identity")
+        self.assertEqual([s for s in self.jobs.stacks() if s["id"] == "gcp-cloud-run"][0]["needs"], ["gcp-pipeline-identity"])
         with self.assertRaises(JobError):
             self.jobs.start("gcp-cloud-run", "plan-apply")
 
-    def test_deploying_a_foundation_reads_its_stacks_again(self):
+    def test_deploying_a_pipeline_identity_reads_its_stacks_again(self):
         self.jobs._set_status("gcp-cloud-run", {"deployed": False, "outputs": {}, "error": "bucket doesn't exist"})
-        j = self._plan("gcp-foundation", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
-        wait(self.jobs, self.jobs.start("gcp-foundation", "apply", {"plan_sha256": j["result"]["sha256"]}))
+        j = self._plan("gcp-pipeline-identity", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
+        wait(self.jobs, self.jobs.start("gcp-pipeline-identity", "apply", {"plan_sha256": j["result"]["sha256"]}))
         for _ in range(200):   # the re-read starts just after the apply job finishes
             reread = [x for x in self.jobs._jobs.values() if x["stack"] == "gcp-cloud-run" and x["action"] == "status"]
             if reread:
@@ -1058,24 +1127,24 @@ class JobTests(unittest.TestCase):
         self.assertNotIn("error", [s for s in self.jobs.stacks() if s["id"] == "gcp-cloud-run"][0]["status"])
         self.assertFalse([x for x in self.jobs._jobs.values() if x["stack"] == "azure-container-apps"])
 
-    def test_foundation_destroy_refused_while_stacks_stand_on_it(self):
+    def test_pipeline_identity_destroy_refused_while_stacks_stand_on_it(self):
         self.jobs._set_status("gcp-cloud-run", {"deployed": True, "outputs": {}})
-        row = [s for s in self.jobs.stacks() if s["id"] == "gcp-foundation"][0]
+        row = [s for s in self.jobs.stacks() if s["id"] == "gcp-pipeline-identity"][0]
         self.assertEqual(row["dependents"], ["gcp-cloud-run"])
         with self.assertRaises(JobError) as e:
-            self.jobs.start("gcp-foundation", "plan-destroy")
+            self.jobs.start("gcp-pipeline-identity", "plan-destroy")
         self.assertEqual(e.exception.status, 409)
         self.assertIn("gcp-cloud-run", str(e.exception))
         # Other clouds are never involved.
-        self.assertEqual([s for s in self.jobs.stacks() if s["id"] == "azure-foundation"][0]["dependents"], [])
+        self.assertEqual([s for s in self.jobs.stacks() if s["id"] == "azure-pipeline-identity"][0]["dependents"], [])
 
     def test_upstreams_are_transitive_and_cover_every_stack_used(self):
-        self.assertEqual(stacks.upstreams("aks-jfrog-trust"), ("aks-cluster", "azure-jfrog-trust", "azure-foundation"))
-        self.assertEqual(stacks.ancestors("aks-jfrog-trust"), ("azure-foundation", "azure-jfrog-trust", "aks-cluster"))
-        self.assertEqual(stacks.descendants("azure-foundation")[0], "aks-jfrog-trust")   # destroy order
-        self.assertIn("azure-jfrog-trust", stacks.descendants("azure-foundation"))
-        self.assertEqual(stacks.ancestors("gcp-foundation"), ())
-        self.assertEqual(stacks.build_upstreams("gcp-cloud-run"), ("gcp-foundation", "gcp-cloud-run", "gcp-jfrog-trust"))
+        self.assertEqual(stacks.upstreams("aks-jfrog-trust"), ("aks-cluster", "azure-jfrog-trust", "azure-pipeline-identity"))
+        self.assertEqual(stacks.ancestors("aks-jfrog-trust"), ("azure-pipeline-identity", "azure-jfrog-trust", "aks-cluster"))
+        self.assertEqual(stacks.descendants("azure-pipeline-identity")[0], "aks-jfrog-trust")   # destroy order
+        self.assertIn("azure-jfrog-trust", stacks.descendants("azure-pipeline-identity"))
+        self.assertEqual(stacks.ancestors("gcp-pipeline-identity"), ())
+        self.assertEqual(stacks.build_upstreams("gcp-cloud-run"), ("gcp-pipeline-identity", "gcp-cloud-run", "gcp-jfrog-trust"))
         for s in stacks.CATALOGUE:   # never across clouds; deploy order is catalogue order
             for a in stacks.ancestors(s["id"]):
                 self.assertEqual(stacks.get(a)["group"], s["group"], s["id"])
@@ -1088,15 +1157,15 @@ class JobTests(unittest.TestCase):
         self.assertEqual(row["needs"], ["azure-jfrog-trust"])
         with self.assertRaisesRegex(JobError, "azure-jfrog-trust"):
             self.jobs.start("aks-jfrog-trust", "plan-apply")
-        self.jobs._set_status("azure-foundation", {"deployed": False, "outputs": {}})
+        self.jobs._set_status("azure-pipeline-identity", {"deployed": False, "outputs": {}})
         row = [s for s in self.jobs.stacks() if s["id"] == "aks-jfrog-trust"][0]
-        self.assertEqual(row["needs"], ["azure-foundation", "azure-jfrog-trust"])
+        self.assertEqual(row["needs"], ["azure-pipeline-identity", "azure-jfrog-trust"])
 
     def test_approval_rechecks_the_upstream(self):
-        # Planned while the foundation stood; it was destroyed before Approve: the apply is refused.
+        # Planned while the pipeline identity stood; it was destroyed before Approve: the apply is refused.
         j = self._plan("gcp-cloud-run", [{"address": "a.b", "type": "x", "change": {"actions": ["create"]}}])
-        self.jobs._set_status("gcp-foundation", {"deployed": False, "outputs": {}})
-        with self.assertRaisesRegex(JobError, "gcp-foundation") as e:
+        self.jobs._set_status("gcp-pipeline-identity", {"deployed": False, "outputs": {}})
+        with self.assertRaisesRegex(JobError, "gcp-pipeline-identity") as e:
             self.jobs.start("gcp-cloud-run", "apply", {"plan_sha256": j["result"]["sha256"]})
         self.assertEqual(e.exception.status, 409)
         self.assertFalse([c for c in self.root.calls("gcp-cloud-run") if "apply" in c])
@@ -1104,17 +1173,17 @@ class JobTests(unittest.TestCase):
     def test_approval_rechecks_what_stands_on_it(self):
         for x in ("gcp-cloud-run", "gcp-jfrog-trust"):
             self.jobs._set_status(x, {"deployed": False, "outputs": {}})
-        j = self._plan("gcp-foundation", [{"address": "a.b", "type": "x", "change": {"actions": ["delete"]}}], "plan-destroy")
+        j = self._plan("gcp-pipeline-identity", [{"address": "a.b", "type": "x", "change": {"actions": ["delete"]}}], "plan-destroy")
         self.jobs._set_status("gcp-cloud-run", {"deployed": True, "outputs": {}})   # deployed meanwhile
         with self.assertRaisesRegex(JobError, "gcp-cloud-run"):
-            self.jobs.start("gcp-foundation", "apply", {"plan_sha256": j["result"]["sha256"], "typed_confirmation": "gcp-foundation"})
+            self.jobs.start("gcp-pipeline-identity", "apply", {"plan_sha256": j["result"]["sha256"], "typed_confirmation": "gcp-pipeline-identity"})
 
     def test_destroy_waits_for_stacks_on_it_to_be_read(self):
         self.jobs._set_status("gcp-jfrog-trust", {"deployed": False, "outputs": {}})
-        row = [s for s in self.jobs.stacks() if s["id"] == "gcp-foundation"][0]
+        row = [s for s in self.jobs.stacks() if s["id"] == "gcp-pipeline-identity"][0]
         self.assertEqual(row["unchecked"], ["gcp-cloud-run"])   # inputs saved, state not read yet
-        with self.assertRaisesRegex(JobError, "check what may stand on gcp-foundation first"):
-            self.jobs.start("gcp-foundation", "plan-destroy")
+        with self.assertRaisesRegex(JobError, "check what may stand on gcp-pipeline-identity first"):
+            self.jobs.start("gcp-pipeline-identity", "plan-destroy")
 
     def test_failed_job_named_on_its_stack(self):
         (stacks.stack_dir("azure-container-apps", self.root.dir) / ".fake_fail_plan").write_text("")
@@ -1150,11 +1219,11 @@ class DeletedOutsideTests(unittest.TestCase):
         self.ado = FakeAdo([PLANNED])
         j = Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state, ado=self.ado,
                  repo_root=self.repo, sleep=lambda s: None, probe=lambda kind, store: self.asked.append(store["label"]) or answer)
-        for f in ("gcp-foundation", "azure-foundation"):
+        for f in ("gcp-pipeline-identity", "azure-pipeline-identity"):
             j._set_status(f, {"deployed": True, "outputs": {}})
         return j
 
-    def nothing_on(self, jobs, *sids):   # read: nothing stands on the foundation
+    def nothing_on(self, jobs, *sids):   # read: nothing stands on the pipeline identity
         for x in sids:
             jobs._set_status(x, {"deployed": False, "outputs": {}})
 
@@ -1183,31 +1252,58 @@ class DeletedOutsideTests(unittest.TestCase):
         self.assertEqual(self.ado.queued, [])
         self.assertIsNone([s for s in jobs.stacks() if s["id"] == "gcp-cloud-run"][0]["plan"])
 
+    def test_a_read_never_creates_a_state_file(self):
+        """terraform init would write an empty state into the store: with no state file there, the read
+        answers not deployed without running Terraform."""
+        jobs = self.jobs("present")
+        seen = []
+        jobs.probe_state = lambda init: seen.append(init) or "missing"
+        j = wait(jobs, jobs.start("gcp-cloud-run", "status"))
+        self.assertEqual(j["state"], "done", j)
+        self.assertFalse(self.status(jobs, "gcp-cloud-run")["deployed"])
+        self.assertEqual(self.root.calls("gcp-cloud-run"), [])
+        self.assertIn("-backend-config=bucket=proj-1-tfstate", seen[0])
+        jobs.probe_state = lambda init: "unknown"   # on doubt it reads as before
+        wait(jobs, {"id": jobs.refresh(["gcp-cloud-run"])[0]})
+        self.assertTrue(self.root.calls("gcp-cloud-run"))
+
+    def test_the_state_file_probe_asks_for_the_stack_key(self):
+        runs = []
+
+        class R:
+            returncode, stdout, stderr = 0, "false\n", ""
+        with mock.patch.object(jobs_module.subprocess, "run", lambda argv, **kw: runs.append(argv) or R()):
+            got = REAL_PROBE_STATE(("-backend-config=storage_account_name=stx", "-backend-config=key=a/test/w.tfstate",
+                                                           "-backend-config=container_name=tfstate"))
+        self.assertEqual(got, "missing")
+        self.assertEqual(runs[0][:3], ["az", "storage", "blob"])
+        self.assertIn("a/test/w.tfstate", runs[0])
+
     def test_an_unconfirmed_store_is_never_taken_as_deleted(self):
         jobs = self.jobs("unknown")   # no sign-in, no access: not proof of anything
         wait(jobs, jobs.start("gcp-cloud-run", "plan-destroy"))
         self.assertEqual(self.ado.queued[0][1]["action"], "destroy")
 
-    def test_a_foundation_with_its_store_gone_is_partly_deleted(self):
+    def test_a_pipeline_identity_with_its_store_gone_is_partly_deleted(self):
         jobs = self.jobs("missing")
-        self.ws("gcp-foundation", ".fake_outputs.json", json.dumps({"tfstate_bucket": {"value": "proj-1-tfstate"}}))
-        j = wait(jobs, jobs.start("gcp-foundation", "status"))
+        self.ws("gcp-pipeline-identity", ".fake_outputs.json", json.dumps({"tfstate_bucket": {"value": "proj-1-tfstate"}}))
+        j = wait(jobs, jobs.start("gcp-pipeline-identity", "status"))
         self.assertEqual(j["state"], "done", j)
-        st = self.status(jobs, "gcp-foundation")
+        st = self.status(jobs, "gcp-pipeline-identity")
         self.assertFalse(st["deployed"])
         self.assertTrue(st["deleted"].startswith("Partly deleted outside the console"))
         self.assertEqual(st["outputs"], {"tfstate_bucket": "proj-1-tfstate"})
 
-    def test_a_partly_deleted_foundation_reads_its_stacks_so_destroy_unlocks(self):
-        """Its stacks were never read (they wait for a deployed foundation), so Destroy stayed greyed out
+    def test_a_partly_deleted_pipeline_identity_reads_its_stacks_so_destroy_unlocks(self):
+        """Its stacks were never read (they wait for a deployed pipeline identity), so Destroy stayed greyed out
         behind "check what may stand on it first" for good. Reading it as partly deleted reads them."""
         jobs = self.jobs("missing")
-        jobs._status.pop("gcp-foundation")
-        self.ws("gcp-foundation", ".fake_outputs.json", json.dumps({"tfstate_bucket": {"value": "proj-1-tfstate"}}))
-        wait(jobs, jobs.start("gcp-foundation", "status"))
-        for x in [x for x in jobs._jobs.values() if x["stack"] != "gcp-foundation"]:
+        jobs._status.pop("gcp-pipeline-identity")
+        self.ws("gcp-pipeline-identity", ".fake_outputs.json", json.dumps({"tfstate_bucket": {"value": "proj-1-tfstate"}}))
+        wait(jobs, jobs.start("gcp-pipeline-identity", "status"))
+        for x in [x for x in jobs._jobs.values() if x["stack"] != "gcp-pipeline-identity"]:
             wait(jobs, x)
-        row = [s for s in jobs.stacks() if s["id"] == "gcp-foundation"][0]
+        row = [s for s in jobs.stacks() if s["id"] == "gcp-pipeline-identity"][0]
         self.assertEqual(row["unchecked"], [])
         self.assertIn("deleted", self.status(jobs, "gcp-cloud-run"))
 
@@ -1226,15 +1322,15 @@ class DeletedOutsideTests(unittest.TestCase):
             {"type": "diagnostic", "diagnostic": {"severity": "error", "address": "platform_oidc_configuration.ado",
                                                   "summary": "Unable to Refresh Resource", "detail": '{"code":"UNAUTHORIZED"}'}},
         ]
-        self.ws("gcp-foundation", ".fake_refresh.jsonl", "\n".join(json.dumps(e) for e in events))
-        self.ws("gcp-foundation", ".fake_state.json", json.dumps({"values": {"root_module": {"resources": [
+        self.ws("gcp-pipeline-identity", ".fake_refresh.jsonl", "\n".join(json.dumps(e) for e in events))
+        self.ws("gcp-pipeline-identity", ".fake_state.json", json.dumps({"values": {"root_module": {"resources": [
             {"address": "google_artifact_registry_repository.images", "values": {"id": repo_id}}]}}}))
-        self.ws("gcp-foundation", ".fake_plan.json", json.dumps(
+        self.ws("gcp-pipeline-identity", ".fake_plan.json", json.dumps(
             [{"address": "platform_oidc_configuration.ado", "type": "platform_oidc_configuration", "change": {"actions": ["delete"]}}]))
         self.nothing_on(jobs, "gcp-cloud-run", "gcp-jfrog-trust")
-        j = wait(jobs, jobs.start("gcp-foundation", "plan-destroy"))
+        j = wait(jobs, jobs.start("gcp-pipeline-identity", "plan-destroy"))
         self.assertEqual(j["state"], "done", j)
-        forgotten = (stacks.stack_dir("gcp-foundation", self.root.dir) / ".fake_forgotten").read_text().split()
+        forgotten = (stacks.stack_dir("gcp-pipeline-identity", self.root.dir) / ".fake_forgotten").read_text().split()
         self.assertEqual(forgotten, ["google_artifact_registry_repository.images", "google_service_account.ado",
                                      "google_artifact_registry_repository_iam_member.push", "google_storage_bucket.tfstate"])
         self.assertEqual(j["result"]["summary"]["delete"], 1)   # the JFrog integration is still there to destroy
@@ -1242,14 +1338,14 @@ class DeletedOutsideTests(unittest.TestCase):
 
     def test_destroy_with_nothing_left_passes(self):
         jobs = self.jobs("unknown")
-        self.ws("gcp-foundation", ".fake_refresh.jsonl", json.dumps(
+        self.ws("gcp-pipeline-identity", ".fake_refresh.jsonl", json.dumps(
             {"type": "resource_drift", "change": {"resource": {"addr": "google_service_account.ado"}, "action": "delete"}}))
-        self.ws("gcp-foundation", ".fake_plan.json", "[]")
+        self.ws("gcp-pipeline-identity", ".fake_plan.json", "[]")
         self.nothing_on(jobs, "gcp-cloud-run", "gcp-jfrog-trust")
-        j = wait(jobs, jobs.start("gcp-foundation", "plan-destroy"))
+        j = wait(jobs, jobs.start("gcp-pipeline-identity", "plan-destroy"))
         self.assertEqual(j["state"], "done", j)
         self.assertTrue(j["result"]["already_deleted"])
-        st = self.status(jobs, "gcp-foundation")
+        st = self.status(jobs, "gcp-pipeline-identity")
         self.assertEqual((st["deployed"], st["deleted"]), (False, "Deleted outside the console: nothing of it is left."))
 
 
@@ -1257,10 +1353,10 @@ class ServerTests(unittest.TestCase):
     def setUp(self):
         self.root = Root()
         self.addCleanup(shutil.rmtree, self.root.dir)
-        self.root.save("gcp-foundation", GCP_FOUNDATION)
+        self.root.save("gcp-pipeline-identity", GCP_PIPELINE_IDENTITY)
         self.console = SetupServer(token=TOKEN, root=self.root.dir, state_root=self.root.state, log=open("/dev/null", "w"),
                                    jobs=Jobs(root=self.root.dir, shell_factory=fake_shell, environ={}, state_root=self.root.state))
-        self.console.jobs._set_status("gcp-foundation", {"deployed": True, "outputs": {}})
+        self.console.jobs._set_status("gcp-pipeline-identity", {"deployed": True, "outputs": {}})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(self.console))
         self.console.port = self.httpd.server_address[1]
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
@@ -1306,7 +1402,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.req("POST", "/api/stacks/gcp-cloud-run/instances", {"name": "job-two"})[0], 409)
         self.assertEqual(self.req("POST", "/api/stacks/gcp-cloud-run-service/instances", {"name": "job-two"})[0], 409)  # any workload stack
         self.assertEqual(self.req("GET", "/api/stacks/gcp-cloud-run@job-two/inputs")[0], 200)
-        self.assertEqual(self.req("POST", "/api/stacks/gcp-foundation/instances", {"name": "x-two"})[0], 400)
+        self.assertEqual(self.req("POST", "/api/stacks/gcp-pipeline-identity/instances", {"name": "x-two"})[0], 400)
         self.assertEqual(self.req("DELETE", "/api/stacks/gcp-cloud-run@job-two/instances")[0], 200)
         self.assertEqual(chk("job-two")["ok"], True)
         # Azure without a saved subscription: the cloud is not asked, and that is said.
@@ -1326,7 +1422,7 @@ class ServerTests(unittest.TestCase):
             self.assertEqual([s["id"] for s in data["stacks"]], ["gcp-jfrog-trust", "azure-jfrog-trust", "aks-jfrog-trust"])
             self.assertEqual(data["titles"]["aks-cluster"], "AKS cluster")   # names what it stands on, nothing more
             self.assertEqual(self.req("GET", "/api/stacks/gcp-cloud-run/inputs")[0], 404)
-            self.assertEqual(self.req("POST", "/api/stacks/gcp-foundation/jobs", {"action": "plan-apply"})[0], 404)
+            self.assertEqual(self.req("POST", "/api/stacks/gcp-pipeline-identity/jobs", {"action": "plan-apply"})[0], 404)
             self.assertEqual(self.req("GET", "/api/stacks/gcp-jfrog-trust/inputs")[0], 200)
         finally:
             self.console.port = port
@@ -1349,7 +1445,7 @@ class ServerTests(unittest.TestCase):
         st, body, _ = self.req("GET", "/api/stacks/gcp-cloud-run/inputs")
         form = json.loads(body)
         self.assertEqual(st, 200)
-        self.assertEqual(form["missing"], ["gcp_project_id"])   # prefilled from gcp-foundation, not saved yet
+        self.assertEqual(form["missing"], ["gcp_project_id"])   # prefilled from gcp-pipeline-identity, not saved yet
         self.assertEqual({f["name"]: f.get("current") for f in form["fields"]}["gcp_project_id"], "proj-1")
         self.assertEqual(self.req("PUT", "/api/stacks/gcp-cloud-run/inputs", {"values": {"api_token": "x"}})[0], 400)
         st, body, _ = self.req("PUT", "/api/stacks/gcp-cloud-run/inputs", {"values": {"gcp_project_id": "proj-9", "name": "x"}})
@@ -1363,6 +1459,16 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(st, 200)
         self.assertEqual([r["stack"] for r in json.loads(body)["jobs"]], ["gcp-cloud-run"])
         self.assertEqual(self.req("DELETE", "/api/jobs/000000000000")[0], 404)
+
+    def test_an_admin_deletes_an_archived_run(self):
+        d = self.root.state / "test" / "jobs-archive"
+        d.mkdir(parents=True)
+        (d / "0123456789ab.json").write_text(json.dumps({"id": "0123456789ab", "stack": "gcp-cloud-run", "state": "done",
+                                                         "archived_at": time.time()}))
+        self.assertEqual(self.req("DELETE", "/api/jobs/archive/0123456789ab")[0], 200)
+        self.assertFalse((d / "0123456789ab.json").exists())
+        self.assertEqual(self.req("DELETE", "/api/jobs/archive/0123456789ab")[0], 404)
+        self.assertEqual(self.req("DELETE", "/api/jobs/archive/..")[0], 404)
 
 class LiveOptionTests(unittest.TestCase):
     """Approvers and operators are picked from live ADO, Entra and Google Cloud data, by email."""

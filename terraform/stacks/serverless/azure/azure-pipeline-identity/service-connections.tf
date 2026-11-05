@@ -7,7 +7,7 @@ resource "azuredevops_serviceendpoint_azurerm" "ado" {
 
   project_id                             = data.azuredevops_project.this.id
   service_endpoint_name                  = "jfrog-oidc-azure-${each.key}"
-  description                            = "Azure ${each.key} pipelines. Written by terraform/stacks/azure-foundation."
+  description                            = "Azure ${each.key} pipelines. Written by terraform/stacks/azure-pipeline-identity."
   service_endpoint_authentication_scheme = "WorkloadIdentityFederation"
   azurerm_spn_tenantid                   = var.azure_tenant_id
   azurerm_subscription_id                = var.azure_subscription_id

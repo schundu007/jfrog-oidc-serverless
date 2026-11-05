@@ -6,7 +6,7 @@
 #
 # The console reads console_operator_env from this root's state: nothing to set before starting it.
 # Its service account exists only for the JFrog exchange, so it is OIDC configuration, not
-# infrastructure: gcp-foundation never creates it.
+# infrastructure: gcp-pipeline-identity never creates it.
 
 variable "console_operators" {
   description = "Emails of the people who may act as the console operator (Google accounts). Empty: no operator identity."

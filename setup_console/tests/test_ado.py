@@ -158,7 +158,7 @@ class AdoTests(unittest.TestCase):
                             ("GET", "/builds/5/logs/9"): (200, PLAN_LOG)})
         st = c.stack_run(5)
         self.assertEqual(st["phase"], "authorizing")
-        self.assertIn("foundation", st["error"])
+        self.assertIn("pipeline identity", st["error"])
 
     def test_no_changes_ends_without_an_approval(self):
         c, _ = self.client({("GET", "/builds/7/timeline"): (200, timeline(apply=("completed", "skipped"))),

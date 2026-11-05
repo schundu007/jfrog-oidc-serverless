@@ -13,7 +13,7 @@ resource "azuredevops_serviceendpoint_azurerm" "ado" {
 
   project_id                             = data.azuredevops_project.this.id
   service_endpoint_name                  = "jfrog-oidc-gcp-${each.key}"
-  description                            = "GCP ${each.key} pipelines: OIDC token issuer only, no Azure access. Written by terraform/stacks/gcp-foundation."
+  description                            = "GCP ${each.key} pipelines: OIDC token issuer only, no Azure access. Written by terraform/stacks/gcp-pipeline-identity."
   service_endpoint_authentication_scheme = "WorkloadIdentityFederation"
   azurerm_spn_tenantid                   = var.ado_tenant_id
   azurerm_subscription_id                = local.not_azure

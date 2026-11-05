@@ -18,7 +18,7 @@ variable "ado_org" {
 }
 
 variable "ado_project" {
-  description = "Azure DevOps project that holds azure-foundation's service connections."
+  description = "Azure DevOps project that holds azure-pipeline-identity's service connections."
   type        = string
 }
 

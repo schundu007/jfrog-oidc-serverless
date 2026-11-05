@@ -3,14 +3,12 @@ variable "azure_subscription_id" {
 }
 
 variable "azure_location" {
-  type    = string
-  default = "westus2"
+  type = string
 }
 
 variable "workload" {
   description = "Workload name: its resource group, identity, plan and web app are named after it."
   type        = string
-  default     = "app-jfrog-demo"
 }
 
 variable "os" {

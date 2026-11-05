@@ -51,7 +51,7 @@ class ProvenanceTests(unittest.TestCase):
         image = "us-central1-docker.pkg.dev/demo/apps/svc:0d44d6946094"
         builds = [{"id": 190, "buildNumber": "20261101.3", "sourceVersion": "ffff" * 10, "finishTime": "2026-11-01T10:00:00Z"},
                   {"id": 177, "buildNumber": "20261101.1", "sourceVersion": "0d44d6946094a500bcc98ec29d1d11de68550776",
-                   "finishTime": "2026-11-01T09:20:00Z", "requestedFor": {"displayName": "Dev User"}}]
+                   "finishTime": "2026-11-01T09:20:00Z", "requestedFor": {"displayName": "Chundu"}}]
         lines = []
         sh = Shell(mode="replay", fixtures=fixtures(image, builds), log=lines.append)
         out = provenance.run(cfg(), sh, {"ado": {"organization": "cdo", "project": "proj"}}, repo(), jfrog=Jf())

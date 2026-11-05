@@ -76,7 +76,7 @@ def main(argv=None) -> int:
         print(f"portal: cannot load fixtures: {exc}", file=sys.stderr)
         return 2
     env_name = (delivery or {}).get("environment") or "test"
-    # Stack changes run as ADO pipelines (the delivery repo's org and project); foundations and reads stay here.
+    # Stack changes run as ADO pipelines (the delivery repo's org and project); pipeline identity stacks and reads stay here.
     ado_client = None
     if delivery and not args.fixtures:
         ado_client = Ado(Shell(mode="live", log=lambda line: None), delivery["ado"]["organization"], delivery["ado"]["project"],
@@ -85,9 +85,24 @@ def main(argv=None) -> int:
                         jobs=Jobs(env_name=env_name, token_source=jfrog_operator.Tokens().get, ado=ado_client))
     if connections:
         def retarget(ado):
-            # Azure DevOps changed on Settings: the running consoles use it from the next call.
-            if delivery is not None:
-                delivery["ado"].update(ado)
+            # Azure DevOps changed on Settings: the running consoles use it from the next call. A console
+            # started without Azure DevOps (a new environment, nothing in delivery.json) switches to
+            # delivery mode here, without a restart.
+            nonlocal delivery, ado_client
+            if delivery is None:
+                try:
+                    delivery = deliver.load_settings(REPO_ROOT / "pipelines" / "delivery.json", overrides=connections.file)
+                except deliver.DeliveryError:
+                    delivery = None
+                if delivery is None:
+                    return
+                serverless.delivery = serverless.runs.delivery = delivery
+                ado_client = Ado(Shell(mode="live", log=lambda line: None), ado["organization"], ado["project"],
+                                 branch=ado.get("target_branch") or "main", repo=ado.get("repository") or "")
+                setup.jobs.ado = ado_client
+                setup.jobs.onboard = chain.onboarder(serverless)
+                return
+            delivery["ado"].update(ado)
             if ado_client:
                 ado_client.retarget(ado["organization"], ado["project"], ado.get("target_branch") or "main",
                                     ado.get("repository") or "")

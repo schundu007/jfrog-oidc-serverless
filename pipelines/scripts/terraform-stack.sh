@@ -4,7 +4,7 @@
 # Runs terraform/stacks/<serverless|kubernetes>/<cloud>/<stack> with the inputs the run was queued with (STACK_INPUTS,
 # JSON: the stack's variables, as the Infrastructure page saves them) and the stack's
 # remote state derived from STACK_STATE (JSON: gcp_project_id, or azure_subscription_id,
-# ado_org and state_resource_group), the store that cloud's foundation stack creates. Nothing is read from
+# ado_org and state_resource_group), the store that cloud's pipeline identity stack creates. Nothing is read from
 # files in the repo. Azure
 # stacks authenticate through the AzureCLI@2 login; GCP stacks through WIF.
 # Infrastructure stacks only (terraform/stacks/{serverless,kubernetes}/...): no JFrog provider, token or

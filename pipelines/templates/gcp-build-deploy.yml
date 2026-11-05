@@ -22,8 +22,13 @@ variables:
 
 jobs:
   - job: rollout
-    pool:
-      vmImage: ubuntu-24.04
+    # AGENT_POOL in vars/<cloud>-<env>.yml: a self-hosted pool; empty: Microsoft-hosted ubuntu-24.04
+    ${{ if ne(variables.AGENT_POOL, '') }}:
+      pool:
+        name: ${{ variables.AGENT_POOL }}
+    ${{ else }}:
+      pool:
+        vmImage: ubuntu-24.04
     displayName: Cloud Run ${{ parameters.kind }} ${{ parameters.workload }}
     timeoutInMinutes: 30
     variables:
@@ -40,6 +45,9 @@ jobs:
     steps:
       - checkout: self
         fetchDepth: 1
+      - ${{ if eq(parameters.workload, '') }}:
+          - bash: echo "##vso[task.logissue type=error]Fill in the workload name when you run this pipeline." && exit 1
+            displayName: Workload name
       # ADO issues the connection's OIDC token only to a job that references it; this
       # skipped task is that reference. Nothing signs in to Azure.
       - task: AzureCLI@2

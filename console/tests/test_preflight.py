@@ -103,7 +103,7 @@ class GcpPreflightTests(unittest.TestCase):
         self.assertEqual(self._reach(["serviceAccount:ado-setup@ci-1234.iam.gserviceaccount.com"])["status"], "ok")
         miss = self._reach(["user:someone@example.com"])
         self.assertEqual(miss["status"], "fail")
-        self.assertIn("-foundation", miss["fix"])
+        self.assertIn("-pipeline-identity", miss["fix"])
 
     def _code(self, remote_console, remote_modules, local_static="s1"):
         perms = preflight.GCP_PERMISSIONS_COMMON + preflight.GCP_PERMISSIONS_BY_KIND["gcp_run_service"]
@@ -201,7 +201,7 @@ class ProdNameTests(unittest.TestCase):
     def test_prod_heuristic(self):
         for name in ("trk-mt-prod-sub", "acme-prd", "Production", "live-payments"):
             self.assertTrue(preflight.PROD_NAME.search(name), name)
-        for name in ("trk-mt-nprd-sub", "demo-dev", "product-catalog", "example-project-123"):
+        for name in ("trk-mt-nprd-sub", "demo-dev", "product-catalog", "csb-test-257615"):
             self.assertFalse(preflight.PROD_NAME.search(name), name)
 
 

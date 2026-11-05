@@ -30,7 +30,7 @@ provider "artifactory" {
   url = var.jfrog_url
 }
 
-# Reads the foundation's service connections and writes this root's own variable group.
+# Reads the pipeline identity's service connections and writes this root's own variable group.
 provider "azuredevops" {
   org_service_url = "https://dev.azure.com/${var.ado_org}"
   use_cli         = true

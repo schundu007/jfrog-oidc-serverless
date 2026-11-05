@@ -6,7 +6,7 @@ data "azuredevops_project" "this" {
 resource "azuredevops_variable_group" "gcp" {
   project_id   = data.azuredevops_project.this.id
   name         = "jfrog-oidc-gcp-${var.pipeline_environment}"
-  description  = "Written by terraform/stacks/gcp-foundation; do not edit by hand."
+  description  = "Written by terraform/stacks/gcp-pipeline-identity; do not edit by hand."
   allow_access = true
 
   variable {

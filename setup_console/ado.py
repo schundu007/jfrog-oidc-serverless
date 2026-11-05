@@ -3,7 +3,7 @@
 A stack's stack-setup pipeline plans, waits on its ADO environment's approval, then applies
 exactly that plan file. This client queues it, reads the plan the run made (from the plan task's
 log), and answers the approval: the console's Approve (or Yes) is the approval, given by the
-signed-in az account, which the foundation made the environment's approver. The az token is
+signed-in az account, which the pipeline identity made the environment's approver. The az token is
 fetched as a sensitive call and only ever sent as a header.
 """
 
@@ -331,7 +331,7 @@ class Ado:
         # A pipeline not yet permitted to use the environment waits here, before its approval opens.
         if any(r.get("type") == "Checkpoint.Authorization" and r.get("state") != "completed" for r in recs):
             return dict(out, phase="authorizing",
-                        error="the pipeline is not permitted to use its ADO environment yet: deploy the foundation again")
+                        error="the pipeline is not permitted to use its ADO environment yet: deploy the pipeline identity again")
         # The run's own approval checkpoint (open = inProgress): its record id is the approval id.
         approval = next((r["id"] for r in recs if r.get("type") == "Checkpoint.Approval" and r.get("state") == "inProgress"), None)
         if approval:

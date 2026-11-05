@@ -3,19 +3,16 @@ variable "gcp_project_id" {
 }
 
 variable "gcp_region" {
-  type    = string
-  default = "us-central1"
+  type = string
 }
 
 variable "zone" {
   description = "A zonal cluster keeps the test cheap (one zone, one node)."
   type        = string
-  default     = "us-central1-a"
 }
 
 variable "name" {
-  type    = string
-  default = "gke-jfrog-test"
+  type = string
 }
 
 variable "node_count" {

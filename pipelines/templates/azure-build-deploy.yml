@@ -35,13 +35,21 @@ variables:
 
 jobs:
   - job: build_deploy
-    pool:
-      vmImage: ubuntu-24.04
+    # AGENT_POOL in vars/<cloud>-<env>.yml: a self-hosted pool; empty: Microsoft-hosted ubuntu-24.04
+    ${{ if ne(variables.AGENT_POOL, '') }}:
+      pool:
+        name: ${{ variables.AGENT_POOL }}
+    ${{ else }}:
+      pool:
+        vmImage: ubuntu-24.04
     displayName: Roll out ${{ parameters.kind }} ${{ parameters.workload }}
     timeoutInMinutes: 30
     steps:
       - checkout: self
         fetchDepth: 1
+      - ${{ if eq(parameters.workload, '') }}:
+          - bash: echo "##vso[task.logissue type=error]Fill in the workload name when you run this pipeline." && exit 1
+            displayName: Workload name
       - task: AzureCLI@2
         displayName: Roll out ${{ parameters.kind }} ${{ parameters.workload }} (OIDC)
         inputs:

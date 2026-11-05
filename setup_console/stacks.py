@@ -12,12 +12,12 @@ value saved for it in that cloud; clouds never prefill from each other.
 
 Serverless and Kubernetes are separate kinds of infrastructure: no stack of one stands on a stack
 of the other, and prefill never crosses between them. The cluster stacks (gke-cluster, aks-cluster)
-use their cloud's foundation only for remote state and pipeline trust (their stack-setup pipeline,
-pipelines/kubernetes/<cloud>/<stack>/stack-setup.yml); nothing stands on them. Clouds are completely separate, as in production: each has its own foundation stack
-(gcp-foundation, azure-foundation) with its own ADO trust, its own pipeline variable group and its
+use their cloud's pipeline identity only for remote state and pipeline trust (their stack-setup pipeline,
+pipelines/kubernetes/<cloud>/<stack>/stack-setup.yml); nothing stands on them. Clouds are completely separate, as in production: each has its own pipeline identity stack
+(gcp-pipeline-identity, azure-pipeline-identity) with its own ADO trust, its own pipeline variable group and its
 own state store.
 
-Infrastructure never touches JFrog: no foundation, workload or cluster stack has a JFrog provider,
+Infrastructure never touches JFrog: no pipeline identity, workload or cluster stack has a JFrog provider,
 input or setting, and none registers anything for JFrog OIDC (its pipelines, environments and approvals
 are made by the OIDC stacks themselves). The UI serves them apart (server.py scopes: /setup infra,
 /oidc JFrog OIDC), as do the pipelines (terraform-stack.sh vs oidc-stack.sh). JFrog is OIDC configuration, made only once the infrastructure exists: the
@@ -25,14 +25,15 @@ are made by the OIDC stacks themselves). The UI serves them apart (server.py sco
 integration, mappings and JFrog variable group; on GCP also the console operator; aks-jfrog-trust: the
 AKS cluster's issuer, mapping and credential provider, in its own ADO pipeline) and, per workload,
 the console's workspaces. Its stacks' remote state is
--backend-config derived from that foundation's inputs only: gcs bucket <gcp_project_id>-tfstate;
-azurerm account st<ado_org>tfstate in the ADO identity's resource group. Foundations keep local state.
+-backend-config derived from that pipeline identity's inputs only: gcs bucket <gcp_project_id>-tfstate;
+azurerm account st<ado_org[:12]><subscription[:8]> in the ADO identity's resource group. Pipeline identity stacks keep local state.
 Prefill is kept per kind and cloud: never across clouds, never between Serverless and Kubernetes.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -45,7 +46,7 @@ STATE_ROOT = REPO_ROOT / ".console" / "setup"
 # Order is the order to deploy in; destroy in reverse.
 # about: what the stack creates, in plain words. next: what to do once it is deployed.
 CATALOGUE = (
-    {"id": "gcp-foundation", "kind": "Serverless", "group": "Google Cloud", "title": "DevOps integrations",
+    {"id": "gcp-pipeline-identity", "kind": "Serverless", "group": "Google Cloud", "title": "Pipeline identity and state",
      "about": "Lets the Google Cloud pipelines sign in to Google Cloud with their OIDC token, with no "
               "stored keys: the workload identity provider, the pipeline service accounts, their ADO "
               "service connections and variable group, the image repository, and the bucket that holds "
@@ -69,7 +70,7 @@ CATALOGUE = (
               "HTTP endpoint) once deploy_worker_pool is on.",
      "next": "Run this stack's build-deploy pipeline to push the first image, then set worker_pool_image, "
              "turn on deploy_worker_pool (Inputs) and deploy again."},
-    {"id": "azure-foundation", "kind": "Serverless", "group": "Azure", "title": "DevOps integrations",
+    {"id": "azure-pipeline-identity", "kind": "Serverless", "group": "Azure", "title": "Pipeline identity and state",
      "about": "Lets the Azure pipelines sign in to Azure with their OIDC token, with no stored "
               "secrets: the setup identity and its federated credentials, its ADO service connections "
               "and variable group, and the storage account that holds each Azure workload stack's "
@@ -104,15 +105,15 @@ CATALOGUE = (
               "the web app for Python, Java, .NET, Node.js or PHP code.",
      "next": "Run this stack's build-deploy pipeline to deploy the code."},
     # JFrog OIDC: only after the infrastructure exists. Local state, run here with the operator's
-    # JFrog admin token; each stands on its cloud's foundation (it reads the service connections).
+    # JFrog admin token; each stands on its cloud's pipeline identity (it reads the service connections).
     {"id": "gcp-jfrog-trust", "kind": "JFrog OIDC", "group": "Google Cloud", "title": "Pipelines' JFrog trust",
-     "after": "gcp-foundation",
+     "after": "gcp-pipeline-identity",
      "about": "The JFrog OIDC integration for the Google Cloud pipelines' service connections, its build "
               "(reader) and setup (admin) mappings, the pipelines' JFrog variable group, and the console "
               "operator's identity.",
      "next": "Run the build-deploy pipelines, then configure each workload in the Serverless console."},
     {"id": "azure-jfrog-trust", "kind": "JFrog OIDC", "group": "Azure", "title": "Pipelines' JFrog trust",
-     "after": "azure-foundation",
+     "after": "azure-pipeline-identity",
      "about": "The JFrog OIDC integration for the Azure pipelines' service connections, its build "
               "(reader) and setup (admin) mappings, and the pipelines' JFrog variable group.",
      "next": "Run the build-deploy pipelines, then configure each workload in the Serverless console."},
@@ -139,8 +140,8 @@ SHARED_INPUTS = frozenset({"jfrog_url", "jfrog_reader_group", "ado_org", "ado_pr
                            "pipeline_environment", "ado_repository", "ado_approvers", "gcp_project_id", "gcp_region",
                            "azure_subscription_id", "azure_tenant_id", "azure_location",
                            "deployer_service_account", "deployer_principal_id", "image_repository", "tags"})
-# The foundation whose inputs a remote backend's location derives from, by backend type.
-FOUNDATION = {"gcs": "gcp-foundation", "azurerm": "azure-foundation"}
+# The pipeline identity whose inputs a remote backend's location derives from, by backend type.
+PIPELINE_IDENTITY = {"gcs": "gcp-pipeline-identity", "azurerm": "azure-pipeline-identity"}
 MAX_VARS = 64 * 1024
 _SECRETISH = re.compile(r"(password|secret|(^|_)(api_)?key$|(^|_)token$)", re.I)
 # Inputs a picker can offer live choices for (read-only CLI listings).
@@ -168,9 +169,9 @@ INSTANCE_NAME = re.compile(r"[a-z][a-z0-9-]{1,38}[a-z0-9]")
 
 
 def multi(stack_id: str) -> bool:
-    """A stack that can stand more than once: a Serverless workload (not a foundation)."""
+    """A stack that can stand more than once: a Serverless workload (not a pipeline identity)."""
     meta = _base(stack_id)
-    return meta["kind"] == "Serverless" and not stack_id.endswith("-foundation")
+    return meta["kind"] == "Serverless" and not stack_id.endswith("-pipeline-identity")
 
 
 def split(stack_id: str) -> tuple:
@@ -393,17 +394,17 @@ def _after(stack_id: str) -> tuple:
 
 
 def depends_on(stack_id: str, root: Path = STACKS_DIR) -> str | None:
-    """The first stack this one stands on: its `after`, else the foundation whose store holds its state
-    (a JFrog OIDC stack reads its service connections). None for a foundation (local state) itself."""
+    """The first stack this one stands on: its `after`, else the pipeline identity whose store holds its state
+    (a JFrog OIDC stack reads its service connections). None for a pipeline identity (local state) itself."""
     ups = upstreams(stack_id, root)
     return ups[0] if ups else None
 
 
 def upstreams(stack_id: str, root: Path = STACKS_DIR) -> tuple:
     """Every stack this one stands on directly: its `after` stacks (whose outputs, pipeline or trust it
-    uses) and the foundation whose store holds its remote state."""
+    uses) and the pipeline identity whose store holds its remote state."""
     kind = backend_kind(stack_id, root)
-    store = FOUNDATION.get(kind) if kind else None
+    store = PIPELINE_IDENTITY.get(kind) if kind else None
     ups = [*_after(stack_id), *([store] if store and store != stack_id else [])]
     return tuple(dict.fromkeys(ups))
 
@@ -430,8 +431,18 @@ def descendants(stack_id: str, root: Path = STACKS_DIR) -> tuple:
 _ENV = ["test", None]
 
 
+# Stacks renamed since: saved inputs under an old id move to the new one once.
+RENAMED = {"gcp-foundation": "gcp-pipeline-identity", "azure-foundation": "azure-pipeline-identity",
+           "gcp-bootstrap": "gcp-pipeline-identity", "azure-bootstrap": "azure-pipeline-identity"}
+
+
 def use_env(env: str, state_root=None) -> None:
     _ENV[0], _ENV[1] = env, state_root
+    d = Path(state_root or STATE_ROOT) / env
+    for old, new in RENAMED.items():
+        src, dst = d / f"{old}.tfvars.json", d / f"{new}.tfvars.json"
+        if src.is_file() and not dst.exists():
+            src.rename(dst)
 
 
 # A workload's build-deploy pipeline reads its cloud's JFrog variable group (JFROG_URL,
@@ -478,7 +489,7 @@ def form(stack_id: str, env: str, root: Path = STACKS_DIR, state_root: Path = ST
     shared name, else the default."""
     saved, shared = read_inputs(stack_id, env, state_root), _load(_shared_file(env, state_root, stack_id))
     after = get(stack_id).get("after")
-    if after:   # a JFrog OIDC stack prefills from its own cloud's foundation, never another cloud's
+    if after:   # a JFrog OIDC stack prefills from its own cloud's pipeline identity, never another cloud's
         shared = {**read_inputs(after, env, state_root), **shared}
     fields = []
     for v in variables(stack_id, root):
@@ -587,7 +598,7 @@ def _write(p: Path, data: dict) -> None:
 
 
 def separate_jfrog_inputs(env: str, root: Path = STACKS_DIR, state_root: Path = STATE_ROOT) -> None:
-    """Infrastructure inputs hold nothing for JFrog. Values a foundation no longer declares but its
+    """Infrastructure inputs hold nothing for JFrog. Values a pipeline identity no longer declares but its
     cloud's JFrog OIDC stack does (inputs saved before the split) move there, without overwriting
     what that stack already has; the infrastructure prefill drops every name no stack of its own
     kind and cloud declares. Idempotent; run when Setup starts."""
@@ -622,11 +633,18 @@ def missing(stack_id: str, env: str, root: Path = STACKS_DIR, state_root: Path =
 
 # -- terraform arguments -------------------------------------------------------------------------------
 
-def foundation(kind: str, env: str, state_root: Path = STATE_ROOT) -> dict:
-    """What a backend's location derives from: the saved inputs of that cloud's foundation only."""
-    f = read_inputs(FOUNDATION[kind], env, state_root) if kind in FOUNDATION else {}
+def pipeline_identity(kind: str, env: str, state_root: Path = STATE_ROOT) -> dict:
+    """What a backend's location derives from: the saved inputs of that cloud's pipeline identity only."""
+    f = read_inputs(PIPELINE_IDENTITY[kind], env, state_root) if kind in PIPELINE_IDENTITY else {}
     return {"gcp_project_id": f.get("gcp_project_id"), "azure_subscription_id": f.get("azure_subscription_id"),
             "ado_org": f.get("ado_org"), "state_resource_group": (f.get("azure_identity") or {}).get("resource_group")}
+
+
+def state_account(ado_org: str, subscription_id: str) -> str:
+    """The Azure state storage account azure-pipeline-identity creates (main.tf, same formula): globally unique
+    per ADO organization and subscription, so another subscription under the same organization never collides."""
+    org = re.sub(r"[^a-z0-9]", "", str(ado_org).lower())[:12]
+    return f"st{org}{str(subscription_id).replace('-', '').lower()[:8]}"
 
 
 def backend_config(kind: str, stack_id: str, env: str, found: dict) -> tuple:
@@ -642,14 +660,64 @@ def backend_config(kind: str, stack_id: str, env: str, found: dict) -> tuple:
         raise StackError(f"{stack_id}: backend {kind!r} is not supported")
     gaps = [k for k in need if not found.get(k)]
     if gaps:
-        raise StackError(f"save the {FOUNDATION[kind]} inputs first ({', '.join(gaps)}): its state store holds this stack's state")
+        raise StackError(f"save the {PIPELINE_IDENTITY[kind]} inputs first ({', '.join(gaps)}): its state store holds this stack's state")
     if kind == "gcs":
         pairs = {"bucket": f"{found['gcp_project_id']}-tfstate", "prefix": where}
     else:
         pairs = {"subscription_id": found["azure_subscription_id"], "resource_group_name": found["state_resource_group"],
-                 "storage_account_name": ("st" + found["ado_org"].replace("-", "") + "tfstate")[:24],
+                 "storage_account_name": state_account(found["ado_org"], found["azure_subscription_id"]),
                  "container_name": "tfstate", "key": f"{where}.tfstate", "use_azuread_auth": "true"}
     return tuple(f"-backend-config={k}={v}" for k, v in pairs.items())
+
+
+# The local-state stacks an ADO pipeline can also run (pipelines/serverless/azure/azure-pipeline-identity,
+# pipelines/oidc/azure/azure-jfrog-trust): run there, their state lives in the pipeline identity's store.
+ADO_RUN_STACKS = ("azure-pipeline-identity", "azure-jfrog-trust")
+RUN_CONTEXT = ("ado_org", "ado_project", "ado_repository", "azure_tenant_id", "azure_subscription_id",
+               "pipeline_environment")
+
+
+def run_context(environ: dict, env: str) -> dict:
+    """What an ADO run knows about where it runs: its organization, project and repository (predefined
+    variables), and the tenant and subscription its service connection signed in to (AZ_TENANT, AZ_SUBSCRIPTION)."""
+    uri = str(environ.get("SYSTEM_COLLECTIONURI") or "")
+    m = re.fullmatch(r"https://dev\.azure\.com/([^/]+)/?|https://([a-z0-9-]+)\.visualstudio\.com/?", uri)
+    ctx = {"ado_org": (m.group(1) or m.group(2)) if m else None, "ado_project": environ.get("SYSTEM_TEAMPROJECT"),
+           "ado_repository": environ.get("BUILD_REPOSITORY_NAME"), "azure_tenant_id": environ.get("AZ_TENANT"),
+           "azure_subscription_id": environ.get("AZ_SUBSCRIPTION"), "pipeline_environment": env}
+    return {k: v for k, v in ctx.items() if v}
+
+
+def run_inputs(stack_id: str, given: dict, ctx: dict, root: Path = STACKS_DIR) -> dict:
+    """The queued inputs, with what the run knows filled in where the stack declares it and the queue left it empty."""
+    decl = variables(stack_id, root)
+    declared = {v["name"] for v in decl}
+    out = {k: v for k, v in given.items() if not _blank(v)}   # a blank in the run form means "not given"
+    for k in RUN_CONTEXT:
+        if k in declared and not out.get(k) and ctx.get(k):
+            out[k] = ctx[k]
+    missing = [v["name"] for v in decl if v["required"] and v["name"] not in out]
+    missing += [f"{k}.{a}" for k, v in out.items() if isinstance(v, dict) for a, x in v.items() if _blank(x)]
+    if missing:
+        raise StackError(f"{stack_id}: fill in {', '.join(missing)} in the run's inputs")
+    return out
+
+
+def _blank(v) -> bool:
+    return v is None or (isinstance(v, str) and not v.strip())
+
+
+def run_backend(stack_id: str, env: str, inputs: dict, group: dict, ctx: dict, root: Path = STACKS_DIR) -> tuple:
+    """-backend-config pairs for an ADO run of a local-state stack: the pipeline identity's store. The pipeline
+    identity names its own resource group in its inputs; later stacks read it from the variable group
+    jfrog-oidc-azure-<env> (TF_STATE_RESOURCE_GROUP)."""
+    if stack_id not in ADO_RUN_STACKS or backend_kind(stack_id, root):
+        raise StackError(f"{stack_id}: not a stack an ADO pipeline runs with the pipeline identity's state")
+    rg = ((inputs.get("azure_identity") or {}).get("resource_group") if stack_id == "azure-pipeline-identity"
+          else group.get("TF_STATE_RESOURCE_GROUP"))
+    found = {"azure_subscription_id": inputs.get("azure_subscription_id") or ctx.get("azure_subscription_id"),
+             "ado_org": inputs.get("ado_org") or ctx.get("ado_org"), "state_resource_group": rg}
+    return backend_config("azurerm", stack_id, env, found)
 
 
 def tf_args(stack_id: str, env: str, root: Path = STACKS_DIR, state_root: Path = STATE_ROOT) -> tuple:
@@ -660,7 +728,7 @@ def tf_args(stack_id: str, env: str, root: Path = STACKS_DIR, state_root: Path =
     init = ()
     kind = backend_kind(stack_id, root)
     if kind:
-        init = ("-reconfigure", *backend_config(kind, stack_id, env, foundation(kind, env, state_root)))
+        init = ("-reconfigure", *backend_config(kind, stack_id, env, pipeline_identity(kind, env, state_root)))
     return init, (f"-var-file={inputs_file(stack_id, env, state_root)}",)
 
 
@@ -689,10 +757,13 @@ def needs_jfrog(stack_id: str, action: str, root: Path = STACKS_DIR) -> bool:
 
 
 def main(argv=None) -> int:
-    """Pipelines: python3 -m setup_console.stacks backend-args <stack> <env> <foundation.json>
+    """Pipelines: python3 -m setup_console.stacks backend-args <stack> <env> <pipeline identity.json>
     prints one -backend-config=k=v per line (nothing for a local-state stack);
     python3 -m setup_console.stacks dir <stack> prints its directory under terraform/stacks;
-    python3 -m setup_console.stacks typed-inputs <stack> <inputs.json> rewrites the file with declared types."""
+    python3 -m setup_console.stacks typed-inputs <stack> <inputs.json> rewrites the file with declared types;
+    python3 -m setup_console.stacks run-inputs <stack> <env> <inputs.json> fills in what the ADO run knows;
+    python3 -m setup_console.stacks run-backend <stack> <env> <inputs.json> prints the pipeline identity store's
+    -backend-config lines for a local-state stack run in ADO."""
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) == 2 and argv[0] == "dir":   # the stack's directory, relative to terraform/stacks
         print(rel_dir(argv[1]))
@@ -700,6 +771,19 @@ def main(argv=None) -> int:
     if len(argv) == 3 and argv[0] == "typed-inputs":
         p = Path(argv[2])
         p.write_text(json.dumps(typed_inputs(argv[1], json.loads(p.read_text() or "{}"))))
+        return 0
+    if len(argv) == 4 and argv[0] in ("run-inputs", "run-backend"):
+        _, sid, env, f = argv
+        p, ctx = Path(f), run_context(os.environ, env)
+        given = json.loads(p.read_text() or "{}")
+        if argv[0] == "run-inputs":
+            try:
+                p.write_text(json.dumps(run_inputs(sid, given, ctx)))
+            except StackError as e:
+                print(e, file=sys.stderr)
+                return 1
+        else:
+            print("\n".join(run_backend(sid, env, given, os.environ, ctx)))
         return 0
     if len(argv) != 4 or argv[0] != "backend-args":
         print(main.__doc__, file=sys.stderr)

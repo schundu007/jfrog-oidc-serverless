@@ -1,4 +1,5 @@
-# Azure foundation for the ADO pipelines (apply once, locally): federated credentials on the
+# Azure pipeline identity for the ADO pipelines (apply once: from the Infrastructure page, or the ADO pipeline
+# pipelines/serverless/azure/azure-pipeline-identity/stack-setup.yml): federated credentials on the
 # service connections' managed identities, the setup identity's roles, and the Terraform
 # state storage of the Azure stacks. No GCP or JFrog resources here: the pipelines'
 # JFrog trust is OIDC configuration, made afterwards by terraform/stacks/oidc/azure/azure-jfrog-trust.
@@ -15,7 +16,7 @@ locals {
 # setup: creates workload stacks. Contributor on the subscription, role
 #   assignments limited to AcrPull/AcrPush/Contributor, Entra apps it owns.
 
-# The foundation's own resource group and the build identity: nothing has to exist beforehand.
+# The pipeline identity's own resource group and the build identity: nothing has to exist beforehand.
 resource "azurerm_resource_group" "ado" {
   name     = var.azure_identity.resource_group
   location = var.azure_location
@@ -103,7 +104,8 @@ resource "azuread_app_role_assignment" "setup_apps" {
 
 # Terraform state for Azure stacks: Entra auth only, versioned.
 resource "azurerm_storage_account" "tfstate" {
-  name                            = substr("st${replace(var.ado_org, "-", "")}tfstate", 0, 24)
+  # Globally unique per ADO organization and subscription (setup_console/stacks.py state_account: same formula).
+  name                            = "st${substr(lower(replace(var.ado_org, "/[^a-zA-Z0-9]/", "")), 0, 12)}${substr(lower(replace(var.azure_subscription_id, "-", "")), 0, 8)}"
   resource_group_name             = azurerm_resource_group.ado.name
   location                        = azurerm_resource_group.ado.location
   account_tier                    = "Standard"
@@ -130,6 +132,16 @@ resource "azurerm_role_assignment" "setup_state" {
   principal_type       = "ServicePrincipal"
 }
 
+# Whoever applies this stack (an operator from the Infrastructure page, or the bootstrap service connection
+# of the ADO pipeline) writes its own state into the container; an operator listed below already can.
+data "azurerm_client_config" "current" {}
+
+resource "azurerm_role_assignment" "runner_state" {
+  count                = contains([for id in values(local.operator_ids) : id if id != null], data.azurerm_client_config.current.object_id) ? 0 : 1
+  scope                = azurerm_storage_container.tfstate.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
 
 # Operators are given by email. A member's sign-in name is the email; a guest's (a personal account
 # invited to the tenant) is <email with @ as _>#EXT#@<the tenant's default domain>. Both are tried.

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "token-disciplinarian": {
+      "source": "shadowhelper93/token-disciplinarian",
+      "sourceType": "github",
+      "skillPath": "skills/token-disciplinarian/SKILL.md",
+      "computedHash": "65dc04f26840a989c300fae609f7c79c1dde13c111152f6d48e9077075e33d77"
+    }
+  }
+}
