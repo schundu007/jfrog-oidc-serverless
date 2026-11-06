@@ -41,7 +41,7 @@ apps/                             Cloud Run function and Azure Function using th
 
 ## Docker registry host
 
-Images are pulled from the JFrog Docker repo's **own host**, `<server>-<repo-key>.jfrog.io` (for example `acme-docker-virtual.jfrog.io/orders:1.4.2`). Do not use `<server>.jfrog.io/<repo-key>/...`: that repository-path method failed for local repos on the AKS pilot's instance. See `docs/aks-pilot-lessons.md`.
+Images are pulled from the JFrog Docker repo's **own host**, `<server>-<repo-key>.jfrog.io` (for example `acme-docker-virtual.jfrog.io/orders:1.4.2`). Do not use `<server>.jfrog.io/<repo-key>/...`: that repository-path method failed for local repos on the AKS pilot's instance.
 
 `jfrog_url` is always the platform origin (`https://acme.jfrog.io`), with no path. The client, console and modules reject anything else.
 
@@ -55,7 +55,7 @@ Images are pulled from the JFrog Docker repo's **own host**, `<server>-<repo-key
 
 ## Deploy
 
-Starting from nothing in another Azure account, ADO organization or JFrog instance (portable package, what to enter, self-hosted agents): [docs/fresh-start-azure.md](docs/fresh-start-azure.md).
+Start here, everything runs from Azure DevOps: [docs/fresh-start-azure.md](docs/fresh-start-azure.md).
 
 
 1. **Publish the client** to your Artifactory PyPI repo (`python -m build client/`, then `jf rt upload`), or vendor `client/src/jfrog_oidc` into each app.
