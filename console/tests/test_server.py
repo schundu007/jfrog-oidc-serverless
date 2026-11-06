@@ -73,7 +73,7 @@ class ServerTests(unittest.TestCase):
         nav = {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"}
         self.assertEqual(self.req("GET", "/?cloud=gcp", token=False, headers=nav)[0], 200)
         for p in ("/gcp", "/azure/runs", "/gcp/configure", "/azure/simulate", "/gcp/configs",
-                  "/openshift/configure", "/gcp/new", "/azure/w/orders-legacy", "/gcp/w/jfrog-fn-demo/",
+                  "/gcp/new", "/azure/w/orders-legacy", "/gcp/w/jfrog-fn-demo/",
                   "/gcp/w/jfrog-fn-demo/runs/20261030-052550-1d8dac"):
             self.assertEqual(self.req("GET", p, token=False, headers=nav)[0], 200, p)
         for p in ("/oci/runs", "/gcp/w", "/gcp/w/Bad_Name", "/gcp/w/x/runs", "/gcp/w/x/runs/nope", "/gcp/w/x/y",

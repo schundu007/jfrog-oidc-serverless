@@ -1,5 +1,5 @@
 /* Home: a title row, four pastel stat cards, then one full-width section per cloud: its services as
-   same-size tiles in a grid, its workloads and clusters as a table; then recent runs as a table. */
+   same-size tiles in a grid, its workloads as a table; then recent runs as a table. */
 #dash { max-width: var(--page-max); }
 
 /* Boards: two columns, each a glass card. */
@@ -168,7 +168,7 @@
 .dash-table tbody tr.row-link:hover th a { color: #3f7a12; }
 
 /* Spacing and type: a fair gap between every card, readable sizes. A cloud board holds a Serverless and a
-   Kubernetes section, each a heading (name, then count), its tiles, then its table, never touching. */
+   App Services section, each a heading (name, then count), its tiles, then its table, never touching. */
 #dash .bento { gap: var(--s-6); }
 #dash .hero { margin-bottom: var(--s-6); }
 #dash .hero-stats { gap: var(--s-5); }
@@ -208,7 +208,7 @@
 #dash .tile:hover { border-color: #5ba908; transform: none; box-shadow: none; }
 #dash .dash-table thead th { background: #fafbf8; }
 #dash .hero-btn, #dash .board-link { border-radius: 0; box-shadow: none; }
-/* Stat card icons: custom marks (serverless box, Kubernetes wheel, pipeline, progress), dark lines, green accent. */
+/* Stat card icons: custom marks (serverless box, app, pipeline, progress), dark lines, green accent. */
 .sbadge { display: grid; place-items: center; width: 52px; height: 52px; flex: none; background: #eef6e6; }
 .sicon { width: 32px; height: 32px; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .sicon .s-line { stroke: #333333; stroke-width: 1.8; fill: none; }

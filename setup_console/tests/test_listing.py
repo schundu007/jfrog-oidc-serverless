@@ -13,8 +13,8 @@ NODE = shutil.which("node")
 PARTLY = {"id": "azure-pipeline-identity", "status": {"deployed": False, "deleted": "Partly deleted outside the console.",
                                                "outputs": {"azure_tfstate": {"storage_account": "st"}}}}
 DEPLOYED = {"id": "gcp-pipeline-identity", "status": {"deployed": True, "outputs": {"x": 1}}}
-FAILED = {"id": "aks-cluster", "status": {}, "failed": {"action": "apply"}}
-NEVER = {"id": "gke-cluster", "status": {}}
+FAILED = {"id": "azure-functions-flex", "status": {}, "failed": {"action": "apply"}}
+NEVER = {"id": "gcp-cloud-run", "status": {}}
 GONE = {"id": "gcp-cloud-run", "status": {"deployed": False, "deleted": "Deleted.", "outputs": {}}}
 BUSY = {"id": "azure-container-app", "status": {}, "busy": True}
 
@@ -31,7 +31,7 @@ def run(stacks):
 class ListingTests(unittest.TestCase):
     def test_counts_match_the_rows(self):
         r = run([PARTLY, DEPLOYED, FAILED, NEVER, GONE, BUSY])
-        self.assertEqual(sorted(r["listed"]), ["aks-cluster", "azure-container-app", "azure-pipeline-identity", "gcp-pipeline-identity"])
+        self.assertEqual(sorted(r["listed"]), ["azure-container-app", "azure-functions-flex", "azure-pipeline-identity", "gcp-pipeline-identity"])
         self.assertEqual(r["counts"], {"listed": 4, "deployed": 1, "attention": 2, "busy": 1, "archived": 2})
 
     def test_residue_is_listed(self):

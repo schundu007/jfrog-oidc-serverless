@@ -1,0 +1,31 @@
+# App Engine standard: plan -> approve -> apply (or destroy) terraform/stacks/app-services/gcp/gcp-app-engine only.
+# The apply waits for approval on the ADO environment gcp-app-engine-<environment>.
+trigger: none
+pr: none
+
+parameters:
+  - name: action
+    type: string
+    default: apply
+    values: [apply, destroy]
+  - name: environment
+    type: string
+    default: test
+    values: [test]
+  # The stack's variables as JSON, as the Infrastructure page saves them (.console/setup/<env>/gcp-app-engine.tfvars.json).
+  - name: inputs
+    type: object
+    default: {}
+  # Where state lives: this cloud's pipeline identity inputs it derives from.
+  - name: state
+    type: object
+    default: {}
+
+extends:
+  template: /pipelines/templates/gcp-stack-setup.yml
+  parameters:
+    stack: gcp-app-engine
+    action: ${{ parameters.action }}
+    environment: ${{ parameters.environment }}
+    inputs: ${{ parameters.inputs }}
+    state: ${{ parameters.state }}

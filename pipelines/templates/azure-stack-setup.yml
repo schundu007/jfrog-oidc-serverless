@@ -1,5 +1,5 @@
-# Template: plan -> apply (or destroy) for ONE Azure infrastructure stack (a serverless workload or the
-# test cluster). Used only by pipelines/{serverless,kubernetes}/azure/<stack>/stack-setup.yml, one pipeline
+# Template: plan -> apply (or destroy) for ONE Azure infrastructure stack (a serverless workload or an
+# App Services web app). Used only by pipelines/{serverless,app-services}/azure/<stack>/stack-setup.yml, one pipeline
 # per stack. Infrastructure only: no JFrog token, provider, variable group or repository name (JFrog OIDC
 # stacks have their own template, azure-oidc-stack-setup.yml). The setup service connection's OIDC token
 # gives the connection's Azure login. The apply stage targets the ADO environment "<stack>-<environment>"

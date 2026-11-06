@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import urlsplit
 
-TOOLS = {"gcloud": "Google Cloud", "az": "Azure", "kubectl": "Kubernetes", "oc": "OpenShift",
+TOOLS = {"gcloud": "Google Cloud", "az": "Azure",
          "helm": "Helm", "terraform": "Terraform", "git": "Git", "docker": "Docker", "gsutil": "Cloud Storage",
          "jf": "JFrog CLI", "curl": "HTTP"}
 
@@ -95,10 +95,6 @@ def _what(tool, name, words, args) -> str:
         return "Read the Google Cloud sign-in"
     if tool == "az" and words[:2] == ["account", "get-access-token"]:
         return "Got an Azure access token"
-    if tool in ("kubectl", "oc"):
-        verb = words[0] if words else ""
-        target = " ".join(words[1:3])
-        return f"{VERBS.get(verb, verb.capitalize() or 'Ran')} {name} {target}".rstrip()
     if tool == "helm":
         verb = words[0] if words else ""
         return f"{VERBS.get(verb, verb.capitalize() or 'Ran')} Helm release {' '.join(words[1:2])}".rstrip()

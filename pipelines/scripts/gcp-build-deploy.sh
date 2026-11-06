@@ -5,6 +5,9 @@
 #             update the job and run it to completion
 #   service   same image build, then update the service and check it is ready
 #   worker-pool  same image build, then update the worker pool (gcloud beta: no GA group yet)
+#   app-engine  deploy apps/$APP (App Engine standard, python312) from source as service $WORKLOAD,
+#             running as the stack's service account; wheels vendored from JFrog as for function;
+#             JFROG_* written into app.yaml env_variables (App Engine sets variables only on deploy)
 #   function  deploy apps/$APP from source (gen2) with the jfrog_oidc client and its packages
 #             vendored from JFrog (wheels/, so Google's build never reaches public PyPI);
 #             before the stack has created it, upload the first package to its source bucket
@@ -140,5 +143,49 @@ print("@".join(e["name"] + "=" + e["value"] for e in env if e["name"].startswith
     done
     echo "deployed $WORKLOAD from ${BUILD_SOURCEVERSION:0:12}"
     ;;
-  *) echo "unknown KIND: $KIND (job, service, worker-pool or function)" >&2; exit 2 ;;
+  app-engine)
+    # gcloud app deploy reads its source directory: the app, the client and wheels from JFrog.
+    src=$(mktemp -d)/src
+    mkdir -p "$src"
+    cp -R "apps/${APP}/app" "apps/${APP}/gunicorn.conf.py" "$src/"
+    cp -R client/src/jfrog_oidc "$src/"
+    : "${JFROG_PYPI_REPO:?}"
+    python3 -m jfrog_oidc pip --repo "$JFROG_PYPI_REPO" -- download --quiet --dest "$src/wheels" \
+      --only-binary=:all: --platform manylinux2014_x86_64 --python-version 3.12 --implementation cp \
+      -r "apps/${APP}/requirements.txt"
+    { echo '--no-index'; echo '--find-links wheels'; grep -v '^\s*#' "apps/${APP}/requirements.txt"; } > "$src/requirements.txt"
+    sa="${WORKLOAD}@${GCP_PROJECT}.iam.gserviceaccount.com"   # the stack's account (account_id = workload)
+    gcloud iam service-accounts describe "$sa" --project "$GCP_PROJECT" --format='value(email)' >/dev/null 2>&1 || {
+      echo "##vso[task.logissue type=error]Service account $sa does not exist: deploy the gcp-app-engine stack first." >&2; exit 1; }
+    # JFROG_*: the serving version's values (what onboarding verified), else the defaults for this
+    # environment. Values only: URL, provider, audience and source; never a token.
+    env=$(gcloud app services describe "$WORKLOAD" --project "$GCP_PROJECT" --format=json 2>/dev/null | python3 -c '
+import json, subprocess, sys
+try:
+    alloc = json.load(sys.stdin).get("split", {}).get("allocations", {})
+except ValueError:
+    alloc = {}
+best = max(alloc.items(), key=lambda kv: kv[1], default=(None, 0))[0]
+env = {}
+if best:
+    out = subprocess.run(["gcloud", "app", "versions", "describe", best, "--service", sys.argv[1], "--project", sys.argv[2],
+                          "--format=json"], capture_output=True, text=True, timeout=120).stdout
+    env = {k: v for k, v in (json.loads(out or "{}").get("envVariables") or {}).items() if k.startswith("JFROG_")}
+print(json.dumps(env))' "$WORKLOAD" "$GCP_PROJECT")
+    python3 - "$src/app.yaml" "$WORKLOAD" "$env" <<'PY'
+import json, os, sys
+path, service, carried = sys.argv[1], sys.argv[2], json.loads(sys.argv[3] or "{}")
+env = {"JFROG_URL": os.environ["JFROG_URL"], "JFROG_OIDC_PROVIDER": os.environ.get("JFROG_RUNTIME_PROVIDER", "gcp-cloudrun"),
+       "JFROG_OIDC_AUDIENCE": "jfrog-gcp", "JFROG_OIDC_SOURCE": "gcp", "JFROG_HEALTHCHECK_PATH": "", **carried}
+env = {k: v for k, v in env.items() if v != ""}
+base = open("apps/web-app/app-engine/app.yaml").read().rstrip("\n")
+with open(path, "w") as f:
+    f.write(base + f"\nservice: {json.dumps(service)}\nenv_variables:\n")
+    f.writelines(f"  {k}: {json.dumps(v)}\n" for k, v in sorted(env.items()))
+PY
+    gcloud app deploy "$src/app.yaml" --project "$GCP_PROJECT" --service-account="$sa" \
+      --version "v${BUILD_SOURCEVERSION:0:12}" --promote --quiet
+    echo "deployed $WORKLOAD from ${BUILD_SOURCEVERSION:0:12}"
+    ;;
+  *) echo "unknown KIND: $KIND (job, service, worker-pool, function or app-engine)" >&2; exit 2 ;;
 esac

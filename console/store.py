@@ -35,8 +35,7 @@ def summary(cfg: dict, name: str, updated: str = "") -> dict:
     kind = model.get_path(cfg, "target.kind") or ""
     cloud = model.KINDS.get(kind, {}).get("cloud") or ("azure" if kind.startswith("azure") else "gcp")
     t = model.get_path(cfg, f"target.{cloud}") or {}
-    where = {"gcp": ["project", "region", "name"], "azure": ["resource_group", "name"],
-             "aws": ["account", "region", "name"], "openshift": ["context", "namespace", "name"]}[cloud]
+    where = {"gcp": ["project", "region", "name"], "azure": ["resource_group", "name"]}[cloud]
     disc = model.get_path(cfg, "target.discovered") or {}
     return {"name": name, "kind": kind, "discovered": bool(disc),
             "workload": " / ".join(str(t[k]) for k in where if t.get(k)),

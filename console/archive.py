@@ -6,8 +6,7 @@ then they are deleted. If the thing exists again before that, its entry is resto
 
 One entry per archiving: <root>/archive/<id>/entry.json ({id, name, kind, reason, archived_at,
 released, runs}), config.json, status.json, runs/<run id>/. Paths only move; nothing is rewritten,
-so a run read from the archive is the run as it was. Stdlib only; the Kubernetes console keeps an
-identical copy (kcp_console/archive.py): the two consoles never import each other.
+so a run read from the archive is the run as it was. Stdlib only.
 """
 
 from __future__ import annotations

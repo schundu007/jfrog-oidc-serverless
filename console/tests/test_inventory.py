@@ -23,6 +23,7 @@ OUT = {
     # Worker pools: beta group only, v2 resource shape (no metadata; region in the resource name).
     ("gcloud", "beta", "run", "worker-pools", "list"): json.dumps([
         {"name": "projects/demo-nonprod-1234/locations/us-east1/workerPools/consumer"}]),
+    ("gcloud", "app", "services", "list"): "[]",   # App Engine: tests/test_app_engine.py
     ("gcloud", "projects", "list"): json.dumps([
         {"projectId": "demo-nonprod-1234", "name": "Demo", "lifecycleState": "ACTIVE"},
         {"projectId": "legacy-apps-5678", "name": "Legacy", "lifecycleState": "ACTIVE"},

@@ -1,0 +1,14 @@
+# App Engine standard for apps/cloud-run-service (the same Python app as Cloud Run and App Service).
+# The build-deploy pipeline (kind app-engine) copies this next to the app, appends `service:` and
+# `env_variables:` (the JFROG_* settings), and deploys with the workload's own service account.
+# Packages install only from wheels/ (vendored from JFrog): requirements.txt starts --no-index.
+runtime: python312
+entrypoint: gunicorn --config gunicorn.conf.py "app:create_app()"
+instance_class: F1
+automatic_scaling:
+  min_instances: 0
+  max_instances: 2
+handlers:
+  - url: /.*
+    script: auto
+    secure: always

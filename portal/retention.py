@@ -1,5 +1,5 @@
 """Run retention across the portal: only the newest KEEP runs are kept, live or archived, from every
-console (Serverless, Kubernetes, Infrastructure and JFrog OIDC); every older finished run is deleted.
+console (Serverless, Infrastructure and JFrog OIDC); every older finished run is deleted.
 A run still going (running, waiting for approval, queued) is never deleted, and counts toward KEEP."""
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ def _epoch(v) -> float:
         return 0.0
 
 
-def runs(serverless=None, k8s=None, jobs=None) -> list:
+def runs(serverless=None, jobs=None) -> list:
     """Every run as (started, active, delete): newest first."""
     out = []
     if serverless is not None:
@@ -29,12 +29,6 @@ def runs(serverless=None, k8s=None, jobs=None) -> list:
         for e in serverless.archived()["entries"]:
             for r in e.get("run_rows") or []:
                 out.append((_epoch(r.get("created")), False, lambda i=r["id"]: serverless.archive.drop_run(i)))
-    if k8s is not None:
-        for r in k8s.runs.list():
-            out.append((_epoch(r.get("created")), r.get("status") in ACTIVE, lambda i=r["id"]: k8s.runs.delete(i)))
-        for e in k8s.archived()["entries"]:
-            for r in e.get("run_rows") or []:
-                out.append((_epoch(r.get("created")), False, lambda i=r["id"]: k8s.archive.drop_run(i)))
     if jobs is not None:
         for r in jobs.history():
             out.append((_epoch(r.get("started")), r.get("state") == "running", lambda i=r["id"]: jobs.remove(i)))
@@ -43,10 +37,10 @@ def runs(serverless=None, k8s=None, jobs=None) -> list:
     return sorted(out, key=lambda x: x[0], reverse=True)
 
 
-def trim(serverless=None, k8s=None, jobs=None, keep: int = KEEP) -> int:
+def trim(serverless=None, jobs=None, keep: int = KEEP) -> int:
     """Delete every finished run past the newest `keep`. Returns how many were deleted."""
     n = 0
-    for _, active, delete in runs(serverless, k8s, jobs)[keep:]:
+    for _, active, delete in runs(serverless, jobs)[keep:]:
         if active:
             continue
         try:

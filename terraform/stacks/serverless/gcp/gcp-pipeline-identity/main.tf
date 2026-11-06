@@ -25,6 +25,7 @@ resource "google_project_service" "apis" {
     "run.googleapis.com",
     "cloudfunctions.googleapis.com", # gcp-function-deploy (gen2 source deploys)
     "cloudbuild.googleapis.com",     # builds those sources
+    "appengine.googleapis.com",      # gcp-app-engine
   ])
 
   project            = var.gcp_project_id
@@ -103,7 +104,12 @@ resource "google_artifact_registry_repository_iam_member" "build_push" {
 
 resource "google_project_iam_member" "build" {
   for_each = toset(["roles/run.developer", "roles/logging.viewer", "roles/cloudfunctions.developer",
-  "roles/iam.serviceAccountUser"])
+    "roles/iam.serviceAccountUser",
+    "roles/appengine.deployer",       # gcp-app-engine: gcloud app deploy
+    "roles/appengine.serviceAdmin",   # and its traffic split (--promote)
+    "roles/cloudbuild.builds.editor", # App Engine builds the source with Cloud Build
+    "roles/storage.objectAdmin",      # and stages it in the staging.<project>.appspot.com bucket
+  ])
 
   project = var.gcp_project_id
   role    = each.value
@@ -117,11 +123,10 @@ resource "google_project_iam_member" "setup" {
     "roles/iam.serviceAccountUser",
     "roles/artifactregistry.admin",
     "roles/run.admin",
-    "roles/container.admin",                # gke-cluster stack
-    "roles/compute.viewer",                 # gke-cluster: reads the node pool's instance groups
     "roles/serviceusage.serviceUsageAdmin", # enables container.googleapis.com
     "roles/storage.admin",                  # gcp-cloud-run-function: its source bucket and bucket IAM
     "roles/cloudfunctions.admin",           # gcp-cloud-run-function: the function itself
+    "roles/appengine.appCreator",           # gcp-app-engine: create_application
   ])
 
   project = var.gcp_project_id

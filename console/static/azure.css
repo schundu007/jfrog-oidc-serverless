@@ -24,7 +24,7 @@ html body .ess-col:has(.ess-pair) { display: contents; }
 html body .ess-pair { display: grid; align-content: start; }
 @media (max-width: 860px) { html body .ess-body:has(.ess-pair) { grid-template-columns: minmax(0, 1fr); } }
 
-/* Essentials on Kubernetes pages: the same, without cards or capitals. */
+/* Essentials: the same, without cards or capitals. */
 html body .essentials { grid-template-columns: repeat(var(--ess-cols, 3), minmax(0, 1fr)); gap: 0 var(--s-6, 32px); }
 html body .essentials > div { padding: 6px 0; border: 0; background: none; gap: 2px; }
 html body .essentials dt { font-size: 14px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--fg); }

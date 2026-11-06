@@ -92,7 +92,7 @@ const OUTPUT_LABELS = {
   tfstate_bucket: "Terraform state bucket", azure_tfstate: "Terraform state", jfrog_provider_name: "JFrog OIDC integration",
   azure_setup_identity_client_id: "Setup identity (client ID)", azure_setup_identity_principal_id: "Setup identity (object ID)",
   workload_service_account: "Workload service account", image_repository: "Image repository", job_name: "Job",
-  cluster_name: "Cluster", location: "Location", oidc_issuer_url: "OIDC issuer", kubeconfig_command: "Credentials command",
+  location: "Location",
   acr_login_server: "Container registry", workload_identity_client_id: "Workload identity (client ID)", resource_group: "Resource group",
 };
 const outputLabel = (k) => OUTPUT_LABELS[k] || k.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
@@ -509,7 +509,7 @@ function row(s, section) {
       link(nameHref(s), h("b", { text: s.title }), nameHref(s).startsWith("http")), s.about ? help(s.about) : null)),
     h("td", {}, h("div", { class: "stack-status" }, stackStatus(s), notes.length ? help(notes.join(" ")) : null)),
     // The section heading above the rows names the type, so no Type column.
-    // On JFrog OIDC the columns are Type and Location, as for workloads and clusters: the trust is a JFrog
+    // On JFrog OIDC the columns are Type and Location, as for workloads: the trust is a JFrog
     // integration (its stack linked), and it has no region.
     OIDC ? h("td", { class: "stack-id", title: s.id }, link(s.links?.source, "JFrog OIDC trust", true))
       : h("td", { class: "stack-id" }, link(s.links?.source, s.id, true)),
@@ -536,27 +536,27 @@ function row(s, section) {
 const link = (href, content, external = false) => (href
   ? h("a", { href, ...(external ? { target: "_blank", rel: "noopener noreferrer" } : {}) }, content)
   : content);
-// A stack's name opens what it provisions in the console: its workloads or clusters; a pipeline identity and state
+// A stack's name opens what it provisions in the console: its workloads; a pipeline identity and state
 // or a JFrog trust stack opens its runs.
 const SERVES = { "gcp-cloud-run": "gcp?type=gcp_run_job", "gcp-cloud-run-service": "gcp?type=gcp_run_service",
   "gcp-cloud-run-function": "gcp?type=gcp_run_function", "gcp-cloud-run-worker-pool": "gcp?type=gcp_run_worker_pool",
   "azure-container-apps": "azure?type=azure_container_app_job", "azure-container-app": "azure?type=azure_container_app",
   "azure-functions-aca": "azure?type=azure_functions_aca", "azure-functions-premium": "azure?type=azure_functions_premium",
-  "azure-functions-flex": "azure?type=azure_functions_flex", "azure-web-app": "azure?type=azure_web_app" };
-const CLUSTERS = { "aks-cluster": "/k8s/clusters/aks", "gke-cluster": "/k8s/clusters/gke" };
+  "azure-functions-flex": "azure?type=azure_functions_flex", "azure-web-app": "azure?type=azure_web_app",
+  "gcp-app-engine": "gcp?type=gcp_app_engine" };
 const runsArea = () => (OIDC ? "oidc" : "infrastructure");
 const runsHref = (s) => `/runs?area=${runsArea()}&cloud=${CLOUD_ID[s.group] || ""}&q=${encodeURIComponent(s.title)}`;
 // A pipeline identity is the cloud's ADO trust: its name opens the project's service connections.
 const adoSettings = (s) => s.links?.source?.replace(/\/_git\/.*$/, "/_settings/adminservices");
-const nameHref = (s) => (SERVES[s.id] ? `/serverless/${SERVES[s.id]}` : CLUSTERS[s.id] || (s.id.endsWith("-pipeline-identity") && adoSettings(s))
+const nameHref = (s) => (SERVES[s.id] ? `/serverless/${SERVES[s.id]}` : (s.id.endsWith("-pipeline-identity") && adoSettings(s))
   || (s.has_runs ? runsHref(s) : s.check_job ? `?job=${s.check_job}` : s.links?.source));
 
 let byId = {};
 
 // Each stack's service icon (the sidebar's), and each cloud's logo: constant SVG from shell.js.
 const STACK_ICON = { "gcp-pipeline-identity": "boot", "azure-pipeline-identity": "boot", "gcp-cloud-run": "run", "gcp-cloud-run-service": "run", "gcp-cloud-run-worker-pool": "run",
-  "gcp-cloud-run-function": "fn", "gke-cluster": "gke", "azure-container-apps": "aca", "azure-container-app": "aca",
-  "azure-functions-aca": "func", "azure-functions-premium": "func", "azure-functions-flex": "func", "azure-web-app": "web", "aks-cluster": "aks", "aks-jfrog-trust": "aks",
+  "gcp-cloud-run-function": "fn", "gcp-app-engine": "web", "azure-container-apps": "aca", "azure-container-app": "aca",
+  "azure-functions-aca": "func", "azure-functions-premium": "func", "azure-functions-flex": "func", "azure-web-app": "web",
   "gcp-jfrog-trust": "boot", "azure-jfrog-trust": "boot" };
 const CLOUD_ID = { "Google Cloud": "gcp", Azure: "azure" };
 function iconEl(key, cls) {
@@ -624,11 +624,10 @@ function draw(withFilters = true) {
   // The environment every stack here deploys to: it picks the saved inputs, the ADO environments
   // <stack>-<env> and the variable groups jfrog-oidc-<cloud>-<env>.
   // Infrastructure (/setup): the cloud is the root, and under it Common (the pipeline identity and state, used by
-  // both kinds), Serverless and Kubernetes, each its own table. JFrog OIDC is not infrastructure: it
+  // both), Serverless and App Services, each its own table. JFrog OIDC is not infrastructure: it
   // has its own section (/oidc), made only once that cloud's infrastructure exists.
-  const ORDER = ["Common", "Serverless", "Kubernetes", "JFrog OIDC"];
-  // On JFrog OIDC, a cluster's trust is its own Kubernetes section, never mixed with the pipelines' trust.
-  const sectionOf = (s) => (s.id.endsWith("-pipeline-identity") ? "Common" : (OIDC && s.section) || s.kind);
+  const ORDER = ["Common", "Serverless", "App Services", "JFrog OIDC"];
+  const sectionOf = (s) => (s.id.endsWith("-pipeline-identity") ? "Common" : s.kind);
   $("page-title").textContent = OIDC ? "JFrog OIDC" : "Infrastructure";
   const all = data.stacks.filter((s) => (OIDC ? s.kind === "JFrog OIDC" : s.kind !== "JFrog OIDC"));
   if (withFilters) drawFilters(ORDER.filter((k) => all.some((s) => sectionOf(s) === k)));
@@ -648,7 +647,7 @@ function draw(withFilters = true) {
     : `${list.filter((x) => x.status?.deployed).length} of ${list.length} deployed`);
   const head = (g, list) => h("h2", { class: "cloud-title home-group-name" }, iconEl(CLOUD_ID[g], "home-group-logo"),
     h("a", { href: `${BASE}?cloud=${CLOUD_ID[g]}` }, g), h("small", { text: count(list) }));
-  // Under each cloud, CI/CD, Serverless and Kubernetes never mix: each has its own heading and rows.
+  // Under each cloud, CI/CD, Serverless and App Services never mix: each has its own heading and rows.
   const LABEL = { Common: "CI/CD", "JFrog OIDC": "Pipelines" };
   const sections = ORDER.filter((k) => shown.some((s) => sectionOf(s) === k));
   const subHead = (k, list) => h("tr", { class: "home-group home-subgroup" }, h("th", { scope: "colgroup", colspan: String(cols.length) },
@@ -694,13 +693,14 @@ function viewChrome(nGone) {
 
 
 // JFrog OIDC (/oidc) is its own step, after Infrastructure: it never deploys anything there.
-// Per cloud, never mixed: Serverless (each live workload, onboarded for the runtime exchange or not),
-// Kubernetes (each cluster's kubelet credential provider) and Pipelines (the build pipelines' own JFrog
+// Per cloud, never mixed: Serverless and App Services (each live workload, onboarded for the runtime
+// exchange or not) and Pipelines (the build pipelines' own JFrog
 // trust, optional: production adds only the runtime exchange to live services).
-const live = { started: false, loading: true, workloads: [], clusters: [], kinds: {}, errors: [] };
+const live = { started: false, loading: true, workloads: [], kinds: {}, errors: [] };
 const LIVE_CLOUDS = ["azure", "gcp"];
-const CLUSTER_CLOUD = { aks: "azure", gke: "gcp" };
-const CLUSTER_STATE = { working: ["ok", "Onboarded"], broken: ["attention", "Not working"] };
+// App Services: the web apps (code on a managed web platform), apart from Serverless.
+const APP_SERVICE_KINDS = new Set(["azure_web_app", "gcp_app_engine"]);
+const sectionOfKind = (k) => (APP_SERVICE_KINDS.has(k) ? "App Services" : "Serverless");
 const words = (v) => String(v || "").replaceAll("_", " ");
 
 async function loadLive() {
@@ -708,10 +708,6 @@ async function loadLive() {
   const [schema, { configs }] = await Promise.all([api("/serverless/api/schema", { abs: true }), api("/serverless/api/configs", { abs: true })]);
   live.kinds = schema.kinds || {};
   const cfgOf = (w) => configs.find((c) => c.kind === w.kind && String(c.workload || "").split(" / ").pop() === w.name);
-  try {
-    const fleet = await api("/k8s/api/fleet", { abs: true });
-    live.clusters = (fleet.clusters || []).map((c) => ({ ...c, platform: c.cloud || c.platform || "aks" }));
-  } catch (e) { live.errors.push(`Kubernetes: ${e.message}`); }
   draw();
   for (const c of LIVE_CLOUDS) {   // one cloud at a time: they share the CLI lock
     try {
@@ -759,28 +755,14 @@ async function proveWorkload(w, btn) {
   }
 }
 
-function clusterRow(c) {
-  const href = `/k8s/clusters/${c.platform}/${encodeURIComponent(c.name)}`;
-  const [tone, text] = CLUSTER_STATE[c.state] || ["idle", words(c.state) || "Not onboarded"];
-  return h("tr", { "data-state": tone },
-    h("td", {}, h("div", { class: "stack-name" }, iconEl(c.platform, "stack-icon"), link(href, h("b", { text: c.name })))),
-    h("td", {}, pillOf(tone, text), c.problem ? help(c.problem) : null),
-    h("td", {}, link(`/k8s/clusters/${c.platform}`, c.platform === "gke" ? "GKE cluster" : "AKS cluster")),
-    h("td", { text: c.location || c.cluster || "—" }),
-    h("td", {}, h("div", { class: "setup-row-actions nowrap" }, go(href, tone === "ok" ? "Open" : "Onboard", tone !== "ok"),
-      tone === "ok" ? go(`${href}?tab=proof`, "Prove") : null)));
-}
-
 function drawOidc(data, withFilters) {
-  const SECTIONS = ["Serverless", "Kubernetes", "Pipelines"];
+  const SECTIONS = ["Serverless", "App Services", "Pipelines"];
   $("page-title").textContent = "JFrog OIDC";
   const trust = data.stacks.filter((s) => s.kind === "JFrog OIDC");
   // Every row as {cloud, section, on, text, el}: one list, so filters and counts treat them alike.
   const rows = [
-    ...live.workloads.map((w) => ({ cloud: w.cloud, section: "Serverless", on: !!w.cfg,
+    ...live.workloads.map((w) => ({ cloud: w.cloud, section: sectionOfKind(w.kind), on: !!w.cfg,
       text: [w.name, w.region, live.kinds[w.kind]?.label], el: () => workloadRow(w) })),
-    ...live.clusters.map((c) => ({ cloud: CLUSTER_CLOUD[c.platform], section: "Kubernetes", on: c.state === "working",
-      text: [c.name, c.platform, c.location], el: () => clusterRow(c) })),
     ...trust.map((s) => ({ cloud: CLOUD_ID[s.group], section: "Pipelines", on: !!s.status?.deployed, gone: !standing(s),
       text: [s.title, s.id, s.about], el: () => row(s, "Pipelines") })),
   ];
@@ -793,7 +775,7 @@ function drawOidc(data, withFilters) {
   fill($("ess-left"), ...[["Environment", data.env], ["Onboarded", `${mine.filter((r) => r.on).length} of ${mine.length}`]]
     .map(([l, v]) => h("div", { class: "ess-pair" }, h("dt", { text: l }), h("dd", { text: v }))));
   fill($("ess-right"), ...[["Serverless", mine.filter((r) => r.section === "Serverless").length],
-    ["Kubernetes", mine.filter((r) => r.section === "Kubernetes").length], ["Pipelines", mine.filter((r) => r.section === "Pipelines").length]]
+    ["App Services", mine.filter((r) => r.section === "App Services").length], ["Pipelines", mine.filter((r) => r.section === "Pipelines").length]]
     .map(([l, v]) => h("div", { class: "ess-pair" }, h("dt", { text: l }), h("dd", { text: String(v) }))));
   $("count").textContent = live.loading && !live.workloads.length ? "Reading the clouds…" : `Showing ${shown.length} of ${rows.length} records.`;
   $("none").hidden = shown.length > 0 || live.loading;
@@ -803,7 +785,7 @@ function drawOidc(data, withFilters) {
   const subHead = (k, list) => h("tr", { class: "home-group home-subgroup" }, h("th", { scope: "colgroup", colspan: String(cols.length) },
     h("span", { class: "home-group-name" }, h("a", { href: `/oidc?${new URLSearchParams({ cloud: list[0].cloud, kind: k })}`, text: k }),
       h("small", { text: `${list.filter((r) => r.on).length} of ${list.length} onboarded` }))));
-  // Workloads and clusters are listed from live cloud reads, so they exist; a trust stack with nothing
+  // Workloads are listed from live cloud reads, so they exist; a trust stack with nothing
   // standing goes to Archived below, where Deploy still starts it.
   const blocks = (list) => h("div", { class: "cloud-tables" }, clouds.filter((c) => list.some((r) => r.cloud === c)).map((c) => {
     const inCloud = list.filter((r) => r.cloud === c);
@@ -825,7 +807,7 @@ function drawOidc(data, withFilters) {
   if (live.errors.length) $("count").append(" ", help(live.errors.join(" ")));
 }
 
-// Where a stack runs: pipeline identity stacks and JFrog trust from this page; workload and cluster stacks as
+// Where a stack runs: pipeline identity stacks and JFrog trust from this page; workload stacks as
 // their own stack-setup pipeline in ADO.
 const runsIn = (s) => (s.id.endsWith("-pipeline-identity") || s.kind === "JFrog OIDC" ? "This console" : "ADO pipeline");
 const checkedAt = (s) => (s.status?.checked ? new Date(s.status.checked * 1000) : null);

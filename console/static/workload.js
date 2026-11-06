@@ -15,7 +15,7 @@ const runsNote = (text, kind) => setStatus($("runs-status"), text, kind);
 // ----------------------------------------------------------------- header
 
 // Essentials, as on an Azure resource page: where it lives on the left, how it reaches JFrog on the right.
-const CLOUD_NAME = { azure: "Azure", gcp: "Google Cloud", openshift: "Knative" };
+const CLOUD_NAME = { azure: "Azure", gcp: "Google Cloud" };
 const pair = (label, value, extra) => [h("div", { class: "ess-pair" }, h("dt", { text: label }), h("dd", { title: typeof value === "string" ? value : null }, value || "—", extra || null))];
 // Verify proves the live workload: its own identity exchanged for a JFrog token, read-only.
 const verifyTone = (s) => (s === "succeeded" ? "ok" : s === "failed" || s === "cancelled" ? "fail" : "warn");
@@ -34,7 +34,6 @@ function renderFacts(cfg) {
   const where = {
     azure: [["Resource group", t.resource_group], ["Subscription", t.subscription], ["Location", d.location], ["Plan", [d.plan_tier, d.plan_sku].filter(Boolean).join(" · ")]],
     gcp: [["Project", t.project], ["Region", t.region || d.region]],
-    openshift: [["Context", t.context], ["Namespace", t.namespace]],
   }[CLOUD] || [];
   const url = cfg.jfrog?.url || "";
   fill($("wl-ess-left"),

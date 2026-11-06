@@ -3,8 +3,7 @@
 # "Azure - Register pipelines" (pipelines/azure-register-pipelines.yml, through the bootstrap service
 # connection), or from a machine with az login, where it also creates the repo and pushes this code when missing.
 # The consoles find each pipeline by its YAML path, so the names and folders are only for people.
-# Skips any YAML already registered. The AKS credential provider's own pipeline
-# (pipelines/oidc/azure/aks-jfrog-trust) is registered by terraform/stacks/oidc/azure/azure-jfrog-trust.
+# Skips any YAML already registered.
 #
 #   pipelines/scripts/register-azure-pipelines.sh <ado-org> <ado-project> <ado-repo> [branch]
 #
@@ -34,8 +33,9 @@ list=("pipelines/azure-register-pipelines.yml|Azure - Register pipelines|\\Azure
       "pipelines/serverless/azure/azure-pipeline-identity/stack-setup.yml|Pipeline identity and state - Infrastructure|\\Serverless\\Azure"
       "pipelines/oidc/azure/azure-jfrog-trust/stack-setup.yml|Pipelines' JFrog trust - JFrog OIDC|\\JFrog OIDC\\Azure"
       "pipelines/azure-workload-onboard.yml|Azure - Onboard workloads to JFrog|\\Azure"
-      "pipelines/kubernetes/azure/aks-cluster/stack-setup.yml|AKS cluster - Infrastructure|\\Kubernetes\\Azure")
-for pair in "azure-web-app:Web App" "azure-container-app:Container App" "azure-container-apps:Container Apps job" \
+      "pipelines/app-services/azure/azure-web-app/stack-setup.yml|Web App - Infrastructure|\\App Services\\Azure\\Web App"
+      "pipelines/app-services/azure/azure-web-app/build-deploy.yml|Web App - Build and deploy|\\App Services\\Azure\\Web App")
+for pair in "azure-container-app:Container App" "azure-container-apps:Container Apps job" \
             "azure-functions-aca:Functions on Container Apps" "azure-functions-premium:Functions Premium" \
             "azure-functions-flex:Functions Flex Consumption"; do
   stack=${pair%%:*}; t=${pair#*:}

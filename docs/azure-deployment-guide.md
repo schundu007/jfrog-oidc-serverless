@@ -42,10 +42,9 @@ Created by a JFrog administrator. No token is created or stored; step 3 imports 
 | 1 | Azure - Register pipelines | Registers every other Azure pipeline |
 | 2 | Pipeline identity and state - Infrastructure | State storage, build/setup identities, service connections `jfrog-oidc-azure-build`/`-setup`, variable group `jfrog-oidc-azure-<env>`, approval environments. Edit the `inputs` parameter (location, operators' emails); tenant, subscription and ADO org/project come from the run |
 | 3 | Pipelines' JFrog trust - JFrog OIDC | Set `jfrog_url` and `ado_org` in `inputs`. Signs in to JFrog with OIDC (no JFrog token anywhere), imports the two objects created in the JFrog UI, creates `ado-build`, the reader group, repositories and variable group `jfrog-oidc-azure-<env>-jfrog` |
-| 4 | `<stack>` - Infrastructure | One per workload type: Web App, Container App, Container Apps job, Functions on Container Apps, Functions Premium, Functions Flex Consumption. Fill `inputs` (name, subscription, location) |
+| 4 | `<stack>` - Infrastructure | One per workload type. App Services: Web App. Serverless: Container App, Container Apps job, Functions on Container Apps, Functions Premium, Functions Flex Consumption. Fill `inputs` (name, subscription, location) |
 | 5 | `<stack>` - Build and deploy | Builds through JFrog with OIDC and rolls out; set the `workload` parameter |
 | 6 | Azure - Onboard workloads to JFrog | Applies the workload's JFrog mapping (proposed by pull request from the web console) and sets its `JFROG_*` app settings |
-| 7 | Kubernetes (optional) | `AKS cluster - Infrastructure`, then the `aks-jfrog-trust` pipeline (registered by step 3) |
 
 Each Infrastructure run stops for approval on its ADO environment; approve it there. The first run of a pipeline may ask to **Permit** a connection or environment once.
 
@@ -72,15 +71,13 @@ Each Infrastructure run stops for approval on its ADO environment; approve it th
    - imports the JFrog OIDC integration and `ado-setup` mapping, and creates the `ado-build` mapping
    - the remote repositories
    - the variable group `jfrog-oidc-azure-<env>-jfrog`
-   - the AKS credential provider pipeline
-7. **Serverless → + Create**, then pick the type: Web App, Container App, Container Apps job, Functions (Flex, Premium, on Container Apps). Give a name, subscription and location. Every deployment gets its own new resource group `rg-<name>`, identity and Terraform state, and never touches another one. One Deploy runs the whole chain:
+7. **App Services → + Create** (Web App) or **Serverless → + Create** (Container App, Container Apps job, Functions: Flex, Premium, on Container Apps). Give a name, subscription and location. Every deployment gets its own new resource group `rg-<name>`, identity and Terraform state, and never touches another one. One Deploy runs the whole chain:
    1. infrastructure plan
    2. your approval
    3. apply
    4. build and deploy
    5. onboarding to JFrog
    6. the post-deployment check
-8. **Kubernetes (optional).** Run Infrastructure → Kubernetes → `aks-cluster`, then JFrog OIDC → `aks-jfrog-trust`. Nodes labelled `credentialsProviderEnabled` then pull images from JFrog with the cluster's OIDC issuer.
 
 ## Environment configuration
 
@@ -111,4 +108,3 @@ Set `AGENT_POOL` in `pipelines/vars/azure-<env>.yml` (and `gcp-<env>.yml`) to yo
 | ADO service connection `-setup` (workload identity federation) | Infrastructure pipelines, onboarding apply | Terraform plan and apply |
 | ADO service connection `-build` (workload identity federation) | Build and deploy, onboarding | Push and deploy the app, resolve packages through JFrog |
 | User-assigned managed identity `id-<name>`, one per deployment | The running app | Entra token → JFrog access token, at runtime |
-| AKS OIDC issuer (Entra Workload ID) | Kubelet credential provider | Image pulls from JFrog on AKS nodes |

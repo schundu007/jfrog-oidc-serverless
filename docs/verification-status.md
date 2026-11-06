@@ -1,6 +1,6 @@
 # Verification status
 
-What has been tested against real Azure, Google Cloud and JFrog accounts, and what has not. JFrog OIDC is to be enabled on every serverless workload type in Azure and Google Cloud; the proof of concept on the current Azure DevOps pipeline flow is complete on the App Service Web App and pending for every other type. When a provider behaves differently from what is described here, fix the code and update this page.
+What has been tested against real Azure, Google Cloud and JFrog accounts, and what has not. JFrog OIDC is to be enabled on every serverless and App Services workload type in Azure and Google Cloud; the proof of concept on the current Azure DevOps pipeline flow is complete on the App Service Web App and pending for every other type. When a provider behaves differently from what is described here, fix the code and update this page.
 
 ## Verified
 
@@ -23,10 +23,10 @@ What has been tested against real Azure, Google Cloud and JFrog accounts, and wh
 |---|---|
 | Web console sign-ins (`portal/connections.py`) | The `gcloud auth login --no-launch-browser --update-adc` prompt text and the `az login --use-device-code` message format are parsed from CLI output; Terraform's Google provider picking up `GOOGLE_APPLICATION_CREDENTIALS` from the console's gcloud directory |
 | Container Apps identity attach | `az containerapp [job] identity assign --user-assigned <id>` |
-| POC on the current pipeline flow | Every workload type except the Web App: Container App, Container Apps job, Functions on Container Apps, Premium and Flex Consumption; Cloud Run job, service, function and worker pool |
+| POC on the current pipeline flow | Every workload type except the Web App: Container App, Container Apps job, Functions on Container Apps, Premium and Flex Consumption; Cloud Run job, service, function and worker pool; App Engine standard |
 | App Service: Python, Java, .NET, PHP | Same flow as Node.js; not yet run live |
 | Cloud Run worker pools | Only available in `gcloud beta run worker-pools`, so the agent needs the beta component; `describe`/`list` JSON is read as v2 (`template.containers`, `template.serviceAccount`) or v1; `roles/run.developer` is assumed to cover `run.workerPools.update` |
-| Knative / OpenShift Serverless | Tested in simulation only. Open: whether Knative accepts a projected `serviceAccountToken` volume in a Knative service (it may need a flag in the `config-features` ConfigMap), and the `kubernetes` state backend from an ADO agent |
+| App Engine standard (`gcp-app-engine`) | Not deployed yet. Open: the `gcloud app services describe` (`split.allocations`) and `gcloud app versions describe` (`envVariables`, `serviceAccount`, `versionUrl`) JSON shapes; the metadata server's ID token for the version's own service account; `gcloud app deploy --service-account`; pip installing only from vendored wheels (`--no-index --find-links wheels`) in App Engine's build; whether `roles/appengine.deployer`, `appengine.serviceAdmin`, `cloudbuild.builds.editor` and `storage.objectAdmin` on the build identity are enough |
 | Pipeline identity operators | `azure-pipeline-identity` resolves each operator email to an object ID through `azuread_users` (the email, or the guest form `<name>_<domain>#EXT#@<default domain>`) |
 | JFrog Docker subdomain host | The form `<server>-<repo-key>.jfrog.io` depends on the JFrog instance; when it does not work, set `jfrog.docker_host` or use the path form |
 | Functions on Container Apps keys | `az containerapp function keys list` fails with `Failed to get or create ephemeral container`, so a fresh deployment cannot read its function key to call `/api/healthz/jfrog` |

@@ -40,8 +40,8 @@ from .store import Store, StoreError, summary as store_summary
 
 STATIC_DIR = Path(__file__).parent / "static"
 # Page URLs: /gcp and /azure, and each tab under them; all serve index.html.
-CLOUDS = ("gcp", "azure", "openshift")
-CLOUD_TITLES = {"gcp": "Google Cloud", "azure": "Azure", "openshift": "OpenShift"}
+CLOUDS = ("gcp", "azure")
+CLOUD_TITLES = {"gcp": "Google Cloud", "azure": "Azure"}
 # Pages (all served by index.html; the UI routes): /<cloud> (Workloads), /<cloud>/new, /<cloud>/w/<name>,
 # /<cloud>/w/<name>/runs/<run id>. The old tabs (/<cloud>/configs|configure|runs|simulate) land on Workloads.
 PAGE_ROUTES = re.compile(r"^/(?:" + "|".join(CLOUDS) + r")(?:/(?:configs|configure|runs|simulate|new)"

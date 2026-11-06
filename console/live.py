@@ -8,7 +8,7 @@ States: wired, not_wired, missing, unknown (the read failed; detail says why).
 
 from __future__ import annotations
 
-from . import gcprun, model
+from . import gae, gcprun, model
 from .shell import Shell
 
 WIRED_KEY = "JFROG_OIDC_PROVIDER"
@@ -42,6 +42,18 @@ def _gcp_index(sh: Shell, project: str) -> dict:
     return out
 
 
+def _app_engine(sh: Shell, project: str, name: str) -> dict:
+    """The serving version's variables (App Engine has no Cloud Run list to index)."""
+    version, why = gae.serving(sh, project, name)
+    if version is not None:
+        return _state(True, WIRED_KEY in gae.env_of(version))
+    if isinstance(why, str):
+        return {"state": "not_wired", "detail": why}
+    if "NOT_FOUND" in why.error_text(2000) or "not found" in why.error_text(2000).lower():
+        return {"state": "missing"}
+    return {"state": "unknown", "detail": why.error_text(160)}
+
+
 def gcp(cfgs: list, sh: Shell) -> dict:
     result, index = {}, {}
     for cfg in cfgs:
@@ -50,6 +62,9 @@ def gcp(cfgs: list, sh: Shell) -> dict:
         project, region = g.get("project"), g.get("region")
         if not (project and region and g.get("name")):
             result[cfg["name"]] = {"state": "unknown", "detail": "no project, region or name"}
+            continue
+        if kind == gae.KIND:
+            result[cfg["name"]] = _app_engine(sh, project, g["name"])
             continue
         if project not in index:
             try:

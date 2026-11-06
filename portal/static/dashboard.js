@@ -1,11 +1,11 @@
 // Home, in the Azure portal's resource style: title and command bar, Essentials (label : value, two
-// columns), then tabs: Serverless workloads, Kubernetes clusters (runs have their own page). Each tab is one filter
+// columns), then tabs: Serverless and App Services workloads (runs have their own page). Each tab is one filter
 // bar ("Filter for any field…" and pills) over one table. Read-only. Data: data.js.
 import { nextBox, refreshing } from "/serverless/static/core.js";
 import { CLOUD_NAMES, LIVE_STATES, h, markEl, when, runPill, loadAll, startProve } from "./data.js";
 
 const $ = (id) => document.getElementById(id);
-const TABS = ["serverless", "kubernetes"];
+const TABS = ["serverless", "app-services"];
 const u0 = new URLSearchParams(location.search);
 const S = { tab: TABS.includes(u0.get("tab")) ? u0.get("tab") : "serverless", q: u0.get("q") || "", cloud: u0.get("cloud") || "",
   type: u0.get("type") || "", status: u0.get("status") || "" };
@@ -22,7 +22,7 @@ const DOT = { ok: "ok", warn: "warn", bad: "fail", info: "warn" };
 const stateCell = ([cls, text]) => h("td", {}, h("span", { class: `blade-state ${DOT[cls] || ""}`, text }));
 const linkCell = (text, href, attrs = {}) => h("td", attrs, href ? h("a", { href, text }) : text);
 // Proof: the latest Prove run's result and time, linked to the run, and a Prove button that runs it again.
-// Serverless starts a prove-only run here; a cluster's Prove runs on its own Proof tab.
+// It starts a prove-only run here.
 const LOCK = '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4.5" y="9" width="11" height="8" rx="1"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg>';
 function proveButton(it) {
   const b = h("button", { type: "button", class: "blade-cmd home-prove", title: `Prove ${it.name} uses OIDC only` });
@@ -30,7 +30,6 @@ function proveButton(it) {
   b.append(h("span", { text: "Prove" }));
   b.addEventListener("click", async (e) => {
     e.stopPropagation();
-    if (it.kind === "cluster") { location.assign(`${it.href}?tab=proof`); return; }
     b.disabled = true;
     try { location.assign(await startProve(it.cloud, it.name)); } catch (err) {
       b.disabled = false; b.title = err.message; b.lastChild.textContent = "Prove failed";
@@ -58,26 +57,17 @@ function rowOf(href, cells) {
 }
 
 // Each tab: its rows, its columns, how a row reads, and what its Status pill offers.
-const VIEW = {
-  serverless: {
-    rows: () => data.items.filter((it) => it.kind === "workload"), empty: "No workloads onboarded yet",
-    cols: ["Name", "Status", "Type", "Verified", "Proof", "Last run"],
-    row: (it) => rowOf(it.href, [nameCell(it.mark, it.name, it.href), stateCell(it.state), linkCell(it.type, it.typeHref),
-      it.verified ? h("td", {}, h("a", { href: it.verified.href }, h("span", { class: `blade-state ${DOT[it.verified.state[0]] || ""}`,
-        text: `${it.verified.state[1]} · ${it.verified.when}` }))) : h("td", { class: "muted", text: "Not verified" }),
-      proofCell(it),
-      linkCell((it.detail || "").replace(/^last run /, "") || "—", it.detail ? `/runs?area=serverless&q=${encodeURIComponent(it.name)}` : null)]),
-    status: (it) => (it.ok ? "ok" : "attention"), statuses: [["ok", "Working"], ["attention", "Needs attention"]],
-  },
-  kubernetes: {
-    rows: () => data.items.filter((it) => it.kind === "cluster"), empty: "No clusters set up yet",
-    cols: ["Name", "Status", "Type", "Proof", "Detail"],
-    row: (it) => rowOf(it.href, [nameCell(it.mark, it.name, it.href), stateCell(it.state), linkCell(it.type, it.typeHref), proofCell(it),
-      h("td", { class: "home-detail", text: it.detail || "—", title: it.detail || null })]),
-    status: (it) => (it.ok ? "ok" : "attention"), statuses: [["ok", "Working"], ["attention", "Needs attention"]],
-  },
-
-};
+const workloads = (area) => ({
+  rows: () => data.items.filter((it) => it.kind === "workload" && it.area === area), empty: "No workloads onboarded yet",
+  cols: ["Name", "Status", "Type", "Verified", "Proof", "Last run"],
+  row: (it) => rowOf(it.href, [nameCell(it.mark, it.name, it.href), stateCell(it.state), linkCell(it.type, it.typeHref),
+    it.verified ? h("td", {}, h("a", { href: it.verified.href }, h("span", { class: `blade-state ${DOT[it.verified.state[0]] || ""}`,
+      text: `${it.verified.state[1]} · ${it.verified.when}` }))) : h("td", { class: "muted", text: "Not verified" }),
+    proofCell(it),
+    linkCell((it.detail || "").replace(/^last run /, "") || "—", it.detail ? `/runs?area=${area}&q=${encodeURIComponent(it.name)}` : null)]),
+  status: (it) => (it.ok ? "ok" : "attention"), statuses: [["ok", "Working"], ["attention", "Needs attention"]],
+});
+const VIEW = { serverless: workloads("serverless"), "app-services": workloads("app-services") };
 
 function draw() {
   const v = VIEW[S.tab];
@@ -131,16 +121,17 @@ function draw() {
 
 // Essentials: label : value, two columns; a value that has a page links to it.
 function essentials() {
-  const wl = data.items.filter((it) => it.kind === "workload"), cl = data.items.filter((it) => it.kind === "cluster");
+  const wl = data.items.filter((it) => it.kind === "workload");
+  const of = (area) => wl.filter((it) => it.area === area);
   const live = data.runs.filter((r) => LIVE_STATES.has(r.status)).length;
   const failed = data.runs.filter((r) => ["failed", "cancelled", "refused", "interrupted"].includes(r.status)).length;
   const last = data.runs[0];
   const pair = (label, value, href) => [h("div", { class: "ess-pair" }, h("dt", { text: label }), h("dd", {}, href ? h("a", { href, text: value }) : value))];
   const tab = (t) => `/?tab=${t}`;
   $("ess-left").replaceChildren(
-    ...pair("Workloads", `${wl.length} onboarded, ${wl.filter((it) => it.verified?.ok).length} verified working`, tab("serverless")),
-    ...pair("Clusters", `${cl.length} set up, ${cl.filter((it) => it.ok).length} working`, tab("kubernetes")),
-    ...pair("OIDC proof", `${wl.filter((it) => it.proof?.ok).length} of ${wl.length} workloads, ${cl.filter((it) => it.proof?.ok).length} of ${cl.length} clusters proven`, tab("serverless")));
+    ...pair("Serverless", `${of("serverless").length} onboarded, ${of("serverless").filter((it) => it.verified?.ok).length} verified working`, tab("serverless")),
+    ...pair("App Services", `${of("app-services").length} onboarded, ${of("app-services").filter((it) => it.verified?.ok).length} verified working`, tab("app-services")),
+    ...pair("OIDC proof", `${wl.filter((it) => it.proof?.ok).length} of ${wl.length} workloads proven`, null));
   $("ess-right").replaceChildren(
     ...pair("Runs", `${data.runs.length} kept, ${failed} failed`, "/runs"),
     ...pair("In progress", String(live), live ? "/runs?status=active" : null),

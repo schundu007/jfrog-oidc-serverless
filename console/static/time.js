@@ -1,4 +1,4 @@
-// Time formatting for every page of the JFrog OIDC Console (Serverless, Kubernetes, Infrastructure):
+// Time formatting for every page of the JFrog OIDC Console (Serverless, Infrastructure):
 // one copy, no side effects, so any page can import it. Times are stored in UTC and shown in the
 // browser's own time zone.
 

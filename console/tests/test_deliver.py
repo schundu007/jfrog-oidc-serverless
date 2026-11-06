@@ -207,20 +207,6 @@ class PublishTests(unittest.TestCase):
         c["state_backend"] = deliver._backend(DELIVERY, "azure", "azure_x")
         self.assertEqual(tg._backend(c)["azurerm"]["use_azuread_auth"], True)
 
-    def test_openshift_state(self):
-        from console.steps import tfgen as tg
-        d = {**DELIVERY, "state": {"openshift": {"type": "kubernetes", "namespace": "terraform", "config_context": "ci"}}}
-        c = model.default_config("openshift_knative_service", name="api")
-        c["state_backend"] = deliver._backend(d, "openshift", "openshift_lab")
-        self.assertEqual(tg._backend(c), {"kubernetes": {"secret_suffix": "openshift-lab", "namespace": "terraform",
-                                                         "config_context": "ci"}})
-        with self.assertRaises(deliver.DeliveryError):      # the wrong backend type for the cloud
-            deliver._backend({"state": {"openshift": {"type": "gcs", "bucket": "x"}}}, "openshift", "openshift_1")
-
-    def test_pipeline_login_replaces_local_context(self):
-        k = model.default_config("openshift_knative_service", name="api")
-        self.assertEqual(deliver.pipeline_target(k, {"KUBE_CONTEXT": "ci"})["target"]["openshift"]["context"], "ci")
-
     def test_no_change_means_no_pull_request(self):
         res, sh = self.publish(gcp_cfg(), commit_rc=1)
         self.assertFalse(res["changed"])

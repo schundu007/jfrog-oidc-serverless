@@ -1,12 +1,12 @@
 // Runs (/runs), in the Azure portal's resource style like Home: title and command bar (Refresh, Delete
-// selected, Clear finished), Essentials, tabs by area (All, Serverless, Kubernetes, Infrastructure), then
+// selected, Clear finished), Essentials, tabs by area (All, Serverless, App Services, Infrastructure, JFrog OIDC, Archived), then
 // one filter bar ("Filter for any field…", Cloud, Type, Status) over one table grouped by cloud. Filters
 // live in the address. Each row opens its run. Data: data.js.
 import { refreshing } from "/serverless/static/core.js";
 import { CLOUD_NAMES, LIVE_STATES, h, markEl, when, runPill, loadAll, removeRun } from "./data.js";
 
 const $ = (id) => document.getElementById(id);
-const TABS = ["", "serverless", "kubernetes", "infrastructure", "oidc", "archived"];
+const TABS = ["", "serverless", "app-services", "infrastructure", "oidc", "archived"];
 const TAB_ID = (t) => `tab-${t || "all"}`;
 const u0 = new URLSearchParams(location.search);
 const F = { area: TABS.includes(u0.get("area")) ? u0.get("area") : "", q: u0.get("q") || "", cloud: u0.get("cloud") || "",

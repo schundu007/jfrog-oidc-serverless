@@ -61,14 +61,13 @@ def epoch(day):
 
 class RetentionTest(unittest.TestCase):
     def test_keeps_the_newest_seven_everywhere(self):
-        sv = FakeConsole([{"id": f"s{d}", "created": iso(d), "status": "succeeded"} for d in (1, 5, 9, 13)],
-                         [{"id": "sa2", "created": iso(2)}])
-        k8 = FakeConsole([{"id": "k3", "created": iso(3), "status": "running"}, {"id": "k11", "created": iso(11), "status": "failed"}],
-                         [{"id": "ka12", "created": iso(12)}])
+        sv = FakeConsole([{"id": f"s{d}", "created": iso(d), "status": "succeeded"} for d in (1, 5, 9, 13)]
+                         + [{"id": "k3", "created": iso(3), "status": "running"}, {"id": "k11", "created": iso(11), "status": "failed"}],
+                         [{"id": "sa2", "created": iso(2)}, {"id": "ka12", "created": iso(12)}])
         jobs = FakeJobs([{"id": f"j{d}", "started": epoch(d), "state": "succeeded"} for d in (4, 10, 14)],
                         [{"id": "ja8", "started": epoch(8)}])
-        retention.trim(sv, k8, jobs)
-        kept = {r["id"] for r in sv.runs.rows + sv.archive.rows + k8.runs.rows + k8.archive.rows + jobs.hist + jobs.arch}
+        retention.trim(sv, jobs)
+        kept = {r["id"] for r in sv.runs.rows + sv.archive.rows + jobs.hist + jobs.arch}
         # Newest seven: 14, 13, 12, 11, 10, 9, 8; k3 is running, so it stays too.
         self.assertEqual(kept, {"j14", "s13", "ka12", "k11", "j10", "s9", "ja8", "k3"})
 

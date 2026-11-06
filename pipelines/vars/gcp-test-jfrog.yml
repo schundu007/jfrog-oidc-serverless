@@ -4,3 +4,6 @@ variables:
   JFROG_DOCKER_REMOTE: docker-remote
   # PyPI remote the function build vendors its packages from (no public PyPI in the build).
   JFROG_PYPI_REPO: pypi-remote
+  # App Engine's first deploy: the provider its JFROG_* settings name until onboarding has run
+  # (the onboarding workspace's jfrog_provider_name).
+  JFROG_RUNTIME_PROVIDER: gcp-cloudrun

@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import time
 
-from .. import model
+from .. import gae, model
 
 GCP_ID_TOKEN = ["gcloud", "auth", "print-identity-token"]
 EXCHANGED = "exchanged identity for a JFrog token"
@@ -191,6 +191,16 @@ def _cloud_run_http(cfg, sh, kind, opts):
         del tok
 
 
+def _app_engine(cfg, sh, kind, opts):
+    # The service URL from the app's default host name; App Engine standard is public unless IAP is on.
+    n, _, p = _g(cfg)
+    r = sh.run(gae.app_argv(p), timeout=60)
+    host = r.stdout.strip()
+    if not r.ok or not host:
+        return _fail(kind, "health endpoint", f"no App Engine application in {p}: {r.error_text() or 'not created'}")
+    return _get(sh, kind, gae.service_url(host, n) + "/healthz/jfrog", fresh=opts.get("fresh"))
+
+
 def _container_app(cfg, sh, kind, opts):
     r = sh.run(aca_fqdn_argv(cfg), timeout=90)
     fqdn = r.stdout.strip()
@@ -358,6 +368,7 @@ METHODS = {
     "gcp_run_function": _cloud_run_http,
     "gcp_run_worker_pool": _worker_pool,
     "gcp_run_job": _gcp_job,
+    "gcp_app_engine": _app_engine,
     "azure_container_app": _container_app,
     "azure_container_app_job": _azure_job,
     "azure_functions_aca": _functions_aca,

@@ -1,6 +1,5 @@
 // A proof as a DAG: one column per stage (No stored secret → Live exchange → Trust removed), each check a
 // node in run order, joined by edges. Clicking a node shows its status and evidence below the graph.
-// Shared by both consoles (the Kubernetes console imports it from /serverless/static/dag.js).
 //
 //   dag({ stages: [{ title, help?, nodes: [{ id, title, status, detail, facts? }] }], label })
 //

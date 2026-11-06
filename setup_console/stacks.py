@@ -1,8 +1,8 @@
 """Infrastructure the console can deploy and destroy (Terraform stacks under
-terraform/stacks/<serverless|kubernetes>/<gcp|azure>/<stack>).
+terraform/stacks/<serverless|app-services>/<gcp|azure>/<stack>).
 
 Only for trying the credential provider where nothing exists yet. In production the targets are
-already there and only the Serverless and Kubernetes consoles' configure steps run.
+already there and only the console's configure steps run.
 
 Nothing about a target is written into the stacks. Each stack's inputs are the variables its
 variables.tf declares; the Infrastructure page shows them as a form and saves what is filled in
@@ -10,24 +10,21 @@ as JSON (<state root>/<env>/<stack>.tfvars.json, outside git), passed with -var-
 variable two stacks of the same cloud share (jfrog_url, gcp_project_id, ...) is prefilled from the last
 value saved for it in that cloud; clouds never prefill from each other.
 
-Serverless and Kubernetes are separate kinds of infrastructure: no stack of one stands on a stack
-of the other, and prefill never crosses between them. The cluster stacks (gke-cluster, aks-cluster)
-use their cloud's pipeline identity only for remote state and pipeline trust (their stack-setup pipeline,
-pipelines/kubernetes/<cloud>/<stack>/stack-setup.yml); nothing stands on them. Clouds are completely separate, as in production: each has its own pipeline identity stack
+Serverless (Cloud Run, Container Apps, Functions) and App Services (App Service Web Apps, App Engine)
+are separate sections; both stand only on their cloud's pipeline identity. Clouds are completely separate, as in production: each has its own pipeline identity stack
 (gcp-pipeline-identity, azure-pipeline-identity) with its own ADO trust, its own pipeline variable group and its
 own state store.
 
-Infrastructure never touches JFrog: no pipeline identity, workload or cluster stack has a JFrog provider,
+Infrastructure never touches JFrog: no pipeline identity or workload stack has a JFrog provider,
 input or setting, and none registers anything for JFrog OIDC (its pipelines, environments and approvals
 are made by the OIDC stacks themselves). The UI serves them apart (server.py scopes: /setup infra,
 /oidc JFrog OIDC), as do the pipelines (terraform-stack.sh vs oidc-stack.sh). JFrog is OIDC configuration, made only once the infrastructure exists: the
 "JFrog OIDC" stacks (terraform/stacks/oidc/<cloud>/<cloud>-jfrog-trust: the pipelines' JFrog
-integration, mappings and JFrog variable group; on GCP also the console operator; aks-jfrog-trust: the
-AKS cluster's issuer, mapping and credential provider, in its own ADO pipeline) and, per workload,
+integration, mappings and JFrog variable group; on GCP also the console operator) and, per workload,
 the console's workspaces. Its stacks' remote state is
 -backend-config derived from that pipeline identity's inputs only: gcs bucket <gcp_project_id>-tfstate;
 azurerm account st<ado_org[:12]><subscription[:8]> in the ADO identity's resource group. Pipeline identity stacks keep local state.
-Prefill is kept per kind and cloud: never across clouds, never between Serverless and Kubernetes.
+Prefill is kept per kind and cloud: never across clouds.
 """
 
 from __future__ import annotations
@@ -42,7 +39,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 STACKS_DIR = REPO_ROOT / "terraform" / "stacks"
 STATE_ROOT = REPO_ROOT / ".console" / "setup"
 
-# id = the stack directory. kind: Serverless or Kubernetes, independent of each other.
+# id = the stack directory. kind: Serverless, App Services or JFrog OIDC.
 # Order is the order to deploy in; destroy in reverse.
 # about: what the stack creates, in plain words. next: what to do once it is deployed.
 CATALOGUE = (
@@ -70,6 +67,10 @@ CATALOGUE = (
               "HTTP endpoint) once deploy_worker_pool is on.",
      "next": "Run this stack's build-deploy pipeline to push the first image, then set worker_pool_image, "
              "turn on deploy_worker_pool (Inputs) and deploy again."},
+    {"id": "gcp-app-engine", "kind": "App Services", "group": "Google Cloud", "title": "App Engine",
+     "about": "The App Engine service's own service account, and the project's App Engine application "
+              "when create_application is on (one per project; its region is fixed and it cannot be deleted).",
+     "next": "Run this stack's build-deploy pipeline: it deploys the service from source as that account."},
     {"id": "azure-pipeline-identity", "kind": "Serverless", "group": "Azure", "title": "Pipeline identity and state",
      "about": "Lets the Azure pipelines sign in to Azure with their OIDC token, with no stored "
               "secrets: the setup identity and its federated credentials, its ADO service connections "
@@ -100,7 +101,7 @@ CATALOGUE = (
      "about": "Its own resource group with the function's identity, host storage with its deployment "
               "container, a Flex Consumption plan and the function app.",
      "next": "Run this stack's build-deploy pipeline to deploy the code."},
-    {"id": "azure-web-app", "kind": "Serverless", "group": "Azure", "title": "Web App",
+    {"id": "azure-web-app", "kind": "App Services", "group": "Azure", "title": "Web App",
      "about": "Its own resource group with the app's identity, an App Service plan (Linux or Windows) and "
               "the web app for Python, Java, .NET, Node.js or PHP code.",
      "next": "Run this stack's build-deploy pipeline to deploy the code."},
@@ -117,21 +118,6 @@ CATALOGUE = (
      "about": "The JFrog OIDC integration for the Azure pipelines' service connections, its build "
               "(reader) and setup (admin) mappings, and the pipelines' JFrog variable group.",
      "next": "Run the build-deploy pipelines, then configure each workload in the Serverless console."},
-    {"id": "gke-cluster", "kind": "Kubernetes", "group": "Google Cloud", "title": "GKE cluster",
-     "about": "A test GKE cluster and node pool with its OIDC issuer on.",
-     "next": "Run the credentials command, then use the cluster from the Kubernetes console."},
-    {"id": "aks-cluster", "kind": "Kubernetes", "group": "Azure", "title": "AKS cluster",
-     "about": "A test AKS cluster, in its own resource group, with its OIDC issuer on, and the Argo CD hub "
-              "(gitops/argocd/values.yaml) whose repo-server signs in with its own managed identity.",
-     "next": "Run the credentials command, then use the cluster from the Kubernetes console."},
-    # The AKS cluster's JFrog OIDC: after the cluster, in its own stack-setup pipeline (JFrog token from
-    # the setup connection's OIDC token). Each redeployed cluster has a new issuer, trusted again here.
-    {"id": "aks-jfrog-trust", "kind": "JFrog OIDC", "section": "Kubernetes", "group": "Azure",
-     "title": "AKS credential provider", "after": ("aks-cluster", "azure-jfrog-trust"),
-     "about": "The AKS cluster's issuer trusted in JFrog, its credential provider's service account mapped "
-              "to a JFrog user, and an Argo CD Application that installs the kubelet credential provider "
-              "on the labelled nodes. Nothing runs from your machine: it is an ADO pipeline.",
-     "next": "Verify and prove it from the Kubernetes console."},
 )
 IDS = tuple(s["id"] for s in CATALOGUE)
 # Only cloud-level inputs prefill another stack's form. A workload's own name, image and switches
@@ -171,7 +157,7 @@ INSTANCE_NAME = re.compile(r"[a-z][a-z0-9-]{1,38}[a-z0-9]")
 def multi(stack_id: str) -> bool:
     """A stack that can stand more than once: a Serverless workload (not a pipeline identity)."""
     meta = _base(stack_id)
-    return meta["kind"] == "Serverless" and not stack_id.endswith("-pipeline-identity")
+    return meta["kind"] in WORKLOAD_KINDS and not stack_id.endswith("-pipeline-identity")
 
 
 def split(stack_id: str) -> tuple:
@@ -239,12 +225,13 @@ def new_instance(stack_id: str, workload: str, env: str, root=None, state_root=N
 
 
 CLOUD_DIR = {"Google Cloud": "gcp", "Azure": "azure"}
-KIND_DIR = {"Serverless": "serverless", "Kubernetes": "kubernetes", "JFrog OIDC": "oidc"}
+KIND_DIR = {"Serverless": "serverless", "App Services": "app-services", "JFrog OIDC": "oidc"}
+# Infrastructure kinds that share their cloud's pipeline identity, prefill and workload rules.
+WORKLOAD_KINDS = ("Serverless", "App Services")
 
 
 def rel_dir(stack_id: str) -> str:
-    """Where a stack lives under terraform/stacks: <kind>/<cloud>/<id>. Serverless and Kubernetes,
-    and each cloud, have their own tree; the id (state key, ADO environment) never changes."""
+    """Where a stack lives under terraform/stacks: <kind>/<cloud>/<id>. Each kind and each cloud has its own tree; the id (state key, ADO environment) never changes."""
     meta = get(stack_id)
     return f"{KIND_DIR[meta['kind']]}/{CLOUD_DIR[meta['group']]}/{meta.get('base', stack_id)}"
 
@@ -468,7 +455,8 @@ def inputs_file(stack_id: str, env: str, state_root: Path = STATE_ROOT) -> Path:
 def _shared_file(env: str, state_root: Path, stack_id: str) -> Path:
     """Prefill values are kept per kind and cloud: never across clouds or between kinds."""
     meta = get(stack_id)
-    group = re.sub(r"[^a-z0-9]+", "-", f"{meta['kind']} {meta['group']}".lower()).strip("-")
+    kind = "Serverless" if meta["kind"] in WORKLOAD_KINDS else meta["kind"]   # App Services share it
+    group = re.sub(r"[^a-z0-9]+", "-", f"{kind} {meta['group']}".lower()).strip("-")
     return Path(state_root) / env / f"shared-{group}.json"
 
 
@@ -582,7 +570,7 @@ def write_inputs(stack_id: str, env: str, values: dict, root: Path = STACKS_DIR,
     if meta.get("instance"):   # a deployment's name is fixed: another name is another deployment
         out["workload"] = meta["instance"]
     _write(inputs_file(stack_id, env, state_root), out)
-    others = {x["name"] for s in CATALOGUE if s["id"] != meta.get("base", stack_id) and (s["kind"], s["group"]) == (meta["kind"], meta["group"])
+    others = {x["name"] for s in CATALOGUE if s["id"] != meta.get("base", stack_id) and _shared_file(env, state_root, s["id"]) == _shared_file(env, state_root, stack_id)
               for x in variables(s["id"], root)}
     shared = _load(_shared_file(env, state_root, stack_id))
     shared.update({k: val for k, val in out.items() if k in others and k in SHARED_INPUTS})

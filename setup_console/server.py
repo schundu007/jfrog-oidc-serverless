@@ -1,5 +1,5 @@
 """Infrastructure (/setup) and JFrog OIDC (/oidc) sections of the portal: two mounts of this server,
-each with its own scope. scope="infra" serves only the Serverless and Kubernetes infrastructure stacks;
+each with its own scope. scope="infra" serves only the Serverless and App Services infrastructure stacks;
 scope="oidc" only the JFrog OIDC stacks. A stack, run or plan of the other scope answers 404 there.
 OIDC may read infrastructure's state (it stands on it); neither mount can change the other's stacks.
 

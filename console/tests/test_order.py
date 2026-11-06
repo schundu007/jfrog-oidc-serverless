@@ -16,8 +16,7 @@ class PathTests(unittest.TestCase):
             "pipelines/serverless/azure/azure-web-app/stack-setup.yml": ("azure", 3),
             "/pipelines/serverless/azure/azure-web-app/build-deploy.yml": ("azure", 4),
             "pipelines/azure-workload-onboard.yml": ("azure", 5),
-            "pipelines/oidc/azure/aks-jfrog-trust/stack-setup.yml": ("azure", 2),
-            "pipelines/kubernetes/gcp/gke-cluster/stack-setup.yml": ("gcp", 3),
+            "pipelines/oidc/azure/azure-jfrog-trust/stack-setup.yml": ("azure", 2),
             "pipelines/gcp-workload-onboard.yml": ("gcp", 5),
             "pipelines/other.yml": (None, None),
         }

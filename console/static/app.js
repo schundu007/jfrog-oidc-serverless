@@ -13,7 +13,6 @@ import { mountList } from "./list.js";
 import { mountWorkload } from "./workload.js";
 import { mountRun } from "./runs.js";
 import { mountConfig } from "./configure.js";
-import { NOT_YET, mountNotYet } from "./notyet.js";
 
 const RUN_ID = /^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$/;
 const NAME = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -42,7 +41,6 @@ function renderTrail(r) {
   trailRoute = r;
   const section = r.page !== "list" && trailSection && window.consoleNav?.section(trailSection);
   const steps = [["Serverless", r.page === "list" ? null : href.list(null)]];
-  if (r.page === "not-yet") steps.push([CLOUDS[CLOUD], null]);
   if (section) steps.push([section.label, href.list(trailSection)]);
   if (r.page === "new") steps.push(["New workload", null]);
   if (r.name) steps.push([r.name, r.page === "run" ? href.workload(r.name, "runs") : null]);
@@ -61,7 +59,6 @@ function renderTrail(r) {
 // Keep only this cloud's links; inside the portal, links to this console's pages carry the prefix.
 function applyShell() {
   if (BASE) {
-    // The switch to the Kubernetes section (a different console) is a full page load.
     // The sidebar (shell.js) already writes portal paths; a link that carries the prefix keeps it.
     for (const a of document.querySelectorAll('a[href^="/"]:not([data-section])')) {
       const to = a.getAttribute("href");
@@ -124,14 +121,12 @@ async function start() {
   const schema = await connect();
   if (!schema || mounted) return;
   mounted = true;
-  // OpenShift: not set up live yet, every path shows what they will need.
-  const r = NOT_YET[CLOUD] ? { page: "not-yet" } : CLOUD ? route() : { page: "list" };
+  const r = CLOUD ? route() : { page: "list" };
   if (r.legacy) history.replaceState(null, "", href.list());
   renderTrail(r);
   const page = $("page");
   try {
-    if (r.page === "not-yet") mountNotYet(page, CLOUD);
-    else if (r.page === "new") await mountNew(page, { schema });
+    if (r.page === "new") await mountNew(page, { schema });
     else if (r.page === "workload") await mountWorkload(page, { name: r.name, schema });
     else if (r.page === "run") await mountRun(page, { name: r.name, id: r.id });
     else await mountList(page, { schema });

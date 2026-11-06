@@ -24,22 +24,6 @@ class DefaultsTests(unittest.TestCase):
             self.assertEqual(model.validate(cfg)["errors"], [], kind)
 
 
-class OpenShiftModelTests(unittest.TestCase):
-    def test_defaults_are_runtime_only(self):
-        for kind in ("openshift_knative_service",):
-            cfg = model.default_config(kind, name="orders")
-            self.assertNotIn("pull_path", cfg, kind)
-            self.assertEqual(model.validate(cfg)["errors"], [], kind)
-            self.assertEqual(model.dedicated_identity_name(cfg), "jfrog-orders")
-
-    def test_openshift_fields(self):
-        cfg = model.default_config("openshift_knative_service", name="orders")
-        cfg["target"]["openshift"].update(cluster="Bad_Cluster", namespace="")
-        errs = model.validate(cfg)["errors"]
-        self.assertIn("cluster_name", codes(errs))
-        self.assertIn("target.openshift.namespace", {e["path"] for e in errs})
-
-
 class ValidateTests(unittest.TestCase):
     def cfg(self, kind="gcp_run_service", **dotted):
         cfg = model.default_config(kind, name="orders-prod")

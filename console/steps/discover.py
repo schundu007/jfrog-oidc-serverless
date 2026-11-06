@@ -20,9 +20,8 @@ from __future__ import annotations
 import re
 import time
 
-from .. import gcprun, model
+from .. import gae, gcprun, model
 from ..shell import Shell
-from .openshift import OpenShiftDiscover
 
 WHAT = {"functionapp": "a Function App", "webapp": "a Web App"}
 DEFAULT_COMPUTE_SA = re.compile(r"^\d+-compute@developer\.gserviceaccount\.com$")
@@ -61,7 +60,7 @@ def _prop(d: dict, key: str, default=None):
 BASIC_ROLES = ("roles/owner", "roles/editor", "roles/viewer")
 
 
-class Discover(OpenShiftDiscover):
+class Discover:
     def __init__(self, cfg: dict, sh: Shell):
         self.cfg = cfg
         self.sh = sh
@@ -110,6 +109,9 @@ class Discover(OpenShiftDiscover):
         if not (project and region and name):
             return self.error("missing_fields", "project, region and name are required")
         self.facts.update(project=project, region=region, name=name)
+
+        if self.kind == gae.KIND:
+            return self._gcp_app_engine(project, name)
 
         if self.kind == "gcp_run_function":
             fn = self._gcp_function(project, region, name)
@@ -162,6 +164,18 @@ class Discover(OpenShiftDiscover):
             self._gcp_service(project, region, name)   # records why the service lookup failed
             return
         return self._gcp_service_or_function(project, region, svc)
+
+    def _gcp_app_engine(self, project, name):
+        """The identity of the version serving the service's traffic (App Engine has no service-level identity)."""
+        version, why = gae.serving(self.sh, project, name)
+        if version is None:
+            if isinstance(why, str):
+                return self.error("no_serving_version", f"App Engine service '{name}': {why}",
+                                  "Deploy a version (the stack's build-deploy pipeline) or migrate traffic to one.")
+            return self._gcp_lookup_failed(why, f"App Engine service '{name}'")
+        self.facts.update(version=version.get("id"), runtime=version.get("runtime"), url=version.get("versionUrl"))
+        # A version deployed without --service-account runs as the App Engine default account.
+        return self._gcp_identity(project, version.get("serviceAccount") or f"{project}@appspot.gserviceaccount.com")
 
     def _gcp_job_lookup(self, project, region, name):
         return self.sh.run(["gcloud", "run", "jobs", "describe", name, "--region", region, "--project", project,

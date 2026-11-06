@@ -93,7 +93,7 @@
 #groups tr[data-state="busy"] .pill { color: var(--brand); font-weight: 700; }
 /* Blocked by a missing bootstrap: dimmed until it can be deployed. */
 
-/* ---- Cloud as the root: one column per cloud; Common, Serverless and Kubernetes as folders under it ---- */
+/* ---- Cloud as the root: one column per cloud; Common, Serverless and App Services as folders under it ---- */
 #groups { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-7, 40px); align-items: start; }
 @media (max-width: 1100px) { #groups { grid-template-columns: minmax(0, 1fr); } }
 .cloud-root { --cloud: var(--navy); }

@@ -306,19 +306,16 @@ class SettingsApiTests(unittest.TestCase):
     def setUpClass(cls):
         from console.server import ConsoleServer
         from console.store import Store
-        from kcp_console.server import KcpServer
-        from kcp_console.store import Store as KcpStore
         from portal.server import Portal
         cls.tmp = tempfile.TemporaryDirectory()
         root = Path(cls.tmp.name)
         token = "s" * 43
         log = io.StringIO()
         oidc = ConsoleServer(port=0, token=token, store=Store(root / ".console"), base="/serverless", log=log)
-        kcp = KcpServer(token, store=KcpStore(root / ".kcp-console"), log=log, env={})
         env = {}
         conn = Connections(root / ".console", environ=env,
                            shell_factory=lambda: Shell(mode="replay", fixtures=fixtures()))
-        cls.portal = Portal(oidc, kcp, port=0, log=log, connections=conn)
+        cls.portal = Portal(oidc, port=0, log=log, connections=conn)
         cls.portal.start()
         cls.port, cls.token = cls.portal.port, token
 

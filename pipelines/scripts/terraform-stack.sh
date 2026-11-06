@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # terraform-stack.sh <plan|plan-destroy|apply> <stack> <environment> <plan-file>
 #
-# Runs terraform/stacks/<serverless|kubernetes>/<cloud>/<stack> with the inputs the run was queued with (STACK_INPUTS,
+# Runs terraform/stacks/<serverless|app-services>/<cloud>/<stack> with the inputs the run was queued with (STACK_INPUTS,
 # JSON: the stack's variables, as the Infrastructure page saves them) and the stack's
 # remote state derived from STACK_STATE (JSON: gcp_project_id, or azure_subscription_id,
 # ado_org and state_resource_group), the store that cloud's pipeline identity stack creates. Nothing is read from
 # files in the repo. Azure
 # stacks authenticate through the AzureCLI@2 login; GCP stacks through WIF.
-# Infrastructure stacks only (terraform/stacks/{serverless,kubernetes}/...): no JFrog provider, token or
+# Infrastructure stacks only (terraform/stacks/{serverless,app-services}/...): no JFrog provider, token or
 # variable. JFrog OIDC stacks run through oidc-stack.sh instead, never this script.
 set -euo pipefail
 action=$1 stack=$2 environment=$3 plan_file=$4
@@ -24,7 +24,7 @@ mapfile -t backend <<< "$backend_args"
 [ -n "$backend_args" ] || backend=()
 
 dir=$(python3 -m setup_console.stacks dir "$stack")
-case "$dir" in serverless/*|kubernetes/*) ;; *) echo "$stack is not an infrastructure stack" >&2; exit 2 ;; esac
+case "$dir" in serverless/*|app-services/*) ;; *) echo "$stack is not an infrastructure stack" >&2; exit 2 ;; esac
 cd "terraform/stacks/$dir"
 terraform init -input=false -no-color -reconfigure "${backend[@]}"
 

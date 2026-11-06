@@ -18,6 +18,7 @@ from console.runner import DELIVERY_STEPS, RunError
 KIND_OF = {
     "gcp-cloud-run-service": "gcp_run_service", "gcp-cloud-run": "gcp_run_job",
     "gcp-cloud-run-function": "gcp_run_function", "gcp-cloud-run-worker-pool": "gcp_run_worker_pool",
+    "gcp-app-engine": "gcp_app_engine",
     "azure-container-app": "azure_container_app", "azure-container-apps": "azure_container_app_job",
     "azure-functions-aca": "azure_functions_aca", "azure-functions-premium": "azure_functions_premium",
     "azure-functions-flex": "azure_functions_flex", "azure-web-app": "azure_web_app",

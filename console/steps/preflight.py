@@ -18,7 +18,6 @@ import urllib.parse
 
 from .. import model
 from ..shell import Shell
-from .openshift import OpenShiftPreflight
 
 TF_MIN = (1, 6)
 PROD_NAME = re.compile(r"(^|[-_. ])(prod|prd|production|live)([-_. ]|$)", re.I)
@@ -40,6 +39,8 @@ GCP_PERMISSIONS_BY_KIND = {
     "gcp_run_job": ["run.jobs.get", "run.jobs.update"],
     "gcp_run_function": ["cloudfunctions.functions.get", "cloudfunctions.functions.update", "run.services.update"],
     "gcp_run_worker_pool": ["run.workerPools.get", "run.workerPools.update"],
+    # Read only: App Engine variables change only by a deploy (the stack's build-deploy pipeline).
+    "gcp_app_engine": ["appengine.services.get", "appengine.versions.get"],
 }
 # APIs the target itself needs (Discover and the wire step).
 GCP_APIS_BY_KIND = {
@@ -47,6 +48,7 @@ GCP_APIS_BY_KIND = {
     "gcp_run_job": ["run.googleapis.com"],
     "gcp_run_function": ["run.googleapis.com", "cloudfunctions.googleapis.com"],
     "gcp_run_worker_pool": ["run.googleapis.com"],
+    "gcp_app_engine": ["appengine.googleapis.com"],
 }
 # Resource providers Terraform and the target need. Registering one is a
 # subscription-level write, so the console only shows the command.
@@ -81,7 +83,7 @@ def _version_tuple(text: str):
 # Azure DevOps' Entra resource: az rest gets an ADO token for it from the az login.
 ADO_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798"
 
-class Preflight(OpenShiftPreflight):
+class Preflight:
     def __init__(self, cfg: dict, sh: Shell, env=None, delivery=False, repo_root=None):
         self.cfg = cfg
         self.repo_root = repo_root
@@ -409,8 +411,6 @@ class Preflight(OpenShiftPreflight):
         """The iss this target's tokens carry, or None when it is not known yet."""
         if self.cloud == "gcp":
             return "https://accounts.google.com"
-        if self.cloud == "openshift":
-            return self.facts.get("k8s_issuer")
         tenant = self.facts.get("azure_tenant")
         return f"https://login.microsoftonline.com/{tenant}/v2.0" if tenant else None
 

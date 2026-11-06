@@ -1,0 +1,20 @@
+# App Engine standard: deploy this one service from source (stack gcp-app-engine). Nothing else is touched.
+trigger: none
+pr: none
+
+parameters:
+  - name: environment
+    type: string
+    default: test
+    values: [test]
+  - name: workload
+    displayName: Workload name (the stack's workload input)
+    type: string
+    default: " "
+
+extends:
+  template: /pipelines/templates/gcp-build-deploy.yml
+  parameters:
+    kind: app-engine
+    workload: ${{ trim(parameters.workload) }}
+    environment: ${{ parameters.environment }}

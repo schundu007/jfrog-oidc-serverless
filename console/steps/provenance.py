@@ -20,17 +20,22 @@ ADO_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798"
 API = "api-version=7.1"
 STACK = {"gcp_run_job": "gcp/gcp-cloud-run", "gcp_run_service": "gcp/gcp-cloud-run-service",
          "gcp_run_function": "gcp/gcp-cloud-run-function", "gcp_run_worker_pool": "gcp/gcp-cloud-run-worker-pool",
+         "gcp_app_engine": "gcp/gcp-app-engine",
          "azure_container_app_job": "azure/azure-container-apps", "azure_container_app": "azure/azure-container-app",
          "azure_functions_aca": "azure/azure-functions-aca", "azure_functions_premium": "azure/azure-functions-premium",
          "azure_functions_flex": "azure/azure-functions-flex", "azure_web_app": "azure/azure-web-app"}
 BASE_IMAGE = "library/python:3.12-slim"   # pipelines/templates/<cloud>-build-deploy.yml
-CODE_KINDS = {"azure_functions_flex", "azure_functions_premium", "azure_web_app", "gcp_run_function"}   # deployed from source
+CODE_KINDS = {"azure_functions_flex", "azure_functions_premium", "azure_web_app", "gcp_run_function", "gcp_app_engine"}   # deployed from source
 COMMIT_TAG = re.compile(r":([0-9a-f]{12})$")
+
+
+APP_SERVICE_KINDS = {"azure_web_app", "gcp_app_engine"}   # web apps: pipelines/app-services/, not serverless
 
 
 def pipeline_yaml(kind: str) -> str | None:
     s = STACK.get(kind)
-    return f"pipelines/serverless/{s}/build-deploy.yml" if s else None
+    area = "app-services" if kind in APP_SERVICE_KINDS else "serverless"
+    return f"pipelines/{area}/{s}/build-deploy.yml" if s else None
 
 
 def image_argv(cfg):
@@ -50,6 +55,8 @@ def image_argv(cfg):
 
 def running_image(cfg, sh) -> str:
     kind = model.get_path(cfg, "target.kind")
+    if kind == "gcp_app_engine":   # deployed from source: no image
+        return ""
     r = sh.run(image_argv(cfg), timeout=120)
     data = r.json(None) if r.ok else None
     if not isinstance(data, dict):

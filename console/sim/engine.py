@@ -29,9 +29,7 @@ import math
 import os
 import random
 import secrets
-import shutil
 import sys
-import tempfile
 import threading
 import time
 import urllib.error
@@ -42,14 +40,12 @@ from .clock import VirtualClock
 from .emulators.azure import AzureEmulator
 from .emulators.gcp import GOOGLE_ISSUER, GcpEmulator
 from .emulators.jfrog import SERVICES, JFrogEmulator
-from .emulators.k8s import K8sEmulator
 from .emulators.server import EmulatorServer
 
 SIM_LOCK = threading.Lock()
 ROOT = Path(__file__).resolve().parents[2]
 
 GCP_AUDIENCE = "jfrog-gcp"
-K8S_AUDIENCE = "jfrog-k8s"        # tfgen.K8S_AUDIENCE
 TENANT = "72f988bf-0000-4000-8000-000000000001"
 APP_ID = "5d1c2b3a-0000-4000-8000-00000000a0d1"
 RUNTIME_ID = {"client": "c0ffee00-0000-4000-8000-000000000011", "principal": "0b1d0000-0000-4000-8000-000000000011"}
@@ -170,15 +166,12 @@ class Simulation:
     def _build(self):
         cfg, kind = self.cfg, self.kind
         sim = cfg.get("sim", {})
-        g_key, a_key, k_key = (secrets.token_bytes(16) for _ in range(3))
+        g_key, a_key = (secrets.token_bytes(16) for _ in range(2))
         self.clock = VirtualClock(self.start)
         self.gcp = GcpEmulator(self.clock, g_key)
         self.azure = AzureEmulator(self.clock, a_key, TENANT)
-        self._tmp = tempfile.mkdtemp(prefix="jfrog-sim-")
-        self.k8s = K8sEmulator(self.clock, k_key, os.path.join(self._tmp, "token"))
         self.jfrog = JFrogEmulator(self.clock, trust={GOOGLE_ISSUER: g_key, self.azure.v2_issuer: a_key,
-                                                      self.azure.v1_issuer: a_key,
-                                                      self.k8s.issuer: k_key})
+                                                      self.azure.v1_issuer: a_key})
         self.server = EmulatorServer({"/jfrog": self.jfrog, "/gcp": self.gcp, "/azure": self.azure})
         base = self.server.start()
         host = self.server.host
@@ -200,8 +193,6 @@ class Simulation:
             runtime_claims = {"sub": "100000000000000000001"}
             self.runtime_env = {**common, "JFROG_OIDC_AUDIENCE": sim.get("runtime_audience", GCP_AUDIENCE),
                                 "JFROG_OIDC_SOURCE": "gcp", "GCE_METADATA_HOST": f"{host}/gcp/md/runtime"}
-        elif self.cloud == "openshift":
-            runtime_claims = self._build_openshift(cfg, common, sim)
         else:
             version = int(sim.get("access_token_version", 2))
             self.azure.set_app(APP_ID, version=version, role_gate=bool(sim.get("app_role_gate", False)),
@@ -223,19 +214,6 @@ class Simulation:
                           "end": self.start + f["end_s"] if f["end_s"] is not None else self.end + 1}
                          for f in self.sc["faults"]]
 
-    def _build_openshift(self, cfg: dict, common: dict, sim: dict) -> dict:
-        """The projected service-account token file, refreshed by the emulated kubelet."""
-        t = cfg["target"]["openshift"]
-        ns = t.get("namespace") or "default"
-        sa = cfg["target"].get("discovered", {}).get("dedicated_identity") or f"{cfg['name']}-sa"
-        integ = cfg["jfrog"]["integration_names"]["openshift"]
-        self.jfrog.add_integration(integ, self.k8s.issuer, K8S_AUDIENCE)
-        # The projected volume's audience is what the token carries; the env var is not used by the file source.
-        self.k8s.project(ns, sa, sim.get("runtime_audience", K8S_AUDIENCE), 3600)
-        self.runtime_env = {**common, "JFROG_OIDC_AUDIENCE": K8S_AUDIENCE, "JFROG_OIDC_SOURCE": "file",
-                            "JFROG_OIDC_TOKEN_FILE": self.k8s.path}
-        return {"sub": f"system:serviceaccount:{ns}:{sa}"}
-
     # ------------------------------------------------------------- events
 
     def _new_instance(self, t: float) -> None:
@@ -249,8 +227,6 @@ class Simulation:
         self._new_instance(t)
 
     def _requests(self, t: float, n: int) -> None:
-        if self.cloud == "openshift":
-            self.k8s.tick()
         mark = len(self._capture.messages)
         status, reason = None, ""
         instance = self.rng.choice(self.instances)[1]
@@ -296,9 +272,7 @@ class Simulation:
         if ftype == "jfrog_outage":
             self.jfrog.set_down((params.get("services") or SERVICES) if opening else ())
         elif ftype in ("sa_recreated", "identity_recreated") and opening:
-            if self.cloud == "openshift":
-                self.k8s.recreate_service_account()       # same name: the sub mapping still matches
-            elif self.cloud == "gcp":
+            if self.cloud == "gcp":
                 self.gcp.recreate_account("runtime", "100000000000000000099")
             else:
                 self.azure.workloads["runtime"]["identities"][RUNTIME_ID["client"]] = "0b1d0000-0000-4000-8000-000000000099"
@@ -335,8 +309,6 @@ class Simulation:
             finally:
                 if getattr(self, "server", None):
                     self.server.stop()
-                if getattr(self, "_tmp", None):
-                    shutil.rmtree(self._tmp, ignore_errors=True)
                 logger.removeHandler(self._capture)
                 logger.setLevel(saved[0])
                 logger.propagate = saved[1]

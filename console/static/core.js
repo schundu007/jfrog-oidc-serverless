@@ -1,4 +1,4 @@
-// Shared plumbing for every page of the one console (/serverless, /k8s, /setup): session token, API calls, event streams, DOM helpers,
+// Shared plumbing for every page of the one console (/serverless, /setup): session token, API calls, event streams, DOM helpers,
 // the one status icon set, time formats, the "⋯" menu, two-click confirmation and the flyout.
 // Vanilla ES module, no build step, no CDN. Rendered with DOM APIs only (no innerHTML).
 
@@ -14,7 +14,7 @@ if (REDIRECTING) location.replace(location.href.replace("//localhost", "//127.0.
 export const BASE = document.querySelector('meta[name="console-base"]')?.content || "";
 export const localPath = () => (BASE && location.pathname.startsWith(BASE) ? location.pathname.slice(BASE.length) || "/" : location.pathname);
 
-export const CLOUDS = { gcp: "Google Cloud", azure: "Azure", openshift: "OpenShift" };
+export const CLOUDS = { gcp: "Google Cloud", azure: "Azure" };
 export const CLOUD = [localPath().split("/")[1], new URLSearchParams(location.search).get("cloud")]
   .find((c) => Object.hasOwn(CLOUDS, c)) || null;
 export const ofCloud = (kind) => !!kind && String(kind).startsWith(`${CLOUD}_`);
@@ -73,7 +73,7 @@ export class ApiError extends Error {
   constructor(status, message, code, next) { super(message); this.status = status; this.code = code; this.next = next || null; }
 }
 
-// `abs`: a path of another portal section (/serverless/api/…, /k8s/api/…), not under this page's base.
+// `abs`: a path of another portal section (/serverless/api/…, /setup/api/…), not under this page's base.
 export async function api(path, { method = "GET", body, abs = false } = {}) {
   const headers = { "X-Console-Token": TOKEN };
   if (body !== undefined) headers["Content-Type"] = "application/json";

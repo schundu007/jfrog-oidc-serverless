@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 ADO_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798"   # Azure DevOps
 API = "api-version=7.1"
-CLOUDS = ("azure", "gcp", "openshift")
+CLOUDS = ("azure", "gcp")
 NAMES = {1: "Pipeline identity", 2: "JFrog trust", 3: "Infrastructure", 4: "Build and deploy", 5: "Onboard", 6: "Prove / Verify"}
 
 

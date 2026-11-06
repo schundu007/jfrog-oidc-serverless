@@ -1,7 +1,7 @@
-# The consoles' operator identity: no stored JFrog token on the operator's machine.
+# The console operator identity: no stored JFrog token on the operator's machine.
 # The console runs `gcloud auth print-identity-token --impersonate-service-account=<sa>
 # --audiences=<aud>` with the operator's own gcloud login and exchanges that Google ID token
-# at JFrog for a short-lived admin token (kcp_console/jfrog.py OperatorToken). Only members
+# at JFrog for a short-lived admin token (console/jfrog_operator.py). Only members
 # of var.console_operators can mint it (Token Creator on the service account).
 #
 # The console reads console_operator_env from this root's state: nothing to set before starting it.

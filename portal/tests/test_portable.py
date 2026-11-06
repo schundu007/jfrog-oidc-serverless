@@ -63,14 +63,14 @@ class PortableTests(unittest.TestCase):
 
     def test_every_azure_pipeline_is_registered_from_ado(self):
         # Every Azure pipeline runs from ADO: the one pipeline created in the ADO UI (Register pipelines)
-        # registers all the others. aks-jfrog-trust's own is registered by azure-jfrog-trust.
+        # registers all the others.
         script = (ROOT / "pipelines/scripts/register-azure-pipelines.sh").read_text()
         listed = {f for f in re.findall(r'"(pipelines/[^|"]+\.yml)\|', script) if "$" not in f}
         listed |= {f"pipelines/serverless/azure/{s}/{y}.yml" for s in re.findall(r'"(azure-[a-z-]+):', script)
                    for y in ("stack-setup", "build-deploy")}
         azure = {f for f in self.files if f.startswith("pipelines/") and f.endswith(".yml") and "/templates/" not in f
                  and "/vars/" not in f and ("/azure/" in f or Path(f).name.startswith("azure-"))}
-        self.assertEqual(azure - listed, {"pipelines/oidc/azure/aks-jfrog-trust/stack-setup.yml"})
+        self.assertEqual(azure - listed, set())
         self.assertFalse(listed - azure)
         for f in ("pipelines/serverless/azure/azure-pipeline-identity/stack-setup.yml",
                   "pipelines/oidc/azure/azure-jfrog-trust/stack-setup.yml", "pipelines/azure-register-pipelines.yml"):

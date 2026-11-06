@@ -22,9 +22,8 @@ from __future__ import annotations
 import hashlib
 import json
 
-from .. import gcprun, model, redact
+from .. import gae, gcprun, model, redact
 from ..shell import Shell
-from .openshift import OpenShiftWire
 
 CONTAINER_KINDS = ("azure_container_app", "azure_container_app_job", "azure_functions_aca")
 
@@ -71,7 +70,7 @@ def _entry(scope, key, current, desired):
 JOB_KINDS = ("gcp_run_job", "azure_container_app_job")
 
 
-class Wire(OpenShiftWire):
+class Wire:
     def __init__(self, cfg: dict, sh: Shell, outputs: dict):
         self.cfg, self.sh, self.out = cfg, sh, outputs or {}
         self.kind = model.get_path(cfg, "target.kind")
@@ -92,12 +91,11 @@ class Wire(OpenShiftWire):
         """The identity the workspace created for an existing app without one (None when it has its own)."""
         if not self.d.get("dedicated_identity"):
             return None
-        key = {"gcp": "dedicated_service_accounts", "azure": "dedicated_identities",
-               "openshift": "dedicated_service_accounts"}[self.cloud]
+        key = {"gcp": "dedicated_service_accounts", "azure": "dedicated_identities"}[self.cloud]
         made = (self.out.get(key) or {}).get(self.cfg["name"])
         if not made:
             raise WireError(f"workspace outputs missing ({key}.{self.cfg['name']}): run Plan and Apply first")
-        return {"id": made} if self.cloud in ("gcp", "openshift") else made
+        return {"id": made} if self.cloud == "gcp" else made
 
     # -- desired -------------------------------------------------------------------
 
@@ -110,8 +108,6 @@ class Wire(OpenShiftWire):
     def desired_env(self) -> dict:
         if not self.runtime:
             return {}
-        if self.cloud == "openshift":
-            return self._k8s_env()
         if self.cloud == "gcp":
             provider, audience = self._need("jfrog_provider_name", "jfrog_audience")
             return {"JFROG_OIDC_AUDIENCE": audience, "JFROG_OIDC_PROVIDER": provider, "JFROG_OIDC_SOURCE": "gcp",
@@ -138,8 +134,6 @@ class Wire(OpenShiftWire):
         env = self.desired_env()
         if self.cloud == "gcp":
             diff, commands, notes = self._gcp(env)
-        elif self.cloud == "openshift":
-            diff, commands, notes = self._openshift(env)
         elif self._is_container_app():
             diff, commands, notes = self._containerapp(env)
         else:
@@ -147,16 +141,17 @@ class Wire(OpenShiftWire):
         target = self._target_id()
         sha = hashlib.sha256(json.dumps({"target": target, "diff": diff, "commands": commands},
                                         sort_keys=True).encode()).hexdigest()
+        # App Engine: variables change only by a deploy, so a pending change has no command here.
+        deploy = self.kind == gae.KIND and any(d["action"] != "same" for d in diff)
         return {"target": target, "diff": diff, "commands": commands,
                 "display_commands": [" ".join(redact.argv(c)) for c in commands],
-                "sha256": sha, "noop": not commands, "notes": notes, "iac": self._iac(env)}
+                "sha256": sha, "noop": not commands and not deploy, "deploy_required": deploy,
+                "notes": notes, "iac": self._iac(env)}
 
     def _target_id(self) -> str:
         if self.cloud == "gcp":
             g = model.get_path(self.cfg, "target.gcp")
             return f"gcp:{g['project']}:{g['region']}:{self._gcp_resource()}/{self._gcp_name()}"
-        if self.cloud == "openshift":
-            return self._k8s_target_id()
         return self.d.get("resource_id") or "azure:" + str(model.get_path(self.cfg, "target.azure.name", ""))
 
     # -- GCP ---------------------------------------------------------------------------------
@@ -166,9 +161,28 @@ class Wire(OpenShiftWire):
         return (self.d.get("run_service") or name) if self.kind == "gcp_run_function" else name
 
     def _gcp_resource(self):
-        return gcprun.RESOURCE.get(self.kind, "services")
+        return "appengine" if self.kind == gae.KIND else gcprun.RESOURCE.get(self.kind, "services")
+
+    def _app_engine(self, env):
+        """Diff against the serving version. No command: App Engine sets variables only at deploy, and the
+        stack's build-deploy pipeline writes them into app.yaml (env_variables)."""
+        g = model.get_path(self.cfg, "target.gcp")
+        version, why = gae.serving(self.sh, g["project"], g["name"])
+        if version is None:
+            if isinstance(why, str):
+                raise WireError(f"App Engine service {g['name']}: {why}")
+            raise _unreadable("the target", why)
+        cur = gae.env_of(version)
+        diff = [_entry("env", k, cur.get(k), v) for k, v in env.items()]
+        if self.dedicated:
+            diff.insert(0, _entry("identity", "service account", version.get("serviceAccount"), self.dedicated["id"]))
+        notes = ["App Engine sets variables only at deploy: run this stack's build-deploy pipeline, which writes "
+                 "the JFrog variables into app.yaml and deploys with the runtime service account."]
+        return diff, [], notes + self._gcp_notes()
 
     def _gcp(self, env):
+        if self.kind == gae.KIND:
+            return self._app_engine(env)
         g = model.get_path(self.cfg, "target.gcp")
         loc = ["--region", g["region"], "--project", g["project"]]
         res = self.sh.run([*gcprun.group(self._gcp_resource()), "describe", self._gcp_name(), *loc, "--format=json"],
@@ -308,10 +322,6 @@ class Wire(OpenShiftWire):
 
     # -- apply ------------------------------------------------------------------------------------
 
-    def _resolve(self, argv: list) -> list:
-        """Commands that send a whole configuration back carry a placeholder; fill it from a fresh read."""
-        return self._k8s_resolve(argv) if self.cloud == "openshift" else argv
-
     def apply(self, plan: dict, approval) -> dict:
         if not isinstance(approval, dict) or not approval.get("diff_sha256"):
             raise WireRefused("not_approved", "wiring needs the operator's approval of the shown diff")
@@ -323,7 +333,7 @@ class Wire(OpenShiftWire):
         ran = []
         for argv in fresh["commands"]:
             # The filled argv may carry the app's other settings: log the placeholder form only.
-            res = self.sh.run(self._resolve(argv), timeout=600, sensitive=True, shown=argv)
+            res = self.sh.run(argv, timeout=600, sensitive=True, shown=argv)
             if not res.ok:
                 raise WireError(f"{' '.join(argv[:4])} failed after {len(ran)} of {len(fresh['commands'])} "
                                 f"command(s): {res.error_text(400)}")

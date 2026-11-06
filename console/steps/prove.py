@@ -24,7 +24,7 @@ import re
 import time
 from pathlib import Path
 
-from .. import gcprun, model
+from .. import gae, gcprun, model
 from ..jfrog_operator import OperatorError
 from . import verify, workload_logs
 
@@ -75,6 +75,13 @@ def read_settings(cfg, sh) -> dict:
     """{names, values (KEEP only), registry_passwords}. App settings print values: that call is sensitive and
     everything but the names and KEEP is dropped unread."""
     kind = model.get_path(cfg, "target.kind")
+    if kind == gae.KIND:   # the serving version's variables
+        n, _, p = verify._g(cfg)
+        version, why = gae.serving(sh, p, n)
+        if version is None:
+            raise StepError(f"could not read the workload's settings: {why if isinstance(why, str) else why.error_text(200)}")
+        env = gae.env_of(version)
+        return {"names": sorted(env), "values": {k: v for k, v in env.items() if k in KEEP and v}, "registry_passwords": 0}
     webapp = kind in model.SITE_KINDS
     r = sh.run(settings_argv(cfg), timeout=120, sensitive=webapp)
     data = r.json(None) if r.ok else None

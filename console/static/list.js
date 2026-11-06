@@ -5,7 +5,7 @@
 
 import { $, api, h, fill, BASE, CLOUD, TYPE, template, help, status as setStatus, refreshing } from "./core.js";
 
-const LIVE = ["azure", "gcp"];   // the clouds read live (OpenShift is runtime path only)
+const LIVE = ["azure", "gcp"];   // the clouds read live
 const NAMES = { azure: "Azure", gcp: "Google Cloud" };
 const ls = { rows: [], configs: [], schema: null, errors: [], loading: 0 };
 const F = { q: "", cloud: LIVE.includes(CLOUD) ? CLOUD : "", type: TYPE || "", state: "" };
@@ -89,7 +89,7 @@ function rows() {
 // Onboarding OIDC is the row's link.
 const STACK_OF = {
   gcp_run_service: "gcp-cloud-run-service", gcp_run_job: "gcp-cloud-run", gcp_run_function: "gcp-cloud-run-function",
-  gcp_run_worker_pool: "gcp-cloud-run-worker-pool", azure_container_app: "azure-container-app",
+  gcp_run_worker_pool: "gcp-cloud-run-worker-pool", gcp_app_engine: "gcp-app-engine", azure_container_app: "azure-container-app",
   azure_container_app_job: "azure-container-apps", azure_functions_aca: "azure-functions-aca",
   azure_functions_premium: "azure-functions-premium", azure_functions_flex: "azure-functions-flex", azure_web_app: "azure-web-app",
 };

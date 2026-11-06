@@ -1,5 +1,5 @@
-# Template: build and roll out ONE Azure serverless workload.
-# Used only by pipelines/serverless/azure/<stack>/build-deploy.yml, one pipeline per workload type.
+# Template: build and roll out ONE Azure workload (serverless or App Services).
+# Used only by pipelines/{serverless,app-services}/azure/<stack>/build-deploy.yml, one pipeline per workload type.
 # Base images come through JFrog; every login comes from the service connection's OIDC token
 # (no stored secrets).
 

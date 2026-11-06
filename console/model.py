@@ -15,13 +15,13 @@ KINDS = {
     "gcp_run_job": {"cloud": "gcp", "label": "Cloud Run job"},
     "gcp_run_function": {"cloud": "gcp", "label": "Cloud Run function"},
     "gcp_run_worker_pool": {"cloud": "gcp", "label": "Cloud Run worker pool"},
+    "gcp_app_engine": {"cloud": "gcp", "label": "App Engine service"},
     "azure_container_app": {"cloud": "azure", "label": "Container App"},
     "azure_container_app_job": {"cloud": "azure", "label": "Container Apps job"},
     "azure_functions_aca": {"cloud": "azure", "label": "Functions on Container Apps"},
     "azure_functions_premium": {"cloud": "azure", "label": "Functions Premium/Dedicated"},
     "azure_functions_flex": {"cloud": "azure", "label": "Functions Flex Consumption"},
     "azure_web_app": {"cloud": "azure", "label": "Web App"},
-    "openshift_knative_service": {"cloud": "openshift", "label": "Knative service"},
 }
 
 # App Service sites (Microsoft.Web/sites): wired through app settings, reached on their default host name.
@@ -37,25 +37,19 @@ def az_site(kind: str) -> str:
 TARGET_FIELDS = {
     "gcp": ("project", "region", "name"),
     "azure": ("subscription", "resource_group", "name"),
-    # context: the kube context; cluster: a short name for the cluster (it names the workspace).
-    "openshift": ("context", "cluster", "namespace", "name"),
 }
 EMPTY_TARGET = {
     "gcp": {"project": "", "region": "", "name": ""},
     "azure": {"subscription": "", "resource_group": "", "name": "", "identity_type": "user_assigned"},
-    "openshift": {"context": "", "cluster": "", "namespace": "", "name": ""},
 }
 SAMPLE_TARGET = {
     "gcp": {"project": "my-project", "region": "us-central1"},
     "azure": {"subscription": "00000000-0000-0000-0000-000000000000", "resource_group": "rg-apps"},
-    "openshift": {"context": "default", "cluster": "my-cluster", "namespace": "default"},
 }
 # Runtime path only on every cloud: images reach the platform's own registry at build time
 # (the ADO pipeline's OIDC token to JFrog), and the platform pulls with its identity.
-# Default integration names. Each cluster is its own issuer, so Discover
-# turns the default into openshift-<cluster>.
-DEFAULT_INTEGRATIONS = {"gcp": "gcp-cloudrun", "azure": "azure-entra", "openshift": "openshift-knative"}
-CLUSTER_RE = re.compile(r"^[a-z][a-z0-9-]{0,30}[a-z0-9]$")
+# Default integration names.
+DEFAULT_INTEGRATIONS = {"gcp": "gcp-cloudrun", "azure": "azure-entra"}
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 HOST_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$")
@@ -117,15 +111,12 @@ def dedicated_identity_name(cfg: dict) -> str:
 
     GCP: a service account ID (6-30 chars, starts with a letter): jfrog-<name>.
     Azure: a user-assigned identity name (CAF prefix): id-<name>-jfrog.
-    OpenShift / Knative: a service account in the app's namespace: jfrog-<name>.
     Discover also uses it to recognise an identity the console created earlier.
     """
     name = str(cfg.get("name") or "")
     cloud = cloud_of(get_path(cfg, "target.kind"))
     if cloud == "gcp":
         return f"jfrog-{name[:24]}".rstrip("-")
-    if cloud == "openshift":
-        return f"jfrog-{name[:57]}".rstrip("-")
     return f"id-{name}-jfrog"
 
 
@@ -236,14 +227,6 @@ def validate(cfg: dict) -> dict:
         err(f"jfrog.integration_names.{cloud}", "required", "integration name is required")
     if cloud == "azure" and (get_path(cfg, "jfrog.azure_audience") or "app_registration") not in AZURE_AUDIENCES:
         err("jfrog.azure_audience", "azure_audience", f"one of {', '.join(AZURE_AUDIENCES)}")
-    if cloud == "openshift":
-        cl = str(get_path(cfg, "target.openshift.cluster") or "")
-        if cl and not CLUSTER_RE.match(cl):
-            err("target.openshift.cluster", "cluster_name",
-                "cluster short name: lowercase letters, digits and dashes (2-32); it names the workspace")
-        ns = str(get_path(cfg, "target.openshift.namespace") or "")
-        if ns and not NAME_RE.match(ns):
-            err("target.openshift.namespace", "namespace", "not a Kubernetes namespace name")
 
     rt = get_path(cfg, "runtime", {}) or {}
     if rt.get("enabled", True):

@@ -193,9 +193,9 @@ svg.mark { width: 20px; height: 20px; flex: none; fill: none; stroke: none; }
 .nav-item[aria-current="page"]::before {
   content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--brand);
 }
-/* Open, but a page inside it is showing (a workload, cluster or run). */
+/* Open, but a page inside it is showing (a workload or run). */
 .nav-item[aria-current="true"] { color: var(--accent); font-weight: 600; }
-/* Under each cloud: Serverless and Kubernetes, each with its services (shell.js). */
+/* Under each cloud: Serverless with its services (shell.js). */
 .nav-sub { padding: var(--s-2) 24px 2px 24px; font-size: 12px; font-weight: 600; color: var(--fg-3); }
 .nav-item.nested { padding-left: 40px; min-height: 36px; font-size: 14px; }
 .nav-item.nested svg.mark { width: 18px; height: 18px; }
@@ -744,7 +744,7 @@ details[open] > summary::before { transform: rotate(45deg) translate(-2px, -2px)
   .flyout { top: 0; z-index: 50; }
 }
 
-/* Not available yet (OpenShift): same page as the Kubernetes section's. */
+/* Page header: the title with its mark. */
 .page-id { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); min-width: 0; }
 .page-id::after { content: ""; width: 64px; height: 6px; background: var(--brand); }
 .page-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); min-height: 36px; }
@@ -752,16 +752,6 @@ details[open] > summary::before { transform: rotate(45deg) translate(-2px, -2px)
 .head-mark { display: grid; place-items: center; width: 40px; height: 40px;
   background: var(--surface); border: 1px solid var(--card-line); border-radius: var(--card-r); }
 .head-mark svg { width: 24px; height: 24px; }
-.not-yet { max-width: 820px; }
-.not-yet .card-head { margin: calc(-1 * var(--card-pad-y)) calc(-1 * var(--card-pad-x)) var(--card-pad-y); padding: 12px var(--card-pad-x);
-  background: var(--card-head); border-bottom: 1px solid var(--card-line); border-radius: var(--card-r) var(--card-r) 0 0; }
-.not-yet .card-head h2 { font-size: 15px; font-weight: 650; }
-.not-yet h3 { margin: var(--s-4) 0 var(--s-2); font-size: var(--t-md); }
-.not-yet p { margin: 0; color: var(--fg-2); }
-.not-yet ul { margin: 0; padding-left: 20px; color: var(--fg-2); display: grid; gap: 4px; }
-.ready-links { display: flex; flex-wrap: wrap; gap: var(--s-4); }
-.ready-links a { display: inline-flex; align-items: center; gap: var(--s-2); font-weight: 600; }
-.ready-links svg { width: 18px; height: 18px; }
 
 /* Facts: a table with one header row and one value row (few rows, many columns). */
 table.kv-table { width: auto; border-collapse: collapse; margin: var(--s-2) 0 var(--s-3); font-size: var(--t-sm); }
@@ -806,8 +796,8 @@ table.lt tr.lg-error td { background: #fdf1f0; }
 table.lt tr.lg-warn td { background: #fdf7ec; }
 table.lt .lg { padding-left: 0; text-indent: 0; margin-top: 0; }
 
-/* Sidebar, bold: each cloud is a block with its brand colour; Serverless and Kubernetes are
-   indented sub-headings over a guide line; the open page is solid green. Shared by both consoles. */
+/* Sidebar, bold: each cloud is a block with its brand colour; Serverless is an
+   indented sub-heading over a guide line; the open page is solid green. */
 .sidenav { --gcp: #1a73e8; --azure: #0078d4; }
 .sidenav .nav-cloud { margin-top: var(--s-3); padding-top: var(--s-2); border-top: 1px solid var(--side-line); }
 .sidenav .nav-cloud + nav { margin-top: var(--s-3); padding-top: var(--s-2); border-top: 1px solid var(--side-line); }
@@ -959,7 +949,7 @@ input.is-unknown { border-color: var(--bad-line); background: var(--bad-bg); }
 .blade-cloud svg { width: 16px; height: 16px; }
 .sidenav nav[aria-label="Console"] { padding-top: var(--s-2); }
 
-/* Smooth hover everywhere (Home, Serverless, Kubernetes, Infrastructure, Runs): rows, tiles, links ease
+/* Smooth hover everywhere (Home, Serverless, Infrastructure, Runs): rows, tiles, links ease
    in and out; a row being pointed at gets a soft tint and a green edge. */
 tbody tr, .ov-tile, .tile, .nav-item, a, button, .blade-opt, .chip, .kind-folder {
   transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease, transform 180ms ease; }
@@ -1048,7 +1038,7 @@ tbody tr, .ov-tile, .tile, .nav-item, a, button, .blade-opt, .chip, .kind-folder
 .home-group-name small { color: var(--fg-3); font-weight: 400; font-size: 13px; }
 .home-group-logo svg { width: 18px; height: 18px; display: block; }
 .home-table tbody tr.home-group:hover { background: none; box-shadow: none; }
-/* A section under a cloud (CI/CD, Serverless, Kubernetes): a smaller heading than the cloud's. */
+/* A section under a cloud (CI/CD, Serverless): a smaller heading than the cloud's. */
 .home-table tr.home-subgroup th { padding: 18px 10px 6px; }
 .home-table tr.home-subgroup .home-group-name { font-size: 14px; }
 .blade-cmds a.blade-cmd { text-decoration: none; font-size: 14px; padding: 6px 10px; }

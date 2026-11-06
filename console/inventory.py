@@ -21,15 +21,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from . import cloud_links, gcprun
+from . import cloud_links, gae, gcprun
 from .shell import Shell
 
 DEFAULT_REGION = "us-central1"
 SCOPE_RE = {"gcp": re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$"),
-            "azure": re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I),
-            "openshift": re.compile(r"^[A-Za-z0-9_.:/@+-]{1,253}$")}         # a kube context
+            "azure": re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)}
 # The defaults field that names the listed scope.
-SCOPE_KEY = {"gcp": "project", "azure": "subscription", "openshift": "context"}
+SCOPE_KEY = {"gcp": "project", "azure": "subscription"}
 LOCATION = "cloud.googleapis.com/location"
 
 
@@ -132,6 +131,11 @@ def gcp(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, list]:
                 kind = "gcp_run_service"
             name, where = gcprun.name_region(item, region)
             out.append({"kind": kind, "name": name, "project": project, "region": where, "supported": True})
+    # App Engine services: quietly none when the project has no App Engine application.
+    res = sh.run(gae.services_list_argv(project), timeout=90)
+    for item in (res.json() or []) if res.ok else []:
+        if isinstance(item, dict) and item.get("id"):
+            out.append({"kind": gae.KIND, "name": item["id"], "project": project, "region": region, "supported": True})
     return {"project": project, "region": region}, out
 
 
@@ -187,70 +191,9 @@ def azure(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, list
     return {"subscription": sub, "subscription_name": acct.get("name", "")}, out
 
 
-# Contexts that point at OpenShift: an `oc login` context (namespace/api-host:6443/user) or an
-# OpenShift API server (api.<cluster>:6443, *.openshiftapps.com). AKS, GKE, EKS and local clusters are left out.
-OPENSHIFT_SERVER_RE = re.compile(r"^https://api\.[^/:]+:6443/?$|openshiftapps\.com|\.openshift\.")
-
-
-def _openshift_contexts(sh: Shell, errors: list) -> list:
-    res = sh.run(["kubectl", "config", "view", "-o", "json"], timeout=30)
-    if not res.ok:
-        errors.append(f"kubectl config view: {res.error_text(200)}")
-        return []
-    cfg = res.json() or {}
-    servers = {c.get("name"): (c.get("cluster") or {}).get("server", "") for c in cfg.get("clusters") or []}
-    out = []
-    for c in cfg.get("contexts") or []:
-        name = c.get("name") or ""
-        server = servers.get((c.get("context") or {}).get("cluster"), "")
-        oc_name = name.count("/") >= 2 and ":6443" in name
-        if SCOPE_RE["openshift"].match(name) and (oc_name or OPENSHIFT_SERVER_RE.search(server)):
-            out.append(name)
-    return sorted(set(out))
-
-
-def _k8s_scopes(sh: Shell, errors: list) -> list:
-    return [{"id": c, "name": c} for c in _openshift_contexts(sh, [])]
-
-
-def cluster_slug(context: str) -> str:
-    """A workspace-safe short name from a kube context (OpenShift contexts look like ns/api-host:6443/user)."""
-    host = context.split("/")[1] if context.count("/") >= 2 else context
-    host = re.sub(r"^api[-.]", "", host.split(":")[0])
-    slug = re.sub(r"[^a-z0-9-]+", "-", host.lower()).strip("-")[:32].strip("-")
-    return slug if len(slug) >= 2 and slug[0].isalpha() else f"k8s-{slug}"[:32].strip("-")
-
-
-def openshift(sh: Shell, errors: list, scope: str | None = None) -> tuple[dict, list]:
-    """Knative services (ksvc) in every namespace of one kube context."""
-    contexts = _openshift_contexts(sh, errors)
-    current = _value(sh, ["kubectl", "config", "current-context"])
-    ctx = scope or (current if current in contexts else contexts[0] if contexts else "")
-    if not ctx or ctx not in contexts:
-        errors.append("No OpenShift cluster in kubeconfig: log in with oc login <api-url>"
-                      if not ctx else f"{ctx} is not an OpenShift context")
-        return {"context": ""}, []
-    defaults = {"context": ctx, "cluster": cluster_slug(ctx)}
-    res = sh.run(["kubectl", "get", "ksvc", "--all-namespaces", "-o", "json", "--context", ctx], timeout=120)
-    if not res.ok:
-        text = res.error_text(2000)
-        errors.append("Knative Serving is not installed on this cluster (no ksvc resource)"
-                      if "the server doesn't have a resource type" in text else f"kubectl get ksvc: {_first_error(res)}")
-        return defaults, []
-    out = []
-    for item in (res.json() or {}).get("items") or []:
-        md = item.get("metadata") or {}
-        out.append({"kind": "openshift_knative_service", "name": md.get("name", ""), "namespace": md.get("namespace", ""),
-                    "context": ctx, "cluster": defaults["cluster"], "region": md.get("namespace", ""),
-                    "supported": True})
-    return defaults, out
-
-
 def _key(cloud: str, t: dict) -> tuple:
     if cloud == "gcp":
         return (t.get("project"), t.get("region"), t.get("name"))
-    if cloud == "openshift":
-        return (t.get("context"), t.get("namespace"), t.get("name"))
     return (str(t.get("subscription") or "").lower(), str(t.get("resource_group") or "").lower(), t.get("name"))
 
 
@@ -282,14 +225,12 @@ def fetch(cloud: str, sh: Shell, scope: str | None = None) -> dict:
     """The live listing: the slow part (minutes across many projects), cacheable."""
     errors: list = []
     if scope and not SCOPE_RE[cloud].match(scope):
-        what = {"gcp": "project ID", "azure": "subscription ID", "openshift": "kube context"}
+        what = {"gcp": "project ID", "azure": "subscription ID"}
         return {"cloud": cloud, "defaults": {}, "scopes": [], "workloads": [],
                 "errors": [f"not a {what[cloud]}: {scope!r}"]}
-    scopes = {"gcp": _gcp_scopes, "azure": _azure_scopes, "openshift": _k8s_scopes}[cloud](sh, errors)
-    defaults, workloads = {"gcp": gcp, "azure": azure, "openshift": openshift}[cloud](sh, errors, scope)
-    if cloud in ("gcp", "azure"):
-        # Profiles and contexts each need their own login: listing them all would prompt or fail per scope.
-        scopes = _with_workloads(cloud, sh, scopes, defaults.get(SCOPE_KEY[cloud]) or "")
+    scopes = {"gcp": _gcp_scopes, "azure": _azure_scopes}[cloud](sh, errors)
+    defaults, workloads = {"gcp": gcp, "azure": azure}[cloud](sh, errors, scope)
+    scopes = _with_workloads(cloud, sh, scopes, defaults.get(SCOPE_KEY[cloud]) or "")
     return {"cloud": cloud, "defaults": defaults, "scopes": scopes, "workloads": workloads, "errors": errors,
             "fetched_at": int(time.time())}
 

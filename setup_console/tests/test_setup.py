@@ -281,26 +281,6 @@ class StackTests(unittest.TestCase):
             stacks.tf_args("azure-container-apps", "test", self.root.dir, self.root.state)
         self.assertIn("azure-pipeline-identity", str(e.exception))
 
-    @BOTH_CLOUDS
-    def test_kubernetes_stacks_use_their_cloud_pipeline_identity_for_state_and_pipeline(self):
-        # The real stacks: a cluster keeps remote state in its own cloud's pipeline identity store and has
-        # its own stack-setup pipeline. Only JFrog OIDC stands on it (aks-jfrog-trust: its issuer
-        # in JFrog), never another infrastructure stack.
-        for sid, backend, dep in (("gke-cluster", "gcs", "gcp-pipeline-identity"), ("aks-cluster", "azurerm", "azure-pipeline-identity")):
-            self.assertEqual(stacks.get(sid)["kind"], "Kubernetes")
-            self.assertEqual(stacks.backend_kind(sid), backend)
-            self.assertEqual(stacks.depends_on(sid), dep)
-            self.assertTrue((stacks.REPO_ROOT / "pipelines" / stacks.rel_dir(sid) / "stack-setup.yml").is_file(), sid)
-            self.assertTrue(all(stacks.get(o)["kind"] == "JFrog OIDC" for o in stacks.IDS if stacks.depends_on(o) == sid), sid)
-        self.assertEqual(stacks.depends_on("aks-jfrog-trust"), "aks-cluster")
-        self.assertEqual(stacks.backend_kind("aks-jfrog-trust"), "azurerm")
-        self.assertEqual({s["kind"] for s in stacks.CATALOGUE}, {"Serverless", "Kubernetes", "JFrog OIDC"})
-        # Prefill never crosses from Serverless to Kubernetes, even in the same cloud.
-        self.root.save("gcp-pipeline-identity", GCP_PIPELINE_IDENTITY)
-        self.root.save("gcp-cloud-run", {"gcp_project_id": "proj-9"})
-        f = {x["name"]: x for x in stacks.form("gke-cluster", "test", self.root.dir, self.root.state)["fields"]}
-        self.assertNotIn("current", f.get("gcp_project_id", {}))
-
     def test_infrastructure_never_touches_jfrog(self):
         # Infrastructure (pipeline identity stacks, workload and cluster stacks) has no JFrog provider, resource,
         # input or setting: JFrog is OIDC configuration, made only once the infrastructure exists.
@@ -354,7 +334,7 @@ class StackTests(unittest.TestCase):
             m = _re.search(r"pipeline_stacks = \[([^\]]*)\]", tf)
             listed = set(_re.findall(r'"([a-z0-9-]+)"', m.group(1)) if m else
                          _re.findall(r'"([a-z0-9-]+)"\s*=', _re.search(r"pipeline_stack_kind = \{([^}]*)\}", tf).group(1)))
-            have = {p.parent.name for k in ("serverless", "kubernetes")
+            have = {p.parent.name for k in ("serverless", "app-services")
                     for p in (stacks.REPO_ROOT / "pipelines" / k).glob(f"{cloud}/*/stack-setup.yml")}
             # Its own pipeline runs before it exists: ADO creates that environment on the first run.
             self.assertEqual(listed, have - {f"{cloud}-pipeline-identity"}, cloud)
@@ -374,7 +354,13 @@ class StackTests(unittest.TestCase):
                          ["Cloud Run function", "Cloud Run job", "Cloud Run service", "Cloud Run worker pool"])
         self.assertEqual(sorted(t["title"] for t in types.values() if t["group"] == "Azure"), [
             "Container App", "Container Apps job", "Functions Flex Consumption", "Functions Premium / Dedicated",
-            "Functions on Container Apps", "Web App"])
+            "Functions on Container Apps"])
+        # App Services (web apps) are their own section, on the same pipeline identity and prefill.
+        apps = [s for s in stacks.CATALOGUE if s["kind"] == "App Services"]
+        self.assertEqual(sorted(s["id"] for s in apps), ["azure-web-app", "gcp-app-engine"])
+        for s in apps:
+            self.assertTrue(stacks.rel_dir(s["id"]).startswith("app-services/"), s["id"])
+            types[s["id"]] = s
         for sid, t in types.items():
             want = {"Google Cloud": "gcp-pipeline-identity", "Azure": "azure-pipeline-identity"}[t["group"]]
             self.assertEqual(stacks.depends_on(sid), want, sid)
@@ -458,7 +444,7 @@ class InstanceTests(unittest.TestCase):
                                 stacks.STACKS_DIR, st)
             sid = stacks.new_instance("azure-web-app", "web-b", "test", stacks.STACKS_DIR, st)
             self.assertEqual(sid, "azure-web-app@web-b")
-            self.assertEqual(stacks.rel_dir(sid), "serverless/azure/azure-web-app")
+            self.assertEqual(stacks.rel_dir(sid), "app-services/azure/azure-web-app")
             saved = stacks.read_inputs(sid, "test", st)
             self.assertEqual((saved["workload"], saved["runtime"]), ("web-b", "node"))
             self.assertNotIn("slot", saved)
@@ -1139,9 +1125,7 @@ class JobTests(unittest.TestCase):
         self.assertEqual([s for s in self.jobs.stacks() if s["id"] == "azure-pipeline-identity"][0]["dependents"], [])
 
     def test_upstreams_are_transitive_and_cover_every_stack_used(self):
-        self.assertEqual(stacks.upstreams("aks-jfrog-trust"), ("aks-cluster", "azure-jfrog-trust", "azure-pipeline-identity"))
-        self.assertEqual(stacks.ancestors("aks-jfrog-trust"), ("azure-pipeline-identity", "azure-jfrog-trust", "aks-cluster"))
-        self.assertEqual(stacks.descendants("azure-pipeline-identity")[0], "aks-jfrog-trust")   # destroy order
+        self.assertEqual(stacks.ancestors("azure-jfrog-trust"), ("azure-pipeline-identity",))
         self.assertIn("azure-jfrog-trust", stacks.descendants("azure-pipeline-identity"))
         self.assertEqual(stacks.ancestors("gcp-pipeline-identity"), ())
         self.assertEqual(stacks.build_upstreams("gcp-cloud-run"), ("gcp-pipeline-identity", "gcp-cloud-run", "gcp-jfrog-trust"))
@@ -1149,17 +1133,6 @@ class JobTests(unittest.TestCase):
             for a in stacks.ancestors(s["id"]):
                 self.assertEqual(stacks.get(a)["group"], s["group"], s["id"])
                 self.assertLess(stacks.IDS.index(a), stacks.IDS.index(s["id"]), s["id"])
-
-    def test_deploy_refused_while_any_upstream_is_missing_even_indirectly(self):
-        self.root.save("aks-jfrog-trust", {})
-        self.jobs._set_status("aks-cluster", {"deployed": True, "outputs": {}})
-        row = [s for s in self.jobs.stacks() if s["id"] == "aks-jfrog-trust"][0]
-        self.assertEqual(row["needs"], ["azure-jfrog-trust"])
-        with self.assertRaisesRegex(JobError, "azure-jfrog-trust"):
-            self.jobs.start("aks-jfrog-trust", "plan-apply")
-        self.jobs._set_status("azure-pipeline-identity", {"deployed": False, "outputs": {}})
-        row = [s for s in self.jobs.stacks() if s["id"] == "aks-jfrog-trust"][0]
-        self.assertEqual(row["needs"], ["azure-pipeline-identity", "azure-jfrog-trust"])
 
     def test_approval_rechecks_the_upstream(self):
         # Planned while the pipeline identity stood; it was destroyed before Approve: the apply is refused.
@@ -1390,7 +1363,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(data["scope"], "infra")
         self.assertIn("Content-Security-Policy", hdrs)
         self.assertEqual(self.req("GET", "/api/stacks/gcp-jfrog-trust/inputs")[0], 404)   # JFrog OIDC: not served here
-        self.assertEqual(self.req("POST", "/api/stacks/aks-jfrog-trust/jobs", {"action": "plan-apply"})[0], 404)
+        self.assertEqual(self.req("POST", "/api/stacks/gcp-jfrog-trust/jobs", {"action": "plan-apply"})[0], 404)
 
     def test_create_another_deployment_refuses_a_used_name(self):
         self.root.save("gcp-cloud-run", {"gcp_project_id": "proj-1"})
@@ -1419,8 +1392,7 @@ class ServerTests(unittest.TestCase):
         port, self.console.port = self.console.port, o.port
         try:
             data = json.loads(self.req("GET", "/api/stacks")[1])
-            self.assertEqual([s["id"] for s in data["stacks"]], ["gcp-jfrog-trust", "azure-jfrog-trust", "aks-jfrog-trust"])
-            self.assertEqual(data["titles"]["aks-cluster"], "AKS cluster")   # names what it stands on, nothing more
+            self.assertEqual([s["id"] for s in data["stacks"]], ["gcp-jfrog-trust", "azure-jfrog-trust"])
             self.assertEqual(self.req("GET", "/api/stacks/gcp-cloud-run/inputs")[0], 404)
             self.assertEqual(self.req("POST", "/api/stacks/gcp-pipeline-identity/jobs", {"action": "plan-apply"})[0], 404)
             self.assertEqual(self.req("GET", "/api/stacks/gcp-jfrog-trust/inputs")[0], 200)

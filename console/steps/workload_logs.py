@@ -24,7 +24,8 @@ _ACA = ("azure_container_app",)
 _GCP = {"gcp_run_service": ("cloud_run_revision", "service_name"),
         "gcp_run_function": ("cloud_run_revision", "service_name"),
         "gcp_run_job": ("cloud_run_job", "job_name"),
-        "gcp_run_worker_pool": ("cloud_run_worker_pool", "worker_pool_name")}
+        "gcp_run_worker_pool": ("cloud_run_worker_pool", "worker_pool_name"),
+        "gcp_app_engine": ("gae_app", "module_id")}
 _BAD = re.compile(r"\b[45]\d\d\s*$|Traceback|Error\b|refused|Forbidden", re.I)
 
 

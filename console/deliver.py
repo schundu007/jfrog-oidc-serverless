@@ -38,8 +38,8 @@ from .steps import wire as wiremod
 
 ADO_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798"   # Azure DevOps
 REQUIRED = {"ado": ("organization", "project", "repository")}
-STATE_FIELDS = {"gcs": ("bucket",), "azurerm": ("resource_group_name", "storage_account_name", "container_name"), "kubernetes": ("namespace",)}
-STATE_TYPES = {"gcp": "gcs", "azure": "azurerm", "openshift": "kubernetes"}
+STATE_FIELDS = {"gcs": ("bucket",), "azurerm": ("resource_group_name", "storage_account_name", "container_name")}
+STATE_TYPES = {"gcp": "gcs", "azure": "azurerm"}
 WORKSPACE_FILES = ("backend.tf.json", "console.json", "main.tf.json", "terraform.tfvars.json")
 # The ADO pipeline running pipelines/<cloud>-workload-onboard.yml, by its name in ADO.
 ONBOARD_PIPELINES = {"gcp": "Google Cloud - Onboard workloads to JFrog", "azure": "Azure - Onboard workloads to JFrog"}
@@ -143,10 +143,6 @@ def _backend(settings: dict, cloud: str, ws_name: str) -> dict:
         raise DeliveryError(f"delivery state for {cloud} needs {', '.join(missing)}")
     if t == "gcs":
         return {"type": t, "bucket": b["bucket"], "prefix": f"workspaces/{ws_name}"}
-    if t == "kubernetes":
-        # Secret tfstate-default-<suffix>: a DNS label, so no underscores.
-        return {"type": t, "namespace": b["namespace"], "secret_suffix": ws_name.lower().replace("_", "-")[:50],
-                **({"config_context": b["config_context"]} if b.get("config_context") else {})}
     return {"type": t, **{k: b[k] for k in STATE_FIELDS[t]}, "key": f"workspaces/{ws_name}.tfstate"}
 
 
@@ -322,21 +318,12 @@ def queue_onboard(sh: Shell, org_url: str, project: str, token: str, cloud: str,
     return {"run": run_id, "url": f"{org_url}/{project}/_build/results?buildId={run_id}"}
 
 
-def pipeline_target(cfg: dict, env) -> dict:
-    """The pipeline's own login replaces the operator's local one: the agent's kubeconfig may name the cluster's context differently (KUBE_CONTEXT)."""
-    cfg = copy.deepcopy(cfg)
-    t = cfg.get("target") or {}
-    if "openshift" in t and env.get("KUBE_CONTEXT"):
-        t["openshift"]["context"] = env["KUBE_CONTEXT"]
-    return cfg
-
-
 def wire_workspace(ws_dir, sh: Shell, outputs: dict, wire_cls=wiremod.Wire, log=None, env=None) -> list:
     """Wire every config in <ws>/configs. The merged PR is the approval of these diffs."""
     log = log or (lambda _l: None)
     results = []
     for p in sorted((Path(ws_dir) / "configs").glob("*.json")):
-        cfg = pipeline_target(json.loads(p.read_text()), env or {})
+        cfg = json.loads(p.read_text())
         w = wire_cls(cfg, sh, outputs)
         try:
             plan = w.plan()
@@ -347,6 +334,10 @@ def wire_workspace(ws_dir, sh: Shell, outputs: dict, wire_cls=wiremod.Wire, log=
         if plan["noop"]:
             results.append({"name": cfg["name"], "status": "already wired"})
             log(f"{cfg['name']}: already wired")
+            continue
+        if plan.get("deploy_required"):   # App Engine: set by the next build-deploy, not in place
+            results.append({"name": cfg["name"], "status": "set at the next build-deploy"})
+            log(f"{cfg['name']}: the JFrog variables are set at the next build-deploy (App Engine changes them only by a deploy)")
             continue
         res = w.apply(plan, {"diff_sha256": plan["sha256"]})
         if not res.get("verified"):
@@ -384,7 +375,7 @@ def check_workspace(ws_dir, sh: Shell, fetch=_fetch, tries: int = 20, wait: int 
     log = log or (lambda _l: None)
     results, failed = [], []
     for p in sorted((Path(ws_dir) / "configs").glob("*.json")):
-        cfg = pipeline_target(json.loads(p.read_text()), env or {})
+        cfg = json.loads(p.read_text())
         if model.get_path(cfg, "target.kind") not in HEALTH_KINDS:
             continue
         a = model.get_path(cfg, "target.azure")

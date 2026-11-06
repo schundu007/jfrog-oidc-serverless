@@ -28,26 +28,6 @@ variable "azure" {
   default = null
 }
 
-variable "openshift" {
-  description = <<-EOT
-    Trust projected service-account tokens from one Kubernetes cluster (OpenShift
-    Serverless or any cluster with Knative). issuer is the cluster's
-    service-account issuer; its /.well-known/openid-configuration and JWKS must be
-    reachable from JFrog. Set to null to skip.
-  EOT
-  type = object({
-    provider_name = string
-    issuer        = string
-    audience      = optional(string, "jfrog-k8s")
-  })
-  default = null
-
-  validation {
-    condition     = var.openshift == null || startswith(var.openshift.issuer, "https://")
-    error_message = "openshift.issuer must be an https URL that JFrog can reach."
-  }
-}
-
 variable "project_key" {
   description = "Optional JFrog project key for the integrations. Mappings ignore it (per provider docs); scope access through groups."
   type        = string
@@ -58,10 +38,9 @@ variable "workloads" {
   description = <<-EOT
     One identity mapping per workload identity. Key = mapping name.
 
-    cloud       "gcp", "azure" or "openshift".
+    cloud       "gcp" or "azure".
     subject     GCP: the service account's unique_id (numeric, matches the sub claim).
                 Azure: the managed identity's principal (object) ID (matches oid).
-                OpenShift/Knative: system:serviceaccount:<namespace>:<name> (matches sub).
     username    Optional. Only set it where a fixed JFrog user is needed (the
                 pipeline identity stacks' setup and console-operator mappings). JFrog adds
                 applied-permissions/user and that user's Auto Join groups to the
@@ -84,8 +63,8 @@ variable "workloads" {
   }))
 
   validation {
-    condition     = alltrue([for w in values(var.workloads) : contains(["gcp", "azure", "openshift"], w.cloud)])
-    error_message = "Each workload's cloud must be \"gcp\", \"azure\" or \"openshift\"."
+    condition     = alltrue([for w in values(var.workloads) : contains(["gcp", "azure"], w.cloud)])
+    error_message = "Each workload's cloud must be \"gcp\" or \"azure\"."
   }
 
   validation {
