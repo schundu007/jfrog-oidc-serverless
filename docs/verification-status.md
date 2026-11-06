@@ -1,28 +1,41 @@
 # Verification status
 
-## Known unverified items
+What has been tested against real Azure, Google Cloud and JFrog accounts, and what has not. When a provider behaves differently from what is described here, fix the code and update this page.
 
-Fix them in code when real providers or APIs disagree:
+## Verified
 
-- Settings sign-ins (`portal/connections.py`), parsed from CLI text and not yet run end to end against real accounts:
-  - the gcloud `auth login --no-launch-browser --update-adc` prompt wording
-  - the `az login --use-device-code` message format
-  - whether Terraform's Google provider picks up `GOOGLE_APPLICATION_CREDENTIALS` from the console's gcloud dir
-- The dedicated-identity attach flag `az containerapp [job] identity assign --user-assigned <id>` (`az functionapp identity assign --identities <id>` worked live, 2026-10-30).
-- Cloud Run worker pools (`gcp_run_worker_pool`): only in `gcloud beta run worker-pools` (gcloud 555), so the ADO agent needs the beta commands; `describe`/`list` JSON read as v2 (`template.containers`, `template.serviceAccount`) or v1; `roles/run.developer` assumed to cover `run.workerPools.update`.
-- OpenShift / Knative: simulation only, no live cluster. Also unverified: Knative accepting a projected `serviceAccountToken` volume source in a ksvc (it may need a flag in the `config-features` ConfigMap), and the `kubernetes` state backend from an ADO agent.
-- azure-pipeline-identity finds each operator email's object ID through `azuread_users` by sign-in name (the email, or the guest form `<name>_<domain>#EXT#@<default domain>`); not applied yet.
-- The Docker subdomain host form `<server>-<repo-key>.jfrog.io` on the target JFrog instance (it is what the AKS pilot's instance served; a self-hosted platform may differ: set `jfrog.docker_host`). On a JFrog Cloud trial (2026-10-30) it only redirected; the path form `<server>/<repo-key>/<image>` worked end to end with the KCP direct setup.
+| Area | What was tested |
+|---|---|
+| Runtime token exchange | Each of these exchanged its own identity for a 1 h JFrog token after onboarding: Cloud Run job, service and function (gen2); Container App; Container Apps job; Functions on Container Apps, Premium and Flex Consumption |
+| App Service Web Apps | Node.js 24 LTS on Linux and on Windows answers `/healthz/jfrog` with 200 on the production slot and on the `staging` slot, before and after a swap |
+| Functions on Container Apps | Runs with `kind = functionapp` |
+| Functions identity attach | `az functionapp identity assign --identities <id>` |
+| Container Apps logs | Read from the `ContainerAppConsoleLogs_CL` table |
+| JFrog integration type | JFrog accepts `provider_type = "Azure"` for Entra-issued tokens |
+| Images at build time | The pipeline gets a JFrog token with OIDC, pulls the image by repository path and pushes it to the stack's own registry |
+| JFrog Docker host | The path form `<server>/<repo-key>/<image>` works end to end |
+| Artifact Registry | The repository `PATCH` with `updateMask` |
+| Terraform | `terraform validate` passes on every stack (Terraform 1.17, jfrog/platform 2.2, google 8.9, azurerm 5.12) |
 
-Verified live (2026-10-30): all eight workload types exchanged their identity for a JFrog token after console onboarding; Functions on ACA with `kind = functionapp`; the Container Apps log table `ContainerAppConsoleLogs_CL`; JFrog accepts `provider_type = "Azure"` (the `azure-entra` integration issued the Azure tokens).
+## Not yet verified
 
-Verified by `terraform validate` (Terraform 1.15.5 then 1.17.1, jfrog/platform 2.2.11, google 8.9.0, azurerm 5.12.0) on both stacks: the `jfrog-oidc` module validations from the AKS pilot lessons. Verified live: the AR PATCH `updateMask` (gcloud sends the same mask).
+| Area | Open question |
+|---|---|
+| Web console sign-ins (`portal/connections.py`) | The `gcloud auth login --no-launch-browser --update-adc` prompt text and the `az login --use-device-code` message format are parsed from CLI output; Terraform's Google provider picking up `GOOGLE_APPLICATION_CREDENTIALS` from the console's gcloud directory |
+| Container Apps identity attach | `az containerapp [job] identity assign --user-assigned <id>` |
+| App Service: Python, Java, .NET, PHP | Same flow as Node.js; not yet run live |
+| Cloud Run worker pools | Only available in `gcloud beta run worker-pools`, so the agent needs the beta component; `describe`/`list` JSON is read as v2 (`template.containers`, `template.serviceAccount`) or v1; `roles/run.developer` is assumed to cover `run.workerPools.update` |
+| Knative / OpenShift Serverless | Tested in simulation only. Open: whether Knative accepts a projected `serviceAccountToken` volume in a Knative service (it may need a flag in the `config-features` ConfigMap), and the `kubernetes` state backend from an ADO agent |
+| Pipeline identity operators | `azure-pipeline-identity` resolves each operator email to an object ID through `azuread_users` (the email, or the guest form `<name>_<domain>#EXT#@<default domain>`) |
+| JFrog Docker subdomain host | The form `<server>-<repo-key>.jfrog.io` depends on the JFrog instance; when it does not work, set `jfrog.docker_host` or use the path form |
+| Functions on Container Apps keys | `az containerapp function keys list` fails with `Failed to get or create ephemeral container`, so a fresh deployment cannot read its function key to call `/api/healthz/jfrog` |
 
-Resolved by design (2026-10-31): there is no AR pull path any more. Earlier finding (2026-10-30, JFrog Cloud trial): Artifact Registry remote repos got 403 from the JFrog Cloud edge for any credentials (even anonymous); the requests never reach Artifactory's request log. GCP images now come in at build time only. The runtime path (in-process exchange) works, and so does bringing images in at build time (OIDC token, pull from JFrog by repository path, push to AR), which avoids the AR remote. Proven with Cloud Build; CI/CD is Azure DevOps (for both Azure and GCP targets), so build and deploy pipelines are ADO only. Cloud Build and GitHub Actions are out of scope for now.
-- Functions on Container Apps (2026-11-01): the function-key API (`az containerapp function keys list`, any key type, with or without `--revision`) fails with `UnexpectedException ... Failed to get or create ephemeral container`. The host itself runs and keeps its secrets in blob storage. The runtime exchange there is unverified until that API works or the endpoint is called another way.
+## Known behaviour
 
-Verified live on App Service (2026-11-04, `azure-web-app`, S1, `staging` slot, `swap=true`):
-- Windows Node.js and Linux Node.js 24 LTS: `/healthz/jfrog` 200 on production and staging after the swap. On Windows, iisnode loads `server.js` through its interceptor, so `require.main !== module`: the app also starts when `IISNODE_VERSION` is set. IIS replaces the app's error bodies unless `web.config` has `<httpErrors existingResponse="PassThrough"/>`.
-- `JFROG_*` app settings are not slot-sticky, so a swap moves them: onboarding wires production and every slot. It must be queued with the stack's `workspace` parameter, otherwise it logs "no azure workspace changed" and wires nothing.
-- `az webapp deployment slot swap` can fail with a 409 from its own SwapSiteSlots status poll while the swap completes. `properties.slotSwapStatus` (ARM, `az rest`, api-version 2024-04-01; `az webapp show` leaves it empty) decides.
-- Runtime defaults follow the supported list (`az webapp list-runtimes`, 2026-11-04): Node 24 LTS (20 is retired), PHP 8.4, Python 3.13, .NET 10 (8 ends 2026-11-10), Java 21.
+| Area | Behaviour and how the code handles it |
+|---|---|
+| Artifact Registry remote repositories | Requests from Artifact Registry to JFrog Cloud are refused at the JFrog edge. There is no registry pull path: images come in at build time only |
+| Windows App Service (Node.js) | iisnode loads `server.js` through its interceptor, so `require.main !== module`; the app also starts when `IISNODE_VERSION` is set. `web.config` needs `<httpErrors existingResponse="PassThrough"/>` or IIS replaces the app's error bodies |
+| App Service slot swap | `JFROG_*` app settings are not slot-sticky and move with a swap, so onboarding wires production and every slot. Queue onboarding with the stack's `workspace` parameter, otherwise it wires nothing |
+| `az webapp deployment slot swap` | Can return 409 from its own status poll while the swap completes; the pipeline reads `properties.slotSwapStatus` through ARM (`az rest`, api-version 2024-04-01) to decide |
+| App Service runtimes | Defaults follow `az webapp list-runtimes`: Node.js 24 LTS, PHP 8.4, Python 3.13, .NET 10, Java 21 |
