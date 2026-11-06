@@ -41,14 +41,13 @@ Created by a JFrog administrator. No token is created or stored; step 3 imports 
 |---|---|---|
 | 1 | Azure - Register pipelines | Registers every other Azure pipeline |
 | 2 | Pipeline identity and state - Infrastructure | State storage, build/setup identities, service connections `jfrog-oidc-azure-build`/`-setup`, variable group `jfrog-oidc-azure-<env>`, approval environments. Edit the `inputs` parameter (location, operators' emails); tenant, subscription and ADO org/project come from the run |
-| 3 | Pipelines' JFrog trust - JFrog OIDC | Set `jfrog_url` and `ado_org` in `inputs`. Signs in to JFrog with OIDC (no JFrog token anywhere), adopts the two objects below, creates `ado-build`, the reader group, repositories and variable group `jfrog-oidc-azure-<env>-jfrog` |
-| 4 | `<stack>` - Infrastructure | One per workload type (Web App, Container App, …); fill `inputs` (name, subscription, location) |
-| 5 | `<stack>` - Build and deploy | Builds through JFrog with OIDC and rolls out |
-| 6 | Kubernetes (optional) | `aks-cluster` - Infrastructure, then `aks-jfrog-trust` (registered by step 3) |
+| 3 | Pipelines' JFrog trust - JFrog OIDC | Set `jfrog_url` and `ado_org` in `inputs`. Signs in to JFrog with OIDC (no JFrog token anywhere), imports the two objects created in the JFrog UI, creates `ado-build`, the reader group, repositories and variable group `jfrog-oidc-azure-<env>-jfrog` |
+| 4 | `<stack>` - Infrastructure | One per workload type: Web App, Container App, Container Apps job, Functions on Container Apps, Functions Premium, Functions Flex Consumption. Fill `inputs` (name, subscription, location) |
+| 5 | `<stack>` - Build and deploy | Builds through JFrog with OIDC and rolls out; set the `workload` parameter |
+| 6 | Azure - Onboard workloads to JFrog | Applies the workload's JFrog mapping (proposed by pull request from the web console) and sets its `JFROG_*` app settings |
+| 7 | Kubernetes (optional) | `AKS cluster - Infrastructure`, then the `aks-jfrog-trust` pipeline (registered by step 3) |
 
 Each Infrastructure run stops for approval on its ADO environment; approve it there. The first run of a pipeline may ask to **Permit** a connection or environment once.
-
-Workload onboarding (`Azure - Onboard workloads to JFrog`) applies the workspaces that the web console proposes by pull request.
 
 ## Deployment with the web console
 
@@ -70,7 +69,7 @@ Workload onboarding (`Azure - Onboard workloads to JFrog`) applies the workspace
    - the variable group `jfrog-oidc-azure-<env>`
    - the ADO environments for the approvals
 6. **JFrog OIDC → Azure** (`azure-jfrog-trust`). Deploy and approve. It creates:
-   - the JFrog OIDC integration and the `ado-build`/`ado-setup` mappings
+   - imports the JFrog OIDC integration and `ado-setup` mapping, and creates the `ado-build` mapping
    - the remote repositories
    - the variable group `jfrog-oidc-azure-<env>-jfrog`
    - the AKS credential provider pipeline
@@ -98,19 +97,18 @@ All values are supplied at run time; nothing under `terraform/` is edited.
 
 ### Self-hosted agents
 
- Set `AGENT_POOL` in `pipelines/vars/azure-<env>.yml` (and `gcp-<env>.yml`) to your pool's name. Empty means Microsoft-hosted `ubuntu-24.04`. The agents need bash, Python 3, curl, unzip, git and the Azure CLI; build-deploy also needs Docker.
+Set `AGENT_POOL` in `pipelines/vars/azure-<env>.yml` (and `gcp-<env>.yml`) to your pool's name. Empty means Microsoft-hosted `ubuntu-24.04`. The agents need bash, Python 3, curl, unzip, git and the Azure CLI; build-deploy also needs Docker.
 
 ### Additional environments
 
- `test` is the default. For `prod`, copy `pipelines/vars/azure-test.yml` and `azure-test-jfrog.yml` to `azure-prod*.yml`, add `prod` to the `environment` parameter's `values` in the pipelines you use, and set `"environment": "prod"` in `pipelines/delivery.json`. The pipeline identity stack then writes the variable groups `jfrog-oidc-azure-prod` and `jfrog-oidc-azure-prod-jfrog`.
-
-The first run of each pipeline may stop on "This pipeline needs permission to access a resource". Choose **Permit** once for the service connection and the environment.
+`test` is the default. For `prod`, copy `pipelines/vars/azure-test.yml` and `azure-test-jfrog.yml` to `azure-prod*.yml`, add `prod` to the `environment` parameter's `values` in the pipelines you use, and set `"environment": "prod"` in `pipelines/delivery.json`. The pipeline identity stack then writes the variable groups `jfrog-oidc-azure-prod` and `jfrog-oidc-azure-prod-jfrog`.
 
 ## Identities
 
 | Identity | Used by | For |
 |---|---|---|
-| ADO service connection `-setup` (workload identity federation) | Infrastructure pipelines | Terraform plan and apply |
+| ADO service connection `jfrog-oidc-azure-bootstrap` (workload identity federation) | Register pipelines, pipeline identity, pipelines' JFrog trust | Creates the pipeline identities and registers pipelines |
+| ADO service connection `-setup` (workload identity federation) | Infrastructure pipelines, onboarding apply | Terraform plan and apply |
 | ADO service connection `-build` (workload identity federation) | Build and deploy, onboarding | Push and deploy the app, resolve packages through JFrog |
-| User-assigned managed identity, one per deployment | The running app | Entra token → JFrog access token, at runtime |
+| User-assigned managed identity `id-<name>`, one per deployment | The running app | Entra token → JFrog access token, at runtime |
 | AKS OIDC issuer (Entra Workload ID) | Kubelet credential provider | Image pulls from JFrog on AKS nodes |

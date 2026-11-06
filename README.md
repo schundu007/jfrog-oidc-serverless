@@ -2,7 +2,7 @@
 
 Short-lived JFrog tokens for Azure and Google Cloud serverless workloads, using OIDC token exchange. Every JFrog credential is minted at the moment it is needed and expires within hours. Nothing long-lived is stored anywhere: not in Terraform state, app settings, pipelines or variable groups. No registry username or password exists.
 
-**Start here:** [docs/azure-deployment-guide.md](docs/azure-deployment-guide.md). Everything runs from Azure DevOps pipelines; the web UI is optional.
+**Start here:** [docs/azure-deployment-guide.md](docs/azure-deployment-guide.md). Everything runs from Azure DevOps pipelines; the web console is optional.
 
 ## Supported workloads
 
@@ -39,17 +39,20 @@ BUILD (every cloud, Azure DevOps)
 |---|---|---|
 | 1 | Azure - Register pipelines | Registers every other pipeline (created once in the ADO UI) |
 | 2 | Pipeline identity and state | State storage, build/setup identities, service connections `jfrog-oidc-azure-build`/`-setup`, variable group, approval environments |
-| 3 | Pipelines' JFrog trust | JFrog OIDC integration and mappings for the pipelines, remote repositories, the JFrog variable group |
+| – | JFrog UI, once | The OIDC integration `ado-<org>-azure` and its `ado-setup` mapping, which step 3 imports |
+| 3 | Pipelines' JFrog trust | The `ado-build` mapping, reader group, remote repositories and the JFrog variable group |
 | 4 | `<stack>` - Infrastructure | One workload type's resources (plan → approval → apply) |
 | 5 | `<stack>` - Build and deploy | Builds through JFrog and rolls out the workload |
-| 6 | Azure - Onboard workloads to JFrog | The workload identity's JFrog mapping and its `JFROG_*` settings |
+| 6 | Azure - Onboard workloads to JFrog | The workload identity's JFrog mapping and its `JFROG_*` app settings |
+| 7 | AKS cluster, then AKS JFrog trust (optional) | The AKS cluster and the kubelet credential provider |
 
-Every value that names your environment (subscription, location, workload name, JFrog URL, people) is entered when you run the pipeline or in the UI. Nothing in this repo names an account.
+Every value that names your environment (subscription, location, workload name, JFrog URL, people) is entered when you run the pipeline or in the web console. Nothing in this repo names an account. Details: [docs/azure-deployment-guide.md](docs/azure-deployment-guide.md).
 
 ## Layout
 
 ```
-client/              jfrog_oidc: stdlib-only Python client (identity sources, exchange + cache, CLI: claims, check, token, pip/mvn/dotnet)
+client/              jfrog_oidc: stdlib-only Python client (identity sources, exchange + cache, CLI: claims, check, token, docker-login,
+                     pip, mvn, gradle, dotnet, npm, composer, helm, jf)
 apps/                sample workloads: web-app (python via cloud-run-service, java, dotnet, node, php), azure-function,
                      artifact-reader (jobs), cloud-run-service, cloud-run-function, cloud-run-worker-pool
 terraform/modules/   jfrog-oidc (integrations, mappings), azure-identity (Entra audience app), azure-workload
