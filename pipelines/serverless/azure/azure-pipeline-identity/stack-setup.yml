@@ -14,7 +14,7 @@ parameters:
     type: string
     default: test
     values: [test]
-  # The service connection made by hand in this project (Azure Resource Manager, workload identity federation).
+  # The service connection created once in this project (Azure Resource Manager, workload identity federation).
   - name: bootstrap_connection
     type: string
     default: jfrog-oidc-azure-bootstrap

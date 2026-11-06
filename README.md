@@ -2,7 +2,7 @@
 
 Short-lived JFrog tokens for Azure and Google Cloud serverless workloads, using OIDC token exchange. Every JFrog credential is minted at the moment it is needed and expires within hours. Nothing long-lived is stored anywhere: not in Terraform state, app settings, pipelines or variable groups. No registry username or password exists.
 
-**Start here:** [docs/fresh-start-azure.md](docs/fresh-start-azure.md). Everything runs from Azure DevOps pipelines; the web UI is optional.
+**Start here:** [docs/azure-deployment-guide.md](docs/azure-deployment-guide.md). Everything runs from Azure DevOps pipelines; the web UI is optional.
 
 ## Supported workloads
 
@@ -37,7 +37,7 @@ BUILD (every cloud, Azure DevOps)
 
 | # | Pipeline | Creates |
 |---|---|---|
-| 1 | Azure - Register pipelines | Registers every other pipeline (the only one created by hand) |
+| 1 | Azure - Register pipelines | Registers every other pipeline (created once in the ADO UI) |
 | 2 | Pipeline identity and state | State storage, build/setup identities, service connections `jfrog-oidc-azure-build`/`-setup`, variable group, approval environments |
 | 3 | Pipelines' JFrog trust | JFrog OIDC integration and mappings for the pipelines, remote repositories, the JFrog variable group |
 | 4 | `<stack>` - Infrastructure | One workload type's resources (plan → approval → apply) |

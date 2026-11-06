@@ -62,7 +62,7 @@ class PortableTests(unittest.TestCase):
                 self.assertIn("variables.AGENT_POOL", (ROOT / f).read_text(), f)
 
     def test_every_azure_pipeline_is_registered_from_ado(self):
-        # A new environment runs everything from ADO: the one hand-made pipeline (Register pipelines)
+        # Every Azure pipeline runs from ADO: the one pipeline created in the ADO UI (Register pipelines)
         # registers all the others. aks-jfrog-trust's own is registered by azure-jfrog-trust.
         script = (ROOT / "pipelines/scripts/register-azure-pipelines.sh").read_text()
         listed = {f for f in re.findall(r'"(pipelines/[^|"]+\.yml)\|', script) if "$" not in f}

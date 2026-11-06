@@ -1,5 +1,5 @@
 # Azure - Register pipelines: registers every Azure pipeline of this repo in this ADO project (skips those
-# already there). The one pipeline created by hand in a new environment (New pipeline > Azure Repos Git >
+# already there). Created once in the ADO UI (New pipeline > Azure Repos Git >
 # this repo > Existing YAML > /pipelines/azure-register-pipelines.yml); everything after it runs in ADO.
 # Signs in through the bootstrap service connection, whose identity is a Project Administrator here.
 trigger: none

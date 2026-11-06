@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The portable package: everything committed on HEAD except this environment's own data (.gitattributes
 # export-ignore: onboarding workspaces, the ADO mirror). Nothing in it names an account, subscription,
-# tenant, ADO organization or JFrog instance; docs/fresh-start-azure.md runs it in a new environment.
+# tenant, ADO organization or JFrog instance; docs/azure-deployment-guide.md runs it in a new environment.
 #
 #   pipelines/scripts/export.sh [out.zip]
 set -euo pipefail

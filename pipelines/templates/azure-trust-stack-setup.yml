@@ -1,8 +1,9 @@
 # Template: plan -> apply (or destroy) for terraform/stacks/oidc/azure/azure-jfrog-trust from ADO, after
 # azure-pipeline-identity. Used only by pipelines/oidc/azure/azure-jfrog-trust/stack-setup.yml. Signs in to
 # Azure, Entra and ADO through the bootstrap service connection (the stack registers pipelines and writes a
-# variable group). JFrog: the first run uses JFROG_ADMIN_TOKEN, a secret variable set on this pipeline for
-# that run only; later runs exchange the setup connection's OIDC token through the ado-setup mapping it made.
+# variable group). JFrog: every run, the first included, exchanges the setup connection's OIDC token through
+# the ado-setup mapping. No JFrog token is stored: before the first run a JFrog admin creates the integration
+# and ado-setup once in the JFrog UI (docs/azure-deployment-guide.md); the run adopts them.
 # State: the pipeline identity's store (TF_STATE_RESOURCE_GROUP in jfrog-oidc-azure-<environment>).
 # The apply waits on the ADO environment azure-jfrog-trust-<environment>.
 
@@ -68,7 +69,6 @@ stages:
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
               JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
-              JFROG_ADMIN_TOKEN: $(JFROG_ADMIN_TOKEN)
               STACK_INPUTS: ${{ convertToJson(parameters.inputs) }}
           - publish: $(Pipeline.Workspace)/plan
             artifact: plan
@@ -118,5 +118,4 @@ stages:
                   env:
                     SYSTEM_ACCESSTOKEN: $(System.AccessToken)
                     JFROG_OIDC_ADO_SERVICE_CONNECTION_ID: $(SETUP_SERVICE_CONNECTION_ID)
-                    JFROG_ADMIN_TOKEN: $(JFROG_ADMIN_TOKEN)
                     STACK_INPUTS: ${{ convertToJson(parameters.inputs) }}

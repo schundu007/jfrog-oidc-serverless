@@ -1,7 +1,7 @@
 # Template: plan -> apply (or destroy) for terraform/stacks/serverless/azure/azure-pipeline-identity from ADO.
 # Used only by pipelines/serverless/azure/azure-pipeline-identity/stack-setup.yml. That stack creates the
 # pipelines' own service connections, variable group and state store, so this run signs in through the
-# bootstrap service connection made by hand (docs/fresh-start-azure.md) and reads no variable group.
+# bootstrap service connection created once (docs/azure-deployment-guide.md) and reads no variable group.
 # Infrastructure only: no JFrog token, provider or variable. The apply waits on the ADO environment
 # azure-pipeline-identity-<environment> and applies exactly the reviewed plan file.
 

@@ -3,7 +3,7 @@
 #
 # terraform/stacks/serverless/azure/azure-pipeline-identity from its ADO pipeline
 # (pipelines/serverless/azure/azure-pipeline-identity/stack-setup.yml). Runs in AzureCLI@2 signed in
-# through the bootstrap service connection: the one connection made by hand in a new ADO project, before
+# through the bootstrap service connection: created once in the ADO project, before
 # this stack creates the pipelines' own (jfrog-oidc-azure-build/-setup). Its identity needs Owner on the
 # subscription, Entra rights to grant app roles, and Project Administrator in the ADO project.
 #

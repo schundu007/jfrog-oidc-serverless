@@ -61,7 +61,7 @@ printf 'Authorization: Bearer %s\n' "$JFROG_ACCESS_TOKEN" > "$OIDC_DIR/jfrog-aut
 export PYTHONPATH="$BUILD_SOURCESDIRECTORY/client/src:$BUILD_SOURCESDIRECTORY"
 
 # adopt_mappings <ws> <jfrog-url> <adopt>: a mapping the plan creates that already
-# exists in JFrog (a run that failed after creating it, or one made by hand) is
+# exists in JFrog (a run that failed after creating it, or one created in the JFrog UI) is
 # imported, then planned again, so the apply updates it instead of failing on CONFLICT.
 adopt_mappings() {
   local ws=$1 url=$2 adopt=$3 imported=false addr name provider
