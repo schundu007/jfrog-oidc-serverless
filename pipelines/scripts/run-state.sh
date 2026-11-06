@@ -1,4 +1,4 @@
-# Sourced by identity-stack.sh and oidc-stack.sh when ADO runs a stack that has no backend.tf
+# Sourced by oidc-stack.sh when ADO runs a stack that has no backend.tf
 # (azure-pipeline-identity, azure-jfrog-trust). Its state lives in the pipeline identity's storage account,
 # key <stack>/<env>.tfstate, through a backend_override.tf.json written on the agent only.
 #

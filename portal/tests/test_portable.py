@@ -72,9 +72,11 @@ class PortableTests(unittest.TestCase):
                  and "/vars/" not in f and ("/azure/" in f or Path(f).name.startswith("azure-"))}
         self.assertEqual(azure - listed, set())
         self.assertFalse(listed - azure)
-        for f in ("pipelines/serverless/azure/azure-pipeline-identity/stack-setup.yml",
-                  "pipelines/oidc/azure/azure-jfrog-trust/stack-setup.yml", "pipelines/azure-register-pipelines.yml"):
-            self.assertIn("bootstrap_connection", (ROOT / f).read_text(), f)
+        # No bootstrap (Owner) connection: the admin applies the pipeline identity with their own sign-in.
+        self.assertFalse((ROOT / "pipelines/serverless/azure/azure-pipeline-identity/stack-setup.yml").exists())
+        for f in self.files:
+            if f.startswith("pipelines/"):
+                self.assertNotIn("bootstrap", (ROOT / f).read_text(), f)
 
 
 if __name__ == "__main__":

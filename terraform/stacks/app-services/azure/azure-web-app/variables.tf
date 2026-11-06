@@ -53,10 +53,14 @@ variable "slot" {
   }
 }
 
-variable "deployer_principal_id" {
-  description = "Object ID of the build pipeline's identity (deploys code into the app's resource group). Empty: none."
+variable "identity_type" {
+  description = "Runtime identity: SystemAssigned (made and deleted with the app, one per slot; the default) or UserAssigned (id-<workload>, made by azure-pipeline-identity, shared by the app and its slot). Same value as in azure-pipeline-identity's workloads."
   type        = string
-  default     = ""
+  default     = "SystemAssigned"
+  validation {
+    condition     = contains(["SystemAssigned", "UserAssigned"], var.identity_type)
+    error_message = "identity_type must be SystemAssigned or UserAssigned."
+  }
 }
 
 variable "tags" {

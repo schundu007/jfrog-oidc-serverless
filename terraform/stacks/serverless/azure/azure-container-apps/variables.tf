@@ -31,11 +31,16 @@ variable "log_retention_days" {
   default = 30
 }
 
-variable "deployer_principal_id" {
-  description = "Object ID of the build pipeline's identity (AcrPush and Contributor on the workload's resource group). Empty: none."
+variable "identity_type" {
+  description = "Runtime identity: UserAssigned (id-<workload>, made by azure-pipeline-identity with AcrPull before the first image pull; the default) or SystemAssigned (made with the workload; AcrPull is granted after it exists, so the first revision fails to pull until then). Same value as in azure-pipeline-identity's workloads."
   type        = string
-  default     = ""
+  default     = "UserAssigned"
+  validation {
+    condition     = contains(["SystemAssigned", "UserAssigned"], var.identity_type)
+    error_message = "identity_type must be SystemAssigned or UserAssigned."
+  }
 }
+
 
 variable "deploy_job" {
   description = "Create the Container Apps job (after the first image is pushed)."

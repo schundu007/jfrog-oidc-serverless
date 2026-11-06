@@ -23,6 +23,7 @@ locals {
   # The build pipeline reads these to pick its build (pip, Maven or dotnet).
   tags = merge(var.tags, { "jfrog-oidc-os" = var.os, "jfrog-oidc-runtime" = var.runtime, "jfrog-oidc-version" = local.version })
   settings = {
+    # A system-assigned identity needs no client ID (null with SystemAssigned, left out).
     AZURE_CLIENT_ID = module.base.identity.client_id
     # The pipeline ships a built package: dependencies already came through JFrog.
     SCM_DO_BUILD_DURING_DEPLOYMENT = "false"
@@ -37,7 +38,7 @@ module "base" {
   workload              = var.workload
   azure_subscription_id = var.azure_subscription_id
   location              = var.azure_location
-  deployer_principal_id = var.deployer_principal_id
+  identity_type         = var.identity_type
   tags                  = var.tags
 }
 
@@ -75,8 +76,8 @@ resource "azurerm_linux_web_app" "workload" {
   tags                                           = local.tags
 
   identity {
-    type         = "UserAssigned"
-    identity_ids = [module.base.identity.id]
+    type         = var.identity_type
+    identity_ids = var.identity_type == "UserAssigned" ? [module.base.identity.id] : null
   }
 
   site_config {
@@ -117,8 +118,8 @@ resource "azurerm_windows_web_app" "workload" {
   tags                                           = local.tags
 
   identity {
-    type         = "UserAssigned"
-    identity_ids = [module.base.identity.id]
+    type         = var.identity_type
+    identity_ids = var.identity_type == "UserAssigned" ? [module.base.identity.id] : null
   }
 
   site_config {
@@ -155,8 +156,8 @@ resource "azurerm_linux_web_app_slot" "slot" {
   tags                                           = local.tags
 
   identity {
-    type         = "UserAssigned"
-    identity_ids = [module.base.identity.id]
+    type         = var.identity_type
+    identity_ids = var.identity_type == "UserAssigned" ? [module.base.identity.id] : null
   }
 
   site_config {
@@ -194,8 +195,8 @@ resource "azurerm_windows_web_app_slot" "slot" {
   tags                                           = local.tags
 
   identity {
-    type         = "UserAssigned"
-    identity_ids = [module.base.identity.id]
+    type         = var.identity_type
+    identity_ids = var.identity_type == "UserAssigned" ? [module.base.identity.id] : null
   }
 
   site_config {
@@ -220,4 +221,13 @@ resource "azurerm_windows_web_app_slot" "slot" {
 
 locals {
   app = local.linux ? azurerm_linux_web_app.workload[0] : azurerm_windows_web_app.workload[0]
+}
+
+# Each slot has its own system-assigned identity; production and every slot need the JFrog app role
+# and mapping (azure-web-app-jfrog), since JFROG_* move with a swap.
+locals {
+  runtime_principal_ids = var.identity_type == "UserAssigned" ? { production = module.base.identity.principal_id } : merge(
+    { production = local.app.identity[0].principal_id },
+    var.slot == "" ? {} : { (var.slot) = one(concat(azurerm_linux_web_app_slot.slot[*].identity[0].principal_id, azurerm_windows_web_app_slot.slot[*].identity[0].principal_id)) },
+  )
 }

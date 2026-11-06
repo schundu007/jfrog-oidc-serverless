@@ -164,6 +164,26 @@ class StackTests(unittest.TestCase):
             self.assertEqual(stacks.write_inputs("azure-web-app", "test", {"runtime": "node", "os": "windows"},
                                                  stacks.STACKS_DIR, Path(d)), {"runtime": "node", "os": "windows"})
 
+    def test_azure_workload_is_listed_in_pipeline_identity(self):
+        # The pipelines cannot grant roles: saving an Azure workload lists it (stack, identity type) in
+        # azure-pipeline-identity's workloads, keeping a runtime principal entered there.
+        with tempfile.TemporaryDirectory() as d:
+            pid = stacks.inputs_file("azure-pipeline-identity", "test", Path(d))
+            pid.parent.mkdir(parents=True)
+            pid.write_text(json.dumps({"ado_org": "o", "workloads": {"fa": {"stack": "azure-functions-flex", "runtime_principal_id": "p1"}}}))
+            stacks.write_inputs("azure-web-app", "test", {"workload": "web-a"}, stacks.STACKS_DIR, Path(d))
+            stacks.write_inputs("azure-functions-flex", "test", {"workload": "fa", "identity_type": "SystemAssigned"}, stacks.STACKS_DIR, Path(d))
+            stacks.write_inputs("azure-container-app", "test", {"workload": "ca"}, stacks.STACKS_DIR, Path(d))
+            got = json.loads(pid.read_text())
+            self.assertEqual(got["ado_org"], "o")
+            self.assertEqual(got["workloads"], {
+                "web-a": {"stack": "azure-web-app", "identity_type": "SystemAssigned"},
+                "fa": {"stack": "azure-functions-flex", "identity_type": "SystemAssigned", "runtime_principal_id": "p1"},
+                "ca": {"stack": "azure-container-app", "identity_type": "UserAssigned"},
+            })
+            stacks.write_inputs("gcp-cloud-run", "test", {"gcp_project_id": "p"}, stacks.STACKS_DIR, Path(d))
+            self.assertEqual(json.loads(pid.read_text())["workloads"], got["workloads"])
+
     def test_form_prefills_saved_then_shared_then_default(self):
         self.root.save("gcp-pipeline-identity", GCP_PIPELINE_IDENTITY)
         f = {x["name"]: x for x in stacks.form("gcp-cloud-run", "test", self.root.dir, self.root.state)["fields"]}

@@ -11,11 +11,16 @@ variable "workload" {
   type        = string
 }
 
-variable "deployer_principal_id" {
-  description = "Object ID of the build pipeline's identity (rolls out the workload in its resource group). Empty: none."
+variable "identity_type" {
+  description = "Runtime identity: UserAssigned (id-<workload>, made by azure-pipeline-identity with the host storage roles before the app starts; the default) or SystemAssigned (made with the app; its storage roles are granted after it exists, through azure-pipeline-identity's workloads.runtime_principal_id). Same value as in azure-pipeline-identity's workloads."
   type        = string
-  default     = ""
+  default     = "UserAssigned"
+  validation {
+    condition     = contains(["SystemAssigned", "UserAssigned"], var.identity_type)
+    error_message = "identity_type must be SystemAssigned or UserAssigned."
+  }
 }
+
 
 variable "tags" {
   type    = map(string)

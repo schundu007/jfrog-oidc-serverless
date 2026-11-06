@@ -1,7 +1,7 @@
 # Azure - Register pipelines: registers every Azure pipeline of this repo in this ADO project (skips those
 # already there). Created once in the ADO UI (New pipeline > Azure Repos Git >
 # this repo > Existing YAML > /pipelines/azure-register-pipelines.yml); everything after it runs in ADO.
-# Signs in through the bootstrap service connection, whose identity is a Project Administrator here.
+# Signs in through the setup service connection, whose identity azure-pipeline-identity makes a Project Administrator here.
 trigger: none
 pr: none
 
@@ -10,9 +10,9 @@ parameters:
     type: string
     default: test
     values: [test]
-  - name: bootstrap_connection
+  - name: setup_connection
     type: string
-    default: jfrog-oidc-azure-bootstrap
+    default: jfrog-oidc-azure-setup
 
 variables:
   - template: /pipelines/vars/azure-${{ parameters.environment }}.yml
@@ -31,9 +31,9 @@ jobs:
       - checkout: self
         fetchDepth: 1
       - task: AzureCLI@2
-        displayName: Register the Azure pipelines (bootstrap connection)
+        displayName: Register the Azure pipelines (setup connection)
         inputs:
-          azureSubscription: ${{ parameters.bootstrap_connection }}
+          azureSubscription: ${{ parameters.setup_connection }}
           scriptType: bash
           scriptLocation: inlineScript
           inlineScript: |

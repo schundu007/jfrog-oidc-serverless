@@ -1,5 +1,5 @@
 # Pipelines' JFrog trust (Azure): plan -> approve -> apply (or destroy) terraform/stacks/oidc/azure/azure-jfrog-trust,
-# after Pipeline identity and state. Creates the JFrog integration ado-<org>-azure, the ado-build/ado-setup
+# after an admin applies azure-pipeline-identity (Infrastructure page). Creates the JFrog integration ado-<org>-azure, the ado-build/ado-setup
 # mappings, the reader group, the variable group jfrog-oidc-azure-<environment>-jfrog and the AKS credential
 # provider's pipeline. First run: set the secret variable JFROG_ADMIN_TOKEN on this pipeline; delete it after.
 # The apply waits on the ADO environment azure-jfrog-trust-<environment>.
@@ -15,9 +15,6 @@ parameters:
     type: string
     default: test
     values: [test]
-  - name: bootstrap_connection
-    type: string
-    default: jfrog-oidc-azure-bootstrap
   # The stack's variables (terraform/stacks/oidc/azure/azure-jfrog-trust/variables.tf). jfrog_url is required.
   # Left out: ado_org, ado_project, ado_repository and azure_tenant_id come from this run.
   - name: inputs
@@ -33,5 +30,4 @@ extends:
   parameters:
     action: ${{ parameters.action }}
     environment: ${{ parameters.environment }}
-    bootstrap_connection: ${{ parameters.bootstrap_connection }}
     inputs: ${{ parameters.inputs }}

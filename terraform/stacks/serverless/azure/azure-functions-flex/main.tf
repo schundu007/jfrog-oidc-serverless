@@ -11,7 +11,7 @@ module "base" {
   workload              = var.workload
   azure_subscription_id = var.azure_subscription_id
   location              = var.azure_location
-  deployer_principal_id = var.deployer_principal_id
+  identity_type         = var.identity_type
   storage               = true
   tags                  = var.tags
 }
@@ -33,7 +33,7 @@ resource "azurerm_function_app_flex_consumption" "workload" {
   service_plan_id                   = azurerm_service_plan.workload.id
   storage_container_type            = "blobContainer"
   storage_container_endpoint        = module.base.deployments_container_endpoint
-  storage_authentication_type       = "UserAssignedIdentity"
+  storage_authentication_type       = var.identity_type == "UserAssigned" ? "UserAssignedIdentity" : "SystemAssignedIdentity"
   storage_user_assigned_identity_id = module.base.identity.id
   runtime_name                      = "python"
   runtime_version                   = "3.12"
@@ -42,18 +42,19 @@ resource "azurerm_function_app_flex_consumption" "workload" {
   tags                              = var.tags
 
   identity {
-    type         = "UserAssigned"
-    identity_ids = [module.base.identity.id]
+    type         = var.identity_type
+    identity_ids = var.identity_type == "UserAssigned" ? [module.base.identity.id] : null
   }
 
   site_config {}
 
-  app_settings = {
+  # A system-assigned identity needs no client ID (null settings are left out).
+  app_settings = { for k, v in {
     AZURE_CLIENT_ID                  = module.base.identity.client_id
     AzureWebJobsStorage__accountName = module.base.storage_account_name
     AzureWebJobsStorage__credential  = "managedidentity"
     AzureWebJobsStorage__clientId    = module.base.identity.client_id
-  }
+  } : k => v if v != null }
 
   lifecycle {
     # The console's wire step owns JFROG_*; the build pipeline owns the package.
@@ -62,3 +63,8 @@ resource "azurerm_function_app_flex_consumption" "workload" {
 
   depends_on = [module.base]
 }
+
+locals {
+  runtime_principal_id = var.identity_type == "UserAssigned" ? module.base.identity.principal_id : azurerm_function_app_flex_consumption.workload.identity[0].principal_id
+}
+

@@ -1,7 +1,7 @@
-# Azure pipeline identity for the ADO pipelines (apply once: from the Infrastructure page, or the ADO pipeline
-# pipelines/serverless/azure/azure-pipeline-identity/stack-setup.yml): federated credentials on the
-# service connections' managed identities, the setup identity's roles, and the Terraform
-# state storage of the Azure stacks. No GCP or JFrog resources here: the pipelines'
+# Azure pipeline identity for the ADO pipelines. An admin applies it with their own sign-in (Infrastructure
+# page, or terraform locally), once and whenever a workload is added: federated credentials on the service
+# connections' managed identities, every role grant (workloads.tf), and the Terraform state storage of the
+# Azure stacks. No GCP or JFrog resources here: the pipelines'
 # JFrog trust is OIDC configuration, made afterwards by terraform/stacks/oidc/azure/azure-jfrog-trust.
 
 locals {
@@ -11,10 +11,10 @@ locals {
 }
 
 #
-# build: rights come from each workload stack (AcrPush, Contributor on the workload's
-#   resource group).
-# setup: creates workload stacks. Contributor on the subscription, role
-#   assignments limited to AcrPull/AcrPush/Contributor, Entra apps it owns.
+# An admin applies this stack with their own sign-in; it is the only place Azure roles are granted.
+# No pipeline identity can assign roles (no Owner, no Role Based Access Control Administrator).
+# build: Contributor (+ AcrPush / Blob Data Contributor) on each workload's resource group (workloads.tf).
+# setup: Contributor on each workload's resource group, the state store, and Entra apps it owns.
 
 # The pipeline identity's own resource group and the build identity: nothing has to exist beforehand.
 resource "azurerm_resource_group" "ado" {
@@ -39,13 +39,6 @@ locals {
     build = { id = azurerm_user_assigned_identity.ado.id, principal_id = azurerm_user_assigned_identity.ado.principal_id, client_id = azurerm_user_assigned_identity.ado.client_id }
     setup = { id = azurerm_user_assigned_identity.setup.id, principal_id = azurerm_user_assigned_identity.setup.principal_id, client_id = azurerm_user_assigned_identity.setup.client_id }
   }
-  # AcrPull, AcrPush, Contributor, and the function host storage roles: Storage Blob Data Owner,
-  # Storage Queue Data Contributor, Storage Table Data Contributor, Storage Blob Data Contributor (deployer)
-  assignable_roles = join(", ", [
-    "7f951dda-4ed3-4680-a7ca-43fe172d538d", "8311e382-0749-4cb8-b61a-304f252e45ec", "b24988ac-6180-42a0-ab88-20f7382dd24c",
-    "b7e6dc6d-f1e8-4753-8033-0f276bb0955b", "974c5e8b-45b9-4653-ba55-5f855dd0fb88", "0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3",
-    "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
-  ])
 }
 
 resource "azurerm_federated_identity_credential" "ado" {
@@ -60,7 +53,7 @@ resource "azurerm_federated_identity_credential" "ado" {
   depends_on = [time_sleep.credential_propagation]
 }
 
-# AzureCLI@2 logs in before any script runs, so the build identity must see the
+# AzureCLI@2 logs in before any script runs, so each pipeline identity must see the
 # subscription; Reader on its own resource group is the least that does.
 resource "azurerm_role_assignment" "ado_login" {
   scope                = azurerm_resource_group.ado.id
@@ -69,27 +62,14 @@ resource "azurerm_role_assignment" "ado_login" {
   principal_type       = "ServicePrincipal"
 }
 
+resource "azurerm_role_assignment" "setup_login" {
+  scope                = azurerm_resource_group.ado.id
+  role_definition_name = "Reader"
+  principal_id         = local.azure_identity.setup.principal_id
+  principal_type       = "ServicePrincipal"
+}
+
 data "azurerm_subscription" "this" {}
-
-resource "azurerm_role_assignment" "setup_contributor" {
-  scope                = data.azurerm_subscription.this.id
-  role_definition_name = "Contributor"
-  principal_id         = local.azure_identity.setup.principal_id
-  principal_type       = "ServicePrincipal"
-}
-
-resource "azurerm_role_assignment" "setup_rbac" {
-  scope                = data.azurerm_subscription.this.id
-  role_definition_name = "Role Based Access Control Administrator"
-  principal_id         = local.azure_identity.setup.principal_id
-  principal_type       = "ServicePrincipal"
-  condition_version    = "2.0"
-  condition            = <<-EOT
-    ((!(ActionMatches{'Microsoft.Authorization/roleAssignments/write'})) OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {${local.assignable_roles}}))
-    AND
-    ((!(ActionMatches{'Microsoft.Authorization/roleAssignments/delete'})) OR (@Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {${local.assignable_roles}}))
-  EOT
-}
 
 # Entra: create and manage only the apps it owns (the workloads' audience apps).
 data "azuread_service_principal" "graph" {
@@ -132,8 +112,7 @@ resource "azurerm_role_assignment" "setup_state" {
   principal_type       = "ServicePrincipal"
 }
 
-# Whoever applies this stack (an operator from the Infrastructure page, or the bootstrap service connection
-# of the ADO pipeline) writes its own state into the container; an operator listed below already can.
+# Whoever applies this stack (an admin, with their own sign-in, from the Infrastructure page) writes its own state into the container; an operator listed below already can.
 data "azurerm_client_config" "current" {}
 
 resource "azurerm_role_assignment" "runner_state" {

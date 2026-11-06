@@ -12,13 +12,21 @@ variable "azure_subscription_id" {
 }
 
 variable "location" {
-  type = string
+  description = "Unused: the resource group (made by azure-pipeline-identity) sets the location."
+  type        = string
+  default     = ""
 }
 
-variable "deployer_principal_id" {
-  type    = string
-  default = ""
+variable "identity_type" {
+  description = "Runtime identity: SystemAssigned (made and deleted with the workload) or UserAssigned (id-<workload>, made by azure-pipeline-identity)."
+  type        = string
+  default     = "SystemAssigned"
+  validation {
+    condition     = contains(["SystemAssigned", "UserAssigned"], var.identity_type)
+    error_message = "identity_type must be SystemAssigned or UserAssigned."
+  }
 }
+
 
 variable "registry" {
   description = "Create a container registry the workload pulls from with its identity."

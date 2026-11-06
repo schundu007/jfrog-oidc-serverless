@@ -21,9 +21,7 @@ Every step runs as an Azure DevOps pipeline. The web console is optional and que
 | Step | Where |
 |---|---|
 | Source repository | Repos → Import repository (this repository or your fork) |
-| Bootstrap service connection `jfrog-oidc-azure-bootstrap` | Project settings → Service connections → Azure Resource Manager → Workload identity federation (automatic); tick "Grant access permission to all pipelines" |
-| Bootstrap identity permissions | Owner on the subscription; in Entra, Application Administrator and Privileged Role Administrator (it creates the audience app and grants app roles) |
-| Bootstrap identity in Azure DevOps | Organization settings → Users → add it (Basic); Project settings → Permissions → Project Administrators |
+| Pipeline identity (admin, own sign-in) | Web console → Infrastructure → Pipeline identity and state, or `terraform apply` in `terraform/stacks/serverless/azure/azure-pipeline-identity`. The admin needs Owner (or User Access Administrator) on the subscription, Application Administrator in Entra and Project Collection Administrator in ADO. It holds every role grant; no pipeline identity gets Owner or role-assign rights |
 | Register pipelines pipeline | Pipelines → New pipeline → Azure Repos Git → this repo → Existing YAML → `/pipelines/azure-register-pipelines.yml` |
 
 ### JFrog OIDC integration (one time, between steps 2 and 3)
@@ -39,8 +37,8 @@ Created by a JFrog administrator. No token is created or stored; step 3 imports 
 
 | # | Pipeline | What it does |
 |---|---|---|
-| 1 | Azure - Register pipelines | Registers every other Azure pipeline |
-| 2 | Pipeline identity and state - Infrastructure | State storage, build/setup identities, service connections `jfrog-oidc-azure-build`/`-setup`, variable group `jfrog-oidc-azure-<env>`, approval environments. Edit the `inputs` parameter (location, operators' emails); tenant, subscription and ADO org/project come from the run |
+| 1 | *Admin*: pipeline identity | State storage, build/setup identities, service connections `jfrog-oidc-azure-build`/`-setup`, variable group `jfrog-oidc-azure-<env>`, approval environments, and per workload (`workloads`): `rg-<name>`, the build and setup roles on it and the runtime identity's roles. Not a pipeline: the admin applies it with their own sign-in |
+| 2 | Azure - Register pipelines | Registers every other Azure pipeline (setup connection) |
 | 3 | Pipelines' JFrog trust - JFrog OIDC | Set `jfrog_url` and `ado_org` in `inputs`. Signs in to JFrog with OIDC (no JFrog token anywhere), imports the two objects created in the JFrog UI, creates `ado-build`, the reader group, repositories and variable group `jfrog-oidc-azure-<env>-jfrog` |
 | 4 | `<stack>` - Infrastructure | One per workload type. App Services: Web App. Serverless: Container App, Container Apps job, Functions on Container Apps, Functions Premium, Functions Flex Consumption. Fill `inputs` (name, subscription, location) |
 | 5 | `<stack>` - Build and deploy | Builds through JFrog with OIDC and rolls out; set the `workload` parameter |
@@ -61,12 +59,13 @@ Each Infrastructure run stops for approval on its ADO environment; approve it th
    PYTHONPATH=client/src:. python3 -m portal
    ```
 4. **Settings.** Sign in to Azure. Enter the Azure DevOps organization, project and repository, and the JFrog URL.
-5. **Infrastructure → Pipeline identity and state** (`azure-pipeline-identity`). Fill in the tenant, subscription, location, ADO org and project, and the operators' emails. Then Deploy and approve the plan. It creates:
+5. **Infrastructure → Pipeline identity and state** (`azure-pipeline-identity`). Fill in the tenant, subscription, location, ADO org and project, and the operators' emails. Then Deploy and approve the plan; it runs on this machine with your own sign-in. It creates:
    - the state storage
    - the build and setup identities
    - the ADO service connections `jfrog-oidc-azure-build` and `jfrog-oidc-azure-setup` (workload identity federation, no secrets)
    - the variable group `jfrog-oidc-azure-<env>`
    - the ADO environments for the approvals
+   - for each workload saved on the Infrastructure page: `rg-<name>` with the build (Contributor, AcrPush or blob roles) and setup (Contributor) roles on it, `id-<name>` only for a user-assigned identity, and the runtime identity's AcrPull or storage roles
 6. **JFrog OIDC → Azure** (`azure-jfrog-trust`). Deploy and approve. It creates:
    - imports the JFrog OIDC integration and `ado-setup` mapping, and creates the `ado-build` mapping
    - the remote repositories
@@ -104,7 +103,7 @@ Set `AGENT_POOL` in `pipelines/vars/azure-<env>.yml` (and `gcp-<env>.yml`) to yo
 
 | Identity | Used by | For |
 |---|---|---|
-| ADO service connection `jfrog-oidc-azure-bootstrap` (workload identity federation) | Register pipelines, pipeline identity, pipelines' JFrog trust | Creates the pipeline identities and registers pipelines |
-| ADO service connection `-setup` (workload identity federation) | Infrastructure pipelines, onboarding apply | Terraform plan and apply |
-| ADO service connection `-build` (workload identity federation) | Build and deploy, onboarding | Push and deploy the app, resolve packages through JFrog |
-| User-assigned managed identity `id-<name>`, one per deployment | The running app | Entra token → JFrog access token, at runtime |
+| The admin's own sign-in | Pipeline identity stack only | Creates the two pipeline identities and every role assignment; nothing is stored |
+| ADO service connection `-setup` (workload identity federation) | Infrastructure pipelines, JFrog trust, register pipelines, onboarding apply | Terraform plan and apply. Contributor on each `rg-<name>` only; cannot assign roles |
+| ADO service connection `-build` (workload identity federation) | Build and deploy, onboarding | Push and deploy the app, resolve packages through JFrog. Contributor (and AcrPush or blob) on each `rg-<name>` only |
+| Runtime identity, one per deployment | The running app | Entra token → JFrog access token, at runtime. System-assigned (default for the Web App, one per slot, deleted with the app) or user-assigned `id-<name>` (default where the registry or host storage must be reachable before the first start) |

@@ -125,7 +125,7 @@ IDS = tuple(s["id"] for s in CATALOGUE)
 SHARED_INPUTS = frozenset({"jfrog_url", "jfrog_reader_group", "ado_org", "ado_project", "ado_tenant_id",
                            "pipeline_environment", "ado_repository", "ado_approvers", "gcp_project_id", "gcp_region",
                            "azure_subscription_id", "azure_tenant_id", "azure_location",
-                           "deployer_service_account", "deployer_principal_id", "image_repository", "tags"})
+                           "deployer_service_account", "image_repository", "tags"})
 # The pipeline identity whose inputs a remote backend's location derives from, by backend type.
 PIPELINE_IDENTITY = {"gcs": "gcp-pipeline-identity", "azurerm": "azure-pipeline-identity"}
 MAX_VARS = 64 * 1024
@@ -575,7 +575,30 @@ def write_inputs(stack_id: str, env: str, values: dict, root: Path = STACKS_DIR,
     shared = _load(_shared_file(env, state_root, stack_id))
     shared.update({k: val for k, val in out.items() if k in others and k in SHARED_INPUTS})
     _write(_shared_file(env, state_root, stack_id), shared)
+    _register_workload(meta, out, env, root, state_root)
     return out
+
+
+def _register_workload(meta: dict, out: dict, env: str, root: Path, state_root: Path) -> None:
+    """An Azure workload's resource group, identity and roles come from azure-pipeline-identity (the
+    pipelines cannot grant roles): saving a workload's inputs lists it in that stack's workloads input,
+    which an admin then applies. Keeps a runtime_principal_id already entered there."""
+    base = meta.get("base", meta["id"])
+    if meta["group"] != "Azure" or not multi(base):
+        return
+    defaults = {v["name"]: v.get("default") for v in variables(base, root)}
+    name = out.get("workload") or defaults.get("workload")
+    if not name:
+        return
+    default = defaults.get("identity_type")
+    p = inputs_file("azure-pipeline-identity", env, state_root)
+    pid = _load(p)
+    workloads = dict(pid.get("workloads") or {})
+    entry = dict(workloads.get(name) or {})
+    entry.update(stack=base, identity_type=out.get("identity_type") or default or "SystemAssigned")
+    workloads[name] = entry
+    if workloads != pid.get("workloads"):
+        _write(p, dict(pid, workloads=workloads))
 
 
 def _write(p: Path, data: dict) -> None:

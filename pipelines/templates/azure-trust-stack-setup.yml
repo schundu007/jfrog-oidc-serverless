@@ -1,6 +1,6 @@
 # Template: plan -> apply (or destroy) for terraform/stacks/oidc/azure/azure-jfrog-trust from ADO, after
 # azure-pipeline-identity. Used only by pipelines/oidc/azure/azure-jfrog-trust/stack-setup.yml. Signs in to
-# Azure, Entra and ADO through the bootstrap service connection (the stack registers pipelines and writes a
+# Azure, Entra and ADO through the setup service connection (the stack registers pipelines and writes a
 # variable group). JFrog: every run, the first included, exchanges the setup connection's OIDC token through
 # the ado-setup mapping. No JFrog token is stored: before the first run a JFrog admin creates the integration
 # and ado-setup once in the JFrog UI (docs/azure-deployment-guide.md); the run adopts them.
@@ -14,8 +14,6 @@ parameters:
     type: string
   - name: inputs
     type: object
-  - name: bootstrap_connection
-    type: string
 
 variables:
   - template: /pipelines/vars/azure-${{ parameters.environment }}.yml
@@ -48,20 +46,11 @@ stages:
             displayName: Install Terraform $(TERRAFORM_VERSION)
           - bash: mkdir -p "$(Pipeline.Workspace)/plan"
             displayName: Prepare
-          # Referenced only so the job may request the setup connection's OIDC token (JFrog sign-in).
-          - task: AzureCLI@2
-            displayName: Setup connection (OIDC token only)
-            condition: false
-            inputs:
-              azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: "true"
           - task: AzureCLI@2
             name: tf
             displayName: terraform ${{ parameters.action }} plan
             inputs:
-              azureSubscription: ${{ parameters.bootstrap_connection }}
+              azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
               scriptType: bash
               scriptLocation: scriptPath
               scriptPath: pipelines/scripts/oidc-stack.sh
@@ -100,17 +89,9 @@ stages:
                 - bash: pipelines/scripts/install-terraform.sh
                   displayName: Install Terraform $(TERRAFORM_VERSION)
                 - task: AzureCLI@2
-                  displayName: Setup connection (OIDC token only)
-                  condition: false
-                  inputs:
-                    azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
-                    scriptType: bash
-                    scriptLocation: inlineScript
-                    inlineScript: "true"
-                - task: AzureCLI@2
                   displayName: terraform apply
                   inputs:
-                    azureSubscription: ${{ parameters.bootstrap_connection }}
+                    azureSubscription: ${{ variables.SETUP_SERVICE_CONNECTION }}
                     scriptType: bash
                     scriptLocation: scriptPath
                     scriptPath: pipelines/scripts/oidc-stack.sh

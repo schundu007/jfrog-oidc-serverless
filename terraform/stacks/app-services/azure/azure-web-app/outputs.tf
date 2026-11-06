@@ -29,3 +29,12 @@ output "slot" {
 output "slot_url" {
   value = var.slot == "" ? "" : "https://${one(concat(azurerm_linux_web_app_slot.slot[*].default_hostname, azurerm_windows_web_app_slot.slot[*].default_hostname))}"
 }
+
+output "identity_type" {
+  value = var.identity_type
+}
+
+output "runtime_principal_ids" {
+  description = "Object ID of the runtime identity per slot (production and the slot)."
+  value       = local.runtime_principal_ids
+}

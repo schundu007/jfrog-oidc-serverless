@@ -13,7 +13,7 @@ module "base" {
   workload                   = var.workload
   azure_subscription_id      = var.azure_subscription_id
   location                   = var.azure_location
-  deployer_principal_id      = var.deployer_principal_id
+  identity_type              = var.identity_type
   registry                   = true
   acr_name                   = coalesce(var.acr_name, substr("cr${replace(var.workload, "-", "")}${replace(var.azure_subscription_id, "-", "")}", 0, 32))
   acr_sku                    = var.acr_sku
@@ -38,13 +38,13 @@ resource "azurerm_container_app_job" "workload" {
   }
 
   identity {
-    type         = "UserAssigned"
-    identity_ids = [module.base.identity.id]
+    type         = var.identity_type
+    identity_ids = var.identity_type == "UserAssigned" ? [module.base.identity.id] : null
   }
 
   registry {
     server   = module.base.acr_login_server
-    identity = module.base.identity.id
+    identity = var.identity_type == "UserAssigned" ? module.base.identity.id : "System"
   }
 
   template {
@@ -54,9 +54,13 @@ resource "azurerm_container_app_job" "workload" {
       cpu    = 0.25
       memory = "0.5Gi"
 
-      env {
-        name  = "AZURE_CLIENT_ID"
-        value = module.base.identity.client_id
+      # A system-assigned identity needs no client ID.
+      dynamic "env" {
+        for_each = var.identity_type == "UserAssigned" ? [module.base.identity.client_id] : []
+        content {
+          name  = "AZURE_CLIENT_ID"
+          value = env.value
+        }
       }
     }
   }
@@ -69,36 +73,7 @@ resource "azurerm_container_app_job" "workload" {
   depends_on = [module.base]
 }
 
-# Into modules/azure-workload without recreating anything.
-moved {
-  from = azurerm_resource_group.workload
-  to   = module.base.azurerm_resource_group.this
+locals {
+  runtime_principal_id = var.identity_type == "UserAssigned" ? module.base.identity.principal_id : one(azurerm_container_app_job.workload[*].identity[0].principal_id)
 }
-moved {
-  from = azurerm_user_assigned_identity.workload
-  to   = module.base.azurerm_user_assigned_identity.this
-}
-moved {
-  from = azurerm_log_analytics_workspace.workload
-  to   = module.base.azurerm_log_analytics_workspace.this[0]
-}
-moved {
-  from = azurerm_container_app_environment.workload
-  to   = module.base.azurerm_container_app_environment.this[0]
-}
-moved {
-  from = azurerm_container_registry.images
-  to   = module.base.azurerm_container_registry.this[0]
-}
-moved {
-  from = azurerm_role_assignment.workload_acr_pull
-  to   = module.base.azurerm_role_assignment.acr_pull[0]
-}
-moved {
-  from = azurerm_role_assignment.deployer_acr_push[0]
-  to   = module.base.azurerm_role_assignment.deployer_acr_push[0]
-}
-moved {
-  from = azurerm_role_assignment.deployer_contributor[0]
-  to   = module.base.azurerm_role_assignment.deployer_contributor[0]
-}
+

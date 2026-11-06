@@ -13,3 +13,13 @@ output "workload_identity_client_id" {
 output "function_name" {
   value = var.deploy_function ? azapi_resource.workload[0].name : null
 }
+
+output "runtime_principal_id" {
+  description = "Object ID of the workload's runtime identity (system- or user-assigned)."
+  value       = local.runtime_principal_id
+}
+
+output "admin_role_grants" {
+  description = "Azure roles the runtime identity needs; an admin grants them through azure-pipeline-identity (workloads.<name>.runtime_principal_id)."
+  value       = [for r in module.base.runtime_roles : merge(r, { principal_id = local.runtime_principal_id })]
+}

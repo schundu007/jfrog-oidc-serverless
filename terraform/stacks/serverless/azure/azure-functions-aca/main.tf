@@ -13,7 +13,7 @@ module "base" {
   workload                   = var.workload
   azure_subscription_id      = var.azure_subscription_id
   location                   = var.azure_location
-  deployer_principal_id      = var.deployer_principal_id
+  identity_type              = var.identity_type
   registry                   = true
   container_apps_environment = true
   storage                    = true
@@ -28,9 +28,10 @@ resource "azapi_resource" "workload" {
   parent_id = module.base.resource_group_id
   tags      = var.tags
 
+  # azapi wants the system-assigned type as SystemAssigned and user-assigned IDs only with UserAssigned.
   identity {
-    type         = "UserAssigned"
-    identity_ids = [module.base.identity.id]
+    type         = var.identity_type
+    identity_ids = var.identity_type == "UserAssigned" ? [module.base.identity.id] : null
   }
 
   body = {
@@ -39,19 +40,24 @@ resource "azapi_resource" "workload" {
       managedEnvironmentId = module.base.container_app_environment_id
       configuration = {
         ingress    = { external = true, targetPort = 80 }
-        registries = [{ server = module.base.acr_login_server, identity = module.base.identity.id }]
+        registries = [{ server = module.base.acr_login_server, identity = var.identity_type == "UserAssigned" ? module.base.identity.id : "system" }]
       }
       template = {
         containers = [{
           name      = "func"
           image     = "${module.base.acr_login_server}/${var.function_image}"
           resources = { cpu = 0.5, memory = "1Gi" }
-          env = [
-            { name = "AZURE_CLIENT_ID", value = module.base.identity.client_id },
-            { name = "AzureWebJobsStorage__accountName", value = module.base.storage_account_name },
-            { name = "AzureWebJobsStorage__credential", value = "managedidentity" },
-            { name = "AzureWebJobsStorage__clientId", value = module.base.identity.client_id },
-          ]
+          # A system-assigned identity needs no client ID.
+          env = concat(
+            [
+              { name = "AzureWebJobsStorage__accountName", value = module.base.storage_account_name },
+              { name = "AzureWebJobsStorage__credential", value = "managedidentity" },
+            ],
+            var.identity_type == "UserAssigned" ? [
+              { name = "AZURE_CLIENT_ID", value = module.base.identity.client_id },
+              { name = "AzureWebJobsStorage__clientId", value = module.base.identity.client_id },
+            ] : [],
+          )
         }]
         scale = { minReplicas = 0, maxReplicas = 2 }
       }
@@ -69,3 +75,8 @@ resource "azapi_resource" "workload" {
 
   depends_on = [module.base]
 }
+
+locals {
+  runtime_principal_id = var.identity_type == "UserAssigned" ? module.base.identity.principal_id : one(azapi_resource.workload[*].identity[0].principal_id)
+}
+

@@ -11,3 +11,8 @@ output "azure_setup_identity_principal_id" {
   description = "The setup pipelines' identity (object ID), for the console's Preflight checks."
   value       = azurerm_user_assigned_identity.setup.principal_id
 }
+
+output "workload_identities" {
+  description = "User-assigned runtime identities made here, by workload."
+  value       = { for w, i in azurerm_user_assigned_identity.workload : w => { client_id = i.client_id, principal_id = i.principal_id } }
+}

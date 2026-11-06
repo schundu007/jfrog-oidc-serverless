@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # On a fresh Azure DevOps project: register the Azure pipelines from this repo. Runs in ADO as the pipeline
-# "Azure - Register pipelines" (pipelines/azure-register-pipelines.yml, through the bootstrap service
+# "Azure - Register pipelines" (pipelines/azure-register-pipelines.yml, through the setup service
 # connection), or from a machine with az login, where it also creates the repo and pushes this code when missing.
 # The consoles find each pipeline by its YAML path, so the names and folders are only for people.
 # Skips any YAML already registered.
@@ -30,7 +30,6 @@ if [ -z "${TF_BUILD:-}" ]; then
 fi
 
 list=("pipelines/azure-register-pipelines.yml|Azure - Register pipelines|\\Azure"
-      "pipelines/serverless/azure/azure-pipeline-identity/stack-setup.yml|Pipeline identity and state - Infrastructure|\\Serverless\\Azure"
       "pipelines/oidc/azure/azure-jfrog-trust/stack-setup.yml|Pipelines' JFrog trust - JFrog OIDC|\\JFrog OIDC\\Azure"
       "pipelines/azure-workload-onboard.yml|Azure - Onboard workloads to JFrog|\\Azure"
       "pipelines/app-services/azure/azure-web-app/stack-setup.yml|Web App - Infrastructure|\\App Services\\Azure\\Web App"
