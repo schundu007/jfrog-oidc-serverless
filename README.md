@@ -4,19 +4,21 @@ Short-lived JFrog tokens for Azure and Google Cloud serverless workloads, using 
 
 **Start here:** [docs/azure-deployment-guide.md](docs/azure-deployment-guide.md). Everything runs from Azure DevOps pipelines; the web console is optional.
 
-## Supported workloads
+## Scope and status
 
-| Cloud | Workload type | Stack | How code and packages get in | Runtime JFrog access |
-|---|---|---|---|---|
-| Azure | **App Service Web App** (Linux or Windows; Python, Java, .NET, Node.js, PHP; slots and swap) | `azure-web-app` | Code deploy (zip/jar). pip, Maven, NuGet, npm and Composer resolve through JFrog with the pipeline's OIDC token | Managed identity → JFrog token |
-| Azure | Container App | `azure-container-app` | Pipeline pulls the image from JFrog with OIDC, pushes to the stack's own ACR | Managed identity → JFrog token |
-| Azure | Container Apps job | `azure-container-apps` | Same as Container App | Same |
-| Azure | Functions on Container Apps | `azure-functions-aca` | Same as Container App | Same |
-| Azure | Functions Premium / Dedicated | `azure-functions-premium` | Zip deploy; packages through JFrog | Same |
-| Azure | Functions Flex Consumption | `azure-functions-flex` | Zip deploy; packages through JFrog | Same |
-| Azure | AKS (kubelet credential provider) | `aks-cluster` + `aks-jfrog-trust` | Nodes labelled `credentialsProviderEnabled` pull images from JFrog with the cluster's OIDC issuer | Entra Workload ID |
-| Google Cloud | Cloud Run job / service / function / worker pool | `gcp-cloud-run`, `gcp-cloud-run-service`, `gcp-cloud-run-function`, `gcp-cloud-run-worker-pool` | Pipeline pulls from JFrog with OIDC, pushes to the stack's own Artifact Registry | Service account identity token → JFrog token |
-| Knative / OpenShift Serverless | Knative service | (runtime only) | Your existing image flow | Projected service account token → JFrog token |
+JFrog OIDC is to be enabled on every serverless workload type in Azure and Google Cloud. The proof of concept is complete on the App Service Web App; every other type is implemented and its proof of concept is pending.
+
+| Cloud | Workload type | Stack | How code and packages get in | Runtime JFrog access | Status |
+|---|---|---|---|---|---|
+| Azure | **App Service Web App** (Linux or Windows; Python, Java, .NET, Node.js, PHP; slots and swap) | `azure-web-app` | Code deploy (zip/jar). pip, Maven, NuGet, npm and Composer resolve through JFrog with the pipeline's OIDC token | Managed identity → JFrog token | **POC done** |
+| Azure | Container App | `azure-container-app` | Pipeline pulls the image from JFrog with OIDC, pushes to the stack's own ACR | Managed identity → JFrog token | POC pending |
+| Azure | Container Apps job | `azure-container-apps` | Same as Container App | Same | POC pending |
+| Azure | Functions on Container Apps | `azure-functions-aca` | Same as Container App | Same | POC pending |
+| Azure | Functions Premium / Dedicated | `azure-functions-premium` | Zip deploy; packages through JFrog | Same | POC pending |
+| Azure | Functions Flex Consumption | `azure-functions-flex` | Zip deploy; packages through JFrog | Same | POC pending |
+| Azure | AKS (kubelet credential provider) | `aks-cluster` + `aks-jfrog-trust` | Nodes labelled `credentialsProviderEnabled` pull images from JFrog with the cluster's OIDC issuer | Entra Workload ID | POC pending |
+| Google Cloud | Cloud Run job / service / function / worker pool | `gcp-cloud-run`, `gcp-cloud-run-service`, `gcp-cloud-run-function`, `gcp-cloud-run-worker-pool` | Pipeline pulls from JFrog with OIDC, pushes to the stack's own Artifact Registry | Service account identity token → JFrog token | POC pending |
+| Knative / OpenShift Serverless | Knative service | (runtime only) | Your existing image flow | Projected service account token → JFrog token | POC pending (simulation only) |
 
 Each workload type is its own stack, its own resource group, identity and Terraform state, and its own pair of pipelines. Deploying one never touches another.
 

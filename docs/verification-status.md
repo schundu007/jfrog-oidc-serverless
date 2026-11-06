@@ -1,13 +1,13 @@
 # Verification status
 
-What has been tested against real Azure, Google Cloud and JFrog accounts, and what has not. When a provider behaves differently from what is described here, fix the code and update this page.
+What has been tested against real Azure, Google Cloud and JFrog accounts, and what has not. JFrog OIDC is to be enabled on every serverless workload type in Azure and Google Cloud; the proof of concept on the current Azure DevOps pipeline flow is complete on the App Service Web App and pending for every other type. When a provider behaves differently from what is described here, fix the code and update this page.
 
 ## Verified
 
 | Area | What was tested |
 |---|---|
-| Runtime token exchange | Each of these exchanged its own identity for a 1 h JFrog token after onboarding: Cloud Run job, service and function (gen2); Container App; Container Apps job; Functions on Container Apps, Premium and Flex Consumption |
-| App Service Web Apps | Node.js 24 LTS on Linux and on Windows answers `/healthz/jfrog` with 200 on the production slot and on the `staging` slot, before and after a swap |
+| Runtime token exchange (earlier test environment, before the current pipeline flow) | Each of these exchanged its own identity for a 1 h JFrog token after onboarding: Cloud Run job, service and function (gen2); Container App; Container Apps job; Functions on Container Apps, Premium and Flex Consumption |
+| App Service Web Apps (POC done) | Node.js 24 LTS on Linux and on Windows answers `/healthz/jfrog` with 200 on the production slot and on the `staging` slot, before and after a swap |
 | Functions on Container Apps | Runs with `kind = functionapp` |
 | Functions identity attach | `az functionapp identity assign --identities <id>` |
 | Container Apps logs | Read from the `ContainerAppConsoleLogs_CL` table |
@@ -23,6 +23,7 @@ What has been tested against real Azure, Google Cloud and JFrog accounts, and wh
 |---|---|
 | Web console sign-ins (`portal/connections.py`) | The `gcloud auth login --no-launch-browser --update-adc` prompt text and the `az login --use-device-code` message format are parsed from CLI output; Terraform's Google provider picking up `GOOGLE_APPLICATION_CREDENTIALS` from the console's gcloud directory |
 | Container Apps identity attach | `az containerapp [job] identity assign --user-assigned <id>` |
+| POC on the current pipeline flow | Every workload type except the Web App: Container App, Container Apps job, Functions on Container Apps, Premium and Flex Consumption; Cloud Run job, service, function and worker pool |
 | App Service: Python, Java, .NET, PHP | Same flow as Node.js; not yet run live |
 | Cloud Run worker pools | Only available in `gcloud beta run worker-pools`, so the agent needs the beta component; `describe`/`list` JSON is read as v2 (`template.containers`, `template.serviceAccount`) or v1; `roles/run.developer` is assumed to cover `run.workerPools.update` |
 | Knative / OpenShift Serverless | Tested in simulation only. Open: whether Knative accepts a projected `serviceAccountToken` volume in a Knative service (it may need a flag in the `config-features` ConfigMap), and the `kubernetes` state backend from an ADO agent |
