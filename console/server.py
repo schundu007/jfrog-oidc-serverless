@@ -552,8 +552,9 @@ def _make_handler(console: ConsoleServer):
             if name == "index.html" and self.headers.get("Sec-Fetch-Site") in ("none", "same-origin"):
                 data = data.replace(b'<meta charset="utf-8">', b'<meta charset="utf-8">\n  <meta name="console-token" content="'
                                     + console.token.encode() + b'">', 1)
-            if name == "index.html" and console.base:
-                base = console.base.encode()
+            mount = getattr(self, "mount_base", None) or console.base   # the portal mounts this console twice
+            if name == "index.html" and mount:
+                base = mount.encode()
                 data = data.replace(b'<meta charset="utf-8">', b'<meta charset="utf-8">\n  <meta name="console-base" content="'
                                     + base + b'">', 1).replace(b'"/static/', b'"' + base + b'/static/')
             self._headers(200, CONTENT_TYPES[Path(name).suffix], len(data))

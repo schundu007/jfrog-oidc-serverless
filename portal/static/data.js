@@ -6,7 +6,7 @@ export const MARK = {"gcp": "<svg class=\"mark\" viewBox=\"0 0 24 24\" aria-hidd
 export const CLOUD_NAMES = { gcp: "Google Cloud", azure: "Azure" };
 // Menu item → [cloud, label, page, mark, group]: the same items as the sidebar (shell.js). Each cloud
 // holds Serverless and App Services, one item per workload kind.
-const sl = (cloud, kind, label, mark, group = "Serverless") => [cloud, label, `/serverless/${cloud}?type=${kind}`, mark, group];
+const sl = (cloud, kind, label, mark, group = "Serverless") => [cloud, label, `${group === "App Services" ? "/app-services" : "/serverless"}/${cloud}?type=${kind}`, mark, group];
 export const SECTIONS = {
   gcp_run_job: sl("gcp", "gcp_run_job", "Cloud Run jobs", "run"),
   gcp_run_service: sl("gcp", "gcp_run_service", "Cloud Run services", "run"),
@@ -32,6 +32,8 @@ export const FAMILY = {
 const sectionOfKind = (k) => (SECTIONS[k] ? k : null);
 // Serverless or App Services: the Home and Runs tab a workload's rows sit under.
 const areaOfKind = (k) => (SECTIONS[k]?.[4] === "App Services" ? "app-services" : "serverless");
+// Pages of a workload sit under its section: /app-services for web apps, /serverless for the rest.
+const pageBase = (k) => (areaOfKind(k) === "app-services" ? "/app-services" : "/serverless");
 const markOfKind = (k) => k === "gcp_run_function" ? "fn" : ["azure_web_app", "gcp_app_engine"].includes(k) ? "web" : k.startsWith("gcp_") ? "run" : k.startsWith("azure_functions") ? "func"
   : "aca";
 
@@ -65,7 +67,7 @@ export async function startProve(cloud, name, steps = ["prove"]) {
     body: JSON.stringify({ config: c.config || c, steps }) });
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw Object.assign(new Error(body.error || `HTTP ${r.status}`), { next: body.next || null });
-  return `/serverless/${cloud}/w/${n}/runs/${encodeURIComponent(body.run_id)}`;
+  return `${pageBase(c.config?.kind || c.kind)}/${cloud}/w/${n}/runs/${encodeURIComponent(body.run_id)}`;
 }
 
 // Admin: forget one finished run (its record and log). Active runs answer 409.
@@ -110,10 +112,10 @@ async function serverless() {
   }
   const items = configs.map((c) => {
     const last = latest.get(c.name), ver = verified.get(c.name), pr = proved.get(c.name);
-    const runHref = (r) => `/serverless/${cloudOf(c.kind)}/w/${encodeURIComponent(c.name)}/runs/${encodeURIComponent(r.id)}`;
+    const runHref = (r) => `${pageBase(c.kind)}/${cloudOf(c.kind)}/w/${encodeURIComponent(c.name)}/runs/${encodeURIComponent(r.id)}`;
     return { kind: "workload", cloud: cloudOf(c.kind), section: sectionOfKind(c.kind), area: areaOfKind(c.kind), name: c.name, type: label(c.kind),
-      mark: markOfKind(c.kind), href: `/serverless/${cloudOf(c.kind)}/w/${encodeURIComponent(c.name)}`,
-      typeHref: `/serverless/${cloudOf(c.kind)}?type=${encodeURIComponent(c.kind)}`,
+      mark: markOfKind(c.kind), href: `${pageBase(c.kind)}/${cloudOf(c.kind)}/w/${encodeURIComponent(c.name)}`,
+      typeHref: `${pageBase(c.kind)}/${cloudOf(c.kind)}?type=${encodeURIComponent(c.kind)}`,
       ok: last?.status === "succeeded", state: last ? runPill(last.status) : ["", "No runs"],
       detail: last ? `last run ${when(last.created)}` : null,
       verified: ver ? { ok: ver.verify.status === "succeeded", state: VERIFY[ver.verify.status] || ["warn", "Checking"],
@@ -127,9 +129,9 @@ async function serverless() {
     return { cloud: known ? cloudOf(r.kind) : null, section: known ? sectionOfKind(r.kind) : null,
       name: known ? r.name : "Unknown workload", type: known ? label(r.kind) : "No workload recorded",
       mark: known ? markOfKind(r.kind) : null, status: r.status, created: r.created, id: r.id, area: known ? areaOfKind(r.kind) : "serverless", api: `/serverless/api/runs/${encodeURIComponent(r.id)}`,
-      href: known ? `/serverless/${cloudOf(r.kind)}/w/${encodeURIComponent(r.name)}/runs/${encodeURIComponent(r.id)}` : null,
-      nameHref: known ? `/serverless/${cloudOf(r.kind)}/w/${encodeURIComponent(r.name)}` : null,
-      typeHref: known ? `/serverless/${cloudOf(r.kind)}?type=${encodeURIComponent(r.kind)}` : null };
+      href: known ? `${pageBase(r.kind)}/${cloudOf(r.kind)}/w/${encodeURIComponent(r.name)}/runs/${encodeURIComponent(r.id)}` : null,
+      nameHref: known ? `${pageBase(r.kind)}/${cloudOf(r.kind)}/w/${encodeURIComponent(r.name)}` : null,
+      typeHref: known ? `${pageBase(r.kind)}/${cloudOf(r.kind)}?type=${encodeURIComponent(r.kind)}` : null };
   });
   return { items, runs: runRows };
 }
@@ -165,7 +167,7 @@ async function archived() {
     const cloud = String(e.kind || "").split("_")[0] || null;
     for (const r of e.run_rows || []) rows.push({ cloud, section: sectionOfKind(e.kind), name: e.name, mark: markOfKind(e.kind),
       type: `Workload · ${left(e.expires_at * 1000)}`, status: r.status, created: r.created, id: r.id, area: "archived", api: `/serverless/api/runs/${encodeURIComponent(r.id)}`,
-      href: `/serverless/${cloud}/w/${encodeURIComponent(e.name)}/runs/${encodeURIComponent(r.id)}` });
+      href: `${pageBase(e.kind)}/${cloud}/w/${encodeURIComponent(e.name)}/runs/${encodeURIComponent(r.id)}` });
   }
   for (const [page, res] of [["/setup", inf], ["/oidc", oi]]) for (const j of res.jobs || []) rows.push({ cloud: j.cloud, section: null,
     name: j.title, mark: j.cloud, type: `${page === "/oidc" ? "JFrog OIDC" : `${j.kind} infrastructure`} · ${left(j.expires_at * 1000)}`,

@@ -44,20 +44,18 @@
     gcp_run_job: "Cloud Run jobs", gcp_run_service: "Cloud Run services", gcp_run_function: "Cloud Run functions",
     gcp_run_worker_pool: "Worker pools", gcp_app_engine: "App Engine" };
   // Serverless and App Services each open by cloud, never mixed: Azure and its services, then Google Cloud.
-  // Both list from the same workload pages (/serverless/<cloud>?type=<kind>).
-  const GROUP = (group) => KINDS.filter(([, , g]) => g === group).flatMap(([c, cloud, , items]) => [
-    [cloud, `/serverless/${c}?type=${items[0][0]}`, c, () => false, 1],
-    ...items.map(([k, , ic]) => [SHORT[k], `/serverless/${c}?type=${k}`, ic, (p, u) => u.get("type") === k || sel.kind === k, 2])]);
-  const SERVERLESS = KINDS.filter(([, , g]) => g === "Serverless").flatMap(([c, cloud, , items]) => [
-    [cloud, `/serverless/${c}`, c, (p, u) => !u.get("type") && (p.startsWith(`/serverless/${c}`) || u.get("cloud") === c), 1],
-    ...items.map(([k, , ic]) => [SHORT[k], `/serverless/${c}?type=${k}`, ic, (p, u) => u.get("type") === k || sel.kind === k, 2])]);
-  const APP_SERVICES = GROUP("App Services");
+  // Each lists from its own mount of the workload pages: /serverless/<cloud>, /app-services/<cloud>.
+  const GROUP = (group, base) => KINDS.filter(([, , g]) => g === group).flatMap(([c, cloud, , items]) => [
+    [cloud, `${base}/${c}`, c, (p, u) => !u.get("type") && (p.startsWith(`${base}/${c}`) || (p.startsWith(base) && u.get("cloud") === c)), 1],
+    ...items.map(([k, , ic]) => [SHORT[k], `${base}/${c}?type=${k}`, ic, (p, u) => u.get("type") === k || sel.kind === k, 2])]);
+  const SERVERLESS = GROUP("Serverless", "/serverless");
+  const APP_SERVICES = GROUP("App Services", "/app-services");
   const BY_CLOUD = (base, path) => [["Azure", `${base}${path("azure")}`, "azure", (p, u) => u.get("cloud") === "azure" || p.endsWith("-azure")],
     ["Google Cloud", `${base}${path("gcp")}`, "gcp", (p, u) => u.get("cloud") === "gcp" || p.endsWith("-gcp")]];
   const NAV = [["home", "Home", "/", "home", []],
     ["infra", "Infrastructure", "/setup", "infra", BY_CLOUD("/setup", (c) => `?cloud=${c}`)],
     ["serverless", "Serverless", "/serverless/", "serverless", SERVERLESS],
-    ["apps", "App Services", "/serverless/azure?type=azure_web_app", "web", APP_SERVICES],
+    ["apps", "App Services", "/app-services/", "web", APP_SERVICES],
     ["oidc", "JFrog OIDC", "/oidc", "boot", BY_CLOUD("/oidc", (c) => `?cloud=${c}`)],
     ["runs", "Runs", "/runs", "runs", [["Serverless", "/runs?area=serverless", "serverless", q("area", "serverless")],
       ["App Services", "/runs?area=app-services", "web", q("area", "app-services")],
@@ -107,6 +105,7 @@
     if (/^\/setup(\/|$)/.test(p)) return "infra";
     if (/^\/runs(\/|$)/.test(p)) return "runs";
     if (/^\/settings(\/|$)/.test(p)) return "settings";
+    if (/^\/app-services(\/|$)/.test(p)) return "apps";
     if (/^\/serverless(\/|$)/.test(p)) {
       const t = new URLSearchParams(location.search).get("type");
       return SECTIONS[t]?.group === "App Services" ? "apps" : "serverless";

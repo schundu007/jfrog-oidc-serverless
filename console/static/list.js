@@ -1,9 +1,9 @@
-// Serverless (/serverless/): one list of every serverless workload in every cloud, read live, onboarded
+// Serverless (/serverless/) and App Services (/app-services/): one list of that section's workloads in every cloud, read live, onboarded
 // here or not, in the Azure portal's browse style: + Create and Refresh, "Filter for any field…" with
 // Cloud, Type and Status pills, then the table. /<cloud> and /<cloud>?type=<kind> open it pre-filtered.
 // A row opens its workload when onboarded, else New workload on its type.
 
-import { $, api, h, fill, BASE, CLOUD, TYPE, template, help, status as setStatus, refreshing } from "./core.js";
+import { $, api, h, fill, BASE, AREA, localPath, CLOUD, TYPE, template, help, status as setStatus, refreshing } from "./core.js";
 
 const LIVE = ["azure", "gcp"];   // the clouds read live
 const NAMES = { azure: "Azure", gcp: "Google Cloud" };
@@ -18,6 +18,8 @@ const iconEl = (key, cls) => {
 };
 const cloudOf = (k) => String(k).split("_")[0];
 const kindLabel = (k) => ls.schema?.kinds?.[k]?.label || k;
+// Only this section's types: web apps under App Services, everything else under Serverless.
+const inArea = (k) => (window.consoleNav?.section(k)?.group || "Serverless") === AREA;
 
 // The saved configuration that targets this cloud workload, if any (same kind, same workload name).
 const configOf = (w) => ls.configs.find((c) => c.kind === w.kind && String(c.workload || "").split(" / ").pop() === w.name);
@@ -55,7 +57,7 @@ function row(w) {
 }
 
 function render() {
-  const kinds = Object.keys(ls.schema?.kinds || {}).filter((k) => LIVE.includes(cloudOf(k)) && (!F.cloud || cloudOf(k) === F.cloud));
+  const kinds = Object.keys(ls.schema?.kinds || {}).filter((k) => inArea(k) && LIVE.includes(cloudOf(k)) && (!F.cloud || cloudOf(k) === F.cloud));
   if (F.type && !kinds.includes(F.type)) F.type = "";
   const set = (k) => (v) => { F[k] = v; saveQuery(); render(); };
   fill($("wl-filters"), window.consoleBlade.bar({ q: F.q, onQuery: (v) => { F.q = v; saveQuery(); rows(); }, pills: [
@@ -81,7 +83,7 @@ function rows() {
   const busy = ls.loading > 0;
   $("wl-count").textContent = busy && !ls.rows.length ? "" : `Showing ${shown.length} of ${ls.rows.length} records.`;
   $("wl-empty").hidden = busy || shown.length > 0;
-  $("wl-empty").textContent = ls.rows.length ? "No workloads match the filters" : "No serverless workloads in the clouds";
+  $("wl-empty").textContent = ls.rows.length ? "No workloads match the filters" : `No ${AREA === "App Services" ? "web apps" : "serverless workloads"} in the clouds`;
 }
 
 // + Create: every service type, by cloud. Creating a workload is infrastructure, its own step: each tile
@@ -94,10 +96,10 @@ const STACK_OF = {
   azure_functions_premium: "azure-functions-premium", azure_functions_flex: "azure-functions-flex", azure_web_app: "azure-web-app",
 };
 function createPanel() {
-  const kinds = Object.keys(ls.schema?.kinds || {}).filter((k) => LIVE.includes(cloudOf(k)));
+  const kinds = Object.keys(ls.schema?.kinds || {}).filter((k) => inArea(k) && LIVE.includes(cloudOf(k)));
   return LIVE.filter((c) => !F.cloud || c === F.cloud).map((c) => h("section", { class: "ov-group" }, h("h2", { class: "ov-group-title" }, iconEl(c, "blade-ico"), NAMES[c]),
     h("div", { class: "ov-tiles" }, kinds.filter((k) => cloudOf(k) === c).map((k) =>
-      h("a", { class: "ov-tile", href: `/setup?${new URLSearchParams(STACK_OF[k] ? { create: STACK_OF[k] } : { cloud: c, kind: "Serverless" })}` }, iconEl(iconOf(k), "ov-tile-icon"), h("span", { text: kindLabel(k) }))))));
+      h("a", { class: "ov-tile", href: `/setup?${new URLSearchParams(STACK_OF[k] ? { create: STACK_OF[k] } : { cloud: c, kind: AREA })}` }, iconEl(iconOf(k), "ov-tile-icon"), h("span", { text: kindLabel(k) }))))));
 }
 
 // What exists in each cloud now (the same read-only listing the New workload picker uses), and the
@@ -114,7 +116,7 @@ async function load(refresh = false) {
       const inv = await api(`/api/inventory/${c}${refresh ? "?refresh=1" : ""}`);
       const known = (k) => Object.hasOwn(ls.schema?.kinds || {}, k);
       for (const w of inv.workloads || []) {
-        if (w.supported && known(w.kind)) ls.rows.push({ ...w, cloud: c, subscription_name: w.subscription_name || inv.defaults?.subscription_name, cfg: null });
+        if (w.supported && known(w.kind) && inArea(w.kind)) ls.rows.push({ ...w, cloud: c, subscription_name: w.subscription_name || inv.defaults?.subscription_name, cfg: null });
       }
       for (const e of inv.errors || []) ls.errors.push(`${NAMES[c]}: ${e}`);
     } catch (e) {
@@ -133,6 +135,8 @@ export async function mountList(page, { schema }) {
   const u = new URLSearchParams(location.search);
   Object.assign(F, { q: u.get("q") || "", state: ["on", "off"].includes(u.get("state")) ? u.get("state") : "" });
   if (!F.type && schema.kinds?.[u.get("type")]) F.type = u.get("type");
+  // A type of the other section (an old /serverless link to a web app) opens there.
+  if (F.type && !inArea(F.type)) return location.replace(`${AREA === "Serverless" ? "/app-services" : "/serverless"}${localPath()}${location.search}`);
   if (!F.cloud && LIVE.includes(u.get("cloud"))) F.cloud = u.get("cloud");
   page.replaceChildren(template("tpl-list"));
   $("wl-create").addEventListener("click", () => {

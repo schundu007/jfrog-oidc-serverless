@@ -548,7 +548,7 @@ const runsArea = () => (OIDC ? "oidc" : "infrastructure");
 const runsHref = (s) => `/runs?area=${runsArea()}&cloud=${CLOUD_ID[s.group] || ""}&q=${encodeURIComponent(s.title)}`;
 // A pipeline identity is the cloud's ADO trust: its name opens the project's service connections.
 const adoSettings = (s) => s.links?.source?.replace(/\/_git\/.*$/, "/_settings/adminservices");
-const nameHref = (s) => (SERVES[s.id] ? `/serverless/${SERVES[s.id]}` : (s.id.endsWith("-pipeline-identity") && adoSettings(s))
+const nameHref = (s) => (SERVES[s.id] ? `/${SERVES[s.id].includes("app_engine") || SERVES[s.id].includes("web_app") ? "app-services" : "serverless"}/${SERVES[s.id]}` : (s.id.endsWith("-pipeline-identity") && adoSettings(s))
   || (s.has_runs ? runsHref(s) : s.check_job ? `?job=${s.check_job}` : s.links?.source));
 
 let byId = {};
@@ -728,13 +728,16 @@ const go = (href, text, primary) => h("button", { type: "button", class: primary
   onclick: () => location.assign(href) });
 const pillOf = (tone, text) => h("span", { class: `blade-state ${tone === "ok" ? "ok" : ""}`, "data-tone": tone, text });
 
+// A workload's pages sit under its section: /app-services for web apps, /serverless for the rest.
+const pageBase = (kind) => (window.consoleNav?.section(kind)?.group === "App Services" ? "/app-services" : "/serverless");
 function workloadRow(w) {
-  const open = w.cfg ? `/serverless/${w.cloud}/w/${encodeURIComponent(w.cfg.name)}` : `/serverless/${w.cloud}/new?kind=${encodeURIComponent(w.kind)}`;
+  const b = pageBase(w.kind);
+  const open = w.cfg ? `${b}/${w.cloud}/w/${encodeURIComponent(w.cfg.name)}` : `${b}/${w.cloud}/new?kind=${encodeURIComponent(w.kind)}`;
   const icon = window.consoleNav?.section(w.kind)?.icon || "run";
   return h("tr", { "data-state": w.cfg ? "ok" : "idle" },
     h("td", {}, h("div", { class: "stack-name" }, iconEl(icon, "stack-icon"), link(open, h("b", { text: w.name })))),
     h("td", {}, pillOf(w.cfg ? "ok" : "idle", w.cfg ? "Onboarded" : "Not onboarded")),
-    h("td", {}, link(`/serverless/${w.cloud}?type=${encodeURIComponent(w.kind)}`, live.kinds[w.kind]?.label || w.kind)),
+    h("td", {}, link(`${b}/${w.cloud}?type=${encodeURIComponent(w.kind)}`, live.kinds[w.kind]?.label || w.kind)),
     h("td", { text: w.region || "—" }),
     h("td", {}, h("div", { class: "setup-row-actions nowrap" }, go(open, w.cfg ? "Open" : "Onboard", !w.cfg),
       w.cfg ? h("button", { type: "button", class: "secondary", text: "Prove", onclick: (ev) => proveWorkload(w, ev.currentTarget) }) : null)));
@@ -747,7 +750,7 @@ async function proveWorkload(w, btn) {
   try {
     const { config } = await api(`/serverless/api/configs/${name}`, { abs: true });
     const res = await api("/serverless/api/runs", { abs: true, method: "POST", body: { config, steps: ["prove"] } });
-    location.assign(`/serverless/${w.cloud}/w/${name}/runs/${encodeURIComponent(res.run_id)}`);
+    location.assign(`${pageBase(w.kind)}/${w.cloud}/w/${name}/runs/${encodeURIComponent(res.run_id)}`);
   } catch (e) {
     btn.disabled = false;
     btn.title = e.message;

@@ -1,4 +1,4 @@
-"""One origin for the consoles: Serverless (console/) at /serverless,
+"""One origin for the consoles: Serverless (console/) at /serverless and App Services (the same console) at /app-services,
 Infrastructure (setup_console/, test infrastructure only) at /setup and JFrog OIDC (setup_console/ with
 scope "oidc": the JFrog trust stacks only) at /oidc. The two share the run engine but neither serves or
 changes the other's stacks.
@@ -25,6 +25,7 @@ from console import server as oidc
 from setup_console import server as setup
 
 SERVERLESS, SETUP, OIDC = "/serverless", "/setup", "/oidc"
+APP_SERVICES = "/app-services"   # the workload console again, listing web apps only
 STATIC_DIR = Path(__file__).parent / "static"
 # Home and Runs read every section (every cloud's workloads and runs); every other page
 # belongs to one section.
@@ -37,7 +38,7 @@ CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; c
 
 def section_of(path: str):
     """(section, path inside it) for a portal path, or (None, path) for the portal's own pages."""
-    for prefix in (SERVERLESS, SETUP, OIDC):
+    for prefix in (SERVERLESS, APP_SERVICES, SETUP, OIDC):
         if path == prefix or path.startswith(prefix + "/"):
             return prefix, path[len(prefix):] or "/"
     return None, path
@@ -97,7 +98,8 @@ class Portal:
 
 
 def _make_handler(portal: Portal):
-    handlers = {SERVERLESS: oidc._make_handler(portal.oidc),
+    workloads = oidc._make_handler(portal.oidc)
+    handlers = {SERVERLESS: workloads, APP_SERVICES: workloads,
                 SETUP: setup.make_handler(portal.setup), OIDC: setup.make_handler(portal.oidc_setup)}
 
     class Handler(BaseHTTPRequestHandler):
@@ -126,6 +128,7 @@ def _make_handler(portal: Portal):
                 # Hand the request to that console's handler as if it were standalone. The class is
                 # switched back afterwards: a keep-alive connection's next request must come here again.
                 self.path = urllib.parse.urlunsplit(("", "", inner, split.query, ""))
+                self.mount_base = section if section == APP_SERVICES else None   # the page's links stay in its section
                 target = handlers[section]
                 self.__class__ = target
                 try:

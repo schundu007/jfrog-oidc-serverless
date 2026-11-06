@@ -12,6 +12,9 @@ if (REDIRECTING) location.replace(location.href.replace("//localhost", "//127.0.
 // Inside the portal this console lives under a prefix (/serverless): the server says so in a meta tag.
 // Every API call, static file and page link carries it; localPath() is the path without it.
 export const BASE = document.querySelector('meta[name="console-base"]')?.content || "";
+// Serverless (/serverless) and App Services (/app-services) are one console mounted twice: each lists its own types.
+export const AREA = BASE === "/app-services" ? "App Services" : "Serverless";
+export const areaBase = (kind) => (window.consoleNav?.section(kind)?.group === "App Services" ? "/app-services" : "/serverless");
 export const localPath = () => (BASE && location.pathname.startsWith(BASE) ? location.pathname.slice(BASE.length) || "/" : location.pathname);
 
 export const CLOUDS = { gcp: "Google Cloud", azure: "Azure" };

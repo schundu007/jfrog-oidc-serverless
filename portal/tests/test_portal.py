@@ -88,6 +88,18 @@ class PortalTests(unittest.TestCase):
             self.assertIn(b'href="/serverless/static/styles.css"', raw, p)
             self.assertNotIn(b'"/static/', raw, p)
 
+    def test_app_services_is_its_own_section(self):
+        # Web apps are not serverless: the same console, mounted at /app-services, keeps its links there.
+        self.assertEqual(section_of("/app-services/azure"), ("/app-services", "/azure"))
+        for p in ("/app-services/", "/app-services/azure", "/app-services/gcp?type=gcp_app_engine"):
+            st, _, raw = self.req("GET", p, token=False, headers={"Sec-Fetch-Site": "none"})
+            self.assertEqual(st, 200, p)
+            self.assertIn(b'<meta name="console-base" content="/app-services">', raw, p)
+            self.assertIn(b'href="/app-services/static/styles.css"', raw, p)
+        st, _, raw = self.req("GET", "/serverless/azure", token=False, headers={"Sec-Fetch-Site": "none"})
+        self.assertIn(b'<meta name="console-base" content="/serverless">', raw)   # a keep-alive reuse keeps no base
+        self.assertEqual(self.req("GET", "/app-services/api/schema")[0], 200)
+
     def test_setup_section(self):
         st, _, raw = self.req("GET", "/setup", token=False, headers={"Sec-Fetch-Site": "none"})
         self.assertEqual(st, 200)
