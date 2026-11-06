@@ -2,7 +2,7 @@
 
 ## Known unverified items
 
-These come from the README's "Verify in your environment" section. Fix them in code when real providers or APIs disagree:
+Fix them in code when real providers or APIs disagree:
 
 - Settings sign-ins (`portal/connections.py`), parsed from CLI text and not yet run end to end against real accounts:
   - the gcloud `auth login --no-launch-browser --update-adc` prompt wording
@@ -14,7 +14,7 @@ These come from the README's "Verify in your environment" section. Fix them in c
 - azure-pipeline-identity finds each operator email's object ID through `azuread_users` by sign-in name (the email, or the guest form `<name>_<domain>#EXT#@<default domain>`); not applied yet.
 - The Docker subdomain host form `<server>-<repo-key>.jfrog.io` on the target JFrog instance (it is what the AKS pilot's instance served; a self-hosted platform may differ: set `jfrog.docker_host`). On a JFrog Cloud trial (2026-10-30) it only redirected; the path form `<server>/<repo-key>/<image>` worked end to end with the KCP direct setup.
 
-Verified live (2026-10-30): all eight workload types exchanged their identity for a JFrog token after console onboarding (docs/progress.md); Functions on ACA with `kind = functionapp`; the Container Apps log table `ContainerAppConsoleLogs_CL`; JFrog accepts `provider_type = "Azure"` (the `azure-entra` integration issued the Azure tokens).
+Verified live (2026-10-30): all eight workload types exchanged their identity for a JFrog token after console onboarding; Functions on ACA with `kind = functionapp`; the Container Apps log table `ContainerAppConsoleLogs_CL`; JFrog accepts `provider_type = "Azure"` (the `azure-entra` integration issued the Azure tokens).
 
 Verified by `terraform validate` (Terraform 1.15.5 then 1.17.1, jfrog/platform 2.2.11, google 8.9.0, azurerm 5.12.0) on both stacks: the `jfrog-oidc` module validations from the AKS pilot lessons. Verified live: the AR PATCH `updateMask` (gcloud sends the same mask).
 
